@@ -77,6 +77,7 @@
 - [03_session_and_notification.md](./03_session_and_notification.md) - セッション・通知
 - [04_technical_spec.md](./04_technical_spec.md) - 技術仕様
 - [05_screen_design.md](./05_screen_design.md) - 画面設計
+- [07_test_plan.md](./07_test_plan.md) - テスト計画
 - [06_future_and_operation.md](./06_future_and_operation.md) - 将来計画・運用
 
 ---

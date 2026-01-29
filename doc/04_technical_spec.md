@@ -59,7 +59,7 @@
 - **型チェック**: TypeScript 5+
 - **リンター**: ESLint
 - **フォーマッター**: Prettier
-- **テスト**: Vitest（将来実装）
+- **テスト**: Vitest（Phase 0からアルゴリズム検証に使用）
 - **PWA**: Vite PWA Plugin
 
 ### 1.7 その他ライブラリ
