@@ -11,7 +11,7 @@ export function SessionCreate() {
   const { addPlayers } = usePlayerStore();
   const initializeCourts = useGameStore((state) => state.initializeCourts);
 
-  const [courtCount, setCourtCount] = useState(2);
+  const [courtCount, setCourtCount] = useState(3);
   const [targetScore, setTargetScore] = useState(21);
   const [playerNames, setPlayerNames] = useState('');
 
