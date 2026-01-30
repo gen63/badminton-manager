@@ -124,11 +124,6 @@ export function SessionCreate() {
             次へ
           </button>
         </div>
-
-        <div className="mt-6 text-center text-sm text-gray-500">
-          <p>Phase 0 - プロトタイプ版</p>
-          <p className="mt-1">LocalStorage保存</p>
-        </div>
       </div>
     </div>
   );
