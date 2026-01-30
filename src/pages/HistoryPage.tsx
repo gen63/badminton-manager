@@ -65,10 +65,10 @@ export function HistoryPage() {
     const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
     
     let text = `${dateStr}\n`;
-    matchHistory.forEach((match) => {
+    matchHistory.forEach((match, index) => {
       const teamANames = match.teamA.map(getPlayerName).join(' ');
       const teamBNames = match.teamB.map(getPlayerName).join(' ');
-      text += `${teamANames} ${match.scoreA}-${match.scoreB} ${teamBNames}\n`;
+      text += `${index + 1} ${teamANames} ${match.scoreA}-${match.scoreB} ${teamBNames}\n`;
     });
 
     const success = await copyToClipboard(text);
