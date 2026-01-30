@@ -1,3 +1,55 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* iOS Safari 対応 */
+@layer base {
+  /* タップハイライトを無効化 */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* フォーム要素のiOSデフォルトスタイルをリセット */
+  input,
+  textarea,
+  select,
+  button {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  /* スムーズスクロール（慣性スクロール） */
+  .overflow-auto,
+  .overflow-y-auto,
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* セーフエリア対応のユーティリティ */
+  .safe-area-inset-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-area-inset-left {
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .safe-area-inset-right {
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* 下部の固定要素用（ホームインジケーター回避） */
+  .pb-safe {
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+
+  /* アクティブ状態のフィードバック */
+  button:active:not(:disabled),
+  [role="button"]:active {
+    transform: scale(0.98);
+  }
+}

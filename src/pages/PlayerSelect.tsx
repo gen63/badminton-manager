@@ -50,7 +50,7 @@ export function PlayerSelect() {
               onChange={(e) => setNewPlayerNames(e.target.value)}
               placeholder="田中太郎&#10;山田花子&#10;佐藤次郎&#10;鈴木一郎"
               rows={6}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none resize-none text-sm"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none resize-none text-base"
             />
             <button
               onClick={handleAddPlayers}

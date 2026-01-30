@@ -32,11 +32,11 @@ export function CourtCard({
 }: CourtCardProps) {
   const timer = useGameTimer(court.startedAt, court.isPlaying);
 
-  // プレイヤーピルボタン
+  // プレイヤーピルボタン（44px以上のタップターゲット）
   const PlayerPill = ({ playerId, position }: { playerId: string | null; position: number }) => {
     if (!playerId) {
       return (
-        <div className="h-10 bg-gray-50 rounded-full border border-gray-200" />
+        <div className="h-11 bg-gray-50 rounded-full border border-gray-200" />
       );
     }
 
@@ -45,10 +45,10 @@ export function CourtCard({
     return (
       <div
         onClick={() => onPlayerTap(playerId, position)}
-        className={`h-10 px-4 rounded-full border flex items-center justify-between cursor-pointer transition-all ${
+        className={`h-11 px-4 rounded-full border flex items-center justify-between cursor-pointer transition-all active:scale-[0.98] ${
           isSelected
             ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-200'
-            : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+            : 'bg-gray-50 border-gray-200 hover:border-gray-300 active:bg-gray-100'
         }`}
       >
         <span className="text-gray-800 text-sm font-medium truncate">
@@ -60,7 +60,7 @@ export function CourtCard({
               e.stopPropagation();
               onClearSelection();
             }}
-            className="text-xs text-red-500 hover:text-red-600 font-bold ml-2"
+            className="text-sm text-red-500 hover:text-red-600 font-bold ml-2 p-1"
           >
             ✕
           </button>
@@ -72,8 +72,8 @@ export function CourtCard({
   // 未配置状態
   const EmptySlots = () => (
     <div className="space-y-2">
-      <div className="h-10 bg-gray-50 rounded-full border border-gray-200" />
-      <div className="h-10 bg-gray-50 rounded-full border border-gray-200" />
+      <div className="h-11 bg-gray-50 rounded-full border border-gray-200" />
+      <div className="h-11 bg-gray-50 rounded-full border border-gray-200" />
     </div>
   );
 
@@ -85,7 +85,7 @@ export function CourtCard({
       <div className="flex items-center justify-center gap-2">
         <span className="text-xl text-gray-400">{circledNumbers[court.id - 1] || court.id}</span>
         {court.isPlaying && (
-          <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-semibold flex items-center gap-1">
+          <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold flex items-center gap-1">
             <Clock size={12} />
             {timer.formatted}
           </span>
@@ -119,15 +119,15 @@ export function CourtCard({
         )}
       </div>
 
-      {/* コントロールボタン */}
-      <div className="flex gap-2 pt-2">
+      {/* コントロールボタン（44px以上のタップターゲット） */}
+      <div className="flex gap-3 pt-2">
         {!court.isPlaying && !hasPlayers && (
           <button
             onClick={onAutoAssign}
             disabled={!canAutoAssign}
-            className="w-full bg-gray-100 text-gray-600 py-2 px-3 rounded-full text-xs font-medium hover:bg-gray-200 transition flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-gray-100 text-gray-600 min-h-[44px] py-2.5 px-4 rounded-full text-sm font-medium hover:bg-gray-200 active:bg-gray-300 transition flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Users size={14} />
+            <Users size={16} />
             配置
           </button>
         )}
@@ -135,14 +135,14 @@ export function CourtCard({
           <>
             <button
               onClick={onStartGame}
-              className="flex-1 bg-blue-500 text-white py-2 px-3 rounded-full text-xs font-medium hover:bg-blue-600 transition flex items-center justify-center gap-1"
+              className="flex-1 bg-blue-500 text-white min-h-[44px] py-2.5 px-4 rounded-full text-sm font-medium hover:bg-blue-600 active:bg-blue-700 transition flex items-center justify-center gap-1.5"
             >
-              <Play size={14} />
+              <Play size={16} />
               開始
             </button>
             <button
               onClick={onClear}
-              className="flex-1 bg-gray-100 text-gray-600 py-2 px-3 rounded-full text-xs font-medium hover:bg-gray-200 transition"
+              className="flex-1 bg-gray-100 text-gray-600 min-h-[44px] py-2.5 px-4 rounded-full text-sm font-medium hover:bg-gray-200 active:bg-gray-300 transition"
             >
               クリア
             </button>
@@ -151,9 +151,9 @@ export function CourtCard({
         {court.isPlaying && (
           <button
             onClick={onFinishGame}
-            className="w-full bg-orange-500 text-white py-2 px-3 rounded-full text-xs font-medium hover:bg-orange-600 transition flex items-center justify-center gap-1"
+            className="w-full bg-orange-500 text-white min-h-[44px] py-2.5 px-4 rounded-full text-sm font-medium hover:bg-orange-600 active:bg-orange-700 transition flex items-center justify-center gap-1.5"
           >
-            <Pause size={14} />
+            <Pause size={16} />
             終了
           </button>
         )}

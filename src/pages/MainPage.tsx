@@ -323,7 +323,7 @@ export function MainPage() {
                     </div>
                     <button
                       onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
-                      className="px-4 py-1.5 bg-blue-500 text-white rounded-full text-xs font-medium hover:bg-blue-600 transition flex-shrink-0"
+                      className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm font-medium hover:bg-blue-600 active:bg-blue-700 transition flex-shrink-0 min-h-[44px]"
                     >
                       スコア入力
                     </button>
@@ -405,7 +405,7 @@ export function MainPage() {
                   }
                 }}
                 placeholder="メンバー名を入力"
-                className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-transparent"
+                className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-full text-base focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-transparent min-h-[44px]"
               />
               <button
                 onClick={() => {

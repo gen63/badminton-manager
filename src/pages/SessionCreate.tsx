@@ -112,7 +112,7 @@ export function SessionCreate() {
               onChange={(e) => setPlayerNames(e.target.value)}
               placeholder="田中太郎&#10;山田花子&#10;佐藤次郎"
               rows={5}
-              className="w-full max-w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none resize-none text-sm box-border"
+              className="w-full max-w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none resize-none text-base box-border"
               style={{ WebkitAppearance: 'none' }}
             />
             <p className="text-xs text-gray-400 mt-2 text-center">
