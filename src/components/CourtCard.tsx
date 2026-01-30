@@ -26,9 +26,9 @@ export function CourtCard({
   const timer = useGameTimer(court.startedAt, court.isPlaying);
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-2.5 space-y-2 flex-1 min-w-0">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-base font-bold text-gray-800">コート {court.id}</h3>
+    <div className="bg-white rounded-lg shadow-lg p-2 space-y-2 flex-1 min-w-[200px]">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-sm font-bold text-gray-800">コート {court.id}</h3>
         {court.isPlaying && (
           <div className="flex items-center gap-2">
             <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold flex items-center gap-1">
@@ -115,9 +115,9 @@ export function CourtCard({
         {!court.isPlaying && !court.teamA[0] && (
           <button
             onClick={onAutoAssign}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2"
+            className="w-full bg-blue-600 text-white py-1.5 px-1 rounded text-xs font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-0.5"
           >
-            <Users size={20} />
+            <Users size={12} />
             配置
           </button>
         )}
@@ -125,15 +125,15 @@ export function CourtCard({
           <>
             <button
               onClick={onClear}
-              className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg text-sm font-semibold hover:bg-gray-300 transition flex items-center justify-center gap-1"
+              className="flex-1 bg-gray-200 text-gray-800 py-1.5 px-1 rounded text-xs font-semibold hover:bg-gray-300 transition"
             >
               クリア
             </button>
             <button
               onClick={onStartGame}
-              className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition flex items-center justify-center gap-1"
+              className="flex-1 bg-green-600 text-white py-1.5 px-1 rounded text-xs font-semibold hover:bg-green-700 transition flex items-center justify-center gap-0.5"
             >
-              <Play size={16} />
+              <Play size={12} />
               開始
             </button>
           </>
@@ -141,9 +141,9 @@ export function CourtCard({
         {court.isPlaying && (
           <button
             onClick={onFinishGame}
-            className="w-full bg-red-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition flex items-center justify-center gap-1"
+            className="w-full bg-red-600 text-white py-1.5 px-1 rounded text-xs font-semibold hover:bg-red-700 transition flex items-center justify-center gap-0.5"
           >
-            <Pause size={16} />
+            <Pause size={12} />
             終了
           </button>
         )}
