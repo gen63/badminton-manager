@@ -1,9 +1,8 @@
-import { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { formatTime, copyToClipboard } from '../lib/utils';
-import { ArrowLeft, Copy, Trash2 } from 'lucide-react';
+import { ArrowLeft, Copy, Trash2, Edit3 } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
@@ -13,22 +12,12 @@ export function HistoryPage() {
   const { matchHistory, deleteMatch } = useGameStore();
   const { players } = usePlayerStore();
   const toast = useToast();
-  const lastTapRef = useRef<{ matchId: string; time: number } | null>(null);
-
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '不明';
   };
 
-  const handleMatchClick = (matchId: string) => {
-    const now = Date.now();
-    const last = lastTapRef.current;
-
-    if (last && last.matchId === matchId && now - last.time < 500) {
-      lastTapRef.current = null;
-      navigate(`/score/${matchId}`, { state: { from: '/history' } });
-    } else {
-      lastTapRef.current = { matchId, time: now };
-    }
+  const handleEdit = (matchId: string) => {
+    navigate(`/score/${matchId}`, { state: { from: '/history' } });
   };
 
   const handleDelete = (matchId: string) => {
@@ -97,8 +86,7 @@ export function HistoryPage() {
                 return (
                   <div
                     key={match.id}
-                    onClick={() => handleMatchClick(match.id)}
-                    className="bg-gray-50 rounded-xl p-3 transition cursor-pointer hover:bg-gray-100"
+                    className="bg-gray-50 rounded-xl p-3"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -124,15 +112,20 @@ export function HistoryPage() {
                           </div>
                         </div>
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(match.id);
-                        }}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition flex-shrink-0 ml-2"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                        <button
+                          onClick={() => handleEdit(match.id)}
+                          className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-full transition"
+                        >
+                          <Edit3 size={18} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(match.id)}
+                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
