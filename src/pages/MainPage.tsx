@@ -335,14 +335,16 @@ export function MainPage() {
 
         {/* プレイヤーリスト */}
         <div className="bg-white rounded-2xl shadow-sm p-4">
-          <h3 className="text-base font-semibold text-gray-700 mb-4">
-            参加者一覧 ({players.length}人)
-          </h3>
+          <div className="flex items-baseline justify-between mb-2">
+            <h3 className="text-base font-semibold text-gray-700">
+              参加者一覧 ({players.length}人)
+            </h3>
+            <span className="text-sm text-gray-500">
+              待機中 {activePlayers.length}人
+            </span>
+          </div>
           <div className="space-y-4">
             <div>
-              <h4 className="text-sm text-gray-500 mb-2">
-                待機中 ({activePlayers.length}人)
-              </h4>
               <div className="grid gap-2 grid-cols-3">
                 {activePlayers.map((player) => {
                   const isSelected = selectedPlayer?.id === player.id;
