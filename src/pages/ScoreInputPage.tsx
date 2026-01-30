@@ -152,9 +152,8 @@ export function ScoreInputPage() {
           )}
           
           <div className="space-y-3">
-            {/* チームA */}
+            {/* 上のペア */}
             <div className="bg-gray-50 rounded-xl p-3">
-              <div className="text-xs text-gray-500 mb-2 text-center">チームA</div>
               <div className="flex gap-2">
                 {match.teamA.map((playerId, idx) => (
                   <button
@@ -174,9 +173,8 @@ export function ScoreInputPage() {
 
             <div className="text-center text-gray-400 text-xs">vs</div>
 
-            {/* チームB */}
+            {/* 下のペア */}
             <div className="bg-gray-50 rounded-xl p-3">
-              <div className="text-xs text-gray-500 mb-2 text-center">チームB</div>
               <div className="flex gap-2">
                 {match.teamB.map((playerId, idx) => (
                   <button
