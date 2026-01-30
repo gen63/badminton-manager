@@ -4,6 +4,21 @@
 
 ---
 
+## 🧠 UXの原則（Laws of UX）
+
+デザイン判断の根拠となる心理学的原則：
+
+| 法則 | 内容 | 適用 |
+|------|------|------|
+| **Fitts's Law** | ターゲットが大きく近いほど、素早く正確にタップできる | ボタンは大きく、よく使う機能は手の届く位置に |
+| **Hick's Law** | 選択肢が多いほど決定に時間がかかる | 選択肢は最小限に。段階的に絞り込む |
+| **Miller's Law** | 人は7±2個の情報しか短期記憶できない | リストは5-9項目に。それ以上はグループ化 |
+| **Doherty Threshold** | 400ms以内のレスポンスで生産性が向上 | ローディングは400ms以内に。それ以上は進捗表示 |
+| **Jakob's Law** | ユーザーは他サイトでの経験を期待する | 標準的なUIパターンを使う |
+| **Peak-End Rule** | 体験はピークと終わりで評価される | 完了画面を気持ちよく。エラーは丁寧に |
+
+---
+
 ## 1. タッチターゲット（🍎 iOS推奨）
 
 ### 最小サイズ
@@ -28,12 +43,10 @@
 **原則**: 小さいボタンほど間隔を広く取る（誤タップ防止）
 
 ### Fat Finger対策
-- タップターゲットが視覚的に小さくても、パディングで実際のタップ領域を拡大
-- 例: アイコン24pxでも、周囲にパディングを追加して44px以上に
 ```css
-/* アイコンボタン例 */
+/* アイコンは小さくても、タップ領域は大きく */
 .icon-button {
-  padding: 12px;  /* 24px + 12px*2 = 48px */
+  padding: 12px;  /* 24px icon + 12px*2 = 48px */
 }
 ```
 
@@ -50,12 +63,6 @@
 ```css
 /* viewport設定 */
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-
-/* セーフエリアを考慮したパディング */
-padding-top: env(safe-area-inset-top);
-padding-right: env(safe-area-inset-right);
-padding-bottom: env(safe-area-inset-bottom);
-padding-left: env(safe-area-inset-left);
 
 /* 既存の余白とセーフエリアの大きい方を採用 */
 padding-left: max(20px, env(safe-area-inset-left));
@@ -112,29 +119,23 @@ bg-white rounded-2xl shadow-sm p-4
 | ボーダー | 薄いグレー | `gray-200` |
 | 無効状態 | 薄いグレー | `gray-400` + `opacity-50` |
 
-### 色の使い分け
-- それ以外は薄いグレーと黒で構成
-- 同じ意味には同じ色を使う
-- 色のトーンを統一する（彩度・明度を揃える）
+### アクセシビリティ（コントラスト比）
+- **テキスト**: 4.5:1以上（WCAG AA準拠）
+- **大きいテキスト（18px以上）**: 3:1以上
+- `gray-600` on `white` = 5.74:1 ✓
+- `gray-500` on `white` = 4.64:1 ✓
+- `gray-400` on `white` = 2.87:1 ⚠️（補足のみ）
 
 ---
 
 ## 5. タイポグラフィ
 
 ### フォント（🍎 iOS推奨）
-- **システムフォントを使用**（San Francisco自動適用）
-- `-apple-system, BlinkMacSystemFont` を最優先
 ```css
 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 ```
 
-### iOSでの読みやすいサイズ
-- **本文の最小サイズ: 17px**（Apple推奨）
-- 小さくても **11px以上**を維持
-
 ### フォントサイズのヒエラルキー
-
-#### 推奨サイズスケール（iPhone基準）
 | 役割 | サイズ | Tailwind | スタイル |
 |------|--------|----------|----------|
 | メインタイトル | 22-24px | `text-xl` / `text-2xl` | Bold |
@@ -142,55 +143,41 @@ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 | 本文・ラベル | 15-17px | `text-sm` / `text-base` | Regular |
 | 補足・注釈 | 13-15px | `text-xs` / `text-sm` | Regular / Gray |
 
-#### 現在の実装
-| 用途 | Tailwind |
-|------|----------|
-| ページタイトル | `text-base font-medium` |
-| セクションタイトル | `text-base font-semibold` |
-| 本文 | `text-sm` |
-| 補足テキスト | `text-xs` |
-| ボタン | `text-sm font-medium` |
-
-### タイトル周りの余白ルール
-- 文字サイズではなく**余白で存在感を出す**
-- すべての画面で「上端からタイトルまでの距離」を統一
-
 ### 文字色の優先順位
 1. **主要情報**: `text-gray-800`（濃い）
 2. **副次情報**: `text-gray-600`
-3. **補足情報**: `text-gray-400`（薄い）
+3. **補足情報**: `text-gray-500`（薄め、コントラスト注意）
 
 ---
 
 ## 6. コンポーネントの統一
 
-### ボタンスタイル（🍎 タップしやすく）
+### ボタンスタイル
 
-#### プライマリボタン（メインアクション）
+#### プライマリボタン
 ```
 bg-blue-500 text-white rounded-full font-medium py-3 px-6 
-hover:bg-blue-600 active:bg-blue-700
-min-h-[44px]
+hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98]
+min-h-[44px] transition-all duration-150
 ```
 
-#### セカンダリボタン（サブアクション）
+#### セカンダリボタン
 ```
 bg-gray-100 text-gray-600 rounded-full font-medium py-3 px-6
-hover:bg-gray-200 active:bg-gray-300
-min-h-[44px]
+hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98]
+min-h-[44px] transition-all duration-150
 ```
 
-#### 危険ボタン（削除など）
+#### 危険ボタン
 ```
 bg-red-500 text-white rounded-full font-medium py-3 px-6
-hover:bg-red-600 active:bg-red-700
-min-h-[44px]
+hover:bg-red-600 active:bg-red-700 active:scale-[0.98]
+min-h-[44px] transition-all duration-150
 ```
 
-#### アイコンボタン
+#### 無効状態
 ```
-p-3 rounded-full hover:bg-gray-100 active:bg-gray-200
-min-w-[44px] min-h-[44px]
+opacity-50 cursor-not-allowed
 ```
 
 ### 選択状態
@@ -202,59 +189,132 @@ min-w-[44px] min-h-[44px]
 ```
 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 
 focus:ring-2 focus:ring-blue-300 focus:border-transparent
-text-base  /* iOSの自動ズーム防止: 16px以上 */
+text-base  /* 16px以上でiOS自動ズーム防止 */
 ```
-
-**重要**: フォントサイズ16px未満だとiOS Safariが自動ズームする
-
-### アイコン
-- 線の太さを統一
-- サイズは `size={18}` または `size={20}` を基本
-- タップ領域は44px以上確保
 
 ---
 
-## 7. iOS Safari固有の対応
+## 7. アニメーション・トランジション
+
+### パフォーマンス原則
+**GPU加速されるプロパティのみ使用**:
+- ✅ `transform`（translate, scale, rotate）
+- ✅ `opacity`
+- ❌ `width`, `height`, `top`, `left`（レイアウト再計算が発生）
+
+### タイミング
+| 用途 | 時間 | イージング |
+|------|------|-----------|
+| マイクロインタラクション（ホバー、タップ） | 100-150ms | `ease-out` |
+| 画面遷移 | 200-300ms | `ease-in-out` |
+| モーダル開閉 | 200-250ms | `ease-out` |
+| ローディング | 継続 | `linear` |
+
+### Tailwind実装
+```css
+/* ボタンのタップフィードバック */
+transition-all duration-150 ease-out
+active:scale-[0.98] active:opacity-90
+
+/* フェードイン */
+transition-opacity duration-200 ease-out
+
+/* スライドイン */
+transition-transform duration-300 ease-out
+```
+
+### 避けるべきこと
+- 300ms以上のアニメーション（ユーザーを待たせる）
+- 画面全体のアニメーション（酔いやすい）
+- `prefers-reduced-motion` を尊重
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+```
+
+---
+
+## 8. 状態デザイン
+
+### ローディング状態
+```jsx
+// スピナー（400ms以上かかる処理）
+<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+
+// スケルトン（コンテンツ読み込み中）
+<div className="animate-pulse bg-gray-200 rounded-xl h-20" />
+```
+
+**原則**: 400ms以内に完了する処理はローディング表示不要（Doherty Threshold）
+
+### 空の状態（Empty State）
+```jsx
+<div className="text-center py-12">
+  <span className="text-4xl mb-4 block">🏸</span>
+  <h3 className="text-base font-semibold text-gray-700 mb-2">
+    まだ試合がありません
+  </h3>
+  <p className="text-sm text-gray-500 mb-4">
+    メイン画面でゲームを開始すると、ここに履歴が表示されます。
+  </p>
+  <button className="bg-blue-500 text-white px-6 py-2 rounded-full">
+    メイン画面へ
+  </button>
+</div>
+```
+
+### エラー状態
+```jsx
+// インラインエラー（フォーム）
+<p className="text-red-500 text-sm mt-1">入力内容を確認してください</p>
+
+// トーストエラー
+<div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
+  エラーが発生しました
+</div>
+```
+
+### 成功状態
+```jsx
+// トースト成功
+<div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl">
+  保存しました ✓
+</div>
+```
+
+---
+
+## 9. iOS Safari固有の対応
 
 ### フォームスタイルのリセット
 ```css
 input, textarea, select, button {
   -webkit-appearance: none;
   appearance: none;
-  border-radius: 0;  /* iOSデフォルトの角丸を無効化 */
-}
-
-/* 必要に応じて角丸を再設定 */
-input, textarea {
-  border-radius: 12px;
 }
 ```
 
 ### タップハイライトの制御
 ```css
-/* タップ時の青い/グレーのハイライトを無効化 */
 * {
   -webkit-tap-highlight-color: transparent;
-}
-
-/* 代わりにactive状態で視覚フィードバック */
-button:active {
-  opacity: 0.7;
-  transform: scale(0.98);
 }
 ```
 
 ### スクロールの最適化
 ```css
-/* スムーズスクロール（慣性スクロール） */
 .scrollable {
   -webkit-overflow-scrolling: touch;
   overflow-y: auto;
 }
 
-/* プルトゥリフレッシュの無効化（必要に応じて） */
 body {
-  overscroll-behavior-y: none;
+  overscroll-behavior-y: none; /* プルトゥリフレッシュ無効化 */
 }
 ```
 
@@ -263,63 +323,71 @@ body {
 .fixed-header {
   position: fixed;
   top: 0;
-  left: 0;
-  right: 0;
   padding-top: env(safe-area-inset-top);
 }
 
 .fixed-footer {
   position: fixed;
   bottom: 0;
-  left: 0;
-  right: 0;
   padding-bottom: env(safe-area-inset-bottom);
 }
 ```
 
-### ダークモード対応（任意）
+---
+
+## 10. モバイルUXの考慮事項
+
+### 中断への対応
+モバイルセッションは平均72秒。いつ中断されても復帰できるように：
+- **自動保存**: 状態は常に保存
+- **復帰容易**: 前回の状態から再開できる
+- **シンプルなタスク**: 短いセッションで完了できる
+
+### 片手操作
+- **重要なボタンは画面下部に配置**（親指が届く範囲）
+- 画面上部は情報表示に使用
+- 横幅いっぱいのボタンは押しやすい
+
+### コンテキストの保持
+- ページ遷移時に入力内容を保持
+- 戻るボタンで前の状態を復元
+- フォームは段階的に保存
+
+---
+
+## 11. アクセシビリティ
+
+### 必須対応
+- [ ] タップターゲット44×44px以上
+- [ ] テキストコントラスト比4.5:1以上
+- [ ] フォーカス状態が視認可能
+- [ ] エラーは色だけでなくテキストでも伝える
+
+### フォーカス状態
 ```css
-@media (prefers-color-scheme: dark) {
-  /* ダークモード用スタイル */
+/* キーボードナビゲーション用 */
+:focus-visible {
+  outline: 2px solid #3B82F6;
+  outline-offset: 2px;
 }
 ```
 
----
+### スクリーンリーダー対応
+```jsx
+// アイコンのみのボタン
+<button aria-label="削除">
+  <Trash2 size={20} />
+</button>
 
-## 8. 情報の構造化
-
-### リスト表示
-- 単なるテキストの羅列を避ける
-- 各項目をカード化またはボーダーで区切る
-- タップ可能なリストアイテムは44px以上の高さ
-
-### アクションボタンの配置
-- 右側に配置
-- アイコンのみでコンパクトに（ただし44px確保）
-- ホバー/アクティブ時に色が変わる
-
----
-
-## 9. レスポンシブ対応
-
-### モバイルファースト
-- 主要なターゲットはスマートフォン
-- 3カラムまで横スクロールなしで表示
-
-### ビューポート設定
-```html
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+// ローディング状態
+<div aria-live="polite" aria-busy="true">
+  読み込み中...
+</div>
 ```
-
-### ランドスケープ対応
-- 横向き時もセーフエリアを考慮
-- `env(safe-area-inset-left)` / `env(safe-area-inset-right)` でノッチ回避
 
 ---
 
 ## チェックリスト
-
-新しいUIを作成する際の確認事項：
 
 ### 基本
 - [ ] 画面端に20px以上の余白があるか
@@ -327,27 +395,52 @@ body {
 - [ ] 色は3色以内に収まっているか
 - [ ] フォントサイズに優先順位があるか
 - [ ] ボタンスタイルは統一されているか
-- [ ] 選択状態が明確か
 
-### タップターゲット（🍎 iOS必須）
+### タップターゲット
 - [ ] すべてのタップ可能要素が44×44px以上か
-- [ ] 隣接するタップターゲット間に十分な間隔があるか
-- [ ] 小さいアイコンにもパディングでタップ領域を確保しているか
+- [ ] ボタン間に十分な間隔があるか
+- [ ] 重要なアクションは画面下部にあるか
 
 ### iOS Safari対応
-- [ ] input/textareaのフォントサイズが16px以上か（自動ズーム防止）
-- [ ] セーフエリア（ノッチ・角丸・ホームインジケーター）を考慮しているか
-- [ ] `-webkit-appearance: none` でiOSデフォルトスタイルをリセットしているか
-- [ ] 固定ヘッダー/フッターがセーフエリアを考慮しているか
+- [ ] input/textareaのフォントサイズが16px以上か
+- [ ] セーフエリアを考慮しているか
+- [ ] `-webkit-appearance: none` を設定しているか
+
+### 状態デザイン
+- [ ] ローディング状態があるか（400ms以上の処理）
+- [ ] 空の状態にガイダンスがあるか
+- [ ] エラー状態が明確か
+- [ ] タップ時のフィードバックがあるか
+
+### アニメーション
+- [ ] transform/opacityのみ使用しているか
+- [ ] 300ms以下に収まっているか
+- [ ] prefers-reduced-motionを尊重しているか
+
+### アクセシビリティ
+- [ ] コントラスト比4.5:1以上か
+- [ ] フォーカス状態が見えるか
+- [ ] アイコンボタンにaria-labelがあるか
 
 ---
 
 ## 参考リソース
 
-- [Apple Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/)
-- [Designing Websites for iPhone X (WebKit)](https://webkit.org/blog/7929/designing-websites-for-iphone-x/)
+### Apple / iOS
+- [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/)
+- [Designing Websites for iPhone X](https://webkit.org/blog/7929/designing-websites-for-iphone-x/)
+
+### UX研究
 - [Touch Targets on Touchscreens (NN/g)](https://www.nngroup.com/articles/touch-target-size/)
+- [Mobile User Experience (NN/g)](https://www.nngroup.com/articles/mobile-ux/)
+- [Laws of UX](https://lawsofux.com/)
+
+### アクセシビリティ
+- [WCAG 2.1 Target Size](https://www.w3.org/WAI/WCAG21/Understanding/target-size.html)
 - [Accessible tap targets (web.dev)](https://web.dev/articles/accessible-tap-targets)
+
+### パフォーマンス
+- [High-performance CSS animations](https://web.dev/articles/animations-guide)
 
 ---
 
