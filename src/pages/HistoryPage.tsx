@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react';
+import { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { formatTime, copyToClipboard } from '../lib/utils';
-import { ArrowLeft, Copy, Trash2, Edit3 } from 'lucide-react';
+import { ArrowLeft, Copy, Trash2 } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
@@ -13,17 +13,13 @@ export function HistoryPage() {
   const { matchHistory, deleteMatch } = useGameStore();
   const { players } = usePlayerStore();
   const toast = useToast();
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const lastTapRef = useRef<{ matchId: string; time: number } | null>(null);
-  const [isEditMode, setIsEditMode] = useState(false);
 
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '不明';
   };
 
   const handleMatchClick = (matchId: string) => {
-    if (isEditMode) return;
-    
     const now = Date.now();
     const last = lastTapRef.current;
 
@@ -35,26 +31,8 @@ export function HistoryPage() {
     }
   };
 
-  const handleDeleteClick = (matchId: string) => {
-    setDeleteConfirmId(matchId);
-  };
-
-  const handleDeleteConfirm = () => {
-    if (deleteConfirmId) {
-      deleteMatch(deleteConfirmId);
-      setDeleteConfirmId(null);
-    }
-  };
-
-  const handleDeleteCancel = () => {
-    setDeleteConfirmId(null);
-  };
-
-  const handleToggleEditMode = () => {
-    setIsEditMode(!isEditMode);
-    if (isEditMode) {
-      setDeleteConfirmId(null);
-    }
+  const handleDelete = (matchId: string) => {
+    deleteMatch(matchId);
   };
 
   const handleCopyHistory = async () => {
@@ -86,18 +64,6 @@ export function HistoryPage() {
             <ArrowLeft size={24} className="text-gray-600" />
           </button>
           <h1 className="text-base font-medium text-gray-600 flex-1">試合履歴</h1>
-          {matchHistory.length > 0 && (
-            <button
-              onClick={handleToggleEditMode}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition ${
-                isEditMode
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {isEditMode ? '完了' : <><Edit3 size={16} className="inline mr-1" />編集</>}
-            </button>
-          )}
           <button
             onClick={handleCopyHistory}
             className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
@@ -132,7 +98,7 @@ export function HistoryPage() {
                   <div
                     key={match.id}
                     onClick={() => handleMatchClick(match.id)}
-                    className={`bg-gray-50 rounded-xl p-3 transition ${!isEditMode && 'cursor-pointer hover:bg-gray-100'}`}
+                    className="bg-gray-50 rounded-xl p-3 transition cursor-pointer hover:bg-gray-100"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -158,17 +124,15 @@ export function HistoryPage() {
                           </div>
                         </div>
                       </div>
-                      {isEditMode && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteClick(match.id);
-                          }}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-full transition flex-shrink-0 ml-2"
-                        >
-                          <Trash2 size={20} />
-                        </button>
-                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(match.id);
+                        }}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition flex-shrink-0 ml-2"
+                      >
+                        <Trash2 size={18} />
+                      </button>
                     </div>
                   </div>
                 );
@@ -177,40 +141,6 @@ export function HistoryPage() {
           )}
         </div>
       </div>
-
-      {/* 削除確認ダイアログ */}
-      {deleteConfirmId && (
-        <div 
-          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-          onClick={handleDeleteCancel}
-        >
-          <div 
-            className="bg-white rounded-2xl max-w-sm w-full p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">
-              試合を削除しますか？
-            </h3>
-            <p className="text-sm text-gray-600 mb-6">
-              この操作は取り消せません。
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleDeleteCancel}
-                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-full font-semibold hover:bg-gray-200 transition"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={handleDeleteConfirm}
-                className="flex-1 py-3 bg-red-500 text-white rounded-full font-semibold hover:bg-red-600 transition"
-              >
-                削除
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Toast notifications */}
       {toast.toasts.map((t) => (
