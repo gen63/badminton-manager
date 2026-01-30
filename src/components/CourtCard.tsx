@@ -78,6 +78,26 @@ export function CourtCard({
     </div>
   );
 
+  // 完全未配置の表示（配置済みと同じ高さを確保）
+  const UnassignedDisplay = () => (
+    <>
+      {/* チームA相当のスペース */}
+      <div className="space-y-2">
+        <div className="h-11" />
+        <div className="h-11" />
+      </div>
+
+      {/* VS相当のスペースに「未配置」テキスト */}
+      <div className="text-center text-gray-400 text-sm py-1">未配置</div>
+
+      {/* チームB相当のスペース */}
+      <div className="space-y-2">
+        <div className="h-11" />
+        <div className="h-11" />
+      </div>
+    </>
+  );
+
   const hasPlayers = court.teamA[0] || court.teamB[0];
 
   return (
@@ -93,32 +113,39 @@ export function CourtCard({
         )}
       </div>
 
-      {/* チームA */}
-      <div className="space-y-2">
-        {court.teamA[0] ? (
-          <>
-            <PlayerPill playerId={court.teamA[0]} position={0} />
-            <PlayerPill playerId={court.teamA[1]} position={1} />
-          </>
-        ) : (
-          <EmptySlots />
-        )}
-      </div>
+      {/* プレイヤー表示エリア */}
+      {hasPlayers ? (
+        <>
+          {/* チームA */}
+          <div className="space-y-2">
+            {court.teamA[0] ? (
+              <>
+                <PlayerPill playerId={court.teamA[0]} position={0} />
+                <PlayerPill playerId={court.teamA[1]} position={1} />
+              </>
+            ) : (
+              <EmptySlots />
+            )}
+          </div>
 
-      {/* VS */}
-      <div className="text-center text-gray-400 text-xs py-1">vs</div>
+          {/* VS */}
+          <div className="text-center text-gray-400 text-xs py-1">vs</div>
 
-      {/* チームB */}
-      <div className="space-y-2">
-        {court.teamB[0] ? (
-          <>
-            <PlayerPill playerId={court.teamB[0]} position={2} />
-            <PlayerPill playerId={court.teamB[1]} position={3} />
-          </>
-        ) : (
-          <EmptySlots />
-        )}
-      </div>
+          {/* チームB */}
+          <div className="space-y-2">
+            {court.teamB[0] ? (
+              <>
+                <PlayerPill playerId={court.teamB[0]} position={2} />
+                <PlayerPill playerId={court.teamB[1]} position={3} />
+              </>
+            ) : (
+              <EmptySlots />
+            )}
+          </div>
+        </>
+      ) : (
+        <UnassignedDisplay />
+      )}
 
       {/* コントロールボタン（44px以上のタップターゲット） */}
       <div className="flex gap-3 pt-2">

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
+import { useSessionStore } from '../stores/sessionStore';
 import { X, Trash2 } from 'lucide-react';
 
 export function ScoreInputPage() {
@@ -13,6 +14,8 @@ export function ScoreInputPage() {
   const fromPage = (location.state as { from?: string })?.from || '/history';
 
   const match = matchHistory.find((m) => m.id === matchId);
+  const session = useSessionStore((state) => state.session);
+  const targetScore = session?.config.targetScore || 21;
   
   const [scoreA, setScoreA] = useState(0);
   const [scoreB, setScoreB] = useState(0);
@@ -72,9 +75,37 @@ export function ScoreInputPage() {
     setInputHistory([]);
   };
 
+  // スコアバリデーション
+  const validateScore = (a: number, b: number): string | null => {
+    // 同点禁止
+    if (a === b) {
+      return '同点は入力できません';
+    }
+    
+    // どちらかはtargetScore以上である必要がある
+    if (a < targetScore && b < targetScore) {
+      return 'どちらかは設定点数以上である必要があります';
+    }
+    
+    // 両方targetScore以上の場合（デュース突入後）、2点差が必要
+    if (a >= targetScore && b >= targetScore) {
+      if (Math.abs(a - b) !== 2) {
+        return 'デュース後は2点差で終了する必要があります';
+      }
+    }
+    
+    return null; // バリデーションOK
+  };
+
   const handleConfirm = () => {
     if (inputHistory.length !== 2) {
       alert('両チームのスコアを入力してください');
+      return;
+    }
+
+    const validationError = validateScore(scoreA, scoreB);
+    if (validationError) {
+      alert(validationError);
       return;
     }
 
@@ -192,16 +223,25 @@ export function ScoreInputPage() {
         {/* 点数ボタングリッド */}
         <div className="bg-white rounded-2xl shadow-sm p-4">
           <div className="grid grid-cols-8 gap-1.5">
-            {Array.from({ length: 31 }, (_, i) => i).map((num) => (
-              <button
-                key={num}
-                onClick={() => handleNumberClick(num)}
-                disabled={inputHistory.length >= 2}
-                className="aspect-square min-h-[36px] bg-gray-100 hover:bg-blue-100 active:bg-blue-200 active:scale-[0.95] rounded-xl text-sm font-medium text-gray-800 transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {num}
-              </button>
-            ))}
+            {Array.from({ length: 31 }, (_, i) => i).map((num) => {
+              // targetScore付近（±2）を目立たせる
+              const isHighlighted = Math.abs(num - targetScore) <= 2;
+              
+              return (
+                <button
+                  key={num}
+                  onClick={() => handleNumberClick(num)}
+                  disabled={inputHistory.length >= 2}
+                  className={`aspect-square min-h-[36px] rounded-xl text-sm font-medium transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isHighlighted
+                      ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 active:bg-blue-300 active:scale-[0.95]'
+                      : 'bg-gray-100 text-gray-800 hover:bg-gray-200 active:bg-gray-300 active:scale-[0.95]'
+                  }`}
+                >
+                  {num}
+                </button>
+              );
+            })}
           </div>
         </div>
 
