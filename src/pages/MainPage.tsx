@@ -321,36 +321,23 @@ export function MainPage() {
             </div>
             <div className="space-y-2">
               {unfinishedMatches.map((match) => {
-                const teamANames = match.teamA.map(getPlayerName).join(' / ');
-                const teamBNames = match.teamB.map(getPlayerName).join(' / ');
+                const teamANames = match.teamA.map(getPlayerName).join(' ');
+                const teamBNames = match.teamB.map(getPlayerName).join(' ');
                 // 試合全体の中での連番を取得
                 const matchNumber = matchHistory.findIndex((m) => m.id === match.id) + 1;
                 return (
-                  <div
+                  <button
                     key={match.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm"
+                    onClick={() => navigate(`/score/${match.id}`)}
+                    className="w-full flex items-center gap-2 p-2 bg-gray-50 rounded-lg text-sm hover:bg-gray-100 transition text-left"
                   >
-                    <div className="flex items-center gap-2 flex-1">
-                      <span className="font-semibold text-gray-500 min-w-[2rem]">
-                        #{matchNumber}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-700">
-                          {teamANames}
-                        </span>
-                        <span className="text-gray-400">vs</span>
-                        <span className="text-gray-700">
-                          {teamBNames}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => navigate(`/score/${match.id}`)}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition"
-                    >
-                      入力
-                    </button>
-                  </div>
+                    <span className="font-semibold text-gray-500">
+                      #{matchNumber}
+                    </span>
+                    <span className="text-gray-700">{teamANames}</span>
+                    <span className="text-gray-400">vs</span>
+                    <span className="text-gray-700">{teamBNames}</span>
+                  </button>
                 );
               })}
             </div>
