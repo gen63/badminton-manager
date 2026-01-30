@@ -6,18 +6,20 @@ import { Trash2, UserPlus } from 'lucide-react';
 export function PlayerSelect() {
   const navigate = useNavigate();
   const { players, addPlayers, removePlayer } = usePlayerStore();
-  const [newPlayerName, setNewPlayerName] = useState('');
+  const [newPlayerNames, setNewPlayerNames] = useState('');
 
-  const handleAddPlayer = () => {
-    if (newPlayerName.trim()) {
-      addPlayers([newPlayerName.trim()]);
-      setNewPlayerName('');
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleAddPlayer();
+  const handleAddPlayers = () => {
+    if (newPlayerNames.trim()) {
+      // 改行で分割して、空行を除外
+      const names = newPlayerNames
+        .split('\n')
+        .map((name) => name.trim())
+        .filter((name) => name.length > 0);
+      
+      if (names.length > 0) {
+        addPlayers(names);
+        setNewPlayerNames('');
+      }
     }
   };
 
@@ -41,19 +43,21 @@ export function PlayerSelect() {
 
         {/* プレイヤー追加フォーム */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newPlayerName}
-              onChange={(e) => setNewPlayerName(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="名前を入力"
-              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            名前を入力（1行に1人、複数行で一度に追加できます）
+          </label>
+          <div className="space-y-3">
+            <textarea
+              value={newPlayerNames}
+              onChange={(e) => setNewPlayerNames(e.target.value)}
+              placeholder="田中太郎&#10;山田花子&#10;佐藤次郎&#10;鈴木一郎"
+              rows={6}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
             />
             <button
-              onClick={handleAddPlayer}
-              disabled={!newPlayerName.trim()}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+              onClick={handleAddPlayers}
+              disabled={!newPlayerNames.trim()}
+              className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <UserPlus size={20} />
               追加
