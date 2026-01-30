@@ -313,7 +313,7 @@ export function MainPage() {
         </div>
 
         {/* コート一覧 */}
-        <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+        <div className="flex gap-3 overflow-x-auto">
           {courts.map((court) => (
             <CourtCard
               key={court.id}
