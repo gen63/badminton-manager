@@ -15,8 +15,7 @@ export function HistoryPage() {
   const { players } = usePlayerStore();
   const toast = useToast();
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const tapTimeoutRef = useRef<number | null>(null);
-  const tapCountRef = useRef<{ [key: string]: number }>({});
+  const lastTapRef = useRef<{ matchId: string; time: number } | null>(null);
 
   const stats = calculatePlayerStats(players, matchHistory);
   const sortedStats = [...stats].sort((a, b) => b.gamesPlayed - a.gamesPlayed);
@@ -26,28 +25,20 @@ export function HistoryPage() {
   };
 
   const handleMatchClick = (matchId: string) => {
-    const currentCount = tapCountRef.current[matchId] || 0;
-    tapCountRef.current[matchId] = currentCount + 1;
+    const now = Date.now();
+    const last = lastTapRef.current;
 
-    if (tapTimeoutRef.current) {
-      clearTimeout(tapTimeoutRef.current);
-    }
-
-    if (tapCountRef.current[matchId] === 2) {
+    if (last && last.matchId === matchId && now - last.time < 500) {
       // ダブルタップ → スコア編集へ
-      tapCountRef.current[matchId] = 0;
+      lastTapRef.current = null;
       navigate(`/score/${matchId}`);
     } else {
-      // シングルタップ → 300msでリセット
-      tapTimeoutRef.current = setTimeout(() => {
-        tapCountRef.current[matchId] = 0;
-      }, 300);
+      // シングルタップ → 記録
+      lastTapRef.current = { matchId, time: now };
     }
   };
 
-  const handleDeleteClick = (matchId: string, e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
+  const handleDeleteClick = (matchId: string) => {
     setDeleteConfirmId(matchId);
   };
 
@@ -151,16 +142,19 @@ export function HistoryPage() {
                           {formatTime(match.finishedAt)} ({duration})
                         </div>
                         <button
-                          onClick={(e) => handleDeleteClick(match.id, e)}
-                          onTouchStart={(e) => {
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteClick(match.id);
+                          }}
+                          onTouchEnd={(e) => {
                             e.stopPropagation();
                             e.preventDefault();
-                            handleDeleteClick(match.id, e);
+                            handleDeleteClick(match.id);
                           }}
-                          className="p-1 text-red-500 hover:bg-red-50 rounded transition active:bg-red-100"
+                          className="p-2 text-red-500 hover:bg-red-50 rounded transition active:bg-red-100 touch-manipulation"
                           title="削除"
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={20} />
                         </button>
                       </div>
                     </div>
