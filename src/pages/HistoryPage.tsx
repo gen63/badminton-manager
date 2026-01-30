@@ -48,14 +48,16 @@ export function HistoryPage() {
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <button
             onClick={() => navigate('/main')}
-            className="p-2 hover:bg-gray-100 rounded-full transition"
+            aria-label="戻る"
+            className="p-3 hover:bg-gray-100 active:bg-gray-200 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <ArrowLeft size={24} className="text-gray-600" />
           </button>
           <h1 className="text-base font-medium text-gray-600 flex-1">試合履歴</h1>
           <button
             onClick={handleCopyHistory}
-            className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
+            aria-label="コピー"
+            className="p-3 bg-gray-100 rounded-full hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <Copy size={20} className="text-gray-600" />
           </button>
@@ -115,13 +117,15 @@ export function HistoryPage() {
                       <div className="flex items-center gap-1 flex-shrink-0 ml-2">
                         <button
                           onClick={() => handleEdit(match.id)}
-                          className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-full transition"
+                          aria-label="編集"
+                          className="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
                         >
                           <Edit3 size={18} />
                         </button>
                         <button
                           onClick={() => handleDelete(match.id)}
-                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition"
+                          aria-label="削除"
+                          className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
                         >
                           <Trash2 size={18} />
                         </button>

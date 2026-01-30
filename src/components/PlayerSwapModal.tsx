@@ -41,31 +41,32 @@ export function PlayerSwapModal({
   );
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-          <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-            <RefreshCw size={24} />
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-xl">
+        <div className="sticky top-0 bg-white border-b border-gray-100 p-4 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2">
+            <RefreshCw size={20} />
             メンバー交換
           </h3>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition"
+            aria-label="閉じる"
+            className="p-2 hover:bg-gray-100 active:bg-gray-200 rounded-full transition-all min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
-            <X size={24} />
+            <X size={20} className="text-gray-600" />
           </button>
         </div>
 
         <div className="p-4 space-y-4">
           {/* ステップ1: コートとポジションを選択 */}
           <div>
-            <h4 className="font-semibold text-gray-700 mb-2">
+            <h4 className="text-sm font-medium text-gray-600 mb-3">
               1. 交換したいコート内のプレイヤーを選択
             </h4>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {courts.map((court) => (
-                <div key={court.id} className="border rounded-lg p-3">
-                  <div className="font-medium text-gray-700 mb-2">
+                <div key={court.id} className="bg-gray-50 rounded-xl p-3">
+                  <div className="text-sm font-medium text-gray-500 mb-2">
                     コート {court.id}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -77,13 +78,13 @@ export function PlayerSwapModal({
                           setSelectedPosition(index);
                         }}
                         disabled={!playerId}
-                        className={`p-2 rounded-lg text-sm transition ${
+                        className={`min-h-[44px] px-3 py-2 rounded-full text-sm font-medium transition-all duration-150 ${
                           selectedCourt === court.id &&
                           selectedPosition === index
-                            ? 'bg-blue-600 text-white'
+                            ? 'bg-blue-500 text-white ring-2 ring-blue-300 scale-105'
                             : playerId
-                            ? 'bg-gray-100 hover:bg-gray-200 text-gray-800'
-                            : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                            ? 'bg-white border border-gray-200 hover:border-gray-300 active:bg-gray-100 text-gray-800'
+                            : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-50'
                         }`}
                       >
                         {playerId ? getPlayerName(playerId) : '未配置'}
@@ -98,11 +99,11 @@ export function PlayerSwapModal({
           {/* ステップ2: 待機中のプレイヤーを選択 */}
           {selectedCourt !== null && selectedPosition !== null && (
             <div>
-              <h4 className="font-semibold text-gray-700 mb-2">
+              <h4 className="text-sm font-medium text-gray-600 mb-3">
                 2. 交換する待機中のプレイヤーを選択
               </h4>
               {waitingPlayers.length === 0 ? (
-                <p className="text-gray-500 text-sm py-4 text-center">
+                <p className="text-gray-500 text-sm py-6 text-center bg-gray-50 rounded-xl">
                   待機中のプレイヤーがいません
                 </p>
               ) : (
@@ -111,7 +112,7 @@ export function PlayerSwapModal({
                     <button
                       key={player.id}
                       onClick={() => handlePlayerSelect(player.id)}
-                      className="p-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-gray-800 font-medium transition"
+                      className="min-h-[44px] px-4 py-2 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 border border-blue-200 rounded-full text-gray-800 text-sm font-medium transition-all duration-150 active:scale-[0.98]"
                     >
                       {player.name}
                     </button>

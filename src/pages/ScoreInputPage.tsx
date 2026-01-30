@@ -32,19 +32,15 @@ export function ScoreInputPage() {
 
   const handlePlayerTap = (position: number) => {
     if (!selectedPlayer) {
-      // 1回目のタップ：プレイヤーを選択
       setSelectedPlayer({ position });
     } else if (selectedPlayer.position === position) {
-      // 同じプレイヤーをタップ：選択解除
       setSelectedPlayer(null);
     } else {
-      // 2回目のタップ：交換実行
       const allPlayers = [...match.teamA, ...match.teamB];
       const temp = allPlayers[selectedPlayer.position];
       allPlayers[selectedPlayer.position] = allPlayers[position];
       allPlayers[position] = temp;
 
-      // matchHistoryを更新
       const updatedHistory = matchHistory.map((m) =>
         m.id === matchId
           ? {
@@ -82,7 +78,6 @@ export function ScoreInputPage() {
       return;
     }
 
-    // スコアを更新
     const updatedHistory = matchHistory.map((m) =>
       m.id === matchId
         ? {
@@ -94,9 +89,7 @@ export function ScoreInputPage() {
         : m
     );
 
-    // Zustandストアを直接更新
     useGameStore.setState({ matchHistory: updatedHistory });
-
     navigate(fromPage);
   };
 
@@ -108,7 +101,8 @@ export function ScoreInputPage() {
           <h1 className="text-base font-medium text-gray-600">スコア入力</h1>
           <button
             onClick={() => navigate(fromPage)}
-            className="p-2 hover:bg-gray-100 rounded-full transition"
+            aria-label="閉じる"
+            className="p-3 hover:bg-gray-100 active:bg-gray-200 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <X size={24} className="text-gray-600" />
           </button>
@@ -135,10 +129,10 @@ export function ScoreInputPage() {
                   <button
                     key={idx}
                     onClick={() => handlePlayerTap(idx)}
-                    className={`flex-1 p-2 rounded-full text-sm font-medium transition ${
+                    className={`flex-1 min-h-[44px] p-2 rounded-full text-sm font-medium transition-all duration-150 ${
                       selectedPlayer?.position === idx
-                        ? 'bg-blue-500 text-white ring-2 ring-blue-300'
-                        : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300'
+                        ? 'bg-blue-500 text-white ring-2 ring-blue-300 scale-105'
+                        : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
                     }`}
                   >
                     {getPlayerName(playerId)}
@@ -157,10 +151,10 @@ export function ScoreInputPage() {
                   <button
                     key={idx}
                     onClick={() => handlePlayerTap(idx + 2)}
-                    className={`flex-1 p-2 rounded-full text-sm font-medium transition ${
+                    className={`flex-1 min-h-[44px] p-2 rounded-full text-sm font-medium transition-all duration-150 ${
                       selectedPlayer?.position === idx + 2
-                        ? 'bg-blue-500 text-white ring-2 ring-blue-300'
-                        : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300'
+                        ? 'bg-blue-500 text-white ring-2 ring-blue-300 scale-105'
+                        : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
                     }`}
                   >
                     {getPlayerName(playerId)}
@@ -203,7 +197,7 @@ export function ScoreInputPage() {
                 key={num}
                 onClick={() => handleNumberClick(num)}
                 disabled={inputHistory.length >= 2}
-                className="aspect-square bg-gray-100 hover:bg-blue-100 active:bg-blue-200 rounded-xl text-sm font-medium text-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="aspect-square min-h-[36px] bg-gray-100 hover:bg-blue-100 active:bg-blue-200 active:scale-[0.95] rounded-xl text-sm font-medium text-gray-800 transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {num}
               </button>
@@ -215,7 +209,7 @@ export function ScoreInputPage() {
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={handleClear}
-            className="py-3 bg-gray-100 text-gray-600 rounded-full font-semibold hover:bg-gray-200 transition flex items-center justify-center gap-2"
+            className="min-h-[48px] py-3 bg-gray-100 text-gray-600 rounded-full font-semibold hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-2"
           >
             <Trash2 size={18} />
             クリア
@@ -223,7 +217,7 @@ export function ScoreInputPage() {
           <button
             onClick={handleConfirm}
             disabled={inputHistory.length !== 2}
-            className="py-3 bg-blue-500 text-white rounded-full font-semibold hover:bg-blue-600 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
+            className="min-h-[48px] py-3 bg-blue-500 text-white rounded-full font-semibold hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all duration-150 disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             確定
           </button>

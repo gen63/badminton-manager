@@ -248,20 +248,22 @@ export function MainPage() {
           <button
             onClick={() => handleAutoAssign()}
             disabled={!canAutoAssign}
-            className="px-4 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition text-sm font-medium flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2.5 bg-blue-500 text-white rounded-full hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all duration-150 text-sm font-medium flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
           >
             <Users size={18} />
             一括配置
           </button>
           <button
             onClick={() => navigate('/history')}
-            className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
+            aria-label="履歴"
+            className="p-3 bg-gray-100 rounded-full hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <History size={20} className="text-gray-600" />
           </button>
           <button
             onClick={() => navigate('/settings')}
-            className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
+            aria-label="設定"
+            className="p-3 bg-gray-100 rounded-full hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <Settings size={20} className="text-gray-600" />
           </button>
@@ -415,7 +417,8 @@ export function MainPage() {
                   }
                 }}
                 disabled={!newPlayerName.trim()}
-                className="px-4 py-2 bg-green-500 text-white rounded-full font-medium hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="追加"
+                className="p-3 bg-green-500 text-white rounded-full font-medium hover:bg-green-600 active:bg-green-700 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed min-w-[44px] min-h-[44px] flex items-center justify-center"
               >
                 <Plus size={20} />
               </button>

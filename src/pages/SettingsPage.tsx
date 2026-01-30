@@ -44,7 +44,8 @@ export function SettingsPage() {
         <div className="max-w-6xl mx-auto flex items-center gap-4">
           <button
             onClick={() => navigate('/main')}
-            className="p-2 hover:bg-gray-100 rounded-full transition"
+            aria-label="戻る"
+            className="p-3 hover:bg-gray-100 active:bg-gray-200 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <ArrowLeft size={24} className="text-gray-600" />
           </button>
@@ -58,16 +59,16 @@ export function SettingsPage() {
           <h2 className="text-base font-semibold text-gray-700 mb-4">コート設定</h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-gray-600 mb-2">コート数</label>
-              <div className="flex gap-2">
+              <label className="block text-sm text-gray-600 mb-3">コート数</label>
+              <div className="flex gap-3">
                 {[1, 2, 3].map((count) => (
                   <button
                     key={count}
                     onClick={() => handleCourtCountChange(count)}
-                    className={`flex-1 py-3 rounded-full font-semibold transition-all ${
+                    className={`flex-1 min-h-[44px] py-3 rounded-full font-semibold transition-all duration-150 ${
                       session.config.courtCount === count
                         ? 'bg-blue-500 text-white shadow-lg ring-2 ring-blue-300 scale-105'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98]'
                     }`}
                   >
                     {session.config.courtCount === count && '✓ '}{count}
@@ -77,16 +78,16 @@ export function SettingsPage() {
             </div>
 
             <div>
-              <label className="block text-sm text-gray-600 mb-2">点数</label>
-              <div className="flex gap-2">
+              <label className="block text-sm text-gray-600 mb-3">点数</label>
+              <div className="flex gap-3">
                 {[11, 15, 21].map((score) => (
                   <button
                     key={score}
                     onClick={() => handleTargetScoreChange(score)}
-                    className={`flex-1 py-3 rounded-full font-semibold transition-all ${
+                    className={`flex-1 min-h-[44px] py-3 rounded-full font-semibold transition-all duration-150 ${
                       session.config.targetScore === score
                         ? 'bg-blue-500 text-white shadow-lg ring-2 ring-blue-300 scale-105'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98]'
                     }`}
                   >
                     {session.config.targetScore === score && '✓ '}{score}
@@ -102,7 +103,7 @@ export function SettingsPage() {
           <h2 className="text-base font-semibold text-gray-700 mb-4">参加者管理</h2>
           <button
             onClick={() => navigate('/players')}
-            className="w-full bg-blue-500 text-white py-3 rounded-full font-semibold hover:bg-blue-600 transition"
+            className="w-full bg-blue-500 text-white min-h-[44px] py-3 rounded-full font-semibold hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all duration-150"
           >
             参加者を管理
           </button>
@@ -113,12 +114,12 @@ export function SettingsPage() {
           <h2 className="text-base font-semibold text-gray-700 mb-4">データ管理</h2>
           <button
             onClick={() => setShowResetConfirm(true)}
-            className="w-full bg-red-500 text-white py-3 rounded-full font-semibold hover:bg-red-600 transition flex items-center justify-center gap-2"
+            className="w-full bg-red-500 text-white min-h-[44px] py-3 rounded-full font-semibold hover:bg-red-600 active:bg-red-700 active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-2"
           >
             <Trash2 size={18} />
             セッションをリセット
           </button>
-          <p className="text-xs text-gray-400 text-center mt-2">
+          <p className="text-xs text-gray-500 text-center mt-2">
             ※ すべてのデータが削除されます
           </p>
         </div>
@@ -127,8 +128,8 @@ export function SettingsPage() {
       {/* Reset confirmation modal */}
       {showResetConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-gray-700 mb-3">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
+            <h3 className="text-base font-semibold text-gray-700 mb-3">
               セッションをリセットしますか？
             </h3>
             <p className="text-sm text-gray-600 mb-6">
@@ -138,13 +139,13 @@ export function SettingsPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowResetConfirm(false)}
-                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-full font-semibold hover:bg-gray-200 transition"
+                className="flex-1 min-h-[44px] py-3 bg-gray-100 text-gray-700 rounded-full font-semibold hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150"
               >
                 キャンセル
               </button>
               <button
                 onClick={handleReset}
-                className="flex-1 py-3 bg-red-500 text-white rounded-full font-semibold hover:bg-red-600 transition"
+                className="flex-1 min-h-[44px] py-3 bg-red-500 text-white rounded-full font-semibold hover:bg-red-600 active:bg-red-700 active:scale-[0.98] transition-all duration-150"
               >
                 リセット
               </button>

@@ -68,10 +68,10 @@ export function SessionCreate() {
                 <button
                   key={count}
                   onClick={() => setCourtCount(count)}
-                  className={`flex-1 py-3 rounded-full font-semibold text-lg transition-all ${
+                  className={`flex-1 min-h-[48px] py-3 rounded-full font-semibold text-lg transition-all duration-150 ${
                     courtCount === count
                       ? 'bg-blue-500 text-white shadow-lg ring-2 ring-blue-300 scale-105'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98]'
                   }`}
                 >
                   {courtCount === count && '✓ '}{count}
@@ -90,10 +90,10 @@ export function SessionCreate() {
                 <button
                   key={score}
                   onClick={() => setTargetScore(score)}
-                  className={`flex-1 py-3 rounded-full font-semibold text-lg transition-all ${
+                  className={`flex-1 min-h-[48px] py-3 rounded-full font-semibold text-lg transition-all duration-150 ${
                     targetScore === score
                       ? 'bg-blue-500 text-white shadow-lg ring-2 ring-blue-300 scale-105'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98]'
                   }`}
                 >
                   {targetScore === score && '✓ '}{score}
@@ -112,10 +112,10 @@ export function SessionCreate() {
               onChange={(e) => setPlayerNames(e.target.value)}
               placeholder="田中太郎&#10;山田花子&#10;佐藤次郎"
               rows={5}
-              className="w-full max-w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none resize-none text-base box-border"
+              className="w-full max-w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none resize-none text-base box-border transition-all duration-150"
               style={{ WebkitAppearance: 'none' }}
             />
-            <p className="text-xs text-gray-400 mt-2 text-center">
+            <p className="text-xs text-gray-500 mt-2 text-center">
               改行で入力（任意）
             </p>
           </div>
@@ -123,7 +123,7 @@ export function SessionCreate() {
           {/* 作成ボタン */}
           <button
             onClick={handleCreate}
-            className="w-full bg-blue-500 text-white py-3 rounded-full font-semibold hover:bg-blue-600 transition"
+            className="w-full bg-blue-500 text-white min-h-[48px] py-3 rounded-full font-semibold hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all duration-150"
           >
             次へ {playerCount > 0 && `(${playerCount}人)`}
           </button>

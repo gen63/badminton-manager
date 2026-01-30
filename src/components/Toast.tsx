@@ -23,10 +23,10 @@ export function Toast({ message, type, onClose, duration = 3000 }: ToastProps) {
   }, [duration, onClose]);
 
   const icons = {
-    success: <CheckCircle className="text-green-500" size={24} />,
-    error: <XCircle className="text-red-500" size={24} />,
-    info: <Info className="text-blue-500" size={24} />,
-    warning: <AlertTriangle className="text-yellow-500" size={24} />,
+    success: <CheckCircle className="text-green-500" size={20} />,
+    error: <XCircle className="text-red-500" size={20} />,
+    info: <Info className="text-blue-500" size={20} />,
+    warning: <AlertTriangle className="text-yellow-500" size={20} />,
   };
 
   const bgColors = {
@@ -38,21 +38,24 @@ export function Toast({ message, type, onClose, duration = 3000 }: ToastProps) {
 
   return (
     <div
-      className={`fixed bottom-4 right-4 z-50 transition-all duration-300 ${
+      role="alert"
+      aria-live="polite"
+      className={`fixed bottom-4 left-4 right-4 z-50 transition-all duration-200 ease-out ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
       }`}
     >
       <div
-        className={`flex items-center gap-3 px-6 py-4 rounded-lg border shadow-lg ${bgColors[type]}`}
+        className={`flex items-center gap-3 px-4 py-3 rounded-2xl border shadow-lg max-w-md mx-auto ${bgColors[type]}`}
       >
         {icons[type]}
-        <p className="font-medium text-gray-800">{message}</p>
+        <p className="flex-1 text-sm font-medium text-gray-800">{message}</p>
         <button
           onClick={() => {
             setIsVisible(false);
             setTimeout(onClose, 300);
           }}
-          className="ml-4 text-gray-500 hover:text-gray-700"
+          aria-label="閉じる"
+          className="p-2 -mr-1 text-gray-500 hover:text-gray-700 active:scale-95 transition-all min-w-[44px] min-h-[44px] flex items-center justify-center"
         >
           ✕
         </button>

@@ -50,12 +50,12 @@ export function PlayerSelect() {
               onChange={(e) => setNewPlayerNames(e.target.value)}
               placeholder="田中太郎&#10;山田花子&#10;佐藤次郎&#10;鈴木一郎"
               rows={6}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none resize-none text-base"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none resize-none text-base transition-all duration-150"
             />
             <button
               onClick={handleAddPlayers}
               disabled={!newPlayerNames.trim()}
-              className="w-full px-6 py-3 bg-blue-500 text-white rounded-full font-semibold hover:bg-blue-600 transition disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full min-h-[48px] px-6 py-3 bg-blue-500 text-white rounded-full font-semibold hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all duration-150 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <UserPlus size={18} />
               追加
@@ -77,14 +77,15 @@ export function PlayerSelect() {
               {players.map((player) => (
                 <div
                   key={player.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition"
+                  className="flex items-center justify-between min-h-[44px] p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-all duration-150"
                 >
                   <span className="font-medium text-gray-800 text-sm">
                     {player.name}
                   </span>
                   <button
                     onClick={() => removePlayer(player.id)}
-                    className="text-gray-400 hover:text-red-500 transition"
+                    aria-label={`${player.name}を削除`}
+                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
                   >
                     <Trash2 size={18} />
                   </button>
@@ -97,7 +98,7 @@ export function PlayerSelect() {
         {/* 完了ボタン */}
         <button
           onClick={handleContinue}
-          className="w-full bg-blue-500 text-white py-3 rounded-full font-semibold hover:bg-blue-600 transition"
+          className="w-full min-h-[48px] bg-blue-500 text-white py-3 rounded-full font-semibold hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all duration-150"
         >
           完了
         </button>
