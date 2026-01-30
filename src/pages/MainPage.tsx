@@ -255,6 +255,13 @@ export function MainPage() {
       <div className="bg-blue-600 text-white p-3 shadow-lg">
         <div className="max-w-6xl mx-auto flex items-center justify-end gap-2">
           <button
+            onClick={() => handleAutoAssign()}
+            className="px-3 py-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition text-sm font-semibold flex items-center gap-1"
+          >
+            <Users size={18} />
+            一括配置
+          </button>
+          <button
             onClick={() => navigate('/history')}
             className="p-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition"
           >
@@ -270,26 +277,14 @@ export function MainPage() {
       </div>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
-        {/* コントロールエリア */}
-        <div className="bg-white rounded-lg shadow-lg p-4 space-y-3">
-          {/* 一括配置ボタン */}
-          <button
-            onClick={() => handleAutoAssign()}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2"
-          >
-            <Users size={20} />
-            全コートに一括配置
-          </button>
-          
-          {/* メンバー交換の説明 */}
-          {selectedPlayer && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-              <strong>{players.find(p => p.id === selectedPlayer.id)?.name}</strong> を選択中
-              <br />
-              交換したいプレイヤーをタップ / もう一度タップで解除 / 「✕ 解除」ボタンで解除
-            </div>
-          )}
-        </div>
+        {/* メンバー交換の説明 */}
+        {selectedPlayer && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+            <strong>{players.find(p => p.id === selectedPlayer.id)?.name}</strong> を選択中
+            <br />
+            交換したいプレイヤーをタップ / もう一度タップで解除 / 「✕ 解除」ボタンで解除
+          </div>
+        )}
 
         {/* コート一覧 */}
         <div className="flex gap-3 overflow-x-auto">
