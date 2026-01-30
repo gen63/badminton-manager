@@ -73,21 +73,21 @@ export function PlayerSelect() {
               まだ参加者が登録されていません
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="grid grid-cols-3 gap-2">
               {players.map((player) => (
                 <div
                   key={player.id}
-                  className="flex items-center justify-between min-h-[44px] p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-all duration-150"
+                  className="flex items-center justify-between min-h-[44px] p-2 bg-gray-50 rounded-full border border-gray-200 hover:bg-gray-100 transition-all duration-150"
                 >
-                  <span className="font-medium text-gray-800 text-sm">
+                  <span className="font-medium text-gray-800 text-sm truncate pl-2">
                     {player.name}
                   </span>
                   <button
                     onClick={() => removePlayer(player.id)}
                     aria-label={`${player.name}を削除`}
-                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 flex-shrink-0"
                   >
-                    <Trash2 size={18} />
+                    <Trash2 size={16} />
                   </button>
                 </div>
               ))}
