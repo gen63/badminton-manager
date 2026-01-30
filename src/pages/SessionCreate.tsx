@@ -102,7 +102,7 @@ export function SessionCreate() {
           {/* 当日参加者 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              当日の参加者（1行に1人）
+              練習参加メンバー（1行に1人）
             </label>
             <textarea
               value={playerNames}
