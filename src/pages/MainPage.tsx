@@ -3,7 +3,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts } from '../lib/algorithm';
-import { Settings, History, Coffee } from 'lucide-react';
+import { Settings, History, Coffee, Users } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { CourtCard } from '../components/CourtCard';
@@ -21,27 +21,37 @@ export function MainPage() {
     return null;
   }
 
-  const handleAutoAssign = () => {
+  const handleAutoAssign = (courtId?: number) => {
     try {
+      // 指定されたコートIDまたは全コート
+      const courtsToAssign = courtId ? [courtId] : courts.map(c => c.id);
+      
       const assignments = assignCourts(
         players,
-        session.config.courtCount,
+        courtsToAssign.length,
         matchHistory
       );
 
-      assignments.forEach((assignment) => {
-        updateCourt(assignment.courtId, {
-          teamA: assignment.teamA,
-          teamB: assignment.teamB,
-          scoreA: 0,
-          scoreB: 0,
-          isPlaying: false,
-          startedAt: null,
-          finishedAt: null,
-        });
+      courtsToAssign.forEach((id, index) => {
+        const assignment = assignments[index];
+        if (assignment) {
+          updateCourt(id, {
+            teamA: assignment.teamA,
+            teamB: assignment.teamB,
+            scoreA: 0,
+            scoreB: 0,
+            isPlaying: false,
+            startedAt: null,
+            finishedAt: null,
+          });
+        }
       });
 
-      toast.success('コートに自動配置しました！');
+      if (courtId) {
+        toast.success(`コート${courtId}に配置しました！`);
+      } else {
+        toast.success('全コートに配置しました！');
+      }
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -129,6 +139,15 @@ export function MainPage() {
       </div>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
+        {/* 全コート一括配置ボタン */}
+        <button
+          onClick={() => handleAutoAssign()}
+          className="w-full bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2"
+        >
+          <Users size={20} />
+          全コートに一括配置
+        </button>
+
         {/* コート一覧 */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {courts.map((court) => (
@@ -142,7 +161,7 @@ export function MainPage() {
               onScoreChange={(team, delta) =>
                 handleScoreChange(court.id, team, delta)
               }
-              onAutoAssign={handleAutoAssign}
+              onAutoAssign={() => handleAutoAssign(court.id)}
             />
           ))}
         </div>
