@@ -118,47 +118,50 @@ export function HistoryPage() {
               }}
             />
           ) : (
-            <div className="space-y-2">
-              {[...matchHistory].reverse().map((match, index) => {
+            <div className="space-y-3">
+              {[...matchHistory].reverse().map((match) => {
                 const teamANames = match.teamA.map(getPlayerName).join(' ');
                 const teamBNames = match.teamB.map(getPlayerName).join(' ');
 
+                const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
+                
                 return (
                   <div
                     key={match.id}
-                    onClick={() => handleMatchClick(match.id)}
-                    className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition"
+                    className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition"
                   >
-                    <span className="text-sm font-semibold text-gray-500 min-w-[2rem]">
-                      #{matchHistory.length - index}
-                    </span>
-                    <div className="flex-1 text-sm">
-                      <span className={match.winner === 'A' ? 'font-bold text-blue-600' : 'text-gray-700'}>
-                        {teamANames}
-                      </span>
-                      <span className="text-gray-400 mx-2">vs</span>
-                      <span className={match.winner === 'B' ? 'font-bold text-red-600' : 'text-gray-700'}>
-                        {teamBNames}
-                      </span>
-                      <span className="text-gray-600 ml-2">
-                        ({match.scoreA}-{match.scoreB})
-                      </span>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteClick(match.id);
-                      }}
-                      onTouchEnd={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        handleDeleteClick(match.id);
-                      }}
-                      className="p-2 text-red-500 hover:bg-red-50 rounded transition active:bg-red-100 touch-manipulation flex-shrink-0"
-                      title="削除"
+                    <div 
+                      onClick={() => handleMatchClick(match.id)}
+                      className="cursor-pointer"
                     >
-                      <Trash2 size={18} />
-                    </button>
+                      <div className="text-sm mb-1">
+                        <span className={match.winner === 'A' ? 'font-bold text-blue-600' : 'text-gray-700'}>
+                          {teamANames}
+                        </span>
+                        <span className="text-gray-400 mx-2">vs</span>
+                        <span className={match.winner === 'B' ? 'font-bold text-red-600' : 'text-gray-700'}>
+                          {teamBNames}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <div className="flex items-center gap-3">
+                          <span>{formatTime(match.finishedAt)}</span>
+                          <span>{duration}分</span>
+                          <span className="text-gray-700 font-semibold">
+                            ({match.scoreA}-{match.scoreB})
+                          </span>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteClick(match.id);
+                          }}
+                          className="p-1.5 text-red-500 hover:bg-red-50 rounded active:bg-red-100 -mr-1"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 );
               })}
