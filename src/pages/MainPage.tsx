@@ -323,9 +323,9 @@ export function MainPage() {
                 return (
                   <div
                     key={match.id}
-                    className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg text-sm"
+                    className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg"
                   >
-                    <div className="flex items-center gap-2 flex-1">
+                    <div className="flex items-center gap-2 flex-1 text-sm">
                       <span className="font-semibold text-gray-500">
                         #{matchNumber}
                       </span>
