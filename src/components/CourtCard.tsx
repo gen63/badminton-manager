@@ -134,17 +134,17 @@ export function CourtCard({
         {!court.isPlaying && hasPlayers && (
           <>
             <button
-              onClick={onClear}
-              className="flex-1 bg-gray-100 text-gray-600 py-2 px-3 rounded-full text-xs font-medium hover:bg-gray-200 transition"
-            >
-              クリア
-            </button>
-            <button
               onClick={onStartGame}
               className="flex-1 bg-blue-500 text-white py-2 px-3 rounded-full text-xs font-medium hover:bg-blue-600 transition flex items-center justify-center gap-1"
             >
               <Play size={14} />
               開始
+            </button>
+            <button
+              onClick={onClear}
+              className="flex-1 bg-gray-100 text-gray-600 py-2 px-3 rounded-full text-xs font-medium hover:bg-gray-200 transition"
+            >
+              クリア
             </button>
           </>
         )}
