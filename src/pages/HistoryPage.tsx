@@ -1,24 +1,65 @@
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { calculatePlayerStats } from '../lib/algorithm';
 import { formatTime, formatDuration, copyToClipboard } from '../lib/utils';
-import { ArrowLeft, Copy } from 'lucide-react';
+import { ArrowLeft, Copy, Trash2 } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
 
 export function HistoryPage() {
   const navigate = useNavigate();
-  const { matchHistory } = useGameStore();
+  const { matchHistory, deleteMatch } = useGameStore();
   const { players } = usePlayerStore();
   const toast = useToast();
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const tapTimeoutRef = useRef<number | null>(null);
+  const tapCountRef = useRef<{ [key: string]: number }>({});
 
   const stats = calculatePlayerStats(players, matchHistory);
   const sortedStats = [...stats].sort((a, b) => b.gamesPlayed - a.gamesPlayed);
 
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '不明';
+  };
+
+  const handleMatchClick = (matchId: string) => {
+    const currentCount = tapCountRef.current[matchId] || 0;
+    tapCountRef.current[matchId] = currentCount + 1;
+
+    if (tapTimeoutRef.current) {
+      clearTimeout(tapTimeoutRef.current);
+    }
+
+    if (tapCountRef.current[matchId] === 2) {
+      // ダブルタップ → スコア編集へ
+      tapCountRef.current[matchId] = 0;
+      navigate(`/score/${matchId}`);
+    } else {
+      // シングルタップ → 300msでリセット
+      tapTimeoutRef.current = setTimeout(() => {
+        tapCountRef.current[matchId] = 0;
+      }, 300);
+    }
+  };
+
+  const handleDeleteClick = (matchId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleteConfirmId(matchId);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (deleteConfirmId) {
+      deleteMatch(deleteConfirmId);
+      toast.success('試合を削除しました');
+      setDeleteConfirmId(null);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmId(null);
   };
 
   const handleCopyHistory = async () => {
@@ -97,14 +138,24 @@ export function HistoryPage() {
                 return (
                   <div
                     key={match.id}
-                    className="border border-gray-200 rounded-lg p-4"
+                    onClick={() => handleMatchClick(match.id)}
+                    className="border border-gray-200 rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition relative"
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-semibold text-gray-600">
                         試合 #{matchHistory.length - index}
                       </span>
-                      <div className="text-sm text-gray-500">
-                        {formatTime(match.finishedAt)} ({duration})
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm text-gray-500">
+                          {formatTime(match.finishedAt)} ({duration})
+                        </div>
+                        <button
+                          onClick={(e) => handleDeleteClick(match.id, e)}
+                          className="p-1 text-red-500 hover:bg-red-50 rounded transition"
+                          title="削除"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </div>
 
@@ -150,6 +201,34 @@ export function HistoryPage() {
           )}
         </div>
       </div>
+
+      {/* 削除確認ダイアログ */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-bold text-gray-800 mb-2">
+              試合を削除しますか？
+            </h3>
+            <p className="text-sm text-gray-600 mb-6">
+              この操作は取り消せません。
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleDeleteCancel}
+                className="flex-1 py-2 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="flex-1 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition"
+              >
+                削除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast notifications */}
       {toast.toasts.map((t) => (

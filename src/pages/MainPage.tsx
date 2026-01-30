@@ -177,7 +177,7 @@ export function MainPage() {
       // 1回目のタップ：プレイヤーを選択
       setSelectedPlayer({ id: playerId, courtId, position });
     } else if (selectedPlayer.id === playerId) {
-      // 同じプレイヤーをタップ：選択解除
+      // 同じプレイヤーをタップ：選択解除（念のため残す）
       setSelectedPlayer(null);
     } else {
       // 2回目のタップ：交換実行
@@ -188,27 +188,46 @@ export function MainPage() {
         position !== undefined
       ) {
         // コート内 ↔ コート内
-        const court1 = courts.find((c) => c.id === selectedPlayer.courtId);
-        const court2 = courts.find((c) => c.id === courtId);
-        if (court1 && court2) {
-          // 交換処理
-          const allPlayers1 = [...court1.teamA, ...court1.teamB];
-          const allPlayers2 = [...court2.teamA, ...court2.teamB];
-          
-          const temp = allPlayers1[selectedPlayer.position];
-          allPlayers1[selectedPlayer.position] = allPlayers2[position];
-          allPlayers2[position] = temp;
+        if (selectedPlayer.courtId === courtId) {
+          // 同じコート内での交換
+          const court = courts.find((c) => c.id === courtId);
+          if (court) {
+            const allPlayers = [...court.teamA, ...court.teamB];
+            // 交換
+            const temp = allPlayers[selectedPlayer.position];
+            allPlayers[selectedPlayer.position] = allPlayers[position];
+            allPlayers[position] = temp;
 
-          updateCourt(selectedPlayer.courtId!, {
-            teamA: [allPlayers1[0], allPlayers1[1]],
-            teamB: [allPlayers1[2], allPlayers1[3]],
-          });
-          updateCourt(courtId, {
-            teamA: [allPlayers2[0], allPlayers2[1]],
-            teamB: [allPlayers2[2], allPlayers2[3]],
-          });
-          
-          toast.success('メンバーを交換しました');
+            updateCourt(courtId, {
+              teamA: [allPlayers[0], allPlayers[1]],
+              teamB: [allPlayers[2], allPlayers[3]],
+            });
+            
+            toast.success('メンバーを交換しました');
+          }
+        } else {
+          // 異なるコート間での交換
+          const court1 = courts.find((c) => c.id === selectedPlayer.courtId);
+          const court2 = courts.find((c) => c.id === courtId);
+          if (court1 && court2) {
+            const allPlayers1 = [...court1.teamA, ...court1.teamB];
+            const allPlayers2 = [...court2.teamA, ...court2.teamB];
+            
+            const temp = allPlayers1[selectedPlayer.position];
+            allPlayers1[selectedPlayer.position] = allPlayers2[position];
+            allPlayers2[position] = temp;
+
+            updateCourt(selectedPlayer.courtId!, {
+              teamA: [allPlayers1[0], allPlayers1[1]],
+              teamB: [allPlayers1[2], allPlayers1[3]],
+            });
+            updateCourt(courtId, {
+              teamA: [allPlayers2[0], allPlayers2[1]],
+              teamB: [allPlayers2[2], allPlayers2[3]],
+            });
+            
+            toast.success('メンバーを交換しました');
+          }
         }
       } else if (
         selectedPlayer.courtId !== undefined &&
@@ -288,13 +307,13 @@ export function MainPage() {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
               <strong>{players.find(p => p.id === selectedPlayer.id)?.name}</strong> を選択中
               <br />
-              交換したいプレイヤーをタップしてください
+              交換したいプレイヤーをタップ / もう一度タップで解除 / 「✕ 解除」ボタンで解除
             </div>
           )}
         </div>
 
         {/* コート一覧 */}
-        <div className="flex gap-3">
+        <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {courts.map((court) => (
             <CourtCard
               key={court.id}
@@ -308,6 +327,7 @@ export function MainPage() {
                 handlePlayerTap(playerId, court.id, position)
               }
               selectedPlayerId={selectedPlayer?.id}
+              onClearSelection={() => setSelectedPlayer(null)}
             />
           ))}
         </div>
@@ -369,33 +389,48 @@ export function MainPage() {
                 待機中 ({activePlayers.length}人)
               </h4>
               <div className="grid gap-2 grid-cols-3">
-                {activePlayers.map((player) => (
-                  <div
-                    key={player.id}
-                    onClick={() => handlePlayerTap(player.id)}
-                    className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition ${
-                      selectedPlayer?.id === player.id
-                        ? 'bg-blue-200 border-blue-400'
-                        : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
-                    }`}
-                  >
-                    <span className="text-gray-800 text-sm">
-                      {player.name}
-                      <span className="text-xs text-gray-500 ml-1">
-                        ({player.gamesPlayed})
-                      </span>
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleRest(player.id);
-                      }}
-                      className="text-gray-500 hover:text-orange-600 flex-shrink-0"
+                {activePlayers.map((player) => {
+                  const isSelected = selectedPlayer?.id === player.id;
+                  return (
+                    <div
+                      key={player.id}
+                      onClick={() => handlePlayerTap(player.id)}
+                      className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition ${
+                        isSelected
+                          ? 'bg-blue-200 border-blue-400'
+                          : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
+                      }`}
                     >
-                      <Coffee size={16} />
-                    </button>
-                  </div>
-                ))}
+                      <span className="text-gray-800 text-sm">
+                        {player.name}
+                        <span className="text-xs text-gray-500 ml-1">
+                          ({player.gamesPlayed})
+                        </span>
+                      </span>
+                      {isSelected ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPlayer(null);
+                          }}
+                          className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 flex-shrink-0"
+                        >
+                          ✕ 解除
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleRest(player.id);
+                          }}
+                          className="text-gray-500 hover:text-orange-600 flex-shrink-0"
+                        >
+                          <Coffee size={16} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

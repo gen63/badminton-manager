@@ -17,7 +17,7 @@ export function ScoreInputPage() {
   const [inputHistory, setInputHistory] = useState<string[]>([]);
 
   if (!match) {
-    navigate('/main');
+    navigate('/history');
     return null;
   }
 
@@ -65,7 +65,7 @@ export function ScoreInputPage() {
     // Zustandストアを直接更新
     useGameStore.setState({ matchHistory: updatedHistory });
 
-    navigate('/main');
+    navigate('/history');
   };
 
   return (
@@ -74,7 +74,7 @@ export function ScoreInputPage() {
       <div className="bg-white border-b p-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <button
-            onClick={() => navigate('/main')}
+            onClick={() => navigate('/history')}
             className="p-2 hover:bg-gray-100 rounded-lg transition"
           >
             <X size={24} />

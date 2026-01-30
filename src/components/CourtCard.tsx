@@ -11,6 +11,7 @@ interface CourtCardProps {
   onClear: () => void;
   onPlayerTap: (playerId: string, position: number) => void;
   selectedPlayerId?: string | null;
+  onClearSelection: () => void;
 }
 
 export function CourtCard({
@@ -22,11 +23,12 @@ export function CourtCard({
   onClear,
   onPlayerTap,
   selectedPlayerId,
+  onClearSelection,
 }: CourtCardProps) {
   const timer = useGameTimer(court.startedAt, court.isPlaying);
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-2 space-y-2 flex-1 min-w-[200px]">
+    <div className="bg-white rounded-lg shadow-lg p-2 space-y-2">
       <div className="flex items-center justify-between mb-1">
         <h3 className="text-sm font-bold text-gray-800">コート {court.id}</h3>
         {court.isPlaying && (
@@ -45,7 +47,7 @@ export function CourtCard({
           <>
             <div
               onClick={() => onPlayerTap(court.teamA[0], 0)}
-              className={`p-1.5 rounded cursor-pointer transition ${
+              className={`p-1.5 rounded cursor-pointer transition flex items-center justify-between ${
                 selectedPlayerId === court.teamA[0]
                   ? 'bg-blue-300'
                   : 'hover:bg-blue-100'
@@ -54,10 +56,21 @@ export function CourtCard({
               <span className="text-gray-800 text-xs font-medium whitespace-nowrap">
                 {getPlayerName(court.teamA[0])}
               </span>
+              {selectedPlayerId === court.teamA[0] && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClearSelection();
+                  }}
+                  className="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded hover:bg-red-600 flex-shrink-0 ml-1"
+                >
+                  ✕
+                </button>
+              )}
             </div>
             <div
               onClick={() => onPlayerTap(court.teamA[1], 1)}
-              className={`p-1.5 rounded cursor-pointer transition ${
+              className={`p-1.5 rounded cursor-pointer transition flex items-center justify-between ${
                 selectedPlayerId === court.teamA[1]
                   ? 'bg-blue-300'
                   : 'hover:bg-blue-100'
@@ -66,6 +79,17 @@ export function CourtCard({
               <span className="text-gray-800 text-xs font-medium whitespace-nowrap">
                 {getPlayerName(court.teamA[1])}
               </span>
+              {selectedPlayerId === court.teamA[1] && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClearSelection();
+                  }}
+                  className="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded hover:bg-red-600 flex-shrink-0 ml-1"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           </>
         ) : (
@@ -82,7 +106,7 @@ export function CourtCard({
           <>
             <div
               onClick={() => onPlayerTap(court.teamB[0], 2)}
-              className={`p-1.5 rounded cursor-pointer transition ${
+              className={`p-1.5 rounded cursor-pointer transition flex items-center justify-between ${
                 selectedPlayerId === court.teamB[0]
                   ? 'bg-red-300'
                   : 'hover:bg-red-100'
@@ -91,10 +115,21 @@ export function CourtCard({
               <span className="text-gray-800 text-xs font-medium whitespace-nowrap">
                 {getPlayerName(court.teamB[0])}
               </span>
+              {selectedPlayerId === court.teamB[0] && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClearSelection();
+                  }}
+                  className="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded hover:bg-red-600 flex-shrink-0 ml-1"
+                >
+                  ✕
+                </button>
+              )}
             </div>
             <div
               onClick={() => onPlayerTap(court.teamB[1], 3)}
-              className={`p-1.5 rounded cursor-pointer transition ${
+              className={`p-1.5 rounded cursor-pointer transition flex items-center justify-between ${
                 selectedPlayerId === court.teamB[1]
                   ? 'bg-red-300'
                   : 'hover:bg-red-100'
@@ -103,6 +138,17 @@ export function CourtCard({
               <span className="text-gray-800 text-xs font-medium whitespace-nowrap">
                 {getPlayerName(court.teamB[1])}
               </span>
+              {selectedPlayerId === court.teamB[1] && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClearSelection();
+                  }}
+                  className="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded hover:bg-red-600 flex-shrink-0 ml-1"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           </>
         ) : (

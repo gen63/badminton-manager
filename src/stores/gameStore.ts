@@ -13,6 +13,7 @@ interface GameState {
   resetAllCourts: () => void;
   addToHistory: (match: Match) => void;
   clearHistory: () => void;
+  deleteMatch: (matchId: string) => void;
 }
 
 export const useGameStore = create<GameState>()(
@@ -97,6 +98,10 @@ export const useGameStore = create<GameState>()(
           matchHistory: [...state.matchHistory, match],
         })),
       clearHistory: () => set({ matchHistory: [] }),
+      deleteMatch: (matchId) =>
+        set((state) => ({
+          matchHistory: state.matchHistory.filter((m) => m.id !== matchId),
+        })),
     }),
     {
       name: 'badminton-game',
