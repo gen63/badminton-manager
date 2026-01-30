@@ -122,7 +122,8 @@ export function HistoryPage() {
             />
           ) : (
             <div className="space-y-2">
-              {[...matchHistory].reverse().map((match) => {
+              {[...matchHistory].reverse().map((match, reverseIndex) => {
+                const matchNumber = matchHistory.length - reverseIndex;
                 const teamANames = match.teamA.map(getPlayerName).join(' ');
                 const teamBNames = match.teamB.map(getPlayerName).join(' ');
                 const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
@@ -134,22 +135,27 @@ export function HistoryPage() {
                     className={`bg-gray-50 rounded-xl p-3 transition ${!isEditMode && 'cursor-pointer hover:bg-gray-100'}`}
                   >
                     <div className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm mb-1">
-                          <span className={match.winner === 'A' ? 'font-semibold text-gray-800' : 'text-gray-600'}>
-                            {teamANames}
-                          </span>
-                          <span className="text-gray-400 mx-2">vs</span>
-                          <span className={match.winner === 'B' ? 'font-semibold text-gray-800' : 'text-gray-600'}>
-                            {teamBNames}
-                          </span>
-                        </div>
-                        <div className="flex items-center text-xs text-gray-500 gap-2">
-                          <span>{formatTime(match.finishedAt)}</span>
-                          <span>({duration}分)</span>
-                          <span className="text-gray-700 font-semibold">
-                            {match.scoreA}-{match.scoreB}
-                          </span>
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <span className="text-sm font-medium text-gray-400 w-6 flex-shrink-0">
+                          {matchNumber}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm mb-1">
+                            <span className={match.winner === 'A' ? 'font-semibold text-gray-800' : 'text-gray-600'}>
+                              {teamANames}
+                            </span>
+                            <span className="text-gray-400 mx-2">vs</span>
+                            <span className={match.winner === 'B' ? 'font-semibold text-gray-800' : 'text-gray-600'}>
+                              {teamBNames}
+                            </span>
+                          </div>
+                          <div className="flex items-center text-xs text-gray-500 gap-2">
+                            <span>{formatTime(match.finishedAt)}</span>
+                            <span>({duration}分)</span>
+                            <span className="text-gray-700 font-semibold">
+                              {match.scoreA}-{match.scoreB}
+                            </span>
+                          </div>
                         </div>
                       </div>
                       {isEditMode && (
