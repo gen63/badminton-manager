@@ -24,9 +24,7 @@ export function PlayerSelect() {
   };
 
   const handleContinue = () => {
-    if (players.length >= 4) {
-      navigate('/main');
-    }
+    navigate('/settings');
   };
 
   return (
@@ -96,15 +94,12 @@ export function PlayerSelect() {
           )}
         </div>
 
-        {/* 次へボタン */}
+        {/* 完了ボタン */}
         <button
           onClick={handleContinue}
-          disabled={players.length < 4}
-          className="w-full bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
+          className="w-full bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-700 transition"
         >
-          {players.length < 4
-            ? `あと${4 - players.length}人必要です`
-            : '次へ進む'}
+          完了
         </button>
       </div>
     </div>

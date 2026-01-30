@@ -104,6 +104,17 @@ export function SettingsPage() {
           </div>
         </div>
 
+        {/* 参加者管理 */}
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">参加者管理</h2>
+          <button
+            onClick={() => navigate('/players')}
+            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
+          >
+            参加者を管理
+          </button>
+        </div>
+
         {/* データ管理 */}
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4">データ管理</h2>

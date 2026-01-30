@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
+import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { generateSessionId } from '../lib/utils';
 
 export function SessionCreate() {
   const navigate = useNavigate();
   const setSession = useSessionStore((state) => state.setSession);
+  const { addPlayers } = usePlayerStore();
   const initializeCourts = useGameStore((state) => state.initializeCourts);
 
   const [courtCount, setCourtCount] = useState(2);
@@ -14,8 +16,20 @@ export function SessionCreate() {
   const [practiceDate, setPracticeDate] = useState(
     new Date().toISOString().split('T')[0]
   );
+  const [playerNames, setPlayerNames] = useState('');
 
   const handleCreate = () => {
+    // 参加者を事前登録
+    if (playerNames.trim()) {
+      const names = playerNames
+        .split('\n')
+        .map((name) => name.trim())
+        .filter((name) => name.length > 0);
+      if (names.length > 0) {
+        addPlayers(names);
+      }
+    }
+
     const sessionId = generateSessionId();
     const session = {
       id: sessionId,
@@ -30,7 +44,7 @@ export function SessionCreate() {
 
     setSession(session);
     initializeCourts(courtCount);
-    navigate('/players');
+    navigate('/main');
   };
 
   return (
@@ -101,12 +115,29 @@ export function SessionCreate() {
             </div>
           </div>
 
+          {/* 当日参加者 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              当日の参加者（1行に1人）
+            </label>
+            <textarea
+              value={playerNames}
+              onChange={(e) => setPlayerNames(e.target.value)}
+              placeholder="田中太郎&#10;山田花子&#10;佐藤次郎"
+              rows={8}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              改行またはカンマ区切りで入力
+            </p>
+          </div>
+
           {/* 作成ボタン */}
           <button
             onClick={handleCreate}
             className="w-full bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-700 transition"
           >
-            セッションを作成
+            次へ
           </button>
         </div>
 

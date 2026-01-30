@@ -18,11 +18,29 @@ export function MainPage() {
     useGameStore();
   const toast = useToast();
   const [showSwapModal, setShowSwapModal] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<{
+    id: string;
+    courtId?: number;
+    position?: number;
+  } | null>(null);
 
   if (!session) {
     navigate('/');
     return null;
   }
+
+  const handleClearCourt = (courtId: number) => {
+    updateCourt(courtId, {
+      teamA: ['', ''],
+      teamB: ['', ''],
+      scoreA: 0,
+      scoreB: 0,
+      isPlaying: false,
+      startedAt: null,
+      finishedAt: null,
+    });
+    toast.success(`コート${courtId}をクリアしました`);
+  };
 
   const handleAutoAssign = (courtId?: number) => {
     try {
@@ -98,9 +116,9 @@ export function MainPage() {
   );
 
   // 待機中のプレイヤー（コート外 & 休憩中でない）
-  const activePlayers = players.filter(
-    (p) => !p.isResting && !playersInCourts.has(p.id)
-  );
+  const activePlayers = players
+    .filter((p) => !p.isResting && !playersInCourts.has(p.id))
+    .sort((a, b) => a.gamesPlayed - b.gamesPlayed); // 試合数昇順ソート
   const restingPlayers = players.filter((p) => p.isResting);
 
   const handleCourtCountChange = (delta: number) => {
@@ -145,6 +163,66 @@ export function MainPage() {
     const newPlayerName = players.find((p) => p.id === newPlayerId)?.name || '不明';
     
     toast.success(`${oldPlayerName} と ${newPlayerName} を交換しました`);
+  };
+
+  const handlePlayerTap = (
+    playerId: string,
+    courtId?: number,
+    position?: number
+  ) => {
+    if (!selectedPlayer) {
+      // 1回目のタップ：プレイヤーを選択
+      setSelectedPlayer({ id: playerId, courtId, position });
+    } else if (selectedPlayer.id === playerId) {
+      // 同じプレイヤーをタップ：選択解除
+      setSelectedPlayer(null);
+    } else {
+      // 2回目のタップ：交換実行
+      if (
+        selectedPlayer.courtId !== undefined &&
+        selectedPlayer.position !== undefined &&
+        courtId !== undefined &&
+        position !== undefined
+      ) {
+        // コート内 ↔ コート内
+        const court1 = courts.find((c) => c.id === selectedPlayer.courtId);
+        const court2 = courts.find((c) => c.id === courtId);
+        if (court1 && court2) {
+          // 交換処理
+          const allPlayers1 = [...court1.teamA, ...court1.teamB];
+          const allPlayers2 = [...court2.teamA, ...court2.teamB];
+          
+          const temp = allPlayers1[selectedPlayer.position];
+          allPlayers1[selectedPlayer.position] = allPlayers2[position];
+          allPlayers2[position] = temp;
+
+          updateCourt(selectedPlayer.courtId!, {
+            teamA: [allPlayers1[0], allPlayers1[1]],
+            teamB: [allPlayers1[2], allPlayers1[3]],
+          });
+          updateCourt(courtId, {
+            teamA: [allPlayers2[0], allPlayers2[1]],
+            teamB: [allPlayers2[2], allPlayers2[3]],
+          });
+          
+          toast.success('メンバーを交換しました');
+        }
+      } else if (
+        selectedPlayer.courtId !== undefined &&
+        selectedPlayer.position !== undefined
+      ) {
+        // コート内 ↔ 待機者
+        handleSwapPlayer(
+          selectedPlayer.courtId,
+          selectedPlayer.position,
+          playerId
+        );
+      } else if (courtId !== undefined && position !== undefined) {
+        // 待機者 ↔ コート内
+        handleSwapPlayer(courtId, position, selectedPlayer.id);
+      }
+      setSelectedPlayer(null);
+    }
   };
 
   return (
@@ -222,6 +300,11 @@ export function MainPage() {
               onStartGame={() => handleStartGame(court.id)}
               onFinishGame={() => handleFinishGame(court.id)}
               onAutoAssign={() => handleAutoAssign(court.id)}
+              onClear={() => handleClearCourt(court.id)}
+              onPlayerTap={(playerId, position) =>
+                handlePlayerTap(playerId, court.id, position)
+              }
+              selectedPlayerId={selectedPlayer?.id}
             />
           ))}
         </div>
@@ -242,10 +325,7 @@ export function MainPage() {
                   <div
                     key={match.id}
                     className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm hover:bg-gray-100 cursor-pointer transition"
-                    onClick={() => {
-                      // TODO: スコア入力モーダルを開く
-                      toast.info('スコア入力機能は次のアップデートで追加予定');
-                    }}
+                    onClick={() => navigate(`/score/${match.id}`)}
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -279,11 +359,24 @@ export function MainPage() {
                 {activePlayers.map((player) => (
                   <div
                     key={player.id}
-                    className="flex items-center justify-between p-2 bg-blue-50 rounded-lg border border-blue-200"
+                    onClick={() => handlePlayerTap(player.id)}
+                    className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition ${
+                      selectedPlayer?.id === player.id
+                        ? 'bg-blue-200 border-blue-400'
+                        : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
+                    }`}
                   >
-                    <span className="text-gray-800 text-sm">{player.name}</span>
+                    <span className="text-gray-800 text-sm">
+                      {player.name}
+                      <span className="text-xs text-gray-500 ml-1">
+                        ({player.gamesPlayed}試合)
+                      </span>
+                    </span>
                     <button
-                      onClick={() => toggleRest(player.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleRest(player.id);
+                      }}
                       className="text-gray-500 hover:text-orange-600 flex-shrink-0"
                     >
                       <Coffee size={16} />
