@@ -379,7 +379,7 @@ export function MainPage() {
                     <span className="text-gray-800 text-sm">
                       {player.name}
                       <span className="text-xs text-gray-500 ml-1">
-                        ({player.gamesPlayed}試合)
+                        ({player.gamesPlayed})
                       </span>
                     </span>
                     <button

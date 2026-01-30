@@ -7,14 +7,13 @@ import { X, Trash2 } from 'lucide-react';
 export function ScoreInputPage() {
   const navigate = useNavigate();
   const { matchId } = useParams<{ matchId: string }>();
-  const { matchHistory } = useGameStore((state) => ({
-    matchHistory: state.matchHistory,
-  }));
-  const { players } = usePlayerStore();
+  const matchHistory = useGameStore((state) => state.matchHistory);
+  const players = usePlayerStore((state) => state.players);
 
   const match = matchHistory.find((m) => m.id === matchId);
-  const [scoreA, setScoreA] = useState(match?.scoreA || 0);
-  const [scoreB, setScoreB] = useState(match?.scoreB || 0);
+  
+  const [scoreA, setScoreA] = useState(0);
+  const [scoreB, setScoreB] = useState(0);
   const [inputHistory, setInputHistory] = useState<string[]>([]);
 
   if (!match) {
