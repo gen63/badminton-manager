@@ -4,7 +4,7 @@ import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { calculatePlayerStats } from '../lib/algorithm';
 import { formatTime, copyToClipboard } from '../lib/utils';
-import { ArrowLeft, Copy, Trash2 } from 'lucide-react';
+import { ArrowLeft, Copy, Trash2, Edit3 } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
@@ -16,8 +16,7 @@ export function HistoryPage() {
   const toast = useToast();
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const lastTapRef = useRef<{ matchId: string; time: number } | null>(null);
-  const [swipeState, setSwipeState] = useState<{ [key: string]: number }>({});
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
 
   const stats = calculatePlayerStats(players, matchHistory);
   const sortedStats = [...stats].sort((a, b) => b.gamesPlayed - a.gamesPlayed);
@@ -27,6 +26,8 @@ export function HistoryPage() {
   };
 
   const handleMatchClick = (matchId: string) => {
+    if (isEditMode) return; // 編集モード中はクリック無効
+    
     const now = Date.now();
     const last = lastTapRef.current;
 
@@ -40,47 +41,8 @@ export function HistoryPage() {
     }
   };
 
-  const handleTouchStart = (_matchId: string, e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
-  };
-
-  const handleTouchMove = (matchId: string, e: React.TouchEvent) => {
-    if (!touchStartRef.current) return;
-    
-    const touch = e.touches[0];
-    const deltaX = touch.clientX - touchStartRef.current.x;
-    const deltaY = Math.abs(touch.clientY - touchStartRef.current.y);
-    
-    // 横スワイプの判定（縦の動きが小さい）
-    if (deltaY < 30 && deltaX < 0) {
-      const newState = { ...swipeState };
-      newState[matchId] = Math.max(deltaX, -80);
-      setSwipeState(newState);
-    }
-  };
-
-  const handleTouchEnd = (matchId: string) => {
-    const offset = swipeState[matchId] || 0;
-    const newState = { ...swipeState };
-    
-    if (offset < -60) {
-      // 十分スワイプした → 削除ボタン表示状態を維持
-      newState[matchId] = -80;
-    } else {
-      // 不十分 → 元に戻す
-      newState[matchId] = 0;
-    }
-    
-    setSwipeState(newState);
-    touchStartRef.current = null;
-  };
-
   const handleDeleteClick = (matchId: string) => {
     setDeleteConfirmId(matchId);
-    const newState = { ...swipeState };
-    newState[matchId] = 0;
-    setSwipeState(newState);
   };
 
   const handleDeleteConfirm = () => {
@@ -93,6 +55,14 @@ export function HistoryPage() {
 
   const handleDeleteCancel = () => {
     setDeleteConfirmId(null);
+  };
+
+  const handleToggleEditMode = () => {
+    setIsEditMode(!isEditMode);
+    if (isEditMode) {
+      // 編集モード終了時は削除確認ダイアログも閉じる
+      setDeleteConfirmId(null);
+    }
   };
 
   const handleCopyHistory = async () => {
@@ -133,6 +103,21 @@ export function HistoryPage() {
           <div className="flex-1">
             <h1 className="text-2xl font-bold">試合履歴</h1>
           </div>
+          {matchHistory.length > 0 && (
+            <button
+              onClick={handleToggleEditMode}
+              className="px-3 py-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition text-sm font-semibold flex items-center gap-1"
+            >
+              {isEditMode ? (
+                '完了'
+              ) : (
+                <>
+                  <Edit3 size={18} />
+                  編集
+                </>
+              )}
+            </button>
+          )}
           <button
             onClick={handleCopyHistory}
             className="p-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition"
@@ -162,40 +147,37 @@ export function HistoryPage() {
                 const teamBNames = match.teamB.map(getPlayerName).join(' ');
 
                 const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
-                const swipeOffset = swipeState[match.id] || 0;
                 
                 return (
                   <div
                     key={match.id}
-                    className="relative overflow-hidden border border-gray-200 rounded-lg bg-white"
+                    className="border border-gray-200 rounded-lg bg-white p-3 hover:bg-gray-50 transition"
                   >
-                    {/* 削除ボタン背景（スワイプで表示） */}
-                    <div className="absolute right-0 top-0 bottom-0 w-20 bg-red-500 flex items-center justify-center z-0">
-                      <button
-                        onClick={() => handleDeleteClick(match.id)}
-                        className="text-white p-2"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    </div>
-                    
-                    {/* メインコンテンツ */}
-                    <div
-                      style={{ transform: `translateX(${swipeOffset}px)` }}
-                      className="relative bg-white p-3 transition-transform z-10"
-                      onTouchStart={(e) => handleTouchStart(match.id, e)}
-                      onTouchMove={(e) => handleTouchMove(match.id, e)}
-                      onTouchEnd={() => handleTouchEnd(match.id)}
+                    <div 
                       onClick={() => handleMatchClick(match.id)}
+                      className={isEditMode ? '' : 'cursor-pointer'}
                     >
-                      <div className="text-sm mb-1">
-                        <span className={match.winner === 'A' ? 'font-bold text-blue-600' : 'text-gray-700'}>
-                          {teamANames}
-                        </span>
-                        <span className="text-gray-400 mx-2">vs</span>
-                        <span className={match.winner === 'B' ? 'font-bold text-red-600' : 'text-gray-700'}>
-                          {teamBNames}
-                        </span>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-sm flex-1">
+                          <span className={match.winner === 'A' ? 'font-bold text-blue-600' : 'text-gray-700'}>
+                            {teamANames}
+                          </span>
+                          <span className="text-gray-400 mx-2">vs</span>
+                          <span className={match.winner === 'B' ? 'font-bold text-red-600' : 'text-gray-700'}>
+                            {teamBNames}
+                          </span>
+                        </div>
+                        {isEditMode && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteClick(match.id);
+                            }}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded transition active:bg-red-100 flex-shrink-0"
+                          >
+                            <Trash2 size={20} />
+                          </button>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-gray-500">
                         <span>{formatTime(match.finishedAt)}</span>
