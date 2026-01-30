@@ -123,10 +123,6 @@ export function MainPage() {
     return players.find((p) => p.id === playerId)?.name || '未設定';
   };
 
-  const getPlayerGames = (playerId: string) => {
-    return players.find((p) => p.id === playerId)?.gamesPlayed || 0;
-  };
-
   // コート内のプレイヤーIDを取得（空文字列を除外）
   const playersInCourts = new Set(
     courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
@@ -288,7 +284,6 @@ export function MainPage() {
               key={court.id}
               court={court}
               getPlayerName={getPlayerName}
-              getPlayerGames={getPlayerGames}
               onStartGame={() => handleStartGame(court.id)}
               onFinishGame={() => handleFinishGame(court.id)}
               onAutoAssign={() => handleAutoAssign(court.id)}

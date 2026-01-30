@@ -5,7 +5,6 @@ import type { Court } from '../types/court';
 interface CourtCardProps {
   court: Court;
   getPlayerName: (playerId: string) => string;
-  getPlayerGames?: (playerId: string) => number;
   onStartGame: () => void;
   onFinishGame: () => void;
   onAutoAssign: () => void;
@@ -22,7 +21,6 @@ const circledNumbers = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', 
 export function CourtCard({
   court,
   getPlayerName,
-  getPlayerGames,
   onStartGame,
   onFinishGame,
   onAutoAssign,
@@ -43,7 +41,6 @@ export function CourtCard({
     }
 
     const isSelected = selectedPlayerId === playerId;
-    const games = getPlayerGames ? getPlayerGames(playerId) : null;
 
     return (
       <div
@@ -57,22 +54,17 @@ export function CourtCard({
         <span className="text-gray-800 text-sm font-medium truncate">
           {getPlayerName(playerId)}
         </span>
-        <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-          {games !== null && (
-            <span className="text-gray-400 text-sm">{games}</span>
-          )}
-          {isSelected && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClearSelection();
-              }}
-              className="text-xs text-red-500 hover:text-red-600 font-bold"
-            >
-              ✕
-            </button>
-          )}
-        </div>
+        {isSelected && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClearSelection();
+            }}
+            className="text-xs text-red-500 hover:text-red-600 font-bold ml-2"
+          >
+            ✕
+          </button>
+        )}
       </div>
     );
   };
