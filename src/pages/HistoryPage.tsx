@@ -64,7 +64,7 @@ export function HistoryPage() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto p-4">
+      <div className="max-w-6xl mx-auto p-5">
         {/* 試合履歴 */}
         <div className="bg-white rounded-2xl shadow-sm p-4">
           {matchHistory.length === 0 ? (
