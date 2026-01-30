@@ -48,7 +48,7 @@ export function SettingsPage() {
           >
             <ArrowLeft size={24} className="text-gray-600" />
           </button>
-          <h1 className="text-xl font-semibold text-gray-700">設定</h1>
+          <h1 className="text-base font-medium text-gray-600">設定</h1>
         </div>
       </div>
 

@@ -85,7 +85,7 @@ export function HistoryPage() {
           >
             <ArrowLeft size={24} className="text-gray-600" />
           </button>
-          <h1 className="text-xl font-semibold text-gray-700 flex-1">試合履歴</h1>
+          <h1 className="text-base font-medium text-gray-600 flex-1">試合履歴</h1>
           {matchHistory.length > 0 && (
             <button
               onClick={handleToggleEditMode}
