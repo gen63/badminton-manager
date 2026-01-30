@@ -18,6 +18,11 @@ git push origin master
 npm run deploy
 ```
 
+**デプロイ後:**
+- Genにキャッシュバスティング付きURLを連携（タイムスタンプ付き）
+- 形式: `https://gen63.github.io/badminton-manager/?t=UNIX_TIMESTAMP`
+- 例: `https://gen63.github.io/badminton-manager/?t=1738227684`
+
 ## プロジェクト情報
 
 - **リポジトリ:** https://github.com/gen63/badminton-manager
