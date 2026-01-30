@@ -2,7 +2,6 @@ import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
-import { calculatePlayerStats } from '../lib/algorithm';
 import { formatTime, copyToClipboard } from '../lib/utils';
 import { ArrowLeft, Copy, Trash2, Edit3 } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -17,9 +16,6 @@ export function HistoryPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const lastTapRef = useRef<{ matchId: string; time: number } | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
-
-  const stats = calculatePlayerStats(players, matchHistory);
-  const sortedStats = [...stats].sort((a, b) => b.gamesPlayed - a.gamesPlayed);
 
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '不明';
@@ -65,19 +61,11 @@ export function HistoryPage() {
   };
 
   const handleCopyHistory = async () => {
-    let text = '=== 試合履歴 ===\n\n';
-    matchHistory.forEach((match, index) => {
-      const teamANames = match.teamA.map(getPlayerName).join(' / ');
-      const teamBNames = match.teamB.map(getPlayerName).join(' / ');
-      text += `試合 ${index + 1}\n`;
-      text += `${teamANames} ${match.scoreA} - ${match.scoreB} ${teamBNames}\n`;
-      text += `勝者: チーム ${match.winner}\n`;
-      text += `時刻: ${formatTime(match.finishedAt)}\n\n`;
-    });
-
-    text += '\n=== 統計 ===\n\n';
-    sortedStats.forEach((stat) => {
-      text += `${stat.name}: ${stat.gamesPlayed}試合 ${stat.wins}勝${stat.losses}敗 (${stat.points}点)\n`;
+    let text = '';
+    matchHistory.forEach((match) => {
+      const teamANames = match.teamA.map(getPlayerName).join(' ');
+      const teamBNames = match.teamB.map(getPlayerName).join(' ');
+      text += `${teamANames} ${match.scoreA}-${match.scoreB} ${teamBNames}\n`;
     });
 
     const success = await copyToClipboard(text);
