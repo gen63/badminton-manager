@@ -179,9 +179,9 @@ export function HistoryPage() {
                           </button>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                      <div className="flex items-center text-xs text-gray-500">
                         <span>{formatTime(match.finishedAt)}</span>
-                        <span>{duration}分</span>
+                        <span className="mx-3">{duration}分</span>
                         <span className="text-gray-700 font-semibold">
                           ({match.scoreA}-{match.scoreB})
                         </span>
