@@ -325,7 +325,7 @@ export function MainPage() {
                     </div>
                     <button
                       onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
-                      className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm font-medium hover:bg-blue-600 active:bg-blue-700 transition flex-shrink-0 min-h-[44px]"
+                      className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm font-medium hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all duration-150 flex-shrink-0 min-h-[44px]"
                     >
                       スコア入力
                     </button>

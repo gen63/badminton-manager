@@ -60,7 +60,8 @@ export function CourtCard({
               e.stopPropagation();
               onClearSelection();
             }}
-            className="text-sm text-red-500 hover:text-red-600 font-bold ml-2 p-1"
+            aria-label="選択解除"
+            className="p-2 text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full ml-1 transition-all duration-150"
           >
             ✕
           </button>
@@ -125,7 +126,7 @@ export function CourtCard({
           <button
             onClick={onAutoAssign}
             disabled={!canAutoAssign}
-            className="w-full bg-gray-100 text-gray-600 min-h-[44px] py-2.5 px-4 rounded-full text-sm font-medium hover:bg-gray-200 active:bg-gray-300 transition flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-gray-100 text-gray-600 min-h-[44px] py-2.5 px-4 rounded-full text-sm font-medium hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Users size={16} />
             配置
@@ -135,14 +136,14 @@ export function CourtCard({
           <>
             <button
               onClick={onStartGame}
-              className="flex-1 bg-blue-500 text-white min-h-[44px] py-2.5 px-4 rounded-full text-sm font-medium hover:bg-blue-600 active:bg-blue-700 transition flex items-center justify-center gap-1.5"
+              className="flex-1 bg-blue-500 text-white min-h-[44px] py-2.5 px-4 rounded-full text-sm font-medium hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-1.5"
             >
               <Play size={16} />
               開始
             </button>
             <button
               onClick={onClear}
-              className="flex-1 bg-gray-100 text-gray-600 min-h-[44px] py-2.5 px-4 rounded-full text-sm font-medium hover:bg-gray-200 active:bg-gray-300 transition"
+              className="flex-1 bg-gray-100 text-gray-600 min-h-[44px] py-2.5 px-4 rounded-full text-sm font-medium hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150"
             >
               クリア
             </button>
@@ -151,7 +152,7 @@ export function CourtCard({
         {court.isPlaying && (
           <button
             onClick={onFinishGame}
-            className="w-full bg-orange-500 text-white min-h-[44px] py-2.5 px-4 rounded-full text-sm font-medium hover:bg-orange-600 active:bg-orange-700 transition flex items-center justify-center gap-1.5"
+            className="w-full bg-orange-500 text-white min-h-[44px] py-2.5 px-4 rounded-full text-sm font-medium hover:bg-orange-600 active:bg-orange-700 active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-1.5"
           >
             <Pause size={16} />
             終了
