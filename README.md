@@ -1,73 +1,184 @@
-# React + TypeScript + Vite
+# 🏸 バドミントン練習管理システム
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Phase 0 - プロトタイプ版**
 
-Currently, two official plugins are available:
+週3回のバドミントン練習で、約25人の参加者を1〜3面のコートに効率的に配置・管理するWebアプリケーションです。
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 🚀 デモ
 
-## React Compiler
+**https://gen63.github.io/badminton-manager/**
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## ✨ 主な機能
 
-## Expanding the ESLint configuration
+### Phase 0（現在のバージョン）
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- ✅ **セッション作成** - コート数、目標点数、練習日を設定
+- ✅ **参加者管理** - プレイヤーの追加・削除・休憩設定
+- ✅ **自動配置アルゴリズム** - プレイ回数、ペア履歴、対戦履歴を考慮した最適配置
+- ✅ **ゲーム進行管理** - 試合開始・スコア入力・試合終了
+- ✅ **試合履歴・統計** - 全試合ログ、個人成績（勝敗、得点）
+- ✅ **履歴コピー** - 試合結果をクリップボードにコピー
+- ✅ **LocalStorage保存** - ブラウザ内でデータ永続化
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### 配置アルゴリズムの特徴
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+優先順位に基づいて自動配置：
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+1. **プレイ回数の均等化** - プレイ回数が少ない人を優先
+2. **待ち時間の最小化** - 最後にプレイしてから時間が経っている人を優先
+3. **ペアの多様性** - 同じペアの組み合わせを避ける
+4. **対戦相手の多様性** - 同じ対戦相手を避ける
+
+## 🛠️ 技術スタック
+
+- **フロントエンド**
+  - React 18 + TypeScript
+  - Vite（ビルドツール）
+  - Tailwind CSS（スタイリング）
+  - Zustand（状態管理）
+  - React Router v6（ルーティング）
+
+- **データ保存**
+  - LocalStorage（Phase 0）
+  - Firebase Firestore（Phase 1予定）
+
+- **デプロイ**
+  - GitHub Pages
+
+## 📦 開発環境のセットアップ
+
+### 必要なもの
+
+- Node.js 18以上
+- npm
+
+### インストール
+
+```bash
+# リポジトリをクローン
+git clone https://github.com/gen63/badminton-manager.git
+cd badminton-manager
+
+# 依存パッケージをインストール
+npm install
+
+# 開発サーバーを起動
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+開発サーバーが起動したら、ブラウザで `http://localhost:5173/badminton-manager/` にアクセス。
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### ビルド
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+# 本番用ビルド
+npm run build
+
+# ビルドしたファイルをプレビュー
+npm run preview
 ```
+
+### デプロイ
+
+```bash
+# GitHub Pagesにデプロイ
+npm run deploy
+```
+
+## 📱 使い方
+
+### 1. セッション作成
+
+- 練習日を選択
+- コート数（1〜3）を設定
+- 目標点数（11/15/21）を選択
+
+### 2. 参加者登録
+
+- 参加者の名前を入力して追加
+- 最低4人以上必要
+
+### 3. メイン画面
+
+- **自動配置ボタン** - アルゴリズムで自動的にコートに配置
+- **ゲーム開始** - 各コートで試合を開始
+- **スコア入力** - +/- ボタンで得点を記録
+- **ゲーム終了** - 試合を終了して履歴に記録
+- **休憩設定** - コーヒーアイコンで休憩中に設定
+
+### 4. 履歴・統計
+
+- 全試合の詳細ログ
+- プレイヤーごとの統計（試合数、勝敗、得点）
+- 履歴をクリップボードにコピー
+
+### 5. 設定
+
+- コート数・目標点数の変更
+- セッションのリセット
+
+## 🗂️ プロジェクト構造
+
+```
+badminton-manager/
+├── src/
+│   ├── components/       # UIコンポーネント（今後追加予定）
+│   ├── hooks/            # カスタムフック（今後追加予定）
+│   ├── lib/
+│   │   ├── algorithm.ts  # 配置アルゴリズム
+│   │   └── utils.ts      # ユーティリティ関数
+│   ├── pages/
+│   │   ├── SessionCreate.tsx   # S01: セッション作成
+│   │   ├── PlayerSelect.tsx    # S02: 参加者選択
+│   │   ├── MainPage.tsx        # S03: メイン画面
+│   │   ├── HistoryPage.tsx     # S04: 履歴・統計
+│   │   └── SettingsPage.tsx    # S05: 設定
+│   ├── stores/
+│   │   ├── sessionStore.ts     # セッション状態管理
+│   │   ├── playerStore.ts      # プレイヤー状態管理
+│   │   └── gameStore.ts        # ゲーム進行管理
+│   └── types/
+│       ├── player.ts           # Player型定義
+│       ├── court.ts            # Court型定義
+│       ├── match.ts            # Match型定義
+│       └── session.ts          # Session型定義
+├── doc/                  # 仕様書
+└── public/               # 静的ファイル
+```
+
+## 📋 ロードマップ
+
+### Phase 0: プロトタイプ（✅ 完了）
+- ✅ 全画面実装
+- ✅ 配置アルゴリズム
+- ✅ ゲーム進行
+- ✅ 試合履歴・統計
+- ✅ LocalStorage保存
+- ✅ GitHub Pagesデプロイ
+
+### Phase 1: 本番版（予定）
+- 🔲 Firebase Firestore連携
+- 🔲 複数デバイス対応
+- 🔲 リアルタイム同期
+- 🔲 セッション共有（URL）
+- 🔲 権限管理（管理者/サブ管理者/一般参加者）
+- 🔲 PWA対応（オフライン動作）
+- 🔲 プッシュ通知（FCM）
+- 🔲 スプレッドシート連携
+
+## 🤝 貢献
+
+バグ報告や機能提案は、GitHubのIssuesでお願いします。
+
+## 📄 ライセンス
+
+MIT License
+
+## 👤 作成者
+
+Gen (@genzwift)
+
+---
+
+**開発状況**: Phase 0 完了 🎉  
+**最終更新**: 2026-01-30

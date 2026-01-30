@@ -4,6 +4,8 @@ import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts } from '../lib/algorithm';
 import { Settings, History, Play, Pause, Coffee } from 'lucide-react';
+import { useToast } from '../hooks/useToast';
+import { Toast } from '../components/Toast';
 
 export function MainPage() {
   const navigate = useNavigate();
@@ -11,6 +13,7 @@ export function MainPage() {
   const { players, toggleRest, updatePlayer } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame } =
     useGameStore();
+  const toast = useToast();
 
   if (!session) {
     navigate('/');
@@ -37,9 +40,9 @@ export function MainPage() {
         });
       });
 
-      alert('コートに自動配置しました！');
+      toast.success('コートに自動配置しました！');
     } catch (error) {
-      alert(
+      toast.error(
         error instanceof Error
           ? error.message
           : 'プレイヤーの配置に失敗しました'
@@ -68,7 +71,7 @@ export function MainPage() {
       }
     });
 
-    alert('試合が終了しました！');
+    toast.success('試合が終了しました！');
   };
 
   const handleScoreChange = (
@@ -306,6 +309,16 @@ export function MainPage() {
           </div>
         </div>
       </div>
+
+      {/* Toast notifications */}
+      {toast.toasts.map((t) => (
+        <Toast
+          key={t.id}
+          message={t.message}
+          type={t.type}
+          onClose={() => toast.hideToast(t.id)}
+        />
+      ))}
     </div>
   );
 }

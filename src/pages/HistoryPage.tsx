@@ -4,11 +4,15 @@ import { usePlayerStore } from '../stores/playerStore';
 import { calculatePlayerStats } from '../lib/algorithm';
 import { formatTime, formatDuration, copyToClipboard } from '../lib/utils';
 import { ArrowLeft, Copy } from 'lucide-react';
+import { useToast } from '../hooks/useToast';
+import { Toast } from '../components/Toast';
+import { EmptyState } from '../components/EmptyState';
 
 export function HistoryPage() {
   const navigate = useNavigate();
   const { matchHistory } = useGameStore();
   const { players } = usePlayerStore();
+  const toast = useToast();
 
   const stats = calculatePlayerStats(players, matchHistory);
   const sortedStats = [...stats].sort((a, b) => b.gamesPlayed - a.gamesPlayed);
@@ -34,7 +38,11 @@ export function HistoryPage() {
     });
 
     const success = await copyToClipboard(text);
-    alert(success ? 'コピーしました！' : 'コピーに失敗しました');
+    if (success) {
+      toast.success('履歴をコピーしました！');
+    } else {
+      toast.error('コピーに失敗しました');
+    }
   };
 
   return (
@@ -65,9 +73,11 @@ export function HistoryPage() {
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4">プレイヤー統計</h2>
           {stats.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">
-              まだ試合データがありません
-            </p>
+            <EmptyState
+              icon="📊"
+              title="まだ試合データがありません"
+              description="試合を行うと、ここに統計が表示されます。"
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -126,9 +136,15 @@ export function HistoryPage() {
             試合履歴 ({matchHistory.length}試合)
           </h2>
           {matchHistory.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">
-              まだ試合がありません
-            </p>
+            <EmptyState
+              icon="🏸"
+              title="まだ試合がありません"
+              description="メイン画面でゲームを開始すると、ここに履歴が表示されます。"
+              action={{
+                label: 'メイン画面へ',
+                onClick: () => navigate('/main'),
+              }}
+            />
           ) : (
             <div className="space-y-4">
               {[...matchHistory].reverse().map((match, index) => {
@@ -201,6 +217,16 @@ export function HistoryPage() {
           )}
         </div>
       </div>
+
+      {/* Toast notifications */}
+      {toast.toasts.map((t) => (
+        <Toast
+          key={t.id}
+          message={t.message}
+          type={t.type}
+          onClose={() => toast.hideToast(t.id)}
+        />
+      ))}
     </div>
   );
 }

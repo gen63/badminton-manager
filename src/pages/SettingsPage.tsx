@@ -1,14 +1,19 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { ArrowLeft, Trash2 } from 'lucide-react';
+import { useToast } from '../hooks/useToast';
+import { Toast } from '../components/Toast';
 
 export function SettingsPage() {
   const navigate = useNavigate();
   const { session, updateConfig, clearSession } = useSessionStore();
   const { clearPlayers } = usePlayerStore();
   const { clearHistory, initializeCourts } = useGameStore();
+  const toast = useToast();
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   if (!session) {
     navigate('/');
@@ -18,23 +23,21 @@ export function SettingsPage() {
   const handleCourtCountChange = (count: number) => {
     updateConfig({ courtCount: count });
     initializeCourts(count);
+    toast.success(`コート数を${count}に変更しました`);
   };
 
   const handleTargetScoreChange = (score: number) => {
     updateConfig({ targetScore: score });
+    toast.success(`目標点数を${score}点に変更しました`);
   };
 
   const handleReset = () => {
-    if (
-      confirm(
-        '本当にリセットしますか？\nすべての試合データが削除されます。'
-      )
-    ) {
-      clearHistory();
-      clearPlayers();
-      clearSession();
-      navigate('/');
-    }
+    setShowResetConfirm(false);
+    clearHistory();
+    clearPlayers();
+    clearSession();
+    toast.success('セッションをリセットしました');
+    setTimeout(() => navigate('/'), 1000);
   };
 
   return (
@@ -123,7 +126,7 @@ export function SettingsPage() {
           <h2 className="text-xl font-bold text-gray-800 mb-4">データ管理</h2>
           <div className="space-y-3">
             <button
-              onClick={handleReset}
+              onClick={() => setShowResetConfirm(true)}
               className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition flex items-center justify-center gap-2"
             >
               <Trash2 size={20} />
@@ -147,6 +150,46 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Reset confirmation modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">
+              セッションをリセットしますか？
+            </h3>
+            <p className="text-gray-600 mb-6">
+              すべての試合データ、参加者情報、設定が削除されます。
+              <br />
+              この操作は元に戻せません。
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleReset}
+                className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition"
+              >
+                リセット
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast notifications */}
+      {toast.toasts.map((t) => (
+        <Toast
+          key={t.id}
+          message={t.message}
+          type={t.type}
+          onClose={() => toast.hideToast(t.id)}
+        />
+      ))}
     </div>
   );
 }
