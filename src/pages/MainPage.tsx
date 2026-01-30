@@ -9,7 +9,6 @@ import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { CourtCard } from '../components/CourtCard';
 import { PlayerSwapModal } from '../components/PlayerSwapModal';
-import { formatTime } from '../lib/utils';
 
 export function MainPage() {
   const navigate = useNavigate();
@@ -129,6 +128,11 @@ export function MainPage() {
     const court = courts.find((c) => c.id === courtId);
     if (!court) return;
 
+    // 現在のプレイヤーIDを取得
+    const allPlayers = [...court.teamA, ...court.teamB];
+    const oldPlayerId = allPlayers[position];
+
+    // 新しい配置を作成
     const newTeamA = [...court.teamA];
     const newTeamB = [...court.teamB];
 
@@ -143,7 +147,10 @@ export function MainPage() {
       teamB: [newTeamB[0], newTeamB[1]],
     });
 
-    toast.success('メンバーを交換しました');
+    const oldPlayerName = players.find((p) => p.id === oldPlayerId)?.name || '未設定';
+    const newPlayerName = players.find((p) => p.id === newPlayerId)?.name || '不明';
+    
+    toast.success(`${oldPlayerName} と ${newPlayerName} を交換しました`);
   };
 
   return (
@@ -220,7 +227,7 @@ export function MainPage() {
         </div>
 
         {/* コート一覧 */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="flex gap-4 overflow-x-auto pb-2">
           {courts.map((court) => (
             <CourtCard
               key={court.id}
@@ -271,14 +278,9 @@ export function MainPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-bold text-gray-800">
-                        {match.scoreA} - {match.scoreB}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {formatTime(match.finishedAt)}
-                      </span>
-                    </div>
+                    <span className="font-bold text-gray-800">
+                      {match.scoreA} - {match.scoreB}
+                    </span>
                   </div>
                 );
               })}

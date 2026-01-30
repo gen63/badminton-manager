@@ -24,7 +24,7 @@ export function CourtCard({
   const timer = useGameTimer(court.startedAt, court.isPlaying);
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-4 space-y-4">
+    <div className="bg-white rounded-lg shadow-lg p-4 space-y-4 min-w-[280px] flex-shrink-0">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-bold text-gray-800">コート {court.id}</h3>
         {court.isPlaying ? (
