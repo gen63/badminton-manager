@@ -45,8 +45,9 @@ export function HistoryPage() {
     }
   };
 
-  const handleDeleteClick = (matchId: string, e: React.MouseEvent) => {
+  const handleDeleteClick = (matchId: string, e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     setDeleteConfirmId(matchId);
   };
 
@@ -151,7 +152,12 @@ export function HistoryPage() {
                         </div>
                         <button
                           onClick={(e) => handleDeleteClick(match.id, e)}
-                          className="p-1 text-red-500 hover:bg-red-50 rounded transition"
+                          onTouchStart={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            handleDeleteClick(match.id, e);
+                          }}
+                          className="p-1 text-red-500 hover:bg-red-50 rounded transition active:bg-red-100"
                           title="削除"
                         >
                           <Trash2 size={16} />
@@ -204,8 +210,14 @@ export function HistoryPage() {
 
       {/* 削除確認ダイアログ */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={handleDeleteCancel}
+        >
+          <div 
+            className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-lg font-bold text-gray-800 mb-2">
               試合を削除しますか？
             </h3>
@@ -215,13 +227,13 @@ export function HistoryPage() {
             <div className="flex gap-3">
               <button
                 onClick={handleDeleteCancel}
-                className="flex-1 py-2 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition"
+                className="flex-1 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition active:bg-gray-400 touch-manipulation"
               >
                 キャンセル
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                className="flex-1 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition"
+                className="flex-1 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition active:bg-red-800 touch-manipulation"
               >
                 削除
               </button>
