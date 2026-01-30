@@ -66,11 +66,11 @@ export function SettingsPage() {
                     onClick={() => handleCourtCountChange(count)}
                     className={`flex-1 py-3 rounded-full font-semibold transition-all ${
                       session.config.courtCount === count
-                        ? 'bg-blue-500 text-white shadow-md'
+                        ? 'bg-blue-500 text-white shadow-lg ring-2 ring-blue-300 scale-105'
                         : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                     }`}
                   >
-                    {count}
+                    {session.config.courtCount === count && '✓ '}{count}
                   </button>
                 ))}
               </div>
@@ -85,11 +85,11 @@ export function SettingsPage() {
                     onClick={() => handleTargetScoreChange(score)}
                     className={`flex-1 py-3 rounded-full font-semibold transition-all ${
                       session.config.targetScore === score
-                        ? 'bg-blue-500 text-white shadow-md'
+                        ? 'bg-blue-500 text-white shadow-lg ring-2 ring-blue-300 scale-105'
                         : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                     }`}
                   >
-                    {score}点
+                    {session.config.targetScore === score && '✓ '}{score}
                   </button>
                 ))}
               </div>

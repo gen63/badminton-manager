@@ -70,11 +70,11 @@ export function SessionCreate() {
                   onClick={() => setCourtCount(count)}
                   className={`flex-1 py-3 rounded-full font-semibold text-lg transition-all ${
                     courtCount === count
-                      ? 'bg-blue-500 text-white shadow-md'
+                      ? 'bg-blue-500 text-white shadow-lg ring-2 ring-blue-300 scale-105'
                       : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                   }`}
                 >
-                  {count}
+                  {courtCount === count && '✓ '}{count}
                 </button>
               ))}
             </div>
@@ -92,11 +92,11 @@ export function SessionCreate() {
                   onClick={() => setTargetScore(score)}
                   className={`flex-1 py-3 rounded-full font-semibold text-lg transition-all ${
                     targetScore === score
-                      ? 'bg-blue-500 text-white shadow-md'
+                      ? 'bg-blue-500 text-white shadow-lg ring-2 ring-blue-300 scale-105'
                       : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                   }`}
                 >
-                  {score}
+                  {targetScore === score && '✓ '}{score}
                 </button>
               ))}
             </div>
