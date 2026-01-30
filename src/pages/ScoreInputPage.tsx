@@ -101,44 +101,44 @@ export function ScoreInputPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-100">
       {/* ヘッダー */}
-      <div className="bg-white p-4">
+      <div className="bg-white p-4 shadow-sm">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <h1 className="text-sm font-medium text-gray-600">スコア入力</h1>
+          <h1 className="text-base font-medium text-gray-600">スコア入力</h1>
           <button
             onClick={() => navigate(fromPage)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition"
+            className="p-2 hover:bg-gray-100 rounded-full transition"
           >
-            <X size={24} />
+            <X size={24} className="text-gray-600" />
           </button>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto p-4 space-y-6">
+      <div className="max-w-2xl mx-auto p-4 space-y-4">
         {/* 対戦カード */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-sm text-gray-500 text-center mb-4">コート {match.courtId}</div>
+        <div className="bg-white rounded-2xl shadow-sm p-4">
+          <div className="text-xs text-gray-500 text-center mb-3">コート {match.courtId}</div>
           
           {selectedPlayer && (
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 text-center">
-              メンバーを選択中 - 交換したい相手をタップ
+            <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 text-center">
+              メンバーを選択中 — 交換したい相手をタップ
             </div>
           )}
           
           <div className="space-y-3">
             {/* チームA */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <div className="text-xs text-gray-600 mb-2 text-center">チームA</div>
+            <div className="bg-gray-50 rounded-xl p-3">
+              <div className="text-xs text-gray-500 mb-2 text-center">チームA</div>
               <div className="flex gap-2">
                 {match.teamA.map((playerId, idx) => (
                   <button
                     key={idx}
                     onClick={() => handlePlayerTap(idx)}
-                    className={`flex-1 p-2 rounded text-sm font-medium transition ${
+                    className={`flex-1 p-2 rounded-full text-sm font-medium transition ${
                       selectedPlayer?.position === idx
-                        ? 'bg-blue-300 text-gray-800'
-                        : 'bg-white hover:bg-blue-100 text-gray-800'
+                        ? 'bg-blue-500 text-white ring-2 ring-blue-300'
+                        : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300'
                     }`}
                   >
                     {getPlayerName(playerId)}
@@ -147,20 +147,20 @@ export function ScoreInputPage() {
               </div>
             </div>
 
-            <div className="text-center text-gray-400 font-bold">VS</div>
+            <div className="text-center text-gray-400 text-xs">vs</div>
 
             {/* チームB */}
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <div className="text-xs text-gray-600 mb-2 text-center">チームB</div>
+            <div className="bg-gray-50 rounded-xl p-3">
+              <div className="text-xs text-gray-500 mb-2 text-center">チームB</div>
               <div className="flex gap-2">
                 {match.teamB.map((playerId, idx) => (
                   <button
                     key={idx}
                     onClick={() => handlePlayerTap(idx + 2)}
-                    className={`flex-1 p-2 rounded text-sm font-medium transition ${
+                    className={`flex-1 p-2 rounded-full text-sm font-medium transition ${
                       selectedPlayer?.position === idx + 2
-                        ? 'bg-red-300 text-gray-800'
-                        : 'bg-white hover:bg-red-100 text-gray-800'
+                        ? 'bg-blue-500 text-white ring-2 ring-blue-300'
+                        : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300'
                     }`}
                   >
                     {getPlayerName(playerId)}
@@ -172,16 +172,16 @@ export function ScoreInputPage() {
         </div>
 
         {/* スコア表示 */}
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-white rounded-2xl shadow-sm p-6">
           <div className="text-center">
             <div className="text-3xl font-bold text-gray-800">
               {inputHistory.length > 0 ? (
                 <>
-                  <span className="text-blue-600">{scoreA}</span>
+                  <span className="text-blue-500">{scoreA}</span>
                   {inputHistory.length === 2 && (
                     <>
                       <span className="text-gray-400 mx-4">-</span>
-                      <span className="text-red-600">{scoreB}</span>
+                      <span className="text-blue-500">{scoreB}</span>
                     </>
                   )}
                   {inputHistory.length === 1 && (
@@ -189,21 +189,21 @@ export function ScoreInputPage() {
                   )}
                 </>
               ) : (
-                <span className="text-gray-400">点数を順番にタップ</span>
+                <span className="text-gray-400 text-base font-normal">点数を順番にタップ</span>
               )}
             </div>
           </div>
         </div>
 
         {/* 点数ボタングリッド */}
-        <div className="bg-white rounded-lg shadow p-4">
+        <div className="bg-white rounded-2xl shadow-sm p-4">
           <div className="grid grid-cols-8 gap-1.5">
             {Array.from({ length: 31 }, (_, i) => i).map((num) => (
               <button
                 key={num}
                 onClick={() => handleNumberClick(num)}
                 disabled={inputHistory.length >= 2}
-                className="aspect-square bg-gray-100 hover:bg-blue-100 active:bg-blue-200 rounded text-sm font-medium text-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="aspect-square bg-gray-100 hover:bg-blue-100 active:bg-blue-200 rounded-xl text-sm font-medium text-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {num}
               </button>
@@ -215,15 +215,15 @@ export function ScoreInputPage() {
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={handleClear}
-            className="py-4 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition flex items-center justify-center gap-2"
+            className="py-3 bg-gray-100 text-gray-600 rounded-full font-semibold hover:bg-gray-200 transition flex items-center justify-center gap-2"
           >
-            <Trash2 size={20} />
+            <Trash2 size={18} />
             クリア
           </button>
           <button
             onClick={handleConfirm}
             disabled={inputHistory.length !== 2}
-            className="py-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
+            className="py-3 bg-blue-500 text-white rounded-full font-semibold hover:bg-blue-600 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             確定
           </button>
