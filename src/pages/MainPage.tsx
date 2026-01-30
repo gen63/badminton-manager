@@ -421,11 +421,11 @@ export function MainPage() {
               </button>
             </div>
 
-            {restingPlayers.length > 0 && (
-              <div className="mt-3">
-                <h4 className="text-sm text-orange-500 mb-1">
-                  休憩中 ({restingPlayers.length}人)
-                </h4>
+            <div className="mt-3">
+              <h4 className="text-sm text-orange-500 mb-1">
+                休憩中 ({restingPlayers.length}人)
+              </h4>
+              {restingPlayers.length > 0 ? (
                 <div className="grid gap-2 grid-cols-3">
                   {restingPlayers.map((player) => {
                     const isSelected = selectedPlayer?.id === player.id;
@@ -466,8 +466,10 @@ export function MainPage() {
                     );
                   })}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-xs text-gray-400">休憩中のメンバーはいません</p>
+              )}
+            </div>
           </div>
         </div>
       </div>
