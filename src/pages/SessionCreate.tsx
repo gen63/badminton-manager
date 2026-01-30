@@ -49,8 +49,8 @@ export function SessionCreate() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
-      <div className="max-w-sm mx-auto">
+    <div className="min-h-screen bg-gray-100 p-6 overflow-x-hidden">
+      <div className="max-w-sm mx-auto w-full">
         <div className="text-center mb-6">
           <h1 className="text-lg font-medium text-gray-600">
             🏸 バドミントン練習管理
@@ -112,7 +112,8 @@ export function SessionCreate() {
               onChange={(e) => setPlayerNames(e.target.value)}
               placeholder="田中太郎&#10;山田花子&#10;佐藤次郎"
               rows={5}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none resize-none text-sm"
+              className="w-full max-w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none resize-none text-sm box-border"
+              style={{ WebkitAppearance: 'none' }}
             />
             <p className="text-xs text-gray-400 mt-2 text-center">
               改行で入力（任意）
