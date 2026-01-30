@@ -48,7 +48,6 @@ export function HistoryPage() {
   const handleDeleteConfirm = () => {
     if (deleteConfirmId) {
       deleteMatch(deleteConfirmId);
-      toast.success('試合を削除しました');
       setDeleteConfirmId(null);
     }
   };
@@ -82,9 +81,7 @@ export function HistoryPage() {
     });
 
     const success = await copyToClipboard(text);
-    if (success) {
-      toast.success('履歴をコピーしました！');
-    } else {
+    if (!success) {
       toast.error('コピーに失敗しました');
     }
   };

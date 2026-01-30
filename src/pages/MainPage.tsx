@@ -37,7 +37,6 @@ export function MainPage() {
       startedAt: null,
       finishedAt: null,
     });
-    toast.success(`コート${courtId}をクリアしました`);
   };
 
   const handleAutoAssign = (courtId?: number) => {
@@ -78,12 +77,6 @@ export function MainPage() {
           });
         }
       });
-
-      if (courtId) {
-        toast.success(`コート${courtId}に配置しました！`);
-      } else {
-        toast.success(`${courtsToAssign.length}コートに配置しました！`);
-      }
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -124,8 +117,6 @@ export function MainPage() {
       startedAt: null,
       finishedAt: null,
     });
-
-    toast.success('試合が終了しました！');
   };
 
   const getPlayerName = (playerId: string) => {
@@ -157,10 +148,6 @@ export function MainPage() {
     const court = courts.find((c) => c.id === courtId);
     if (!court) return;
 
-    // 現在のプレイヤーIDを取得
-    const allPlayers = [...court.teamA, ...court.teamB];
-    const oldPlayerId = allPlayers[position];
-
     // 新しい配置を作成
     const newTeamA = [...court.teamA];
     const newTeamB = [...court.teamB];
@@ -175,11 +162,6 @@ export function MainPage() {
       teamA: [newTeamA[0], newTeamA[1]],
       teamB: [newTeamB[0], newTeamB[1]],
     });
-
-    const oldPlayerName = players.find((p) => p.id === oldPlayerId)?.name || '未設定';
-    const newPlayerName = players.find((p) => p.id === newPlayerId)?.name || '不明';
-    
-    toast.success(`${oldPlayerName} と ${newPlayerName} を交換しました`);
   };
 
   const handlePlayerTap = (
@@ -216,8 +198,6 @@ export function MainPage() {
               teamA: [allPlayers[0], allPlayers[1]],
               teamB: [allPlayers[2], allPlayers[3]],
             });
-            
-            toast.success('メンバーを交換しました');
           }
         } else {
           // 異なるコート間での交換
@@ -239,8 +219,6 @@ export function MainPage() {
               teamA: [allPlayers2[0], allPlayers2[1]],
               teamB: [allPlayers2[2], allPlayers2[3]],
             });
-            
-            toast.success('メンバーを交換しました');
           }
         }
       } else if (

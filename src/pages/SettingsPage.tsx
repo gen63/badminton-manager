@@ -23,12 +23,10 @@ export function SettingsPage() {
   const handleCourtCountChange = (count: number) => {
     updateConfig({ courtCount: count });
     initializeCourts(count);
-    toast.success(`コート数を${count}に変更しました`);
   };
 
   const handleTargetScoreChange = (score: number) => {
     updateConfig({ targetScore: score });
-    toast.success(`目標点数を${score}点に変更しました`);
   };
 
   const handleReset = () => {
@@ -36,8 +34,7 @@ export function SettingsPage() {
     clearHistory();
     clearPlayers();
     clearSession();
-    toast.success('セッションをリセットしました');
-    setTimeout(() => navigate('/'), 1000);
+    navigate('/');
   };
 
   return (
