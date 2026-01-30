@@ -1,4 +1,4 @@
-import { Play, Pause, Clock } from 'lucide-react';
+import { Play, Pause, Clock, Users } from 'lucide-react';
 import { useGameTimer } from '../hooks/useGameTimer';
 import type { Court } from '../types/court';
 
@@ -9,6 +9,7 @@ interface CourtCardProps {
   onStartGame: () => void;
   onFinishGame: () => void;
   onScoreChange: (team: 'A' | 'B', delta: number) => void;
+  onAutoAssign: () => void;
 }
 
 export function CourtCard({
@@ -18,6 +19,7 @@ export function CourtCard({
   onStartGame,
   onFinishGame,
   onScoreChange,
+  onAutoAssign,
 }: CourtCardProps) {
   const timer = useGameTimer(court.startedAt, court.isPlaying);
 
@@ -123,24 +125,35 @@ export function CourtCard({
       </div>
 
       {/* コントロールボタン */}
-      {!court.isPlaying ? (
-        <button
-          onClick={onStartGame}
-          disabled={!court.teamA[0] || !court.teamB[0]}
-          className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          <Play size={20} />
-          ゲーム開始
-        </button>
-      ) : (
-        <button
-          onClick={onFinishGame}
-          className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition flex items-center justify-center gap-2"
-        >
-          <Pause size={20} />
-          ゲーム終了
-        </button>
-      )}
+      <div className="flex gap-2">
+        {!court.isPlaying && (
+          <button
+            onClick={onAutoAssign}
+            className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2"
+          >
+            <Users size={20} />
+            配置
+          </button>
+        )}
+        {!court.isPlaying ? (
+          <button
+            onClick={onStartGame}
+            disabled={!court.teamA[0] || !court.teamB[0]}
+            className="flex-1 bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            <Play size={20} />
+            開始
+          </button>
+        ) : (
+          <button
+            onClick={onFinishGame}
+            className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition flex items-center justify-center gap-2"
+          >
+            <Pause size={20} />
+            終了
+          </button>
+        )}
+      </div>
     </div>
   );
 }

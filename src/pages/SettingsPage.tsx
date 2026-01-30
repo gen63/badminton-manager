@@ -88,8 +88,8 @@ export function SettingsPage() {
                     onClick={() => handleCourtCountChange(count)}
                     className={`flex-1 py-3 rounded-lg font-semibold transition ${
                       session.config.courtCount === count
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'bg-blue-600 text-white shadow-lg ring-4 ring-blue-300'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:scale-95'
                     }`}
                   >
                     {count}
@@ -100,7 +100,7 @@ export function SettingsPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                目標点数
+                点数
               </label>
               <div className="flex gap-2">
                 {[11, 15, 21].map((score) => (
@@ -109,8 +109,8 @@ export function SettingsPage() {
                     onClick={() => handleTargetScoreChange(score)}
                     className={`flex-1 py-3 rounded-lg font-semibold transition ${
                       session.config.targetScore === score
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'bg-blue-600 text-white shadow-lg ring-4 ring-blue-300'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:scale-95'
                     }`}
                   >
                     {score}点

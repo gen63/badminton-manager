@@ -3,7 +3,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts } from '../lib/algorithm';
-import { Settings, History, Play, Coffee } from 'lucide-react';
+import { Settings, History, Coffee } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { CourtCard } from '../components/CourtCard';
@@ -129,15 +129,6 @@ export function MainPage() {
       </div>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
-        {/* 自動配置ボタン */}
-        <button
-          onClick={handleAutoAssign}
-          className="w-full bg-green-600 text-white py-4 rounded-lg font-semibold hover:bg-green-700 transition flex items-center justify-center gap-2"
-        >
-          <Play size={20} />
-          自動配置
-        </button>
-
         {/* コート一覧 */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {courts.map((court) => (
@@ -151,6 +142,7 @@ export function MainPage() {
               onScoreChange={(team, delta) =>
                 handleScoreChange(court.id, team, delta)
               }
+              onAutoAssign={handleAutoAssign}
             />
           ))}
         </div>
