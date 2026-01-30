@@ -142,7 +142,7 @@ export function ScoreInputPage() {
 
       <div className="max-w-2xl mx-auto p-5 space-y-4">
         {/* 対戦カード */}
-        <div className="bg-white rounded-2xl shadow-sm p-4">
+        <div className="bg-white rounded-2xl shadow-sm p-5">
           <div className="text-xs text-gray-500 text-center mb-3">コート {match.courtId}</div>
           
           {selectedPlayer && (
@@ -221,7 +221,7 @@ export function ScoreInputPage() {
         </div>
 
         {/* 点数ボタングリッド */}
-        <div className="bg-white rounded-2xl shadow-sm p-4">
+        <div className="bg-white rounded-2xl shadow-sm p-5">
           <div className="grid grid-cols-8 gap-1.5">
             {Array.from({ length: 31 }, (_, i) => i).map((num) => {
               // targetScore付近（±2）を目立たせる

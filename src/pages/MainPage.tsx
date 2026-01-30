@@ -301,7 +301,7 @@ export function MainPage() {
 
         {/* スコア未入力の試合 */}
         {unfinishedMatches.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm p-4">
+          <div className="bg-white rounded-2xl shadow-sm p-5">
             <h3 className="text-base font-semibold text-gray-700 mb-3">
               スコア未入力の試合
             </h3>
@@ -337,7 +337,7 @@ export function MainPage() {
         )}
 
         {/* プレイヤーリスト */}
-        <div className="bg-white rounded-2xl shadow-sm p-4">
+        <div className="bg-white rounded-2xl shadow-sm p-5">
           <div className="flex items-baseline justify-between mb-2">
             <h3 className="text-base font-semibold text-gray-700">
               参加者一覧 ({players.length}人)

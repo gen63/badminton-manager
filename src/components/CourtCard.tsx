@@ -101,7 +101,7 @@ export function CourtCard({
   const hasPlayers = court.teamA[0] || court.teamB[0];
 
   return (
-    <div className="bg-white rounded-2xl p-4 space-y-2 flex-1 min-w-0 shadow-sm border border-gray-100">
+    <div className="bg-white rounded-2xl p-5 space-y-2 flex-1 min-w-0 shadow-sm border border-gray-100">
       {/* コート番号 */}
       <div className="flex items-center justify-center gap-2">
         <span className="text-xl text-gray-400">{circledNumbers[court.id - 1] || court.id}</span>

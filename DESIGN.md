@@ -85,8 +85,10 @@ padding-bottom: max(20px, env(safe-area-inset-bottom));
 
 ### 基本スタイル
 ```
-bg-white rounded-2xl shadow-sm p-4
+bg-white rounded-2xl shadow-sm p-5
 ```
+
+> ⚠️ `p-4`は使わない（20px余白ルールに合わせて`p-5`以上）
 
 ### カードの使い方
 - バラバラな情報を直接背景に置かない

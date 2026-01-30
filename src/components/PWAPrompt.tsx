@@ -22,7 +22,7 @@ export function PWAPrompt() {
 
   return (
     <div className="fixed bottom-20 left-4 right-4 z-50">
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-4 max-w-md mx-auto">
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-5 max-w-md mx-auto">
         <div className="flex items-start gap-3">
           <div className="p-2 bg-blue-100 rounded-full">
             <RefreshCw size={20} className="text-blue-500" />
