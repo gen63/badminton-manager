@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { calculatePlayerStats } from '../lib/algorithm';
-import { formatTime, formatDuration, copyToClipboard } from '../lib/utils';
+import { formatTime, copyToClipboard } from '../lib/utils';
 import { ArrowLeft, Copy, Trash2 } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
@@ -118,82 +118,47 @@ export function HistoryPage() {
               }}
             />
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-2">
               {[...matchHistory].reverse().map((match, index) => {
-                const teamANames = match.teamA.map(getPlayerName).join(' / ');
-                const teamBNames = match.teamB.map(getPlayerName).join(' / ');
-                const duration = formatDuration(
-                  match.startedAt,
-                  match.finishedAt
-                );
+                const teamANames = match.teamA.map(getPlayerName).join(' ');
+                const teamBNames = match.teamB.map(getPlayerName).join(' ');
 
                 return (
                   <div
                     key={match.id}
                     onClick={() => handleMatchClick(match.id)}
-                    className="border border-gray-200 rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition relative"
+                    className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition"
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-gray-600">
-                        試合 #{matchHistory.length - index}
+                    <span className="text-sm font-semibold text-gray-500 min-w-[2rem]">
+                      #{matchHistory.length - index}
+                    </span>
+                    <div className="flex-1 text-sm">
+                      <span className={match.winner === 'A' ? 'font-bold text-blue-600' : 'text-gray-700'}>
+                        {teamANames}
                       </span>
-                      <div className="flex items-center gap-2">
-                        <div className="text-sm text-gray-500">
-                          {formatTime(match.finishedAt)} ({duration})
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteClick(match.id);
-                          }}
-                          onTouchEnd={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            handleDeleteClick(match.id);
-                          }}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded transition active:bg-red-100 touch-manipulation"
-                          title="削除"
-                        >
-                          <Trash2 size={20} />
-                        </button>
-                      </div>
+                      <span className="text-gray-400 mx-2">vs</span>
+                      <span className={match.winner === 'B' ? 'font-bold text-red-600' : 'text-gray-700'}>
+                        {teamBNames}
+                      </span>
+                      <span className="text-gray-600 ml-2">
+                        ({match.scoreA}-{match.scoreB})
+                      </span>
                     </div>
-
-                    <div className="grid grid-cols-3 gap-4 items-center">
-                      <div
-                        className={`text-center p-3 rounded-lg ${
-                          match.winner === 'A'
-                            ? 'bg-blue-100 border-2 border-blue-400'
-                            : 'bg-gray-50'
-                        }`}
-                      >
-                        <div className="font-medium text-gray-800 mb-2">
-                          {teamANames}
-                        </div>
-                        <div className="text-2xl font-bold text-blue-600">
-                          {match.scoreA}
-                        </div>
-                      </div>
-
-                      <div className="text-center text-gray-400 font-bold">
-                        VS
-                      </div>
-
-                      <div
-                        className={`text-center p-3 rounded-lg ${
-                          match.winner === 'B'
-                            ? 'bg-red-100 border-2 border-red-400'
-                            : 'bg-gray-50'
-                        }`}
-                      >
-                        <div className="font-medium text-gray-800 mb-2">
-                          {teamBNames}
-                        </div>
-                        <div className="text-2xl font-bold text-red-600">
-                          {match.scoreB}
-                        </div>
-                      </div>
-                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(match.id);
+                      }}
+                      onTouchEnd={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        handleDeleteClick(match.id);
+                      }}
+                      className="p-2 text-red-500 hover:bg-red-50 rounded transition active:bg-red-100 touch-manipulation flex-shrink-0"
+                      title="削除"
+                    >
+                      <Trash2 size={18} />
+                    </button>
                   </div>
                 );
               })}
