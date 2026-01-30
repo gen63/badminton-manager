@@ -28,16 +28,14 @@ export function CourtCard({
   const timer = useGameTimer(court.startedAt, court.isPlaying);
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-2 space-y-2 flex-1 min-w-0">
-      <div className="flex items-center justify-between mb-1">
-        <h3 className="text-sm font-bold text-gray-800">コート {court.id}</h3>
+    <div className="bg-white rounded-lg shadow-lg p-3 space-y-2 flex-1 min-w-0">
+      <div className="flex items-center justify-between mb-2 px-1">
+        <h3 className="text-xs font-medium text-gray-600">コート {court.id}</h3>
         {court.isPlaying && (
-          <div className="flex items-center gap-2">
-            <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold flex items-center gap-1">
-              <Clock size={12} />
-              {timer.formatted}
-            </span>
-          </div>
+          <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-semibold flex items-center gap-1">
+            <Clock size={12} />
+            {timer.formatted}
+          </span>
         )}
       </div>
 

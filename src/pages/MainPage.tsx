@@ -106,6 +106,17 @@ export function MainPage() {
       }
     });
 
+    // コートをクリア（プレイヤーを待機に戻す）
+    updateCourt(courtId, {
+      teamA: ['', ''],
+      teamB: ['', ''],
+      scoreA: 0,
+      scoreB: 0,
+      isPlaying: false,
+      startedAt: null,
+      finishedAt: null,
+    });
+
     toast.success('試合が終了しました！');
   };
 
