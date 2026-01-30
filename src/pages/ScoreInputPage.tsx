@@ -196,14 +196,14 @@ export function ScoreInputPage() {
         </div>
 
         {/* 点数ボタングリッド */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="grid grid-cols-6 gap-2">
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="grid grid-cols-8 gap-1.5">
             {Array.from({ length: 31 }, (_, i) => i).map((num) => (
               <button
                 key={num}
                 onClick={() => handleNumberClick(num)}
                 disabled={inputHistory.length >= 2}
-                className="aspect-square bg-gray-100 hover:bg-blue-100 active:bg-blue-200 rounded-lg font-semibold text-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="aspect-square bg-gray-100 hover:bg-blue-100 active:bg-blue-200 rounded text-sm font-medium text-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {num}
               </button>
