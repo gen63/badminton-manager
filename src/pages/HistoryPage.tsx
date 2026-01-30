@@ -61,7 +61,10 @@ export function HistoryPage() {
   };
 
   const handleCopyHistory = async () => {
-    let text = '';
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
+    
+    let text = `${dateStr}\n`;
     matchHistory.forEach((match) => {
       const teamANames = match.teamA.map(getPlayerName).join(' ');
       const teamBNames = match.teamB.map(getPlayerName).join(' ');
