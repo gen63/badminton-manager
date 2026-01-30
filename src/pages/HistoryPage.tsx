@@ -96,12 +96,12 @@ export function HistoryPage() {
                           {matchNumber}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm mb-1">
-                            <span className={match.winner === 'A' ? 'font-semibold text-gray-800' : 'text-gray-600'}>
+                          <div className="flex items-center text-sm mb-1 gap-2">
+                            <span className={`w-24 truncate text-right ${match.winner === 'A' ? 'font-semibold text-gray-800' : 'text-gray-600'}`}>
                               {teamANames}
                             </span>
-                            <span className="text-gray-400 mx-2">vs</span>
-                            <span className={match.winner === 'B' ? 'font-semibold text-gray-800' : 'text-gray-600'}>
+                            <span className="text-gray-400 flex-shrink-0">vs</span>
+                            <span className={`flex-1 truncate ${match.winner === 'B' ? 'font-semibold text-gray-800' : 'text-gray-600'}`}>
                               {teamBNames}
                             </span>
                           </div>
