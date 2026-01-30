@@ -171,10 +171,9 @@ export function ScoreInputPage() {
           </div>
         </div>
 
-        {/* 入力履歴表示 */}
+        {/* スコア表示 */}
         <div className="bg-white rounded-lg shadow p-6">
           <div className="text-center">
-            <div className="text-sm text-gray-600 mb-2">入力履歴</div>
             <div className="text-3xl font-bold text-gray-800">
               {inputHistory.length > 0 ? (
                 <>
