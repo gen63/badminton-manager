@@ -4,7 +4,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts } from '../lib/algorithm';
-import { Settings, History, Coffee, Users, ArrowUp } from 'lucide-react';
+import { Settings, History, Coffee, Users, ArrowUp, Plus } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { CourtCard } from '../components/CourtCard';
@@ -12,7 +12,7 @@ import { CourtCard } from '../components/CourtCard';
 export function MainPage() {
   const navigate = useNavigate();
   const { session } = useSessionStore();
-  const { players, toggleRest, updatePlayer } = usePlayerStore();
+  const { players, toggleRest, updatePlayer, addPlayers } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame } =
     useGameStore();
   const toast = useToast();
@@ -21,6 +21,7 @@ export function MainPage() {
     courtId?: number;
     position?: number;
   } | null>(null);
+  const [newPlayerName, setNewPlayerName] = useState('');
 
   if (!session) {
     navigate('/');
@@ -389,6 +390,35 @@ export function MainPage() {
                   );
                 })}
               </div>
+            </div>
+
+            {/* メンバー追加 */}
+            <div className="flex gap-2 mt-3">
+              <input
+                type="text"
+                value={newPlayerName}
+                onChange={(e) => setNewPlayerName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newPlayerName.trim()) {
+                    addPlayers([newPlayerName.trim()]);
+                    setNewPlayerName('');
+                  }
+                }}
+                placeholder="メンバー名を入力"
+                className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-transparent"
+              />
+              <button
+                onClick={() => {
+                  if (newPlayerName.trim()) {
+                    addPlayers([newPlayerName.trim()]);
+                    setNewPlayerName('');
+                  }
+                }}
+                disabled={!newPlayerName.trim()}
+                className="px-4 py-2 bg-green-500 text-white rounded-xl font-medium hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Plus size={20} />
+              </button>
             </div>
 
             {restingPlayers.length > 0 && (
