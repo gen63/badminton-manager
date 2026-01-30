@@ -57,7 +57,7 @@ export function SessionCreate() {
           </h1>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-6 space-y-6">
+        <div className="bg-white rounded-2xl shadow-sm p-8 space-y-6">
           {/* コート数 */}
           <div>
             <label className="block text-sm font-medium text-gray-600 mb-3">
