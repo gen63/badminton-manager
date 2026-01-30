@@ -234,11 +234,11 @@ badminton-manager/
 - ✅ GitHub Pagesデプロイ
 
 ### PWA対応（完全版）
-- 🔲 Service Worker（オフライン対応）
-- 🔲 複数サイズアイコン（192x192, 512x512, Apple Touch Icon）
-- 🔲 スプラッシュスクリーン
-- 🔲 インストールプロンプト（ホーム画面に追加）
-- 🔲 アップデート通知
+- ✅ Service Worker（オフライン対応）
+- ✅ 複数サイズアイコン（192x192, 512x512, Apple Touch Icon）
+- ✅ スプラッシュスクリーン（iOS/Android自動対応）
+- ✅ ホーム画面に追加（manifest対応）
+- ✅ アップデート通知
 
 ## 🔜 Phase 1 予定
 
@@ -261,5 +261,5 @@ Gen (@genzwift)
 
 ---
 
-**開発状況**: Phase 0 進行中（PWA対応残り）  
+**開発状況**: Phase 0 完了 🎉  
 **最終更新**: 2026-01-31
