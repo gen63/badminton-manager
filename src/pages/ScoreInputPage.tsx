@@ -104,15 +104,13 @@ export function ScoreInputPage() {
     <div className="min-h-screen bg-gray-50">
       {/* ヘッダー */}
       <div className="bg-white border-b p-4">
-        <div className="max-w-2xl mx-auto flex items-center justify-between">
+        <div className="max-w-2xl mx-auto flex items-center justify-end">
           <button
             onClick={() => navigate(fromPage)}
             className="p-2 hover:bg-gray-100 rounded-lg transition"
           >
             <X size={24} />
           </button>
-          <h1 className="text-xl font-bold text-gray-800">スコア入力</h1>
-          <div className="w-10" />
         </div>
       </div>
 
