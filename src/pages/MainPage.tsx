@@ -343,7 +343,7 @@ export function MainPage() {
               待機中 {activePlayers.length}人
             </span>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div>
               <div className="grid gap-2 grid-cols-3">
                 {activePlayers.map((player) => {
@@ -392,8 +392,8 @@ export function MainPage() {
             </div>
 
             {restingPlayers.length > 0 && (
-              <div className="mt-4">
-                <h4 className="text-sm text-orange-500 mb-2">
+              <div className="mt-3">
+                <h4 className="text-sm text-orange-500 mb-1">
                   休憩中 ({restingPlayers.length}人)
                 </h4>
                 <div className="grid gap-2 grid-cols-3">
