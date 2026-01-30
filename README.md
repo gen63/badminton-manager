@@ -211,7 +211,7 @@ badminton-manager/
     └── manifest.json               # PWA設定
 ```
 
-## 📋 Phase 0 実装機能（完了）
+## 📋 Phase 0 実装機能
 
 ### コア機能
 - ✅ セッション作成・管理
@@ -233,12 +233,18 @@ badminton-manager/
 - ✅ LocalStorage保存
 - ✅ GitHub Pagesデプロイ
 
+### PWA対応（完全版）
+- 🔲 Service Worker（オフライン対応）
+- 🔲 複数サイズアイコン（192x192, 512x512, Apple Touch Icon）
+- 🔲 スプラッシュスクリーン
+- 🔲 インストールプロンプト（ホーム画面に追加）
+- 🔲 アップデート通知
+
 ## 🔜 Phase 1 予定
 
 - 🔲 Firebase Firestore連携
 - 🔲 リアルタイム同期
 - 🔲 セッション共有（URL）
-- 🔲 PWA対応（完全版）
 - 🔲 プッシュ通知
 
 ## 🤝 貢献
@@ -255,5 +261,5 @@ Gen (@genzwift)
 
 ---
 
-**開発状況**: Phase 0 完了 🎉  
-**最終更新**: 2026-01-30
+**開発状況**: Phase 0 進行中（PWA対応残り）  
+**最終更新**: 2026-01-31
