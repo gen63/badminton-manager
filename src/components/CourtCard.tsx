@@ -81,20 +81,14 @@ export function CourtCard({
   // 完全未配置の表示（配置済みと同じ高さを確保）
   const UnassignedDisplay = () => (
     <>
-      {/* チームA相当のスペース */}
-      <div className="space-y-2">
-        <div className="h-11" />
-        <div className="h-11" />
-      </div>
+      {/* 上ペア相当のスペース */}
+      <EmptySlots />
 
       {/* VS相当のスペースに「未配置」テキスト */}
       <div className="text-center text-gray-400 text-sm py-1">未配置</div>
 
-      {/* チームB相当のスペース */}
-      <div className="space-y-2">
-        <div className="h-11" />
-        <div className="h-11" />
-      </div>
+      {/* 下ペア相当のスペース */}
+      <EmptySlots />
     </>
   );
 
