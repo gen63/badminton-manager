@@ -4,7 +4,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts } from '../lib/algorithm';
-import { Settings, History, Coffee, Users, Plus, Minus, RefreshCw } from 'lucide-react';
+import { Settings, History, Coffee, Users, Plus, Minus, RefreshCw, ArrowUp } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { CourtCard } from '../components/CourtCard';
@@ -410,9 +410,10 @@ export function MainPage() {
                       <span className="text-gray-800 text-sm">{player.name}</span>
                       <button
                         onClick={() => toggleRest(player.id)}
-                        className="text-orange-600 hover:text-blue-600 flex-shrink-0"
+                        className="text-green-600 hover:text-blue-600 flex-shrink-0"
+                        title="復帰"
                       >
-                        <Coffee size={16} />
+                        <ArrowUp size={16} />
                       </button>
                     </div>
                   ))}
