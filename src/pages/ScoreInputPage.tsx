@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { X, Trash2 } from 'lucide-react';
 
 export function ScoreInputPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { matchId } = useParams<{ matchId: string }>();
   const matchHistory = useGameStore((state) => state.matchHistory);
   const players = usePlayerStore((state) => state.players);
+  const fromPage = (location.state as { from?: string })?.from || '/history';
 
   const match = matchHistory.find((m) => m.id === matchId);
   
@@ -20,7 +22,7 @@ export function ScoreInputPage() {
   } | null>(null);
 
   if (!match) {
-    navigate('/history');
+    navigate(fromPage);
     return null;
   }
 
@@ -95,7 +97,7 @@ export function ScoreInputPage() {
     // Zustandストアを直接更新
     useGameStore.setState({ matchHistory: updatedHistory });
 
-    navigate('/history');
+    navigate(fromPage);
   };
 
   return (
@@ -104,7 +106,7 @@ export function ScoreInputPage() {
       <div className="bg-white border-b p-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <button
-            onClick={() => navigate('/history')}
+            onClick={() => navigate(fromPage)}
             className="p-2 hover:bg-gray-100 rounded-lg transition"
           >
             <X size={24} />

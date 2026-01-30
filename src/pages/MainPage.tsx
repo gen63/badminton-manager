@@ -326,7 +326,7 @@ export function MainPage() {
                       <span className="text-gray-700">{teamBNames}</span>
                     </div>
                     <button
-                      onClick={() => navigate(`/score/${match.id}`)}
+                      onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
                       className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700 transition flex-shrink-0"
                     >
                       入力

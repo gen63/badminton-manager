@@ -30,7 +30,7 @@ export function HistoryPage() {
     if (last && last.matchId === matchId && now - last.time < 500) {
       // ダブルタップ → スコア編集へ
       lastTapRef.current = null;
-      navigate(`/score/${matchId}`);
+      navigate(`/score/${matchId}`, { state: { from: '/history' } });
     } else {
       // シングルタップ → 記録
       lastTapRef.current = { matchId, time: now };
