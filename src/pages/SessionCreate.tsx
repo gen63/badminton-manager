@@ -108,8 +108,8 @@ export function SessionCreate() {
               value={playerNames}
               onChange={(e) => setPlayerNames(e.target.value)}
               placeholder="田中太郎&#10;山田花子&#10;佐藤次郎"
-              rows={8}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              rows={5}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
             />
             <p className="text-xs text-gray-500 mt-1">
               改行またはカンマ区切りで入力
