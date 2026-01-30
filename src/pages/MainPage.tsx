@@ -321,13 +321,17 @@ export function MainPage() {
               {unfinishedMatches.map((match) => {
                 const teamANames = match.teamA.map(getPlayerName).join(' / ');
                 const teamBNames = match.teamB.map(getPlayerName).join(' / ');
+                // 試合全体の中での連番を取得
+                const matchNumber = matchHistory.findIndex((m) => m.id === match.id) + 1;
                 return (
                   <div
                     key={match.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm hover:bg-gray-100 cursor-pointer transition"
-                    onClick={() => navigate(`/score/${match.id}`)}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm"
                   >
-                    <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="font-semibold text-gray-500 min-w-[2rem]">
+                        #{matchNumber}
+                      </span>
                       <div className="flex items-center gap-2">
                         <span className="text-gray-700">
                           {teamANames}
@@ -338,6 +342,12 @@ export function MainPage() {
                         </span>
                       </div>
                     </div>
+                    <button
+                      onClick={() => navigate(`/score/${match.id}`)}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition"
+                    >
+                      入力
+                    </button>
                   </div>
                 );
               })}
