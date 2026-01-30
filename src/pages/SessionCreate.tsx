@@ -51,7 +51,7 @@ export function SessionCreate() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white p-6">
+    <div className="min-h-screen bg-[#faf6f1] p-6">
       <div className="max-w-sm mx-auto">
         <div className="text-center mb-6">
           <h1 className="text-lg font-medium text-gray-600">
@@ -59,11 +59,11 @@ export function SessionCreate() {
           </h1>
         </div>
 
-        <div className="bg-white rounded-lg shadow-lg p-6 space-y-6">
+        <div className="bg-[#f0e6da] rounded-2xl p-6 space-y-6">
 
           {/* コート数 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-600 mb-3">
               コート数
             </label>
             <div className="flex gap-3">
@@ -71,13 +71,13 @@ export function SessionCreate() {
                 <button
                   key={count}
                   onClick={() => setCourtCount(count)}
-                  className={`flex-1 py-4 rounded-lg font-bold text-lg transition-all duration-200 ${
+                  className={`flex-1 py-3 rounded-full font-semibold text-lg transition-all ${
                     courtCount === count
-                      ? 'bg-blue-600 text-white shadow-xl ring-4 ring-blue-300 scale-110'
-                      : 'bg-white text-gray-400 border-2 border-gray-200 hover:border-blue-300 hover:text-gray-600'
+                      ? 'bg-white text-gray-800 shadow-md ring-2 ring-gray-300'
+                      : 'bg-[#e8ddd0] text-gray-500 hover:bg-[#e0d5c8]'
                   }`}
                 >
-                  {courtCount === count && '✓ '}{count}
+                  {count}
                 </button>
               ))}
             </div>
@@ -85,7 +85,7 @@ export function SessionCreate() {
 
           {/* 点数 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-600 mb-3">
               点数
             </label>
             <div className="flex gap-3">
@@ -93,13 +93,13 @@ export function SessionCreate() {
                 <button
                   key={score}
                   onClick={() => setTargetScore(score)}
-                  className={`flex-1 py-4 rounded-lg font-bold text-lg transition-all duration-200 ${
+                  className={`flex-1 py-3 rounded-full font-semibold text-lg transition-all ${
                     targetScore === score
-                      ? 'bg-blue-600 text-white shadow-xl ring-4 ring-blue-300 scale-110'
-                      : 'bg-white text-gray-400 border-2 border-gray-200 hover:border-blue-300 hover:text-gray-600'
+                      ? 'bg-white text-gray-800 shadow-md ring-2 ring-gray-300'
+                      : 'bg-[#e8ddd0] text-gray-500 hover:bg-[#e0d5c8]'
                   }`}
                 >
-                  {targetScore === score && '✓ '}{score}点
+                  {score}
                 </button>
               ))}
             </div>
@@ -107,7 +107,7 @@ export function SessionCreate() {
 
           {/* 当日参加者 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-600 mb-3">
               練習参加メンバー（1行に1人）
             </label>
             <textarea
@@ -115,17 +115,17 @@ export function SessionCreate() {
               onChange={(e) => setPlayerNames(e.target.value)}
               placeholder="田中太郎&#10;山田花子&#10;佐藤次郎"
               rows={5}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
+              className="w-full px-4 py-3 bg-white border-none rounded-2xl focus:ring-2 focus:ring-gray-300 focus:outline-none resize-none text-sm"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              改行またはカンマ区切りで入力（任意）
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              改行で入力（任意）
             </p>
           </div>
 
           {/* 作成ボタン */}
           <button
             onClick={handleCreate}
-            className="w-full bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-700 transition"
+            className="w-full bg-[#d4c4b0] text-gray-700 py-3 rounded-full font-semibold hover:bg-[#c9b9a5] transition"
           >
             次へ {playerCount > 0 && `(${playerCount}人)`}
           </button>

@@ -72,8 +72,8 @@ export function CourtCard({
   // 未配置状態
   const EmptySlots = () => (
     <div className="space-y-2">
-      <div className="h-10 bg-white rounded-full border border-gray-200" />
-      <div className="h-10 bg-white rounded-full border border-gray-200" />
+      <div className="h-10 bg-white rounded-full border border-solid border-gray-300" />
+      <div className="h-10 bg-white rounded-full border border-solid border-gray-300" />
     </div>
   );
 

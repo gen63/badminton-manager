@@ -242,27 +242,27 @@ export function MainPage() {
   return (
     <div className="min-h-screen bg-[#faf6f1] pb-20">
       {/* ヘッダー */}
-      <div className="bg-blue-600 text-white p-3 shadow-lg">
+      <div className="bg-[#f0e6da] p-3 shadow-sm">
         <div className="max-w-6xl mx-auto flex items-center justify-end gap-2">
           <button
             onClick={() => handleAutoAssign()}
             disabled={!canAutoAssign}
-            className="px-3 py-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition text-sm font-semibold flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-700"
+            className="px-4 py-2 bg-[#d4c4b0] text-gray-700 rounded-full hover:bg-[#c9b9a5] transition text-sm font-medium flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Users size={18} />
             一括配置
           </button>
           <button
             onClick={() => navigate('/history')}
-            className="p-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition"
+            className="p-2 bg-[#d4c4b0] rounded-full hover:bg-[#c9b9a5] transition"
           >
-            <History size={20} />
+            <History size={20} className="text-gray-700" />
           </button>
           <button
             onClick={() => navigate('/settings')}
-            className="p-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition"
+            className="p-2 bg-[#d4c4b0] rounded-full hover:bg-[#c9b9a5] transition"
           >
-            <Settings size={20} />
+            <Settings size={20} className="text-gray-700" />
           </button>
         </div>
       </div>
@@ -270,10 +270,8 @@ export function MainPage() {
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         {/* メンバー交換の説明 */}
         {selectedPlayer && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-            <strong>{players.find(p => p.id === selectedPlayer.id)?.name}</strong> を選択中
-            <br />
-            交換したいプレイヤーをタップ / もう一度タップで解除 / 「✕ 解除」ボタンで解除
+          <div className="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700">
+            <strong>{players.find(p => p.id === selectedPlayer.id)?.name}</strong> を選択中 — 交換したいプレイヤーをタップ
           </div>
         )}
 
@@ -300,34 +298,31 @@ export function MainPage() {
 
         {/* スコア未入力の試合 */}
         {unfinishedMatches.length > 0 && (
-          <div className="bg-white rounded-lg shadow-lg p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-800">
-                スコア未入力の試合
-              </h3>
-            </div>
+          <div className="bg-[#f0e6da] rounded-2xl p-4">
+            <h3 className="text-base font-semibold text-gray-700 mb-3">
+              スコア未入力の試合
+            </h3>
             <div className="space-y-2">
               {unfinishedMatches.map((match) => {
                 const teamANames = match.teamA.map(getPlayerName).join(' ');
                 const teamBNames = match.teamB.map(getPlayerName).join(' ');
-                // 試合全体の中での連番を取得
                 const matchNumber = matchHistory.findIndex((m) => m.id === match.id) + 1;
                 return (
                   <div
                     key={match.id}
-                    className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg text-sm"
+                    className="flex items-center justify-between gap-2 p-3 bg-white rounded-xl text-sm"
                   >
-                    <div className="flex items-center gap-2 flex-1">
-                      <span className="font-semibold text-gray-500">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="font-medium text-gray-400">
                         #{matchNumber}
                       </span>
-                      <span className="text-gray-700">{teamANames}</span>
+                      <span className="text-gray-700 truncate">{teamANames}</span>
                       <span className="text-gray-400">vs</span>
-                      <span className="text-gray-700">{teamBNames}</span>
+                      <span className="text-gray-700 truncate">{teamBNames}</span>
                     </div>
                     <button
                       onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
-                      className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700 transition flex-shrink-0"
+                      className="px-4 py-1.5 bg-[#d4c4b0] text-gray-700 rounded-full text-xs font-medium hover:bg-[#c9b9a5] transition flex-shrink-0"
                     >
                       入力
                     </button>
@@ -339,13 +334,13 @@ export function MainPage() {
         )}
 
         {/* プレイヤーリスト */}
-        <div className="bg-white rounded-lg shadow-lg p-4">
-          <h3 className="text-lg font-bold text-gray-800 mb-4">
+        <div className="bg-[#f0e6da] rounded-2xl p-4">
+          <h3 className="text-base font-semibold text-gray-700 mb-4">
             参加者一覧 ({players.length}人)
           </h3>
           <div className="space-y-4">
             <div>
-              <h4 className="text-sm font-semibold text-blue-700 mb-2">
+              <h4 className="text-sm text-gray-600 mb-2">
                 待機中 ({activePlayers.length}人)
               </h4>
               <div className="grid gap-2 grid-cols-3">
@@ -355,15 +350,15 @@ export function MainPage() {
                     <div
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
-                      className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition ${
+                      className={`flex items-center justify-between p-2 rounded-full border cursor-pointer transition ${
                         isSelected
-                          ? 'bg-blue-200 border-blue-400'
-                          : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
+                          ? 'bg-white border-gray-400 ring-2 ring-gray-300'
+                          : 'bg-white border-gray-200 hover:border-gray-300'
                       }`}
                     >
-                      <span className="text-gray-800 text-sm">
+                      <span className="text-gray-800 text-sm truncate">
                         {player.name}
-                        <span className="text-xs text-gray-500 ml-1">
+                        <span className="text-xs text-gray-400 ml-1">
                           ({player.gamesPlayed})
                         </span>
                       </span>
@@ -373,9 +368,9 @@ export function MainPage() {
                             e.stopPropagation();
                             setSelectedPlayer(null);
                           }}
-                          className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 flex-shrink-0"
+                          className="text-xs text-red-500 font-bold flex-shrink-0 ml-1"
                         >
-                          ✕ 解除
+                          ✕
                         </button>
                       ) : (
                         <button
@@ -383,9 +378,9 @@ export function MainPage() {
                             e.stopPropagation();
                             toggleRest(player.id);
                           }}
-                          className="text-gray-500 hover:text-orange-600 flex-shrink-0"
+                          className="text-gray-400 hover:text-[#e8a87c] flex-shrink-0 ml-1"
                         >
-                          <Coffee size={16} />
+                          <Coffee size={14} />
                         </button>
                       )}
                     </div>
@@ -396,7 +391,7 @@ export function MainPage() {
 
             {restingPlayers.length > 0 && (
               <div className="mt-4">
-                <h4 className="text-sm font-semibold text-orange-700 mb-2">
+                <h4 className="text-sm text-[#e8a87c] mb-2">
                   休憩中 ({restingPlayers.length}人)
                 </h4>
                 <div className="grid gap-2 grid-cols-3">
@@ -406,22 +401,22 @@ export function MainPage() {
                       <div
                         key={player.id}
                         onClick={() => handlePlayerTap(player.id)}
-                        className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition ${
+                        className={`flex items-center justify-between p-2 rounded-full border cursor-pointer transition ${
                           isSelected
-                            ? 'bg-orange-200 border-orange-400'
-                            : 'bg-orange-50 border-orange-200 hover:bg-orange-100'
+                            ? 'bg-white border-[#e8a87c] ring-2 ring-[#f5d5c0]'
+                            : 'bg-[#fef3ee] border-[#f5d5c0] hover:border-[#e8a87c]'
                         }`}
                       >
-                        <span className="text-gray-800 text-sm">{player.name}</span>
+                        <span className="text-gray-700 text-sm truncate">{player.name}</span>
                         {isSelected ? (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedPlayer(null);
                             }}
-                            className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 flex-shrink-0"
+                            className="text-xs text-red-500 font-bold flex-shrink-0 ml-1"
                           >
-                            ✕ 解除
+                            ✕
                           </button>
                         ) : (
                           <button
@@ -429,10 +424,10 @@ export function MainPage() {
                               e.stopPropagation();
                               toggleRest(player.id);
                             }}
-                            className="text-green-600 hover:text-blue-600 flex-shrink-0"
+                            className="text-gray-400 hover:text-gray-600 flex-shrink-0 ml-1"
                             title="復帰"
                           >
-                            <ArrowUp size={16} />
+                            <ArrowUp size={14} />
                           </button>
                         )}
                       </div>

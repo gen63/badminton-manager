@@ -22,17 +22,15 @@ export function HistoryPage() {
   };
 
   const handleMatchClick = (matchId: string) => {
-    if (isEditMode) return; // 編集モード中はクリック無効
+    if (isEditMode) return;
     
     const now = Date.now();
     const last = lastTapRef.current;
 
     if (last && last.matchId === matchId && now - last.time < 500) {
-      // ダブルタップ → スコア編集へ
       lastTapRef.current = null;
       navigate(`/score/${matchId}`, { state: { from: '/history' } });
     } else {
-      // シングルタップ → 記録
       lastTapRef.current = { matchId, time: now };
     }
   };
@@ -55,7 +53,6 @@ export function HistoryPage() {
   const handleToggleEditMode = () => {
     setIsEditMode(!isEditMode);
     if (isEditMode) {
-      // 編集モード終了時は削除確認ダイアログも閉じる
       setDeleteConfirmId(null);
     }
   };
@@ -78,46 +75,41 @@ export function HistoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-[#faf6f1] pb-20">
       {/* ヘッダー */}
-      <div className="bg-blue-600 text-white p-4 shadow-lg">
-        <div className="max-w-6xl mx-auto flex items-center gap-4">
+      <div className="bg-[#f0e6da] p-4 shadow-sm">
+        <div className="max-w-6xl mx-auto flex items-center gap-3">
           <button
             onClick={() => navigate('/main')}
-            className="p-2 hover:bg-blue-700 rounded-lg transition"
+            className="p-2 hover:bg-[#e8ddd0] rounded-full transition"
           >
-            <ArrowLeft size={24} />
+            <ArrowLeft size={24} className="text-gray-600" />
           </button>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold">試合履歴</h1>
-          </div>
+          <h1 className="text-xl font-semibold text-gray-700 flex-1">試合履歴</h1>
           {matchHistory.length > 0 && (
             <button
               onClick={handleToggleEditMode}
-              className="px-3 py-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition text-sm font-semibold flex items-center gap-1"
+              className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+                isEditMode
+                  ? 'bg-white text-gray-700 shadow-sm'
+                  : 'bg-[#d4c4b0] text-gray-700 hover:bg-[#c9b9a5]'
+              }`}
             >
-              {isEditMode ? (
-                '完了'
-              ) : (
-                <>
-                  <Edit3 size={18} />
-                  編集
-                </>
-              )}
+              {isEditMode ? '完了' : <><Edit3 size={16} className="inline mr-1" />編集</>}
             </button>
           )}
           <button
             onClick={handleCopyHistory}
-            className="p-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition"
+            className="p-2 bg-[#d4c4b0] rounded-full hover:bg-[#c9b9a5] transition"
           >
-            <Copy size={24} />
+            <Copy size={20} className="text-gray-700" />
           </button>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto p-4 space-y-6">
+      <div className="max-w-6xl mx-auto p-4">
         {/* 試合履歴 */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="bg-[#f0e6da] rounded-2xl p-4">
           {matchHistory.length === 0 ? (
             <EmptyState
               icon="🏸"
@@ -129,51 +121,48 @@ export function HistoryPage() {
               }}
             />
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {[...matchHistory].reverse().map((match) => {
                 const teamANames = match.teamA.map(getPlayerName).join(' ');
                 const teamBNames = match.teamB.map(getPlayerName).join(' ');
-
                 const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
                 
                 return (
                   <div
                     key={match.id}
-                    className="border border-gray-200 rounded-lg bg-white p-3 hover:bg-gray-50 transition"
+                    onClick={() => handleMatchClick(match.id)}
+                    className={`bg-white rounded-xl p-3 transition ${!isEditMode && 'cursor-pointer hover:bg-gray-50'}`}
                   >
-                    <div 
-                      onClick={() => handleMatchClick(match.id)}
-                      className={isEditMode ? '' : 'cursor-pointer'}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="text-sm flex-1">
-                          <span className={match.winner === 'A' ? 'font-bold text-blue-600' : 'text-gray-700'}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm mb-1">
+                          <span className={match.winner === 'A' ? 'font-semibold text-gray-800' : 'text-gray-600'}>
                             {teamANames}
                           </span>
                           <span className="text-gray-400 mx-2">vs</span>
-                          <span className={match.winner === 'B' ? 'font-bold text-red-600' : 'text-gray-700'}>
+                          <span className={match.winner === 'B' ? 'font-semibold text-gray-800' : 'text-gray-600'}>
                             {teamBNames}
                           </span>
                         </div>
-                        {isEditMode && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteClick(match.id);
-                            }}
-                            className="p-2 text-red-500 hover:bg-red-50 rounded transition active:bg-red-100 flex-shrink-0"
-                          >
-                            <Trash2 size={20} />
-                          </button>
-                        )}
+                        <div className="flex items-center text-xs text-gray-500 gap-2">
+                          <span>{formatTime(match.finishedAt)}</span>
+                          <span>({duration}分)</span>
+                          <span className="text-gray-700 font-semibold">
+                            {match.scoreA}-{match.scoreB}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center text-xs text-gray-500 space-x-2">
-                        <span>{formatTime(match.finishedAt)}</span>
-                        <span>({duration}分)</span>
-                        <span className="text-gray-700 font-semibold">
-                          ({match.scoreA}-{match.scoreB})
-                        </span>
-                      </div>
+                      {isEditMode && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteClick(match.id);
+                          }}
+                          className="p-2 text-[#e8a87c] hover:bg-[#fef3ee] rounded-full transition flex-shrink-0 ml-2"
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -186,14 +175,14 @@ export function HistoryPage() {
       {/* 削除確認ダイアログ */}
       {deleteConfirmId && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
           onClick={handleDeleteCancel}
         >
           <div 
-            className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6"
+            className="bg-[#faf6f1] rounded-2xl max-w-sm w-full p-6"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold text-gray-800 mb-2">
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">
               試合を削除しますか？
             </h3>
             <p className="text-sm text-gray-600 mb-6">
@@ -202,13 +191,13 @@ export function HistoryPage() {
             <div className="flex gap-3">
               <button
                 onClick={handleDeleteCancel}
-                className="flex-1 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition active:bg-gray-400 touch-manipulation"
+                className="flex-1 py-3 bg-white text-gray-700 rounded-full font-semibold hover:bg-gray-50 transition border border-gray-200"
               >
                 キャンセル
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                className="flex-1 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition active:bg-red-800 touch-manipulation"
+                className="flex-1 py-3 bg-[#e8a87c] text-white rounded-full font-semibold hover:bg-[#d4956b] transition"
               >
                 削除
               </button>
