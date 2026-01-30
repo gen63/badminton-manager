@@ -373,7 +373,8 @@ export function MainPage() {
                             e.stopPropagation();
                             setSelectedPlayer(null);
                           }}
-                          className="text-xs text-red-500 font-bold flex-shrink-0 ml-1"
+                          aria-label="選択解除"
+                          className="p-2 text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
                         >
                           ✕
                         </button>
@@ -383,9 +384,10 @@ export function MainPage() {
                             e.stopPropagation();
                             toggleRest(player.id);
                           }}
-                          className="text-gray-400 hover:text-orange-500 flex-shrink-0 ml-1"
+                          aria-label="休憩"
+                          className="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 active:bg-orange-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
                         >
-                          <Coffee size={14} />
+                          <Coffee size={16} />
                         </button>
                       )}
                     </div>
@@ -449,7 +451,8 @@ export function MainPage() {
                               e.stopPropagation();
                               setSelectedPlayer(null);
                             }}
-                            className="text-xs text-red-500 font-bold flex-shrink-0 ml-1"
+                            aria-label="選択解除"
+                            className="p-2 text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
                           >
                             ✕
                           </button>
@@ -459,10 +462,10 @@ export function MainPage() {
                               e.stopPropagation();
                               toggleRest(player.id);
                             }}
-                            className="text-gray-400 hover:text-blue-500 flex-shrink-0 ml-1"
-                            title="復帰"
+                            aria-label="復帰"
+                            className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
                           >
-                            <ArrowUp size={14} />
+                            <ArrowUp size={16} />
                           </button>
                         )}
                       </div>
