@@ -17,7 +17,7 @@ interface GameState {
 
 export const useGameStore = create<GameState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       courts: [],
       matchHistory: [],
       initializeCourts: (count) =>

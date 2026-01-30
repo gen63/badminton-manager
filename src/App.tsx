@@ -4,7 +4,6 @@ import { PlayerSelect } from './pages/PlayerSelect';
 import { MainPage } from './pages/MainPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { SettingsPage } from './pages/SettingsPage';
-import { useSessionStore } from './stores/sessionStore';
 
 function App() {
   return (

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
@@ -12,8 +11,6 @@ export function MainPage() {
   const { players, toggleRest, updatePlayer } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame } =
     useGameStore();
-
-  const [selectedCourt, setSelectedCourt] = useState<number | null>(null);
 
   if (!session) {
     navigate('/');
