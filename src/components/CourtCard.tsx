@@ -43,9 +43,6 @@ export function CourtCard({
 
       {/* チームA */}
       <div className="border border-blue-200 rounded-lg p-3 bg-blue-50">
-        <div className="text-sm font-semibold text-blue-700 mb-1">
-          チーム A
-        </div>
         <div className="text-gray-800">
           {court.teamA[0] && court.teamA[1]
             ? `${getPlayerName(court.teamA[0])} / ${getPlayerName(
@@ -86,9 +83,6 @@ export function CourtCard({
 
       {/* チームB */}
       <div className="border border-red-200 rounded-lg p-3 bg-red-50">
-        <div className="text-sm font-semibold text-red-700 mb-1">
-          チーム B
-        </div>
         <div className="text-gray-800">
           {court.teamB[0] && court.teamB[1]
             ? `${getPlayerName(court.teamB[0])} / ${getPlayerName(
