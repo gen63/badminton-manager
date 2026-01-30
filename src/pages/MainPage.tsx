@@ -45,8 +45,13 @@ export function MainPage() {
       // 指定されたコートIDまたは全コート
       const courtsToAssign = courtId ? [courtId] : courts.map(c => c.id);
       
+      // 待機中のプレイヤーのみを使用（コート内のプレイヤーを除外）
+      const waitingPlayers = players.filter(
+        (p) => !p.isResting && !playersInCourts.has(p.id)
+      );
+      
       const assignments = assignCourts(
-        players,
+        waitingPlayers,
         courtsToAssign.length,
         matchHistory
       );
