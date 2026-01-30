@@ -57,7 +57,7 @@ export function HistoryPage() {
             <ArrowLeft size={24} />
           </button>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold">試合履歴・統計</h1>
+            <h1 className="text-2xl font-bold">試合履歴</h1>
           </div>
           <button
             onClick={handleCopyHistory}
@@ -116,13 +116,10 @@ export function HistoryPage() {
                             : 'bg-gray-50'
                         }`}
                       >
-                        <div className="text-sm text-gray-600 mb-1">
-                          チーム A
-                        </div>
-                        <div className="font-medium text-gray-800">
+                        <div className="font-medium text-gray-800 mb-2">
                           {teamANames}
                         </div>
-                        <div className="text-2xl font-bold text-blue-600 mt-2">
+                        <div className="text-2xl font-bold text-blue-600">
                           {match.scoreA}
                         </div>
                       </div>
@@ -138,13 +135,10 @@ export function HistoryPage() {
                             : 'bg-gray-50'
                         }`}
                       >
-                        <div className="text-sm text-gray-600 mb-1">
-                          チーム B
-                        </div>
-                        <div className="font-medium text-gray-800">
+                        <div className="font-medium text-gray-800 mb-2">
                           {teamBNames}
                         </div>
-                        <div className="text-2xl font-bold text-red-600 mt-2">
+                        <div className="text-2xl font-bold text-red-600">
                           {match.scoreB}
                         </div>
                       </div>
