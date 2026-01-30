@@ -5,10 +5,11 @@ import { MainPage } from './pages/MainPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ScoreInputPage } from './pages/ScoreInputPage';
+import { PWAPrompt } from './components/PWAPrompt';
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/badminton-manager">
       <Routes>
         <Route path="/" element={<SessionCreate />} />
         <Route path="/players" element={<PlayerSelect />} />
@@ -18,6 +19,7 @@ function App() {
         <Route path="/score/:matchId" element={<ScoreInputPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <PWAPrompt />
     </BrowserRouter>
   );
 }
