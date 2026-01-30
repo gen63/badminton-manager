@@ -86,10 +86,10 @@ export function SettingsPage() {
                   <button
                     key={count}
                     onClick={() => handleCourtCountChange(count)}
-                    className={`flex-1 py-3 rounded-lg font-semibold transition ${
+                    className={`flex-1 py-3 rounded-lg font-semibold transition-all duration-150 ${
                       session.config.courtCount === count
-                        ? 'bg-blue-600 text-white shadow-lg ring-4 ring-blue-300'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:scale-95'
+                        ? 'bg-blue-600 text-white shadow-lg border-4 border-blue-400 scale-105'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:scale-95 border-2 border-transparent'
                     }`}
                   >
                     {count}
@@ -107,10 +107,10 @@ export function SettingsPage() {
                   <button
                     key={score}
                     onClick={() => handleTargetScoreChange(score)}
-                    className={`flex-1 py-3 rounded-lg font-semibold transition ${
+                    className={`flex-1 py-3 rounded-lg font-semibold transition-all duration-150 ${
                       session.config.targetScore === score
-                        ? 'bg-blue-600 text-white shadow-lg ring-4 ring-blue-300'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:scale-95'
+                        ? 'bg-blue-600 text-white shadow-lg border-4 border-blue-400 scale-105'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:scale-95 border-2 border-transparent'
                     }`}
                   >
                     {score}点
