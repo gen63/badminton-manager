@@ -167,13 +167,13 @@ export function HistoryPage() {
                 return (
                   <div
                     key={match.id}
-                    className="relative overflow-hidden border border-gray-200 rounded-lg"
+                    className="relative overflow-hidden border border-gray-200 rounded-lg bg-white"
                   >
                     {/* 削除ボタン背景（スワイプで表示） */}
-                    <div className="absolute right-0 top-0 bottom-0 w-20 bg-red-500 flex items-center justify-center">
+                    <div className="absolute right-0 top-0 bottom-0 w-20 bg-red-500 flex items-center justify-center z-0">
                       <button
                         onClick={() => handleDeleteClick(match.id)}
-                        className="text-white"
+                        className="text-white p-2"
                       >
                         <Trash2 size={20} />
                       </button>
@@ -182,7 +182,7 @@ export function HistoryPage() {
                     {/* メインコンテンツ */}
                     <div
                       style={{ transform: `translateX(${swipeOffset}px)` }}
-                      className="bg-white p-3 transition-transform"
+                      className="relative bg-white p-3 transition-transform z-10"
                       onTouchStart={(e) => handleTouchStart(match.id, e)}
                       onTouchMove={(e) => handleTouchMove(match.id, e)}
                       onTouchEnd={() => handleTouchEnd(match.id)}
