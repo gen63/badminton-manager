@@ -35,7 +35,7 @@ export function PlayerSelect() {
             参加者を追加
           </h1>
           <p className="text-gray-600">
-            最低4人以上の参加者が必要です（現在: {players.length}人）
+            現在: {players.length}人
           </p>
         </div>
 

@@ -31,8 +31,8 @@ export function CourtCard({
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-3 space-y-1.5 flex-1 min-w-0">
-      <div className="flex items-center justify-between mb-1">
-        <h3 className="text-[10px] font-normal text-gray-500">コート {court.id}</h3>
+      <div className="flex flex-col items-center gap-1 mb-1">
+        <h3 className="text-sm font-medium text-gray-700 text-center w-full">コート {court.id}</h3>
         {court.isPlaying && (
           <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-semibold flex items-center gap-1">
             <Clock size={12} />
@@ -93,7 +93,7 @@ export function CourtCard({
             </div>
           </>
         ) : (
-          <div className="flex items-center justify-center text-gray-400 text-xs h-[68px]">未配置</div>
+          <div className="flex items-center justify-center text-gray-400 text-[11px] h-[68px]">未配置</div>
         )}
       </div>
 
@@ -152,7 +152,7 @@ export function CourtCard({
             </div>
           </>
         ) : (
-          <div className="flex items-center justify-center text-gray-400 text-xs h-[68px]">未配置</div>
+          <div className="flex items-center justify-center text-gray-400 text-[11px] h-[68px]">未配置</div>
         )}
       </div>
 
