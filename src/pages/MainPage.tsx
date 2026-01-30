@@ -337,9 +337,9 @@ export function MainPage() {
                 return (
                   <div
                     key={match.id}
-                    className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg text-sm"
                   >
-                    <div className="flex items-center gap-2 flex-1 text-sm">
+                    <div className="flex items-center gap-2 flex-1">
                       <span className="font-semibold text-gray-500">
                         #{matchNumber}
                       </span>
