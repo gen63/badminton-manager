@@ -60,18 +60,18 @@ export function SessionCreate() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               コート数
             </label>
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               {[1, 2, 3].map((count) => (
                 <button
                   key={count}
                   onClick={() => setCourtCount(count)}
-                  className={`flex-1 py-3 rounded-lg font-semibold transition-all duration-150 ${
+                  className={`flex-1 py-4 rounded-lg font-bold text-lg transition-all duration-200 ${
                     courtCount === count
-                      ? 'bg-blue-600 text-white shadow-lg border-4 border-blue-400 scale-105'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:scale-95 border-2 border-transparent'
+                      ? 'bg-blue-600 text-white shadow-xl ring-4 ring-blue-300 scale-110'
+                      : 'bg-white text-gray-400 border-2 border-gray-200 hover:border-blue-300 hover:text-gray-600'
                   }`}
                 >
-                  {count}
+                  {courtCount === count && '✓ '}{count}
                 </button>
               ))}
             </div>
@@ -82,18 +82,18 @@ export function SessionCreate() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               点数
             </label>
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               {[11, 15, 21].map((score) => (
                 <button
                   key={score}
                   onClick={() => setTargetScore(score)}
-                  className={`flex-1 py-3 rounded-lg font-semibold transition-all duration-150 ${
+                  className={`flex-1 py-4 rounded-lg font-bold text-lg transition-all duration-200 ${
                     targetScore === score
-                      ? 'bg-blue-600 text-white shadow-lg border-4 border-blue-400 scale-105'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:scale-95 border-2 border-transparent'
+                      ? 'bg-blue-600 text-white shadow-xl ring-4 ring-blue-300 scale-110'
+                      : 'bg-white text-gray-400 border-2 border-gray-200 hover:border-blue-300 hover:text-gray-600'
                   }`}
                 >
-                  {score}点
+                  {targetScore === score && '✓ '}{score}点
                 </button>
               ))}
             </div>
