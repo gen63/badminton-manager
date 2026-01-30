@@ -422,21 +422,44 @@ export function MainPage() {
                   休憩中 ({restingPlayers.length}人)
                 </h4>
                 <div className="grid gap-2 grid-cols-3">
-                  {restingPlayers.map((player) => (
-                    <div
-                      key={player.id}
-                      className="flex items-center justify-between p-2 bg-orange-50 rounded-lg border border-orange-200"
-                    >
-                      <span className="text-gray-800 text-sm">{player.name}</span>
-                      <button
-                        onClick={() => toggleRest(player.id)}
-                        className="text-green-600 hover:text-blue-600 flex-shrink-0"
-                        title="復帰"
+                  {restingPlayers.map((player) => {
+                    const isSelected = selectedPlayer?.id === player.id;
+                    return (
+                      <div
+                        key={player.id}
+                        onClick={() => handlePlayerTap(player.id)}
+                        className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition ${
+                          isSelected
+                            ? 'bg-orange-200 border-orange-400'
+                            : 'bg-orange-50 border-orange-200 hover:bg-orange-100'
+                        }`}
                       >
-                        <ArrowUp size={16} />
-                      </button>
-                    </div>
-                  ))}
+                        <span className="text-gray-800 text-sm">{player.name}</span>
+                        {isSelected ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedPlayer(null);
+                            }}
+                            className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 flex-shrink-0"
+                          >
+                            ✕ 解除
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleRest(player.id);
+                            }}
+                            className="text-green-600 hover:text-blue-600 flex-shrink-0"
+                            title="復帰"
+                          >
+                            <ArrowUp size={16} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
