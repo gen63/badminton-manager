@@ -42,8 +42,21 @@ export function MainPage() {
 
   const handleAutoAssign = (courtId?: number) => {
     try {
-      // 指定されたコートIDまたは全コート
-      const courtsToAssign = courtId ? [courtId] : courts.map(c => c.id);
+      // 空のコートのみを対象にする
+      let courtsToAssign: number[];
+      if (courtId) {
+        courtsToAssign = [courtId];
+      } else {
+        // 全コートから未配置のコートのみを抽出
+        courtsToAssign = courts
+          .filter(c => !c.teamA[0] || c.teamA[0] === '')
+          .map(c => c.id);
+      }
+
+      if (courtsToAssign.length === 0) {
+        toast.error('配置可能な空のコートがありません');
+        return;
+      }
       
       // 待機中のプレイヤーのみを使用（コート内のプレイヤーを除外）
       const waitingPlayers = players.filter(
@@ -74,7 +87,7 @@ export function MainPage() {
       if (courtId) {
         toast.success(`コート${courtId}に配置しました！`);
       } else {
-        toast.success('全コートに配置しました！');
+        toast.success(`${courtsToAssign.length}コートに配置しました！`);
       }
     } catch (error) {
       toast.error(
