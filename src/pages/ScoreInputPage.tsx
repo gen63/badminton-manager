@@ -15,6 +15,9 @@ export function ScoreInputPage() {
   const [scoreA, setScoreA] = useState(0);
   const [scoreB, setScoreB] = useState(0);
   const [inputHistory, setInputHistory] = useState<string[]>([]);
+  const [selectedPlayer, setSelectedPlayer] = useState<{
+    position: number;
+  } | null>(null);
 
   if (!match) {
     navigate('/history');
@@ -25,8 +28,35 @@ export function ScoreInputPage() {
     return players.find((p) => p.id === playerId)?.name || '不明';
   };
 
-  const teamANames = match.teamA.map(getPlayerName).join('・');
-  const teamBNames = match.teamB.map(getPlayerName).join('・');
+  const handlePlayerTap = (position: number) => {
+    if (!selectedPlayer) {
+      // 1回目のタップ：プレイヤーを選択
+      setSelectedPlayer({ position });
+    } else if (selectedPlayer.position === position) {
+      // 同じプレイヤーをタップ：選択解除
+      setSelectedPlayer(null);
+    } else {
+      // 2回目のタップ：交換実行
+      const allPlayers = [...match.teamA, ...match.teamB];
+      const temp = allPlayers[selectedPlayer.position];
+      allPlayers[selectedPlayer.position] = allPlayers[position];
+      allPlayers[position] = temp;
+
+      // matchHistoryを更新
+      const updatedHistory = matchHistory.map((m) =>
+        m.id === matchId
+          ? {
+              ...m,
+              teamA: [allPlayers[0], allPlayers[1]] as [string, string],
+              teamB: [allPlayers[2], allPlayers[3]] as [string, string],
+            }
+          : m
+      );
+
+      useGameStore.setState({ matchHistory: updatedHistory });
+      setSelectedPlayer(null);
+    }
+  };
 
   const handleNumberClick = (num: number) => {
     if (inputHistory.length === 0) {
@@ -86,16 +116,56 @@ export function ScoreInputPage() {
 
       <div className="max-w-2xl mx-auto p-4 space-y-6">
         {/* 対戦カード */}
-        <div className="bg-white rounded-lg shadow p-6 text-center">
-          <div className="text-sm text-gray-500 mb-4">コート {match.courtId}</div>
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="text-sm text-gray-500 text-center mb-4">コート {match.courtId}</div>
           
-          <div className="space-y-4">
-            <div className="text-lg font-semibold text-gray-800">
-              {teamANames}
+          {selectedPlayer && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 text-center">
+              メンバーを選択中 - 交換したい相手をタップ
             </div>
-            <div className="text-2xl font-bold text-gray-400">vs</div>
-            <div className="text-lg font-semibold text-gray-800">
-              {teamBNames}
+          )}
+          
+          <div className="space-y-3">
+            {/* チームA */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="text-xs text-gray-600 mb-2 text-center">チームA</div>
+              <div className="flex gap-2">
+                {match.teamA.map((playerId, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handlePlayerTap(idx)}
+                    className={`flex-1 p-2 rounded text-sm font-medium transition ${
+                      selectedPlayer?.position === idx
+                        ? 'bg-blue-300 text-gray-800'
+                        : 'bg-white hover:bg-blue-100 text-gray-800'
+                    }`}
+                  >
+                    {getPlayerName(playerId)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="text-center text-gray-400 font-bold">VS</div>
+
+            {/* チームB */}
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <div className="text-xs text-gray-600 mb-2 text-center">チームB</div>
+              <div className="flex gap-2">
+                {match.teamB.map((playerId, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handlePlayerTap(idx + 2)}
+                    className={`flex-1 p-2 rounded text-sm font-medium transition ${
+                      selectedPlayer?.position === idx + 2
+                        ? 'bg-red-300 text-gray-800'
+                        : 'bg-white hover:bg-red-100 text-gray-800'
+                    }`}
+                  >
+                    {getPlayerName(playerId)}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
