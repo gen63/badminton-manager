@@ -56,23 +56,6 @@ export function SettingsPage() {
       </div>
 
       <div className="max-w-2xl mx-auto p-4 space-y-6">
-        {/* セッション情報 */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-bold text-gray-800 mb-4">
-            セッション情報
-          </h2>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600">セッションID</span>
-              <span className="font-mono text-gray-800">{session.id}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">練習日</span>
-              <span className="text-gray-800">{session.config.practiceDate}</span>
-            </div>
-          </div>
-        </div>
-
         {/* コート設定 */}
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4">コート設定</h2>
@@ -135,18 +118,6 @@ export function SettingsPage() {
             <p className="text-sm text-gray-500 text-center">
               ※ すべてのデータが削除されます
             </p>
-          </div>
-        </div>
-
-        {/* バージョン情報 */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-bold text-gray-800 mb-4">
-            バージョン情報
-          </h2>
-          <div className="text-sm text-gray-600 space-y-1">
-            <p>Phase 0 - プロトタイプ版</p>
-            <p>データ保存: LocalStorage</p>
-            <p>複数デバイス対応: 非対応</p>
           </div>
         </div>
       </div>

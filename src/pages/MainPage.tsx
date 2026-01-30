@@ -88,29 +88,19 @@ export function MainPage() {
     toast.success('試合が終了しました！');
   };
 
-  const handleScoreChange = (
-    courtId: number,
-    team: 'A' | 'B',
-    delta: number
-  ) => {
-    const court = courts.find((c) => c.id === courtId);
-    if (!court) return;
-
-    const newScore =
-      team === 'A'
-        ? Math.max(0, court.scoreA + delta)
-        : Math.max(0, court.scoreB + delta);
-
-    updateCourt(courtId, {
-      [team === 'A' ? 'scoreA' : 'scoreB']: newScore,
-    });
-  };
-
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '未設定';
   };
 
-  const activePlayers = players.filter((p) => !p.isResting);
+  // コート内のプレイヤーIDを取得
+  const playersInCourts = new Set(
+    courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter(Boolean)
+  );
+
+  // 待機中のプレイヤー（コート外 & 休憩中でない）
+  const activePlayers = players.filter(
+    (p) => !p.isResting && !playersInCourts.has(p.id)
+  );
   const restingPlayers = players.filter((p) => p.isResting);
 
   const handleCourtCountChange = (delta: number) => {
@@ -122,7 +112,11 @@ export function MainPage() {
     }
   };
 
-  const recentMatches = [...matchHistory].reverse().slice(0, 5);
+  // スコア未入力の試合（0-0の試合）を最大5件
+  const unfinishedMatches = [...matchHistory]
+    .reverse()
+    .filter((m) => m.scoreA === 0 && m.scoreB === 0)
+    .slice(0, 5);
 
   const handleSwapPlayer = (courtId: number, position: number, newPlayerId: string) => {
     const court = courts.find((c) => c.id === courtId);
@@ -156,28 +150,20 @@ export function MainPage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* ヘッダー */}
-      <div className="bg-blue-600 text-white p-4 shadow-lg">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">🏸 練習管理</h1>
-            <p className="text-sm text-blue-100">
-              {session.config.practiceDate} | {session.config.targetScore}点先取
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => navigate('/history')}
-              className="p-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition"
-            >
-              <History size={24} />
-            </button>
-            <button
-              onClick={() => navigate('/settings')}
-              className="p-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition"
-            >
-              <Settings size={24} />
-            </button>
-          </div>
+      <div className="bg-blue-600 text-white p-3 shadow-lg">
+        <div className="max-w-6xl mx-auto flex items-center justify-end gap-2">
+          <button
+            onClick={() => navigate('/history')}
+            className="p-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition"
+          >
+            <History size={20} />
+          </button>
+          <button
+            onClick={() => navigate('/settings')}
+            className="p-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition"
+          >
+            <Settings size={20} />
+          </button>
         </div>
       </div>
 
@@ -227,60 +213,51 @@ export function MainPage() {
         </div>
 
         {/* コート一覧 */}
-        <div className="flex gap-4 overflow-x-auto pb-2">
+        <div className="flex gap-3">
           {courts.map((court) => (
             <CourtCard
               key={court.id}
               court={court}
-              targetScore={session.config.targetScore}
               getPlayerName={getPlayerName}
               onStartGame={() => handleStartGame(court.id)}
               onFinishGame={() => handleFinishGame(court.id)}
-              onScoreChange={(team, delta) =>
-                handleScoreChange(court.id, team, delta)
-              }
               onAutoAssign={() => handleAutoAssign(court.id)}
             />
           ))}
         </div>
 
-        {/* 最近の試合ログ */}
-        {matchHistory.length > 0 && (
+        {/* スコア未入力の試合 */}
+        {unfinishedMatches.length > 0 && (
           <div className="bg-white rounded-lg shadow-lg p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-gray-800">
-                最近の試合
+                スコア未入力の試合
               </h3>
-              <button
-                onClick={() => navigate('/history')}
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-              >
-                すべて見る →
-              </button>
             </div>
             <div className="space-y-2">
-              {recentMatches.map((match) => {
+              {unfinishedMatches.map((match) => {
                 const teamANames = match.teamA.map(getPlayerName).join(' / ');
                 const teamBNames = match.teamB.map(getPlayerName).join(' / ');
                 return (
                   <div
                     key={match.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm"
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm hover:bg-gray-100 cursor-pointer transition"
+                    onClick={() => {
+                      // TODO: スコア入力モーダルを開く
+                      toast.info('スコア入力機能は次のアップデートで追加予定');
+                    }}
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <span className={match.winner === 'A' ? 'font-bold text-blue-600' : 'text-gray-700'}>
+                        <span className="text-gray-700">
                           {teamANames}
                         </span>
                         <span className="text-gray-400">vs</span>
-                        <span className={match.winner === 'B' ? 'font-bold text-red-600' : 'text-gray-700'}>
+                        <span className="text-gray-700">
                           {teamBNames}
                         </span>
                       </div>
                     </div>
-                    <span className="font-bold text-gray-800">
-                      {match.scoreA} - {match.scoreB}
-                    </span>
                   </div>
                 );
               })}
@@ -298,7 +275,7 @@ export function MainPage() {
               <h4 className="text-sm font-semibold text-blue-700 mb-2">
                 待機中 ({activePlayers.length}人)
               </h4>
-              <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              <div className="grid gap-2 grid-cols-3">
                 {activePlayers.map((player) => (
                   <div
                     key={player.id}
@@ -321,7 +298,7 @@ export function MainPage() {
                 <h4 className="text-sm font-semibold text-orange-700 mb-2">
                   休憩中 ({restingPlayers.length}人)
                 </h4>
-                <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <div className="grid gap-2 grid-cols-3">
                   {restingPlayers.map((player) => (
                     <div
                       key={player.id}

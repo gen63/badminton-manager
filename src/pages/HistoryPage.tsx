@@ -69,67 +69,6 @@ export function HistoryPage() {
       </div>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
-        {/* 統計 */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-bold text-gray-800 mb-4">プレイヤー統計</h2>
-          {stats.length === 0 ? (
-            <EmptyState
-              icon="📊"
-              title="まだ試合データがありません"
-              description="試合を行うと、ここに統計が表示されます。"
-            />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                      順位
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                      名前
-                    </th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">
-                      試合数
-                    </th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">
-                      勝敗
-                    </th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">
-                      得点
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedStats.map((stat, index) => (
-                    <tr key={stat.id} className="border-t hover:bg-gray-50">
-                      <td className="px-4 py-3 text-gray-600">{index + 1}</td>
-                      <td className="px-4 py-3 font-medium text-gray-800">
-                        {stat.name}
-                      </td>
-                      <td className="px-4 py-3 text-center text-gray-800">
-                        {stat.gamesPlayed}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="text-green-600 font-semibold">
-                          {stat.wins}
-                        </span>
-                        <span className="text-gray-400 mx-1">-</span>
-                        <span className="text-red-600 font-semibold">
-                          {stat.losses}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center font-semibold text-blue-600">
-                        {stat.points}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
         {/* 試合履歴 */}
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4">
