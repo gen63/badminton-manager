@@ -466,9 +466,7 @@ export function MainPage() {
                     );
                   })}
                 </div>
-              ) : (
-                <p className="text-xs text-gray-400">休憩中のメンバーはいません</p>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
