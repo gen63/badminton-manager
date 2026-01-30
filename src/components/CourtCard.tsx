@@ -12,6 +12,7 @@ interface CourtCardProps {
   onPlayerTap: (playerId: string, position: number) => void;
   selectedPlayerId?: string | null;
   onClearSelection: () => void;
+  canAutoAssign?: boolean;
 }
 
 export function CourtCard({
@@ -24,6 +25,7 @@ export function CourtCard({
   onPlayerTap,
   selectedPlayerId,
   onClearSelection,
+  canAutoAssign = true,
 }: CourtCardProps) {
   const timer = useGameTimer(court.startedAt, court.isPlaying);
 
@@ -159,7 +161,8 @@ export function CourtCard({
         {!court.isPlaying && !court.teamA[0] && (
           <button
             onClick={onAutoAssign}
-            className="w-full bg-blue-600 text-white py-1.5 px-1 rounded text-xs font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-0.5"
+            disabled={!canAutoAssign}
+            className="w-full bg-blue-600 text-white py-1.5 px-1 rounded text-xs font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
           >
             <Users size={12} />
             配置

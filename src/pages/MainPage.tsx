@@ -52,11 +52,6 @@ export function MainPage() {
           .filter(c => !c.teamA[0] || c.teamA[0] === '')
           .map(c => c.id);
       }
-
-      if (courtsToAssign.length === 0) {
-        toast.error('配置可能な空のコートがありません');
-        return;
-      }
       
       // 待機中のプレイヤーのみを使用（コート内のプレイヤーを除外）
       const waitingPlayers = players.filter(
@@ -153,6 +148,10 @@ export function MainPage() {
     .reverse()
     .filter((m) => m.scoreA === 0 && m.scoreB === 0)
     .slice(0, 5);
+
+  // 空のコート数
+  const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
+  const canAutoAssign = emptyCourts.length > 0 && activePlayers.length >= 4;
 
   const handleSwapPlayer = (courtId: number, position: number, newPlayerId: string) => {
     const court = courts.find((c) => c.id === courtId);
@@ -269,7 +268,8 @@ export function MainPage() {
         <div className="max-w-6xl mx-auto flex items-center justify-end gap-2">
           <button
             onClick={() => handleAutoAssign()}
-            className="px-3 py-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition text-sm font-semibold flex items-center gap-1"
+            disabled={!canAutoAssign}
+            className="px-3 py-2 bg-blue-700 rounded-lg hover:bg-blue-800 transition text-sm font-semibold flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-700"
           >
             <Users size={18} />
             一括配置
@@ -315,6 +315,7 @@ export function MainPage() {
               }
               selectedPlayerId={selectedPlayer?.id}
               onClearSelection={() => setSelectedPlayer(null)}
+              canAutoAssign={canAutoAssign}
             />
           ))}
         </div>
