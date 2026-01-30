@@ -321,18 +321,25 @@ export function MainPage() {
                 // 試合全体の中での連番を取得
                 const matchNumber = matchHistory.findIndex((m) => m.id === match.id) + 1;
                 return (
-                  <button
+                  <div
                     key={match.id}
-                    onClick={() => navigate(`/score/${match.id}`)}
-                    className="w-full flex items-center gap-2 p-2 bg-gray-50 rounded-lg text-sm hover:bg-gray-100 transition text-left"
+                    className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg text-sm"
                   >
-                    <span className="font-semibold text-gray-500">
-                      #{matchNumber}
-                    </span>
-                    <span className="text-gray-700">{teamANames}</span>
-                    <span className="text-gray-400">vs</span>
-                    <span className="text-gray-700">{teamBNames}</span>
-                  </button>
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="font-semibold text-gray-500">
+                        #{matchNumber}
+                      </span>
+                      <span className="text-gray-700">{teamANames}</span>
+                      <span className="text-gray-400">vs</span>
+                      <span className="text-gray-700">{teamBNames}</span>
+                    </div>
+                    <button
+                      onClick={() => navigate(`/score/${match.id}`)}
+                      className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700 transition flex-shrink-0"
+                    >
+                      入力
+                    </button>
+                  </div>
                 );
               })}
             </div>
