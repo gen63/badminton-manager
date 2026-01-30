@@ -1,0 +1,18 @@
+{
+  "name": "バドミントン練習管理",
+  "short_name": "バドミントン",
+  "description": "バドミントン練習の参加者管理・コート配置・試合進行を効率化",
+  "start_url": "/badminton-manager/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3B82F6",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/badminton-manager/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
