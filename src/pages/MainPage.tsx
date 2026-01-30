@@ -4,11 +4,10 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts } from '../lib/algorithm';
-import { Settings, History, Coffee, Users, Plus, Minus, RefreshCw, ArrowUp } from 'lucide-react';
+import { Settings, History, Coffee, Users, Plus, Minus, ArrowUp } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { CourtCard } from '../components/CourtCard';
-import { PlayerSwapModal } from '../components/PlayerSwapModal';
 
 export function MainPage() {
   const navigate = useNavigate();
@@ -17,7 +16,6 @@ export function MainPage() {
   const { courts, matchHistory, updateCourt, startGame, finishGame, initializeCourts } =
     useGameStore();
   const toast = useToast();
-  const [showSwapModal, setShowSwapModal] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;
     courtId?: number;
@@ -110,9 +108,9 @@ export function MainPage() {
     return players.find((p) => p.id === playerId)?.name || '未設定';
   };
 
-  // コート内のプレイヤーIDを取得
+  // コート内のプレイヤーIDを取得（空文字列を除外）
   const playersInCourts = new Set(
-    courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter(Boolean)
+    courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
   );
 
   // 待機中のプレイヤー（コート外 & 休憩中でない）
@@ -271,23 +269,23 @@ export function MainPage() {
             </div>
           </div>
           
-          {/* アクションボタン */}
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => handleAutoAssign()}
-              className="bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2"
-            >
-              <Users size={20} />
-              一括配置
-            </button>
-            <button
-              onClick={() => setShowSwapModal(true)}
-              className="bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition flex items-center justify-center gap-2"
-            >
-              <RefreshCw size={20} />
-              メンバー交換
-            </button>
-          </div>
+          {/* 一括配置ボタン */}
+          <button
+            onClick={() => handleAutoAssign()}
+            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2"
+          >
+            <Users size={20} />
+            全コートに一括配置
+          </button>
+          
+          {/* メンバー交換の説明 */}
+          {selectedPlayer && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+              <strong>{players.find(p => p.id === selectedPlayer.id)?.name}</strong> を選択中
+              <br />
+              交換したいプレイヤーをタップしてください
+            </div>
+          )}
         </div>
 
         {/* コート一覧 */}
@@ -423,17 +421,6 @@ export function MainPage() {
           </div>
         </div>
       </div>
-
-      {/* Player swap modal */}
-      {showSwapModal && (
-        <PlayerSwapModal
-          courts={courts}
-          players={players}
-          getPlayerName={getPlayerName}
-          onSwap={handleSwapPlayer}
-          onClose={() => setShowSwapModal(false)}
-        />
-      )}
 
       {/* Toast notifications */}
       {toast.toasts.map((t) => (
