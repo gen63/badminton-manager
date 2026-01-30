@@ -38,13 +38,13 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#faf6f1] pb-20">
+    <div className="min-h-screen bg-gray-100 pb-20">
       {/* ヘッダー */}
-      <div className="bg-[#f0e6da] p-4 shadow-sm">
+      <div className="bg-white p-4 shadow-sm">
         <div className="max-w-6xl mx-auto flex items-center gap-4">
           <button
             onClick={() => navigate('/main')}
-            className="p-2 hover:bg-[#e8ddd0] rounded-full transition"
+            className="p-2 hover:bg-gray-100 rounded-full transition"
           >
             <ArrowLeft size={24} className="text-gray-600" />
           </button>
@@ -54,13 +54,11 @@ export function SettingsPage() {
 
       <div className="max-w-2xl mx-auto p-4 space-y-4">
         {/* コート設定 */}
-        <div className="bg-[#f0e6da] rounded-2xl p-5">
+        <div className="bg-white rounded-2xl shadow-sm p-5">
           <h2 className="text-base font-semibold text-gray-700 mb-4">コート設定</h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-gray-600 mb-2">
-                コート数
-              </label>
+              <label className="block text-sm text-gray-600 mb-2">コート数</label>
               <div className="flex gap-2">
                 {[1, 2, 3].map((count) => (
                   <button
@@ -68,8 +66,8 @@ export function SettingsPage() {
                     onClick={() => handleCourtCountChange(count)}
                     className={`flex-1 py-3 rounded-full font-semibold transition-all ${
                       session.config.courtCount === count
-                        ? 'bg-white text-gray-800 shadow-md ring-2 ring-gray-300'
-                        : 'bg-[#e8ddd0] text-gray-500 hover:bg-[#e0d5c8]'
+                        ? 'bg-blue-500 text-white shadow-md'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                     }`}
                   >
                     {count}
@@ -79,9 +77,7 @@ export function SettingsPage() {
             </div>
 
             <div>
-              <label className="block text-sm text-gray-600 mb-2">
-                点数
-              </label>
+              <label className="block text-sm text-gray-600 mb-2">点数</label>
               <div className="flex gap-2">
                 {[11, 15, 21].map((score) => (
                   <button
@@ -89,8 +85,8 @@ export function SettingsPage() {
                     onClick={() => handleTargetScoreChange(score)}
                     className={`flex-1 py-3 rounded-full font-semibold transition-all ${
                       session.config.targetScore === score
-                        ? 'bg-white text-gray-800 shadow-md ring-2 ring-gray-300'
-                        : 'bg-[#e8ddd0] text-gray-500 hover:bg-[#e0d5c8]'
+                        ? 'bg-blue-500 text-white shadow-md'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                     }`}
                   >
                     {score}点
@@ -102,27 +98,27 @@ export function SettingsPage() {
         </div>
 
         {/* 参加者管理 */}
-        <div className="bg-[#f0e6da] rounded-2xl p-5">
+        <div className="bg-white rounded-2xl shadow-sm p-5">
           <h2 className="text-base font-semibold text-gray-700 mb-4">参加者管理</h2>
           <button
             onClick={() => navigate('/players')}
-            className="w-full bg-[#d4c4b0] text-gray-700 py-3 rounded-full font-semibold hover:bg-[#c9b9a5] transition"
+            className="w-full bg-blue-500 text-white py-3 rounded-full font-semibold hover:bg-blue-600 transition"
           >
             参加者を管理
           </button>
         </div>
 
         {/* データ管理 */}
-        <div className="bg-[#f0e6da] rounded-2xl p-5">
+        <div className="bg-white rounded-2xl shadow-sm p-5">
           <h2 className="text-base font-semibold text-gray-700 mb-4">データ管理</h2>
           <button
             onClick={() => setShowResetConfirm(true)}
-            className="w-full bg-[#e8a87c] text-white py-3 rounded-full font-semibold hover:bg-[#d4956b] transition flex items-center justify-center gap-2"
+            className="w-full bg-red-500 text-white py-3 rounded-full font-semibold hover:bg-red-600 transition flex items-center justify-center gap-2"
           >
             <Trash2 size={18} />
             セッションをリセット
           </button>
-          <p className="text-xs text-gray-500 text-center mt-2">
+          <p className="text-xs text-gray-400 text-center mt-2">
             ※ すべてのデータが削除されます
           </p>
         </div>
@@ -131,7 +127,7 @@ export function SettingsPage() {
       {/* Reset confirmation modal */}
       {showResetConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#faf6f1] rounded-2xl max-w-md w-full p-6">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6">
             <h3 className="text-lg font-semibold text-gray-700 mb-3">
               セッションをリセットしますか？
             </h3>
@@ -142,13 +138,13 @@ export function SettingsPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowResetConfirm(false)}
-                className="flex-1 py-3 bg-white text-gray-700 rounded-full font-semibold hover:bg-gray-50 transition border border-gray-200"
+                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-full font-semibold hover:bg-gray-200 transition"
               >
                 キャンセル
               </button>
               <button
                 onClick={handleReset}
-                className="flex-1 py-3 bg-[#e8a87c] text-white rounded-full font-semibold hover:bg-[#d4956b] transition"
+                className="flex-1 py-3 bg-red-500 text-white rounded-full font-semibold hover:bg-red-600 transition"
               >
                 リセット
               </button>

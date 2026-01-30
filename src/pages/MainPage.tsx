@@ -240,29 +240,29 @@ export function MainPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#faf6f1] pb-20">
+    <div className="min-h-screen bg-gray-100 pb-20">
       {/* ヘッダー */}
-      <div className="bg-[#f0e6da] p-3 shadow-sm">
+      <div className="bg-white p-3 shadow-sm">
         <div className="max-w-6xl mx-auto flex items-center justify-end gap-2">
           <button
             onClick={() => handleAutoAssign()}
             disabled={!canAutoAssign}
-            className="px-4 py-2 bg-[#d4c4b0] text-gray-700 rounded-full hover:bg-[#c9b9a5] transition text-sm font-medium flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition text-sm font-medium flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Users size={18} />
             一括配置
           </button>
           <button
             onClick={() => navigate('/history')}
-            className="p-2 bg-[#d4c4b0] rounded-full hover:bg-[#c9b9a5] transition"
+            className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
           >
-            <History size={20} className="text-gray-700" />
+            <History size={20} className="text-gray-600" />
           </button>
           <button
             onClick={() => navigate('/settings')}
-            className="p-2 bg-[#d4c4b0] rounded-full hover:bg-[#c9b9a5] transition"
+            className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
           >
-            <Settings size={20} className="text-gray-700" />
+            <Settings size={20} className="text-gray-600" />
           </button>
         </div>
       </div>
@@ -270,7 +270,7 @@ export function MainPage() {
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         {/* メンバー交換の説明 */}
         {selectedPlayer && (
-          <div className="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700">
             <strong>{players.find(p => p.id === selectedPlayer.id)?.name}</strong> を選択中 — 交換したいプレイヤーをタップ
           </div>
         )}
@@ -298,7 +298,7 @@ export function MainPage() {
 
         {/* スコア未入力の試合 */}
         {unfinishedMatches.length > 0 && (
-          <div className="bg-[#f0e6da] rounded-2xl p-4">
+          <div className="bg-white rounded-2xl shadow-sm p-4">
             <h3 className="text-base font-semibold text-gray-700 mb-3">
               スコア未入力の試合
             </h3>
@@ -310,7 +310,7 @@ export function MainPage() {
                 return (
                   <div
                     key={match.id}
-                    className="flex items-center justify-between gap-2 p-3 bg-white rounded-xl text-sm"
+                    className="flex items-center justify-between gap-2 p-3 bg-gray-50 rounded-xl text-sm"
                   >
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <span className="font-medium text-gray-400">
@@ -322,7 +322,7 @@ export function MainPage() {
                     </div>
                     <button
                       onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
-                      className="px-4 py-1.5 bg-[#d4c4b0] text-gray-700 rounded-full text-xs font-medium hover:bg-[#c9b9a5] transition flex-shrink-0"
+                      className="px-4 py-1.5 bg-blue-500 text-white rounded-full text-xs font-medium hover:bg-blue-600 transition flex-shrink-0"
                     >
                       入力
                     </button>
@@ -334,13 +334,13 @@ export function MainPage() {
         )}
 
         {/* プレイヤーリスト */}
-        <div className="bg-[#f0e6da] rounded-2xl p-4">
+        <div className="bg-white rounded-2xl shadow-sm p-4">
           <h3 className="text-base font-semibold text-gray-700 mb-4">
             参加者一覧 ({players.length}人)
           </h3>
           <div className="space-y-4">
             <div>
-              <h4 className="text-sm text-gray-600 mb-2">
+              <h4 className="text-sm text-gray-500 mb-2">
                 待機中 ({activePlayers.length}人)
               </h4>
               <div className="grid gap-2 grid-cols-3">
@@ -352,8 +352,8 @@ export function MainPage() {
                       onClick={() => handlePlayerTap(player.id)}
                       className={`flex items-center justify-between p-2 rounded-full border cursor-pointer transition ${
                         isSelected
-                          ? 'bg-white border-gray-400 ring-2 ring-gray-300'
-                          : 'bg-white border-gray-200 hover:border-gray-300'
+                          ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-200'
+                          : 'bg-gray-50 border-gray-200 hover:border-gray-300'
                       }`}
                     >
                       <span className="text-gray-800 text-sm truncate">
@@ -378,7 +378,7 @@ export function MainPage() {
                             e.stopPropagation();
                             toggleRest(player.id);
                           }}
-                          className="text-gray-400 hover:text-[#e8a87c] flex-shrink-0 ml-1"
+                          className="text-gray-400 hover:text-orange-500 flex-shrink-0 ml-1"
                         >
                           <Coffee size={14} />
                         </button>
@@ -391,7 +391,7 @@ export function MainPage() {
 
             {restingPlayers.length > 0 && (
               <div className="mt-4">
-                <h4 className="text-sm text-[#e8a87c] mb-2">
+                <h4 className="text-sm text-orange-500 mb-2">
                   休憩中 ({restingPlayers.length}人)
                 </h4>
                 <div className="grid gap-2 grid-cols-3">
@@ -403,8 +403,8 @@ export function MainPage() {
                         onClick={() => handlePlayerTap(player.id)}
                         className={`flex items-center justify-between p-2 rounded-full border cursor-pointer transition ${
                           isSelected
-                            ? 'bg-white border-[#e8a87c] ring-2 ring-[#f5d5c0]'
-                            : 'bg-[#fef3ee] border-[#f5d5c0] hover:border-[#e8a87c]'
+                            ? 'bg-orange-50 border-orange-400 ring-2 ring-orange-200'
+                            : 'bg-orange-50 border-orange-200 hover:border-orange-300'
                         }`}
                       >
                         <span className="text-gray-700 text-sm truncate">{player.name}</span>
@@ -424,7 +424,7 @@ export function MainPage() {
                               e.stopPropagation();
                               toggleRest(player.id);
                             }}
-                            className="text-gray-400 hover:text-gray-600 flex-shrink-0 ml-1"
+                            className="text-gray-400 hover:text-blue-500 flex-shrink-0 ml-1"
                             title="復帰"
                           >
                             <ArrowUp size={14} />

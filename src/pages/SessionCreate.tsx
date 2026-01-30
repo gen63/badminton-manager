@@ -15,14 +15,12 @@ export function SessionCreate() {
   const [targetScore, setTargetScore] = useState(21);
   const [playerNames, setPlayerNames] = useState('');
 
-  // 入力された名前の数をカウント
   const playerCount = playerNames
     .split('\n')
     .map((name) => name.trim())
     .filter((name) => name.length > 0).length;
 
   const handleCreate = () => {
-    // 参加者を事前登録
     if (playerNames.trim()) {
       const names = playerNames
         .split('\n')
@@ -51,7 +49,7 @@ export function SessionCreate() {
   };
 
   return (
-    <div className="min-h-screen bg-[#faf6f1] p-6">
+    <div className="min-h-screen bg-gray-100 p-6">
       <div className="max-w-sm mx-auto">
         <div className="text-center mb-6">
           <h1 className="text-lg font-medium text-gray-600">
@@ -59,8 +57,7 @@ export function SessionCreate() {
           </h1>
         </div>
 
-        <div className="bg-[#f0e6da] rounded-2xl p-6 space-y-6">
-
+        <div className="bg-white rounded-2xl shadow-sm p-6 space-y-6">
           {/* コート数 */}
           <div>
             <label className="block text-sm font-medium text-gray-600 mb-3">
@@ -73,8 +70,8 @@ export function SessionCreate() {
                   onClick={() => setCourtCount(count)}
                   className={`flex-1 py-3 rounded-full font-semibold text-lg transition-all ${
                     courtCount === count
-                      ? 'bg-white text-gray-800 shadow-md ring-2 ring-gray-300'
-                      : 'bg-[#e8ddd0] text-gray-500 hover:bg-[#e0d5c8]'
+                      ? 'bg-blue-500 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                   }`}
                 >
                   {count}
@@ -95,8 +92,8 @@ export function SessionCreate() {
                   onClick={() => setTargetScore(score)}
                   className={`flex-1 py-3 rounded-full font-semibold text-lg transition-all ${
                     targetScore === score
-                      ? 'bg-white text-gray-800 shadow-md ring-2 ring-gray-300'
-                      : 'bg-[#e8ddd0] text-gray-500 hover:bg-[#e0d5c8]'
+                      ? 'bg-blue-500 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                   }`}
                 >
                   {score}
@@ -115,9 +112,9 @@ export function SessionCreate() {
               onChange={(e) => setPlayerNames(e.target.value)}
               placeholder="田中太郎&#10;山田花子&#10;佐藤次郎"
               rows={5}
-              className="w-full px-4 py-3 bg-white border-none rounded-2xl focus:ring-2 focus:ring-gray-300 focus:outline-none resize-none text-sm"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none resize-none text-sm"
             />
-            <p className="text-xs text-gray-500 mt-2 text-center">
+            <p className="text-xs text-gray-400 mt-2 text-center">
               改行で入力（任意）
             </p>
           </div>
@@ -125,7 +122,7 @@ export function SessionCreate() {
           {/* 作成ボタン */}
           <button
             onClick={handleCreate}
-            className="w-full bg-[#d4c4b0] text-gray-700 py-3 rounded-full font-semibold hover:bg-[#c9b9a5] transition"
+            className="w-full bg-blue-500 text-white py-3 rounded-full font-semibold hover:bg-blue-600 transition"
           >
             次へ {playerCount > 0 && `(${playerCount}人)`}
           </button>

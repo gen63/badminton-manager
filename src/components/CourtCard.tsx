@@ -32,11 +32,11 @@ export function CourtCard({
 }: CourtCardProps) {
   const timer = useGameTimer(court.startedAt, court.isPlaying);
 
-  // プレイヤーピルボタンコンポーネント
+  // プレイヤーピルボタン
   const PlayerPill = ({ playerId, position }: { playerId: string | null; position: number }) => {
     if (!playerId) {
       return (
-        <div className="h-10 bg-white rounded-full border border-gray-200" />
+        <div className="h-10 bg-gray-50 rounded-full border border-gray-200" />
       );
     }
 
@@ -45,10 +45,10 @@ export function CourtCard({
     return (
       <div
         onClick={() => onPlayerTap(playerId, position)}
-        className={`h-10 px-4 bg-white rounded-full border flex items-center justify-between cursor-pointer transition-all ${
+        className={`h-10 px-4 rounded-full border flex items-center justify-between cursor-pointer transition-all ${
           isSelected
-            ? 'border-blue-400 ring-2 ring-blue-200 bg-blue-50'
-            : 'border-gray-200 hover:border-gray-300'
+            ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-200'
+            : 'bg-gray-50 border-gray-200 hover:border-gray-300'
         }`}
       >
         <span className="text-gray-800 text-sm font-medium truncate">
@@ -72,18 +72,18 @@ export function CourtCard({
   // 未配置状態
   const EmptySlots = () => (
     <div className="space-y-2">
-      <div className="h-10 bg-white rounded-full border border-solid border-gray-300" />
-      <div className="h-10 bg-white rounded-full border border-solid border-gray-300" />
+      <div className="h-10 bg-gray-50 rounded-full border border-gray-200" />
+      <div className="h-10 bg-gray-50 rounded-full border border-gray-200" />
     </div>
   );
 
   const hasPlayers = court.teamA[0] || court.teamB[0];
 
   return (
-    <div className="bg-[#f0e6da] rounded-2xl p-4 space-y-2 flex-1 min-w-0 shadow-sm">
+    <div className="bg-white rounded-2xl p-4 space-y-2 flex-1 min-w-0 shadow-sm border border-gray-100">
       {/* コート番号 */}
       <div className="flex flex-col items-center gap-1">
-        <span className="text-xl text-gray-500">{circledNumbers[court.id - 1] || court.id}</span>
+        <span className="text-xl text-gray-400">{circledNumbers[court.id - 1] || court.id}</span>
         {court.isPlaying && (
           <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-semibold flex items-center gap-1">
             <Clock size={12} />
@@ -125,7 +125,7 @@ export function CourtCard({
           <button
             onClick={onAutoAssign}
             disabled={!canAutoAssign}
-            className="w-full bg-[#d4c4b0] text-gray-700 py-2 px-3 rounded-full text-xs font-medium hover:bg-[#c9b9a5] transition flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-gray-100 text-gray-600 py-2 px-3 rounded-full text-xs font-medium hover:bg-gray-200 transition flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Users size={14} />
             配置
@@ -135,13 +135,13 @@ export function CourtCard({
           <>
             <button
               onClick={onClear}
-              className="flex-1 bg-white text-gray-600 py-2 px-3 rounded-full text-xs font-medium hover:bg-gray-50 transition border border-gray-200"
+              className="flex-1 bg-gray-100 text-gray-600 py-2 px-3 rounded-full text-xs font-medium hover:bg-gray-200 transition"
             >
               クリア
             </button>
             <button
               onClick={onStartGame}
-              className="flex-1 bg-[#d4c4b0] text-gray-700 py-2 px-3 rounded-full text-xs font-medium hover:bg-[#c9b9a5] transition flex items-center justify-center gap-1"
+              className="flex-1 bg-blue-500 text-white py-2 px-3 rounded-full text-xs font-medium hover:bg-blue-600 transition flex items-center justify-center gap-1"
             >
               <Play size={14} />
               開始
@@ -151,7 +151,7 @@ export function CourtCard({
         {court.isPlaying && (
           <button
             onClick={onFinishGame}
-            className="w-full bg-[#e8a87c] text-white py-2 px-3 rounded-full text-xs font-medium hover:bg-[#d4956b] transition flex items-center justify-center gap-1"
+            className="w-full bg-orange-500 text-white py-2 px-3 rounded-full text-xs font-medium hover:bg-orange-600 transition flex items-center justify-center gap-1"
           >
             <Pause size={14} />
             終了
