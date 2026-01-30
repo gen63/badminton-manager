@@ -26,20 +26,16 @@ export function CourtCard({
   const timer = useGameTimer(court.startedAt, court.isPlaying);
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-3 space-y-3 flex-1 min-w-0">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold text-gray-800">コート {court.id}</h3>
-        {court.isPlaying ? (
+    <div className="bg-white rounded-lg shadow-lg p-2.5 space-y-2 flex-1 min-w-0">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-base font-bold text-gray-800">コート {court.id}</h3>
+        {court.isPlaying && (
           <div className="flex items-center gap-2">
-            <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold flex items-center gap-1">
-              <Clock size={14} />
+            <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold flex items-center gap-1">
+              <Clock size={12} />
               {timer.formatted}
             </span>
           </div>
-        ) : (
-          <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm font-semibold">
-            待機中
-          </span>
         )}
       </div>
 
@@ -49,25 +45,25 @@ export function CourtCard({
           <>
             <div
               onClick={() => onPlayerTap(court.teamA[0], 0)}
-              className={`p-2 rounded cursor-pointer transition ${
+              className={`p-1.5 rounded cursor-pointer transition ${
                 selectedPlayerId === court.teamA[0]
                   ? 'bg-blue-300'
                   : 'hover:bg-blue-100'
               }`}
             >
-              <span className="text-gray-800 text-sm font-medium">
+              <span className="text-gray-800 text-xs font-medium whitespace-nowrap">
                 {getPlayerName(court.teamA[0])}
               </span>
             </div>
             <div
               onClick={() => onPlayerTap(court.teamA[1], 1)}
-              className={`p-2 rounded cursor-pointer transition ${
+              className={`p-1.5 rounded cursor-pointer transition ${
                 selectedPlayerId === court.teamA[1]
                   ? 'bg-blue-300'
                   : 'hover:bg-blue-100'
               }`}
             >
-              <span className="text-gray-800 text-sm font-medium">
+              <span className="text-gray-800 text-xs font-medium whitespace-nowrap">
                 {getPlayerName(court.teamA[1])}
               </span>
             </div>
@@ -78,7 +74,7 @@ export function CourtCard({
       </div>
 
       {/* VS */}
-      <div className="text-center text-gray-400 font-bold">VS</div>
+      <div className="text-center text-gray-400 font-bold text-xs">VS</div>
 
       {/* チームB */}
       <div className="border border-red-200 rounded-lg p-2 bg-red-50 space-y-1">
@@ -86,31 +82,31 @@ export function CourtCard({
           <>
             <div
               onClick={() => onPlayerTap(court.teamB[0], 2)}
-              className={`p-2 rounded cursor-pointer transition ${
+              className={`p-1.5 rounded cursor-pointer transition ${
                 selectedPlayerId === court.teamB[0]
                   ? 'bg-red-300'
                   : 'hover:bg-red-100'
               }`}
             >
-              <span className="text-gray-800 text-sm font-medium">
+              <span className="text-gray-800 text-xs font-medium whitespace-nowrap">
                 {getPlayerName(court.teamB[0])}
               </span>
             </div>
             <div
               onClick={() => onPlayerTap(court.teamB[1], 3)}
-              className={`p-2 rounded cursor-pointer transition ${
+              className={`p-1.5 rounded cursor-pointer transition ${
                 selectedPlayerId === court.teamB[1]
                   ? 'bg-red-300'
                   : 'hover:bg-red-100'
               }`}
             >
-              <span className="text-gray-800 text-sm font-medium">
+              <span className="text-gray-800 text-xs font-medium whitespace-nowrap">
                 {getPlayerName(court.teamB[1])}
               </span>
             </div>
           </>
         ) : (
-          <div className="text-gray-400 text-sm p-2">未配置</div>
+          <div className="text-gray-400 text-xs p-1.5">未配置</div>
         )}
       </div>
 
@@ -129,15 +125,15 @@ export function CourtCard({
           <>
             <button
               onClick={onClear}
-              className="flex-1 bg-gray-200 text-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-300 transition flex items-center justify-center gap-2"
+              className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg text-sm font-semibold hover:bg-gray-300 transition flex items-center justify-center gap-1"
             >
               クリア
             </button>
             <button
               onClick={onStartGame}
-              className="flex-1 bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition flex items-center justify-center gap-2"
+              className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition flex items-center justify-center gap-1"
             >
-              <Play size={20} />
+              <Play size={16} />
               開始
             </button>
           </>
@@ -145,9 +141,9 @@ export function CourtCard({
         {court.isPlaying && (
           <button
             onClick={onFinishGame}
-            className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition flex items-center justify-center gap-2"
+            className="w-full bg-red-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition flex items-center justify-center gap-1"
           >
-            <Pause size={20} />
+            <Pause size={16} />
             終了
           </button>
         )}
