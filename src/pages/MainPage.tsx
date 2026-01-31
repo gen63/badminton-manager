@@ -61,7 +61,11 @@ export function MainPage() {
       const assignments = assignCourts(
         waitingPlayers,
         courtsToAssign.length,
-        matchHistory
+        matchHistory,
+        {
+          totalCourtCount: courts.length,
+          targetCourtIds: courtsToAssign,
+        }
       );
 
       courtsToAssign.forEach((id, index) => {
