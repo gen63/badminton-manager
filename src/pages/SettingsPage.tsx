@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -13,7 +12,6 @@ export function SettingsPage() {
   const { clearPlayers } = usePlayerStore();
   const { clearHistory, initializeCourts } = useGameStore();
   const toast = useToast();
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   if (!session) {
     navigate('/');
@@ -30,7 +28,6 @@ export function SettingsPage() {
   };
 
   const handleReset = () => {
-    setShowResetConfirm(false);
     clearHistory();
     clearPlayers();
     clearSession();
@@ -113,7 +110,7 @@ export function SettingsPage() {
         <div className="bg-white rounded-2xl shadow-sm p-5">
           <h2 className="text-base font-semibold text-gray-700 mb-4">データ管理</h2>
           <button
-            onClick={() => setShowResetConfirm(true)}
+            onClick={handleReset}
             className="w-full bg-red-500 text-white min-h-[44px] py-3 rounded-full font-semibold hover:bg-red-600 active:bg-red-700 active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-2"
           >
             <Trash2 size={18} />
@@ -124,35 +121,6 @@ export function SettingsPage() {
           </p>
         </div>
       </div>
-
-      {/* Reset confirmation modal */}
-      {showResetConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
-            <h3 className="text-base font-semibold text-gray-700 mb-3">
-              セッションをリセットしますか？
-            </h3>
-            <p className="text-sm text-gray-600 mb-6">
-              すべての試合データ、参加者情報、設定が削除されます。
-              この操作は元に戻せません。
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowResetConfirm(false)}
-                className="flex-1 min-h-[44px] py-3 bg-gray-100 text-gray-700 rounded-full font-semibold hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={handleReset}
-                className="flex-1 min-h-[44px] py-3 bg-red-500 text-white rounded-full font-semibold hover:bg-red-600 active:bg-red-700 active:scale-[0.98] transition-all duration-150"
-              >
-                リセット
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Toast notifications */}
       {toast.toasts.map((t) => (
