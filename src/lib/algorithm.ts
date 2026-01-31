@@ -2,97 +2,122 @@ import type { Player } from '../types/player';
 import type { CourtAssignment } from '../types/court';
 import type { Match } from '../types/match';
 
-const DEFAULT_RATING = 1500;
-
 type RatingGroup = 'upper' | 'middle' | 'lower';
 
-/**
- * プレイヤーの優先度を計算（数値が小さいほど優先度が高い）
- */
-function calculatePriority(player: Player): number {
-  const gamesWeight = player.gamesPlayed * 1000;
-  const timeWeight = player.lastPlayedAt ? Date.now() - player.lastPlayedAt : 0;
-  return gamesWeight - timeWeight;
-}
+// 配置確率（3コート）
+const COURT_PROBABILITIES_3: Record<RatingGroup, number[]> = {
+  upper:  [0.50, 0.50, 0.00], // C1, C2, C3
+  middle: [0.25, 0.50, 0.25],
+  lower:  [0.00, 0.50, 0.50],
+};
+
+// 配置確率（2コート）
+const COURT_PROBABILITIES_2: Record<'upper' | 'lower', number[]> = {
+  upper: [0.70, 0.30], // C1, C2
+  lower: [0.30, 0.70],
+};
 
 /**
- * プレイヤーのレーティングを取得（未設定はデフォルト値）
+ * プレイヤーをレーティングでグループ分け（3コート用）
+ * 3等分、端数は中位へ
  */
-function getRating(player: Player): number {
-  return player.rating ?? DEFAULT_RATING;
-}
-
-/**
- * プレイヤーをレーティングでグループ分け
- * @param players 全プレイヤー
- * @param totalCourtCount 全コート数
- * @returns グループ分けされたプレイヤーマップ
- */
-function groupPlayersByRating(
-  players: Player[],
-  totalCourtCount: number
-): Map<RatingGroup, Set<string>> {
+function groupPlayers3Court(players: Player[]): Map<RatingGroup, Set<string>> {
+  const sorted = [...players].sort((a, b) => (b.rating ?? 1500) - (a.rating ?? 1500));
+  const groupSize = Math.floor(sorted.length / 3);
+  const remainder = sorted.length % 3;
+  
+  const upperSize = groupSize;
+  const middleSize = groupSize + remainder;
+  
   const groups = new Map<RatingGroup, Set<string>>([
     ['upper', new Set()],
     ['middle', new Set()],
     ['lower', new Set()],
   ]);
-
-  if (totalCourtCount === 1) {
-    // 1コートの場合はグルーピングなし（全員middle扱い）
-    players.forEach((p) => groups.get('middle')!.add(p.id));
-    return groups;
-  }
-
-  // レーティングでソート（高い順）
-  const sortedByRating = [...players].sort(
-    (a, b) => getRating(b) - getRating(a)
-  );
-
-  // 上位4人、下位4人、それ以外
-  sortedByRating.forEach((player, index) => {
-    // レーティング未設定は中位グループ
-    if (player.rating === undefined) {
-      groups.get('middle')!.add(player.id);
-    } else if (index < 4) {
+  
+  sorted.forEach((player, index) => {
+    if (index < upperSize) {
       groups.get('upper')!.add(player.id);
-    } else if (index >= sortedByRating.length - 4) {
-      groups.get('lower')!.add(player.id);
-    } else {
+    } else if (index < upperSize + middleSize) {
       groups.get('middle')!.add(player.id);
+    } else {
+      groups.get('lower')!.add(player.id);
     }
   });
-
+  
   return groups;
 }
 
 /**
- * コートIDに対して配置可能なグループを取得
- * - 3コート: コート1→上位+中位、コート2→全グループ、コート3→中位+下位
- * - 2コート: コート1→上位+中位、コート2→中位+下位
- * - 1コート: 全員
+ * プレイヤーをレーティングでグループ分け（2コート用）
+ * 2等分、端数は下位へ
  */
-function getAllowedGroupsForCourt(
-  courtId: number,
-  totalCourtCount: number
-): RatingGroup[] {
-  if (totalCourtCount === 1) {
-    return ['upper', 'middle', 'lower'];
-  }
+function groupPlayers2Court(players: Player[]): Map<'upper' | 'lower', Set<string>> {
+  const sorted = [...players].sort((a, b) => (b.rating ?? 1500) - (a.rating ?? 1500));
+  const upperSize = Math.floor(sorted.length / 2);
+  
+  const groups = new Map<'upper' | 'lower', Set<string>>([
+    ['upper', new Set()],
+    ['lower', new Set()],
+  ]);
+  
+  sorted.forEach((player, index) => {
+    if (index < upperSize) {
+      groups.get('upper')!.add(player.id);
+    } else {
+      groups.get('lower')!.add(player.id);
+    }
+  });
+  
+  return groups;
+}
 
-  if (totalCourtCount === 2) {
-    if (courtId === 1) return ['upper', 'middle'];
-    if (courtId === 2) return ['middle', 'lower'];
+/**
+ * プレイヤーのグループを取得
+ */
+function getPlayerGroup(
+  playerId: string,
+  groups: Map<string, Set<string>>
+): string {
+  for (const [group, members] of groups) {
+    if (members.has(playerId)) return group;
   }
+  return 'middle';
+}
 
-  if (totalCourtCount === 3) {
-    if (courtId === 1) return ['upper', 'middle'];
-    if (courtId === 2) return ['upper', 'middle', 'lower'];
-    if (courtId === 3) return ['middle', 'lower'];
+/**
+ * 直近3試合で4人中3人が同じかチェック
+ */
+function hasSimilarRecentMatch(
+  fourPlayerIds: string[],
+  matchHistory: Match[]
+): boolean {
+  const recent3 = matchHistory.slice(0, 3);
+  
+  for (const match of recent3) {
+    const matchMembers = [...match.teamA, ...match.teamB];
+    const overlap = fourPlayerIds.filter(id => matchMembers.includes(id));
+    if (overlap.length >= 3) return true;
   }
+  return false;
+}
 
-  // デフォルト
-  return ['upper', 'middle', 'lower'];
+/**
+ * 上位と下位が同時にいる場合、どちらか1人だけはNG（3コート用）
+ */
+function hasIsolatedExtreme(
+  memberIds: string[],
+  groups: Map<RatingGroup, Set<string>>
+): boolean {
+  const upperCount = memberIds.filter(id => groups.get('upper')!.has(id)).length;
+  const lowerCount = memberIds.filter(id => groups.get('lower')!.has(id)).length;
+  
+  if (upperCount > 0 && lowerCount > 0) {
+    if ((upperCount === 1 && lowerCount >= 3) || (lowerCount === 1 && upperCount >= 3)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -125,17 +150,14 @@ function getOpponentHistory(matchHistory: Match[]): Map<string, Set<string>> {
   const opponentMap = new Map<string, Set<string>>();
 
   matchHistory.forEach((match) => {
-    const teamA = match.teamA;
-    const teamB = match.teamB;
-
-    teamA.forEach((playerId) => {
+    match.teamA.forEach((playerId) => {
       if (!opponentMap.has(playerId)) opponentMap.set(playerId, new Set());
-      teamB.forEach((opId) => opponentMap.get(playerId)!.add(opId));
+      match.teamB.forEach((opId) => opponentMap.get(playerId)!.add(opId));
     });
 
-    teamB.forEach((playerId) => {
+    match.teamB.forEach((playerId) => {
       if (!opponentMap.has(playerId)) opponentMap.set(playerId, new Set());
-      teamA.forEach((opId) => opponentMap.get(playerId)!.add(opId));
+      match.teamA.forEach((opId) => opponentMap.get(playerId)!.add(opId));
     });
   });
 
@@ -143,7 +165,12 @@ function getOpponentHistory(matchHistory: Match[]): Map<string, Set<string>> {
 }
 
 /**
- * 自動配置アルゴリズム（レーティングベースのグルーピング対応）
+ * 自動配置アルゴリズム v2
+ * - レーティングベースのグルーピング（3等分/2等分）
+ * - 確率ベースのコート配置
+ * - 直近3試合で3人同じを回避
+ * - 上位/下位の孤立を回避（3コート）
+ * - プレイ回数少ない人を優先
  */
 export function assignCourts(
   players: Player[],
@@ -167,8 +194,9 @@ export function assignCourts(
   const targetCourtIds = options?.targetCourtIds ?? 
     Array.from({ length: courtCount }, (_, i) => i + 1);
 
-  // レーティングでグループ分け
-  const ratingGroups = groupPlayersByRating(activePlayers, totalCourtCount);
+  // グループ分け
+  const groups3 = totalCourtCount >= 3 ? groupPlayers3Court(activePlayers) : null;
+  const groups2 = totalCourtCount === 2 ? groupPlayers2Court(activePlayers) : null;
 
   const pairHistory = getPairHistory(matchHistory);
   const opponentHistory = getOpponentHistory(matchHistory);
@@ -178,81 +206,108 @@ export function assignCourts(
   // 各コートに割り当て
   for (let i = 0; i < courtCount; i++) {
     const courtId = targetCourtIds[i];
-    const allowedGroups = getAllowedGroupsForCourt(courtId, totalCourtCount);
 
-    // このコートに配置可能なプレイヤーをフィルタ
-    const eligiblePlayers = activePlayers.filter((p) => {
+    // このコートに配置可能なプレイヤーを集める
+    let eligible = activePlayers.filter(p => {
       if (usedPlayers.has(p.id)) return false;
-      // いずれかの許可グループに属しているか
-      return allowedGroups.some((group) => ratingGroups.get(group)!.has(p.id));
+      
+      if (totalCourtCount >= 3 && groups3) {
+        const group = getPlayerGroup(p.id, groups3);
+        const prob = COURT_PROBABILITIES_3[group as RatingGroup]?.[courtId - 1] ?? 0;
+        if (prob === 0) return false;
+        // 確率に基づいてランダムで除外（ランダム性を持たせる）
+        if (Math.random() > prob * 1.5) return false;
+      } else if (totalCourtCount === 2 && groups2) {
+        const group = getPlayerGroup(p.id, groups2);
+        const prob = COURT_PROBABILITIES_2[group as 'upper' | 'lower']?.[courtId - 1] ?? 0.5;
+        if (Math.random() > prob * 1.3) return false;
+      }
+      
+      return true;
     });
 
-    if (eligiblePlayers.length < 4) {
-      // グループ制限で足りない場合は全員から選ぶ（フォールバック）
-      const fallbackPlayers = activePlayers.filter((p) => !usedPlayers.has(p.id));
-      if (fallbackPlayers.length < 4) {
-        throw new Error('プレイヤーの割り当てに失敗しました');
-      }
-      // フォールバック時は優先度順
-      const sorted = [...fallbackPlayers].sort(
-        (a, b) => calculatePriority(a) - calculatePriority(b)
-      );
-      const teamA: [string, string] = [sorted[0].id, sorted[1].id];
-      const teamB: [string, string] = [sorted[2].id, sorted[3].id];
+    // 回数少ない順にソート
+    eligible.sort((a, b) => a.gamesPlayed - b.gamesPlayed);
+
+    // 4人選ぶ
+    const selected: Player[] = [];
+    
+    for (const player of eligible) {
+      if (selected.length >= 4) break;
       
-      assignments.push({ courtId, teamA, teamB });
-      [teamA[0], teamA[1], teamB[0], teamB[1]].forEach((id) => usedPlayers.add(id));
-      continue;
+      const testIds = [...selected.map(p => p.id), player.id];
+      
+      // 直近3試合で3人同じチェック
+      if (selected.length >= 3) {
+        if (hasSimilarRecentMatch(testIds, matchHistory)) {
+          continue;
+        }
+      }
+      
+      // 上位/下位の孤立チェック（3コートの場合、4人目の時）
+      if (totalCourtCount >= 3 && groups3 && testIds.length === 4) {
+        if (hasIsolatedExtreme(testIds, groups3)) {
+          continue;
+        }
+      }
+      
+      selected.push(player);
+      usedPlayers.add(player.id);
     }
 
-    // 優先度順にソート（プレイ回数少ない人優先）
-    const sortedPlayers = [...eligiblePlayers].sort(
-      (a, b) => calculatePriority(a) - calculatePriority(b)
-    );
+    // 制約で4人揃わなかった場合、フォールバック
+    if (selected.length < 4) {
+      const remaining = activePlayers
+        .filter(p => !usedPlayers.has(p.id))
+        .sort((a, b) => a.gamesPlayed - b.gamesPlayed);
+      
+      for (const player of remaining) {
+        if (selected.length >= 4) break;
+        selected.push(player);
+        usedPlayers.add(player.id);
+      }
+    }
 
-    // チームA: 最も優先度の高い2人
-    const teamA: [string, string] = [
-      sortedPlayers[0].id,
-      sortedPlayers[1].id,
-    ];
+    if (selected.length < 4) {
+      throw new Error('プレイヤーの割り当てに失敗しました');
+    }
 
-    // チームB: 残りから選択（ペア履歴・対戦履歴を考慮）
+    // チーム分け（ペア履歴・対戦履歴を考慮）
+    const teamA: [string, string] = [selected[0].id, selected[1].id];
     let teamB: [string, string] | null = null;
     let bestScore = Infinity;
 
-    for (let j = 2; j < sortedPlayers.length - 1; j++) {
-      for (let k = j + 1; k < sortedPlayers.length; k++) {
-        const p1 = sortedPlayers[j];
-        const p2 = sortedPlayers[k];
-
-        // ペア履歴のスコア
-        const pairScore = pairHistory.get(p1.id)?.has(p2.id) ? 10 : 0;
-
-        // 対戦履歴のスコア
-        let opponentScore = 0;
+    // 残り2人でチームBを組む（組み合わせを探索）
+    for (let j = 0; j < 2; j++) {
+      for (let k = j + 1; k < 4; k++) {
+        if (j < 2 && k < 2) continue; // teamAの組み合わせはスキップ
+        
+        const candidate = [selected[j === 0 ? 2 : j === 1 ? 3 : j], selected[k === 2 ? 3 : k]];
+        if (!candidate[0] || !candidate[1]) continue;
+        
+        const p1 = selected[2];
+        const p2 = selected[3];
+        
+        // スコア計算
+        let score = 0;
+        if (pairHistory.get(p1.id)?.has(p2.id)) score += 10;
         teamA.forEach((aId) => {
-          if (opponentHistory.get(p1.id)?.has(aId)) opponentScore += 5;
-          if (opponentHistory.get(p2.id)?.has(aId)) opponentScore += 5;
+          if (opponentHistory.get(p1.id)?.has(aId)) score += 5;
+          if (opponentHistory.get(p2.id)?.has(aId)) score += 5;
         });
-
-        const totalScore = pairScore + opponentScore;
-
-        if (totalScore < bestScore) {
-          bestScore = totalScore;
+        
+        if (score < bestScore) {
+          bestScore = score;
           teamB = [p1.id, p2.id];
         }
       }
     }
 
     if (!teamB) {
-      teamB = [sortedPlayers[2].id, sortedPlayers[3].id];
+      teamB = [selected[2].id, selected[3].id];
     }
 
     assignments.push({ courtId, teamA, teamB });
-    usedPlayers.add(teamA[0]);
-    usedPlayers.add(teamA[1]);
-    usedPlayers.add(teamB[0]);
-    usedPlayers.add(teamB[1]);
   }
 
   return assignments;
