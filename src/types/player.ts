@@ -5,6 +5,7 @@ export interface Player {
   isResting: boolean;
   gamesPlayed: number;
   lastPlayedAt: number | null;
+  activatedAt: number | null; // 休憩→待機になった時刻（チェックイン）
 }
 
 export interface PlayerStats {

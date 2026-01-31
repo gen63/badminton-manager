@@ -52,15 +52,17 @@ export function SessionCreate() {
     }
 
     const sessionId = generateSessionId();
+    const now = Date.now();
     const session = {
       id: sessionId,
       config: {
         courtCount,
         targetScore,
         practiceDate: new Date().toISOString().split('T')[0],
+        practiceStartTime: now, // デフォルト: 「次へ」押下時の現在時刻
       },
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     };
 
     setSession(session);

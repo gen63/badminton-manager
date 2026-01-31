@@ -28,9 +28,10 @@ export const usePlayerStore = create<PlayerState>()(
               id: `player-${Date.now()}-${Math.random()}`,
               name: input.name,
               rating: input.rating,
-              isResting: false,
+              isResting: true, // 全員休憩で開始（チェックイン待ち）
               gamesPlayed: 0,
               lastPlayedAt: null,
+              activatedAt: null, // 休憩解除時に設定
             })),
           ],
         })),
@@ -40,9 +41,23 @@ export const usePlayerStore = create<PlayerState>()(
         })),
       toggleRest: (id) =>
         set((state) => ({
-          players: state.players.map((p) =>
-            p.id === id ? { ...p, isResting: !p.isResting } : p
-          ),
+          players: state.players.map((p) => {
+            if (p.id !== id) return p;
+            
+            const newIsResting = !p.isResting;
+            
+            // 休憩→待機の場合、activatedAtを記録（既に設定済みなら上書きしない）
+            const newActivatedAt = 
+              !newIsResting && p.activatedAt === null
+                ? Date.now()
+                : p.activatedAt;
+            
+            return {
+              ...p,
+              isResting: newIsResting,
+              activatedAt: newActivatedAt,
+            };
+          }),
         })),
       updatePlayer: (id, updates) =>
         set((state) => ({

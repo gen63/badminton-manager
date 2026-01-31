@@ -65,6 +65,7 @@ export function MainPage() {
         {
           totalCourtCount: courts.length,
           targetCourtIds: courtsToAssign,
+          practiceStartTime: session?.config.practiceStartTime,
         }
       );
 

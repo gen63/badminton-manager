@@ -95,6 +95,25 @@ export function SettingsPage() {
           </div>
         </div>
 
+        {/* 練習開始日時 */}
+        <div className="bg-white rounded-2xl shadow-sm p-5">
+          <h2 className="text-base font-semibold text-gray-700 mb-4">練習開始日時</h2>
+          <input
+            type="datetime-local"
+            value={new Date(session.config.practiceStartTime).toISOString().slice(0, 16)}
+            onChange={(e) => {
+              const newTime = new Date(e.target.value).getTime();
+              if (!isNaN(newTime)) {
+                updateConfig({ practiceStartTime: newTime });
+              }
+            }}
+            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-base focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none"
+          />
+          <p className="text-xs text-gray-500 mt-2">
+            ※ 滞在時間の計算に使用されます
+          </p>
+        </div>
+
         {/* 参加者管理 */}
         <div className="bg-white rounded-2xl shadow-sm p-5">
           <h2 className="text-base font-semibold text-gray-700 mb-4">参加者管理</h2>

@@ -172,6 +172,34 @@ function getOpponentHistory(matchHistory: Match[]): Map<string, Set<string>> {
  * - 上位/下位の孤立を回避（3コート）
  * - プレイ回数少ない人を優先
  */
+/**
+ * 滞在時間ベースの優先度を計算
+ * 優先スコア = 試合回数 / max(滞在時間(分), 5)
+ * スコアが低い人を優先
+ */
+function calculatePriorityScore(
+  player: Player,
+  practiceStartTime: number
+): number {
+  const now = Date.now();
+  
+  // 滞在開始時刻 = max(練習開始日時, 休憩解除時刻)
+  const stayStart = Math.max(
+    practiceStartTime,
+    player.activatedAt ?? now
+  );
+  
+  // 滞在時間（分）、最低5分
+  const stayMinutes = Math.max((now - stayStart) / (1000 * 60), 5);
+  
+  // まだ1回も試合してない人は最優先（1回保証）
+  if (player.gamesPlayed === 0) {
+    return -Infinity;
+  }
+  
+  return player.gamesPlayed / stayMinutes;
+}
+
 export function assignCourts(
   players: Player[],
   courtCount: number,
@@ -179,6 +207,7 @@ export function assignCourts(
   options?: {
     totalCourtCount?: number;
     targetCourtIds?: number[];
+    practiceStartTime?: number;
   }
 ): CourtAssignment[] {
   const activePlayers = players.filter((p) => !p.isResting);
@@ -193,6 +222,7 @@ export function assignCourts(
   const totalCourtCount = options?.totalCourtCount ?? courtCount;
   const targetCourtIds = options?.targetCourtIds ?? 
     Array.from({ length: courtCount }, (_, i) => i + 1);
+  const practiceStartTime = options?.practiceStartTime ?? Date.now();
 
   // グループ分け
   const groups3 = totalCourtCount >= 3 ? groupPlayers3Court(activePlayers) : null;
@@ -226,8 +256,10 @@ export function assignCourts(
       return true;
     });
 
-    // 回数少ない順にソート
-    eligible.sort((a, b) => a.gamesPlayed - b.gamesPlayed);
+    // 滞在時間ベースの優先度でソート（スコアが低い人を優先）
+    eligible.sort((a, b) => 
+      calculatePriorityScore(a, practiceStartTime) - calculatePriorityScore(b, practiceStartTime)
+    );
 
     // 4人選ぶ
     const selected: Player[] = [];
@@ -259,7 +291,9 @@ export function assignCourts(
     if (selected.length < 4) {
       const remaining = activePlayers
         .filter(p => !usedPlayers.has(p.id))
-        .sort((a, b) => a.gamesPlayed - b.gamesPlayed);
+        .sort((a, b) => 
+          calculatePriorityScore(a, practiceStartTime) - calculatePriorityScore(b, practiceStartTime)
+        );
       
       for (const player of remaining) {
         if (selected.length >= 4) break;
