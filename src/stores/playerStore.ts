@@ -2,9 +2,14 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Player } from '../types/player';
 
+interface PlayerInput {
+  name: string;
+  rating?: number;
+}
+
 interface PlayerState {
   players: Player[];
-  addPlayers: (names: string[]) => void;
+  addPlayers: (inputs: PlayerInput[]) => void;
   removePlayer: (id: string) => void;
   toggleRest: (id: string) => void;
   updatePlayer: (id: string, updates: Partial<Player>) => void;
@@ -15,13 +20,14 @@ export const usePlayerStore = create<PlayerState>()(
   persist(
     (set) => ({
       players: [],
-      addPlayers: (names) =>
+      addPlayers: (inputs) =>
         set((state) => ({
           players: [
             ...state.players,
-            ...names.map((name) => ({
+            ...inputs.map((input) => ({
               id: `player-${Date.now()}-${Math.random()}`,
-              name,
+              name: input.name,
+              rating: input.rating,
               isResting: false,
               gamesPlayed: 0,
               lastPlayedAt: null,

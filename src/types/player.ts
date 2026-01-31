@@ -1,6 +1,7 @@
 export interface Player {
   id: string;
   name: string;
+  rating?: number;
   isResting: boolean;
   gamesPlayed: number;
   lastPlayedAt: number | null;

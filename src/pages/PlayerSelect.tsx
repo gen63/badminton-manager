@@ -8,16 +8,36 @@ export function PlayerSelect() {
   const { players, addPlayers, removePlayer } = usePlayerStore();
   const [newPlayerNames, setNewPlayerNames] = useState('');
 
+  // 入力をパース: "名前 レーティング" or "名前\tレーティング" or "名前"
+  const parsePlayerInput = (line: string): { name: string; rating?: number } | null => {
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+    
+    // タブまたは2つ以上のスペースで分割
+    const parts = trimmed.split(/\t|\s{2,}/);
+    const name = parts[0].trim();
+    if (!name) return null;
+    
+    if (parts.length >= 2) {
+      const ratingStr = parts[parts.length - 1].trim();
+      const rating = parseInt(ratingStr, 10);
+      if (!isNaN(rating)) {
+        return { name, rating };
+      }
+    }
+    return { name };
+  };
+
   const handleAddPlayers = () => {
     if (newPlayerNames.trim()) {
-      // 改行で分割して、空行を除外
-      const names = newPlayerNames
+      // 改行で分割して、パース
+      const inputs = newPlayerNames
         .split('\n')
-        .map((name) => name.trim())
-        .filter((name) => name.length > 0);
+        .map(parsePlayerInput)
+        .filter((input): input is { name: string; rating?: number } => input !== null);
       
-      if (names.length > 0) {
-        addPlayers(names);
+      if (inputs.length > 0) {
+        addPlayers(inputs);
         setNewPlayerNames('');
       }
     }

@@ -20,14 +20,34 @@ export function SessionCreate() {
     .map((name) => name.trim())
     .filter((name) => name.length > 0).length;
 
+  // 入力をパース: "名前 レーティング" or "名前\tレーティング" or "名前"
+  const parsePlayerInput = (line: string): { name: string; rating?: number } | null => {
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+    
+    // タブまたは2つ以上のスペースで分割
+    const parts = trimmed.split(/\t|\s{2,}/);
+    const name = parts[0].trim();
+    if (!name) return null;
+    
+    if (parts.length >= 2) {
+      const ratingStr = parts[parts.length - 1].trim();
+      const rating = parseInt(ratingStr, 10);
+      if (!isNaN(rating)) {
+        return { name, rating };
+      }
+    }
+    return { name };
+  };
+
   const handleCreate = () => {
     if (playerNames.trim()) {
-      const names = playerNames
+      const inputs = playerNames
         .split('\n')
-        .map((name) => name.trim())
-        .filter((name) => name.length > 0);
-      if (names.length > 0) {
-        addPlayers(names);
+        .map(parsePlayerInput)
+        .filter((input): input is { name: string; rating?: number } => input !== null);
+      if (inputs.length > 0) {
+        addPlayers(inputs);
       }
     }
 
