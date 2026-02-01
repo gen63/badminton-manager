@@ -6,6 +6,13 @@ import { useGameStore } from '../stores/gameStore';
 import { generateSessionId } from '../lib/utils';
 import { GYM_OPTIONS } from '../types/session';
 
+// 現在日時を取得（分は00にリセット）
+const getInitialDateTime = () => {
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+  return now.toISOString().slice(0, 16);
+};
+
 export function SessionCreate() {
   const navigate = useNavigate();
   const setSession = useSessionStore((state) => state.setSession);
@@ -15,6 +22,7 @@ export function SessionCreate() {
   const [courtCount, setCourtCount] = useState(3);
   const [targetScore, setTargetScore] = useState(21);
   const [selectedGym, setSelectedGym] = useState('');
+  const [practiceDateTime, setPracticeDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
 
   const playerCount = playerNames
@@ -55,13 +63,14 @@ export function SessionCreate() {
 
     const sessionId = generateSessionId();
     const now = Date.now();
+    const practiceTime = new Date(practiceDateTime).getTime();
     const session = {
       id: sessionId,
       config: {
         courtCount,
         targetScore,
-        practiceDate: new Date().toISOString().split('T')[0],
-        practiceStartTime: now, // デフォルト: 「次へ」押下時の現在時刻
+        practiceDate: practiceDateTime.split('T')[0],
+        practiceStartTime: practiceTime,
         gym: selectedGym || undefined,
       },
       createdAt: now,
@@ -144,6 +153,19 @@ export function SessionCreate() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* 練習開始日時 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-600 mb-3">
+              練習開始日時
+            </label>
+            <input
+              type="datetime-local"
+              value={practiceDateTime}
+              onChange={(e) => setPracticeDateTime(e.target.value)}
+              className="w-full min-h-[48px] px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none text-base transition-all duration-150"
+            />
           </div>
 
           {/* 当日参加者 */}
