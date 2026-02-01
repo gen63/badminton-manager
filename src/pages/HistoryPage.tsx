@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
+import { useSessionStore } from '../stores/sessionStore';
 import { formatTime, copyToClipboard } from '../lib/utils';
 import { ArrowLeft, Copy, Trash2, Edit3 } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -11,6 +12,7 @@ export function HistoryPage() {
   const navigate = useNavigate();
   const { matchHistory, deleteMatch } = useGameStore();
   const { players } = usePlayerStore();
+  const session = useSessionStore((state) => state.session);
   const toast = useToast();
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '不明';
@@ -27,8 +29,9 @@ export function HistoryPage() {
   const handleCopyHistory = async () => {
     const today = new Date();
     const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
-    
-    let text = `${dateStr}\n`;
+    const gymName = session?.config.gym;
+
+    let text = gymName ? `${dateStr} ${gymName}\n` : `${dateStr}\n`;
     matchHistory.forEach((match, index) => {
       const teamANames = match.teamA.map(getPlayerName).join(' ');
       const teamBNames = match.teamB.map(getPlayerName).join(' ');

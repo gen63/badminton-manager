@@ -4,6 +4,14 @@ import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { generateSessionId } from '../lib/utils';
+import { GYM_OPTIONS } from '../types/session';
+
+// 現在日時を取得（分は00にリセット）
+const getInitialDateTime = () => {
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+  return now.toISOString().slice(0, 16);
+};
 
 export function SessionCreate() {
   const navigate = useNavigate();
@@ -13,6 +21,8 @@ export function SessionCreate() {
 
   const [courtCount, setCourtCount] = useState(3);
   const [targetScore, setTargetScore] = useState(21);
+  const [selectedGym, setSelectedGym] = useState('');
+  const [practiceDateTime, setPracticeDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
 
   const playerCount = playerNames
@@ -53,13 +63,15 @@ export function SessionCreate() {
 
     const sessionId = generateSessionId();
     const now = Date.now();
+    const practiceTime = new Date(practiceDateTime).getTime();
     const session = {
       id: sessionId,
       config: {
         courtCount,
         targetScore,
-        practiceDate: new Date().toISOString().split('T')[0],
-        practiceStartTime: now, // デフォルト: 「次へ」押下時の現在時刻
+        practiceDate: practiceDateTime.split('T')[0],
+        practiceStartTime: practiceTime,
+        gym: selectedGym || undefined,
       },
       createdAt: now,
       updatedAt: now,
@@ -122,6 +134,38 @@ export function SessionCreate() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* 体育館 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-600 mb-3">
+              体育館
+            </label>
+            <select
+              value={selectedGym}
+              onChange={(e) => setSelectedGym(e.target.value)}
+              className="w-full min-h-[48px] px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none text-base transition-all duration-150 appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3csvg%20xmlns%3d%22http%3a%2f%2fwww.w3.org%2f2000%2fsvg%22%20width%3d%2224%22%20height%3d%2224%22%20viewBox%3d%220%200%2024%2024%22%20fill%3d%22none%22%20stroke%3d%22%236b7280%22%20stroke-width%3d%222%22%20stroke-linecap%3d%22round%22%20stroke-linejoin%3d%22round%22%3e%3cpolyline%20points%3d%226%209%2012%2015%2018%209%22%3e%3c%2fpolyline%3e%3c%2fsvg%3e')] bg-no-repeat bg-[right_1rem_center] bg-[length:1.25rem]"
+            >
+              <option value="">選択してください</option>
+              {GYM_OPTIONS.map((gym) => (
+                <option key={gym} value={gym}>
+                  {gym}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 練習開始日時 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-600 mb-3">
+              練習開始日時
+            </label>
+            <input
+              type="datetime-local"
+              value={practiceDateTime}
+              onChange={(e) => setPracticeDateTime(e.target.value)}
+              className="w-full min-h-[48px] px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none text-base transition-all duration-150"
+            />
           </div>
 
           {/* 当日参加者 */}
