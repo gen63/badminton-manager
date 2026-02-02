@@ -4,7 +4,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts } from '../lib/algorithm';
-import { Settings, History, Coffee, Users, ArrowUp, Plus } from 'lucide-react';
+import { Settings, History, Coffee, Users, ArrowUp, Plus, X } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { CourtCard } from '../components/CourtCard';
@@ -52,12 +52,12 @@ export function MainPage() {
           .filter(c => !c.teamA[0] || c.teamA[0] === '')
           .map(c => c.id);
       }
-      
+
       // 待機中のプレイヤーのみを使用（コート内のプレイヤーを除外）
       const waitingPlayers = players.filter(
         (p) => !p.isResting && !playersInCourts.has(p.id)
       );
-      
+
       const assignments = assignCourts(
         waitingPlayers,
         courtsToAssign.length,
@@ -212,7 +212,7 @@ export function MainPage() {
           if (court1 && court2) {
             const allPlayers1 = [...court1.teamA, ...court1.teamB];
             const allPlayers2 = [...court2.teamA, ...court2.teamB];
-            
+
             const temp = allPlayers1[selectedPlayer.position];
             allPlayers1[selectedPlayer.position] = allPlayers2[position];
             allPlayers2[position] = temp;
@@ -246,45 +246,59 @@ export function MainPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-20">
+    <div className="bg-app pb-20">
       {/* ヘッダー */}
-      <div className="bg-white p-3 shadow-sm">
-        <div className="max-w-6xl mx-auto flex items-center justify-end gap-2">
-          <button
-            onClick={() => handleAutoAssign()}
-            disabled={!canAutoAssign}
-            className="px-4 py-2.5 bg-blue-500 text-white rounded-full hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all duration-150 text-sm font-medium flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
-          >
-            <Users size={18} />
-            一括配置
-          </button>
-          <button
-            onClick={() => navigate('/history')}
-            aria-label="履歴"
-            className="p-3 bg-gray-100 rounded-full hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
-          >
-            <History size={20} className="text-gray-600" />
-          </button>
-          <button
-            onClick={() => navigate('/settings')}
-            aria-label="設定"
-            className="p-3 bg-gray-100 rounded-full hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
-          >
-            <Settings size={20} className="text-gray-600" />
-          </button>
+      <div className="header-gradient text-white p-4 shadow-lg">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <h1 className="text-lg font-bold flex items-center gap-2">
+            <span className="text-xl">🏸</span>
+            練習管理
+          </h1>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleAutoAssign()}
+              disabled={!canAutoAssign}
+              className="px-4 py-2.5 bg-white/20 backdrop-blur-sm text-white rounded-full hover:bg-white/30 active:bg-white/40 active:scale-[0.98] transition-all duration-150 text-sm font-semibold flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] border border-white/20"
+            >
+              <Users size={18} />
+              一括配置
+            </button>
+            <button
+              onClick={() => navigate('/history')}
+              aria-label="履歴"
+              className="icon-btn bg-white/20 hover:bg-white/30 text-white border border-white/20"
+            >
+              <History size={20} />
+            </button>
+            <button
+              onClick={() => navigate('/settings')}
+              aria-label="設定"
+              className="icon-btn bg-white/20 hover:bg-white/30 text-white border border-white/20"
+            >
+              <Settings size={20} />
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto p-5 space-y-6">
         {/* メンバー交換の説明 */}
         {selectedPlayer && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700">
-            <strong>{players.find(p => p.id === selectedPlayer.id)?.name}</strong> を選択中 — 交換したいプレイヤーをタップ
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4 text-sm text-blue-700 flex items-center justify-between shadow-sm">
+            <span>
+              <strong className="font-semibold">{players.find(p => p.id === selectedPlayer.id)?.name}</strong> を選択中 — 交換したいプレイヤーをタップ
+            </span>
+            <button
+              onClick={() => setSelectedPlayer(null)}
+              className="p-2 hover:bg-blue-100 rounded-full transition-colors"
+            >
+              <X size={18} />
+            </button>
           </div>
         )}
 
         {/* コート一覧 */}
-        <div className="flex gap-3 overflow-x-auto">
+        <div className="flex gap-4 overflow-x-auto pb-2">
           {courts.map((court) => (
             <CourtCard
               key={court.id}
@@ -306,8 +320,9 @@ export function MainPage() {
 
         {/* スコア未入力の試合 */}
         {unfinishedMatches.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm p-5">
-            <h3 className="text-base font-semibold text-gray-700 mb-3">
+          <div className="card p-5">
+            <h3 className="section-title mb-4 flex items-center gap-2">
+              <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
               スコア未入力の試合
             </h3>
             <div className="space-y-2">
@@ -318,19 +333,19 @@ export function MainPage() {
                 return (
                   <div
                     key={match.id}
-                    className="flex items-center justify-between gap-2 p-3 bg-gray-50 rounded-xl text-sm"
+                    className="flex items-center justify-between gap-3 p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl text-sm border border-amber-100"
                   >
                     <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="font-medium text-gray-400">
+                      <span className="font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full text-xs">
                         #{matchNumber}
                       </span>
                       <span className="text-gray-700 truncate">{teamANames}</span>
-                      <span className="text-gray-400">vs</span>
+                      <span className="text-gray-400 font-medium">vs</span>
                       <span className="text-gray-700 truncate">{teamBNames}</span>
                     </div>
                     <button
                       onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
-                      className="px-4 py-2 bg-blue-500 text-white rounded-full text-sm font-medium hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all duration-150 flex-shrink-0 min-h-[44px]"
+                      className="btn-primary px-4 py-2 text-sm flex-shrink-0"
                     >
                       スコア入力
                     </button>
@@ -342,33 +357,34 @@ export function MainPage() {
         )}
 
         {/* プレイヤーリスト */}
-        <div className="bg-white rounded-2xl shadow-sm p-5">
-          <div className="flex items-baseline justify-between mb-2">
-            <h3 className="text-base font-semibold text-gray-700">
-              参加者一覧 ({players.length}人)
+        <div className="card p-5">
+          <div className="flex items-baseline justify-between mb-4">
+            <h3 className="section-title">
+              参加者一覧
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                ({players.length}人)
+              </span>
             </h3>
-            <span className="text-sm text-gray-500">
+            <span className="badge badge-waiting">
               待機中 {activePlayers.length}人
             </span>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div>
-              <div className="grid gap-2 grid-cols-3">
+              <div className="grid gap-2 grid-cols-2 sm:grid-cols-3">
                 {activePlayers.map((player) => {
                   const isSelected = selectedPlayer?.id === player.id;
                   return (
                     <div
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
-                      className={`flex items-center justify-between p-2 rounded-full border cursor-pointer transition ${
-                        isSelected
-                          ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-200'
-                          : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                      className={`player-pill cursor-pointer ${
+                        isSelected ? 'player-pill-selected' : ''
                       }`}
                     >
                       <span className="text-gray-800 text-sm truncate">
                         {player.name}
-                        <span className="text-xs text-gray-400 ml-1">
+                        <span className="text-xs text-gray-400 ml-1.5 font-medium">
                           ({player.gamesPlayed})
                         </span>
                       </span>
@@ -379,9 +395,9 @@ export function MainPage() {
                             setSelectedPlayer(null);
                           }}
                           aria-label="選択解除"
-                          className="p-2 text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
+                          className="p-1.5 text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
                         >
-                          ✕
+                          <X size={14} />
                         </button>
                       ) : (
                         <button
@@ -390,9 +406,9 @@ export function MainPage() {
                             toggleRest(player.id);
                           }}
                           aria-label="休憩"
-                          className="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 active:bg-orange-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
+                          className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 active:bg-orange-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
                         >
-                          <Coffee size={16} />
+                          <Coffee size={14} />
                         </button>
                       )}
                     </div>
@@ -402,7 +418,7 @@ export function MainPage() {
             </div>
 
             {/* メンバー追加 */}
-            <div className="flex gap-2 mt-3">
+            <div className="flex gap-2">
               <input
                 type="text"
                 value={newPlayerName}
@@ -414,7 +430,7 @@ export function MainPage() {
                   }
                 }}
                 placeholder="メンバー名を入力"
-                className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-full text-base focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-transparent min-h-[44px]"
+                className="input-field flex-1"
               />
               <button
                 onClick={() => {
@@ -425,28 +441,30 @@ export function MainPage() {
                 }}
                 disabled={!newPlayerName.trim()}
                 aria-label="追加"
-                className="p-3 bg-green-500 text-white rounded-full font-medium hover:bg-green-600 active:bg-green-700 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed min-w-[44px] min-h-[44px] flex items-center justify-center"
+                className="btn-accent p-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
               >
                 <Plus size={20} />
               </button>
             </div>
 
-            <div className="mt-3">
-              <h4 className="text-sm text-orange-500 mb-1">
-                休憩中 ({restingPlayers.length}人)
-              </h4>
-              {restingPlayers.length > 0 ? (
-                <div className="grid gap-2 grid-cols-3">
+            {/* 休憩中 */}
+            {restingPlayers.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-orange-500 mb-2 flex items-center gap-1.5">
+                  <Coffee size={14} />
+                  休憩中 ({restingPlayers.length}人)
+                </h4>
+                <div className="grid gap-2 grid-cols-2 sm:grid-cols-3">
                   {restingPlayers.map((player) => {
                     const isSelected = selectedPlayer?.id === player.id;
                     return (
                       <div
                         key={player.id}
                         onClick={() => handlePlayerTap(player.id)}
-                        className={`flex items-center justify-between p-2 rounded-full border cursor-pointer transition ${
+                        className={`player-pill cursor-pointer ${
                           isSelected
-                            ? 'bg-orange-50 border-orange-400 ring-2 ring-orange-200'
-                            : 'bg-orange-50 border-orange-200 hover:border-orange-300'
+                            ? 'player-pill-selected'
+                            : 'bg-orange-50 border-orange-200'
                         }`}
                       >
                         <span className="text-gray-700 text-sm truncate">{player.name}</span>
@@ -457,9 +475,9 @@ export function MainPage() {
                               setSelectedPlayer(null);
                             }}
                             aria-label="選択解除"
-                            className="p-2 text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
+                            className="p-1.5 text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
                           >
-                            ✕
+                            <X size={14} />
                           </button>
                         ) : (
                           <button
@@ -468,17 +486,17 @@ export function MainPage() {
                               toggleRest(player.id);
                             }}
                             aria-label="復帰"
-                            className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
+                            className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
                           >
-                            <ArrowUp size={16} />
+                            <ArrowUp size={14} />
                           </button>
                         )}
                       </div>
                     );
                   })}
                 </div>
-              ) : null}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
