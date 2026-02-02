@@ -2,6 +2,307 @@
 @tailwind components;
 @tailwind utilities;
 
+/* カスタムコンポーネント */
+@layer components {
+  /* グラデーション背景 */
+  .bg-app {
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
+    min-height: 100vh;
+  }
+
+  /* ヘッダーグラデーション */
+  .header-gradient {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 50%, #1e40af 100%);
+  }
+
+  /* カードスタイル */
+  .card {
+    background: white;
+    border-radius: 1.25rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.03);
+    transition: all 0.2s ease;
+  }
+
+  .card:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 20px 25px -5px rgba(0, 0, 0, 0.05);
+  }
+
+  /* プライマリボタン */
+  .btn-primary {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+    font-weight: 600;
+    border-radius: 9999px;
+    padding: 0.75rem 1.5rem;
+    min-height: 48px;
+    transition: all 0.15s ease;
+    box-shadow: 0 4px 14px 0 rgba(59, 130, 246, 0.35);
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    box-shadow: 0 6px 20px 0 rgba(59, 130, 246, 0.45);
+    transform: translateY(-1px);
+  }
+
+  .btn-primary:active {
+    transform: scale(0.98) translateY(0);
+    box-shadow: 0 2px 8px 0 rgba(59, 130, 246, 0.3);
+  }
+
+  .btn-primary:disabled {
+    background: #94a3b8;
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+
+  /* セカンダリボタン */
+  .btn-secondary {
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+    color: #475569;
+    font-weight: 600;
+    border-radius: 9999px;
+    padding: 0.75rem 1.5rem;
+    min-height: 48px;
+    transition: all 0.15s ease;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+  }
+
+  .btn-secondary:hover {
+    background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary:active {
+    transform: scale(0.98) translateY(0);
+  }
+
+  /* アクセントボタン（緑） */
+  .btn-accent {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    font-weight: 600;
+    border-radius: 9999px;
+    padding: 0.75rem 1.5rem;
+    min-height: 48px;
+    transition: all 0.15s ease;
+    box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.35);
+  }
+
+  .btn-accent:hover {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    box-shadow: 0 6px 20px 0 rgba(16, 185, 129, 0.45);
+    transform: translateY(-1px);
+  }
+
+  .btn-accent:active {
+    transform: scale(0.98) translateY(0);
+    box-shadow: 0 2px 8px 0 rgba(16, 185, 129, 0.3);
+  }
+
+  /* 警告ボタン（オレンジ） */
+  .btn-warning {
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+    color: white;
+    font-weight: 600;
+    border-radius: 9999px;
+    padding: 0.75rem 1.5rem;
+    min-height: 48px;
+    transition: all 0.15s ease;
+    box-shadow: 0 4px 14px 0 rgba(249, 115, 22, 0.35);
+  }
+
+  .btn-warning:hover {
+    background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+    box-shadow: 0 6px 20px 0 rgba(249, 115, 22, 0.45);
+    transform: translateY(-1px);
+  }
+
+  .btn-warning:active {
+    transform: scale(0.98) translateY(0);
+  }
+
+  /* 入力フィールド */
+  .input-field {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border: 2px solid #e2e8f0;
+    border-radius: 0.875rem;
+    font-size: 1rem;
+    transition: all 0.15s ease;
+  }
+
+  .input-field:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    background: white;
+  }
+
+  /* セレクトボックス */
+  .select-field {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    padding-right: 2.5rem;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border: 2px solid #e2e8f0;
+    border-radius: 0.875rem;
+    font-size: 1rem;
+    transition: all 0.15s ease;
+    background-image: url('data:image/svg+xml;charset=UTF-8,%3csvg%20xmlns%3d%22http%3a%2f%2fwww.w3.org%2f2000%2fsvg%22%20width%3d%2224%22%20height%3d%2224%22%20viewBox%3d%220%200%2024%2024%22%20fill%3d%22none%22%20stroke%3d%22%236b7280%22%20stroke-width%3d%222%22%20stroke-linecap%3d%22round%22%20stroke-linejoin%3d%22round%22%3e%3cpolyline%20points%3d%226%209%2012%2015%2018%209%22%3e%3c%2fpolyline%3e%3c%2fsvg%3e');
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1.25rem;
+  }
+
+  .select-field:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    background-color: white;
+  }
+
+  /* テキストエリア */
+  .textarea-field {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border: 2px solid #e2e8f0;
+    border-radius: 0.875rem;
+    font-size: 1rem;
+    resize: none;
+    transition: all 0.15s ease;
+  }
+
+  .textarea-field:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    background: white;
+  }
+
+  /* コートカード - プレイ中状態 */
+  .court-playing {
+    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    border: 2px solid #10b981;
+  }
+
+  /* プレイヤーピル */
+  .player-pill {
+    height: 2.75rem;
+    padding: 0 1rem;
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: all 0.15s ease;
+  }
+
+  .player-pill:hover {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+  }
+
+  .player-pill-selected {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  }
+
+  /* セクションタイトル */
+  .section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1e293b;
+    letter-spacing: -0.01em;
+  }
+
+  /* ラベル */
+  .label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 0.75rem;
+  }
+
+  /* ステータスバッジ */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 9999px;
+  }
+
+  .badge-playing {
+    background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+    color: #15803d;
+  }
+
+  .badge-waiting {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    color: #b45309;
+  }
+
+  /* 選択ボタングループ */
+  .select-button {
+    flex: 1;
+    min-height: 52px;
+    padding: 0.875rem;
+    border-radius: 0.875rem;
+    font-weight: 600;
+    font-size: 1.125rem;
+    transition: all 0.15s ease;
+    border: 2px solid transparent;
+  }
+
+  .select-button-inactive {
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+    color: #64748b;
+    border-color: transparent;
+  }
+
+  .select-button-inactive:hover {
+    background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+  }
+
+  .select-button-active {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+    box-shadow: 0 4px 14px 0 rgba(59, 130, 246, 0.35);
+    transform: scale(1.02);
+  }
+
+  /* アイコンボタン */
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    transition: all 0.15s ease;
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+    color: #64748b;
+  }
+
+  .icon-btn:hover {
+    background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+    color: #475569;
+  }
+
+  .icon-btn:active {
+    transform: scale(0.95);
+  }
+}
+
 /* iOS Safari 対応 */
 @layer base {
   /* タップハイライトを無効化 */

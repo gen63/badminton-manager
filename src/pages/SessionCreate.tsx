@@ -5,6 +5,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { generateSessionId } from '../lib/utils';
 import { GYM_OPTIONS } from '../types/session';
+import { Sparkles } from 'lucide-react';
 
 // 現在日時を取得（分は00にリセット）
 const getInitialDateTime = () => {
@@ -34,12 +35,12 @@ export function SessionCreate() {
   const parsePlayerInput = (line: string): { name: string; rating?: number } | null => {
     const trimmed = line.trim();
     if (!trimmed) return null;
-    
+
     // タブまたは2つ以上のスペースで分割
     const parts = trimmed.split(/\t|\s{2,}/);
     const name = parts[0].trim();
     if (!name) return null;
-    
+
     if (parts.length >= 2) {
       const ratingStr = parts[parts.length - 1].trim();
       const rating = parseInt(ratingStr, 10);
@@ -83,18 +84,25 @@ export function SessionCreate() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6 overflow-x-hidden">
-      <div className="max-w-sm mx-auto w-full">
-        <div className="text-center mb-6">
-          <h1 className="text-lg font-medium text-gray-600">
-            🏸 バドミントン練習管理
+    <div className="bg-app overflow-x-hidden">
+      <div className="max-w-md mx-auto w-full px-5 py-8">
+        {/* ヘッダー */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-button mb-4">
+            <span className="text-3xl">🏸</span>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800 tracking-tight">
+            バドミントン練習管理
           </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            セッションを設定して練習を始めましょう
+          </p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-6 space-y-6">
+        <div className="card p-6 space-y-6">
           {/* コート数 */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-3">
+            <label className="label">
               コート数
             </label>
             <div className="flex gap-3">
@@ -102,13 +110,14 @@ export function SessionCreate() {
                 <button
                   key={count}
                   onClick={() => setCourtCount(count)}
-                  className={`flex-1 min-h-[48px] py-3 rounded-full font-semibold text-lg transition-all duration-150 ${
+                  className={`select-button ${
                     courtCount === count
-                      ? 'bg-blue-500 text-white shadow-lg ring-2 ring-blue-300 scale-105'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98]'
+                      ? 'select-button-active'
+                      : 'select-button-inactive'
                   }`}
                 >
-                  {courtCount === count && '✓ '}{count}
+                  {courtCount === count && <span className="mr-1">✓</span>}
+                  {count}
                 </button>
               ))}
             </div>
@@ -116,21 +125,22 @@ export function SessionCreate() {
 
           {/* 点数 */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-3">
-              点数
+            <label className="label">
+              目標点数
             </label>
             <div className="flex gap-3">
               {[11, 15, 21].map((score) => (
                 <button
                   key={score}
                   onClick={() => setTargetScore(score)}
-                  className={`flex-1 min-h-[48px] py-3 rounded-full font-semibold text-lg transition-all duration-150 ${
+                  className={`select-button ${
                     targetScore === score
-                      ? 'bg-blue-500 text-white shadow-lg ring-2 ring-blue-300 scale-105'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98]'
+                      ? 'select-button-active'
+                      : 'select-button-inactive'
                   }`}
                 >
-                  {targetScore === score && '✓ '}{score}
+                  {targetScore === score && <span className="mr-1">✓</span>}
+                  {score}
                 </button>
               ))}
             </div>
@@ -138,13 +148,13 @@ export function SessionCreate() {
 
           {/* 体育館 */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-3">
+            <label className="label">
               体育館
             </label>
             <select
               value={selectedGym}
               onChange={(e) => setSelectedGym(e.target.value)}
-              className="w-full min-h-[48px] px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none text-base transition-all duration-150 appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3csvg%20xmlns%3d%22http%3a%2f%2fwww.w3.org%2f2000%2fsvg%22%20width%3d%2224%22%20height%3d%2224%22%20viewBox%3d%220%200%2024%2024%22%20fill%3d%22none%22%20stroke%3d%22%236b7280%22%20stroke-width%3d%222%22%20stroke-linecap%3d%22round%22%20stroke-linejoin%3d%22round%22%3e%3cpolyline%20points%3d%226%209%2012%2015%2018%209%22%3e%3c%2fpolyline%3e%3c%2fsvg%3e')] bg-no-repeat bg-[right_1rem_center] bg-[length:1.25rem]"
+              className="select-field min-h-[52px]"
             >
               <option value="">選択してください</option>
               {GYM_OPTIONS.map((gym) => (
@@ -157,41 +167,42 @@ export function SessionCreate() {
 
           {/* 練習開始日時 */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-3">
+            <label className="label">
               練習開始日時
             </label>
             <input
               type="datetime-local"
               value={practiceDateTime}
               onChange={(e) => setPracticeDateTime(e.target.value)}
-              className="w-full min-h-[48px] px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none text-base transition-all duration-150"
+              className="input-field min-h-[52px]"
             />
           </div>
 
           {/* 当日参加者 */}
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-3">
-              練習参加メンバー（1行に1人）
+            <label className="label">
+              練習参加メンバー
             </label>
             <textarea
               value={playerNames}
               onChange={(e) => setPlayerNames(e.target.value)}
               placeholder="田中太郎&#10;山田花子&#10;佐藤次郎"
               rows={5}
-              className="w-full max-w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-300 focus:border-transparent focus:outline-none resize-none text-base box-border transition-all duration-150"
+              className="textarea-field"
               style={{ WebkitAppearance: 'none' }}
             />
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              改行で入力（任意）
+            <p className="text-xs text-gray-400 mt-2 text-center">
+              1行に1人ずつ入力してください（任意）
             </p>
           </div>
 
           {/* 作成ボタン */}
           <button
             onClick={handleCreate}
-            className="w-full bg-blue-500 text-white min-h-[48px] py-3 rounded-full font-semibold hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all duration-150"
+            className="btn-primary w-full text-base flex items-center justify-center gap-2"
           >
-            次へ {playerCount > 0 && `(${playerCount}人)`}
+            <Sparkles size={18} />
+            {playerCount > 0 ? `${playerCount}人でスタート` : 'セッション開始'}
           </button>
         </div>
       </div>
