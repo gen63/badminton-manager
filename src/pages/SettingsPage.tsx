@@ -144,10 +144,6 @@ export function SettingsPage() {
             }}
             className="input-field min-h-[52px]"
           />
-          <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-            <span className="w-1 h-1 bg-gray-400 rounded-full" />
-            滞在時間の計算に使用されます
-          </p>
         </div>
 
         {/* 参加者管理 */}
@@ -182,10 +178,6 @@ export function SettingsPage() {
             <Trash2 size={18} />
             セッションをリセット
           </button>
-          <p className="text-xs text-red-500 text-center mt-3 flex items-center justify-center gap-1">
-            <span className="w-1 h-1 bg-red-400 rounded-full" />
-            すべてのデータが削除されます
-          </p>
         </div>
       </div>
 

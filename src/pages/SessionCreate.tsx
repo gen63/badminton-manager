@@ -94,9 +94,6 @@ export function SessionCreate() {
           <h1 className="text-2xl font-bold text-gray-800 tracking-tight">
             バドミントン練習管理
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            セッションを設定して練習を始めましょう
-          </p>
         </div>
 
         <div className="card p-6 space-y-6">
