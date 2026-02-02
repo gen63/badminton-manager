@@ -117,9 +117,9 @@ export function PlayerSelect() {
                   <button
                     onClick={() => removePlayer(player.id)}
                     aria-label={`${player.name}を削除`}
-                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
+                    className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={18} />
                   </button>
                 </div>
               ))}

@@ -220,7 +220,7 @@ export function ScoreInputPage() {
 
         {/* 点数ボタングリッド */}
         <div className="bg-white rounded-2xl shadow-sm p-5">
-          <div className="grid grid-cols-8 gap-1.5">
+          <div className="grid grid-cols-6 gap-2">
             {Array.from({ length: 31 }, (_, i) => i).map((num) => {
               // targetScore付近（±2）を目立たせる
               const isHighlighted = Math.abs(num - targetScore) <= 2;
@@ -230,7 +230,7 @@ export function ScoreInputPage() {
                   key={num}
                   onClick={() => handleNumberClick(num)}
                   disabled={inputHistory.length >= 2}
-                  className={`aspect-square min-h-[36px] rounded-xl text-sm font-medium transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  className={`min-h-[48px] min-w-[48px] rounded-xl text-base font-semibold transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed ${
                     isHighlighted
                       ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 active:bg-blue-300 active:scale-[0.95]'
                       : 'bg-gray-100 text-gray-800 hover:bg-gray-200 active:bg-gray-300 active:scale-[0.95]'

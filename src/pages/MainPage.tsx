@@ -395,9 +395,9 @@ export function MainPage() {
                             setSelectedPlayer(null);
                           }}
                           aria-label="選択解除"
-                          className="p-1.5 text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
+                          className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
                         >
-                          <X size={14} />
+                          <X size={18} />
                         </button>
                       ) : (
                         <button
@@ -406,9 +406,9 @@ export function MainPage() {
                             toggleRest(player.id);
                           }}
                           aria-label="休憩"
-                          className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 active:bg-orange-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
+                          className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center text-gray-400 hover:text-orange-500 hover:bg-orange-50 active:bg-orange-100 rounded-full flex-shrink-0 transition-all duration-150"
                         >
-                          <Coffee size={14} />
+                          <Coffee size={18} />
                         </button>
                       )}
                     </div>
@@ -475,9 +475,9 @@ export function MainPage() {
                               setSelectedPlayer(null);
                             }}
                             aria-label="選択解除"
-                            className="p-1.5 text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
+                            className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
                           >
-                            <X size={14} />
+                            <X size={18} />
                           </button>
                         ) : (
                           <button
@@ -486,9 +486,9 @@ export function MainPage() {
                               toggleRest(player.id);
                             }}
                             aria-label="復帰"
-                            className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 rounded-full flex-shrink-0 ml-1 transition-all duration-150"
+                            className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 rounded-full flex-shrink-0 transition-all duration-150"
                           >
-                            <ArrowUp size={14} />
+                            <ArrowUp size={18} />
                           </button>
                         )}
                       </div>

@@ -59,9 +59,9 @@ export function CourtCard({
               onClearSelection();
             }}
             aria-label="選択解除"
-            className="p-1.5 text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full ml-1 transition-all duration-150"
+            className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full transition-all duration-150"
           >
-            <X size={14} />
+            <X size={18} />
           </button>
         )}
       </div>
