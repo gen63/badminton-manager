@@ -7,6 +7,7 @@ export interface Court {
   isPlaying: boolean;
   startedAt: number | null;
   finishedAt: number | null;
+  restingPlayerIds?: string[]; // 元々休憩中だったプレイヤーID
 }
 
 export interface CourtAssignment {

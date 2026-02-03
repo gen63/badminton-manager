@@ -113,6 +113,13 @@ export function MainPage() {
       }
     });
 
+    // 元々休憩中だったプレイヤーを休憩に戻す
+    if (court.restingPlayerIds && court.restingPlayerIds.length > 0) {
+      court.restingPlayerIds.forEach((playerId) => {
+        updatePlayer(playerId, { isResting: true });
+      });
+    }
+
     // コートをクリア（プレイヤーを待機に戻す）
     updateCourt(courtId, {
       teamA: ['', ''],
@@ -122,6 +129,7 @@ export function MainPage() {
       isPlaying: false,
       startedAt: null,
       finishedAt: null,
+      restingPlayerIds: [],
     });
   };
 
@@ -164,13 +172,20 @@ export function MainPage() {
       newTeamB[position - 2] = newPlayerId;
     }
 
+    // コートに入るプレイヤーが休憩中だった場合、記録しておく
+    const newPlayer = players.find((p) => p.id === newPlayerId);
+    const restingPlayerIds = [...(court.restingPlayerIds || [])];
+    if (newPlayer?.isResting && !restingPlayerIds.includes(newPlayerId)) {
+      restingPlayerIds.push(newPlayerId);
+    }
+
     updateCourt(courtId, {
       teamA: [newTeamA[0], newTeamA[1]],
       teamB: [newTeamB[0], newTeamB[1]],
+      restingPlayerIds,
     });
 
     // コートに入るプレイヤーの休憩フラグを解除
-    const newPlayer = players.find((p) => p.id === newPlayerId);
     if (newPlayer?.isResting) {
       updatePlayer(newPlayerId, { isResting: false });
     }
