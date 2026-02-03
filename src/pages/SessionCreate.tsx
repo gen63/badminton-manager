@@ -171,7 +171,7 @@ export function SessionCreate() {
               type="datetime-local"
               value={practiceDateTime}
               onChange={(e) => setPracticeDateTime(e.target.value)}
-              className="input-field min-h-[52px]"
+              className="input-field"
             />
           </div>
 
