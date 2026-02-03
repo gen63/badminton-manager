@@ -168,6 +168,12 @@ export function MainPage() {
       teamA: [newTeamA[0], newTeamA[1]],
       teamB: [newTeamB[0], newTeamB[1]],
     });
+
+    // コートに入るプレイヤーの休憩フラグを解除
+    const newPlayer = players.find((p) => p.id === newPlayerId);
+    if (newPlayer?.isResting) {
+      updatePlayer(newPlayerId, { isResting: false });
+    }
   };
 
   const handlePlayerTap = (
