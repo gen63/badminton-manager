@@ -96,7 +96,7 @@ export function SessionCreate() {
           </h1>
         </div>
 
-        <div className="card p-6 space-y-6">
+        <div className="card p-6 space-y-6 overflow-hidden">
           {/* コート数 */}
           <div>
             <label className="label">
