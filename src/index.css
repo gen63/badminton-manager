@@ -227,7 +227,7 @@
     font-size: 0.875rem;
     font-weight: 600;
     color: #475569;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;  /* 8px - ラベルと入力は密接な関係 */
   }
 
   /* ステータスバッジ */

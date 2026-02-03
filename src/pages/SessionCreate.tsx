@@ -85,7 +85,7 @@ export function SessionCreate() {
 
   return (
     <div className="bg-app overflow-x-hidden">
-      <div className="max-w-md mx-auto w-full px-5 py-8">
+      <div className="max-w-md mx-auto w-full px-4 py-6">
         {/* ヘッダー */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-button mb-4">
