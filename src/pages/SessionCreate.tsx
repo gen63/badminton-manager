@@ -167,12 +167,25 @@ export function SessionCreate() {
             <label className="label">
               練習開始日時
             </label>
-            <input
-              type="datetime-local"
-              value={practiceDateTime}
-              onChange={(e) => setPracticeDateTime(e.target.value)}
-              className="input-field"
-            />
+            <div className="relative">
+              <input
+                type="datetime-local"
+                value={practiceDateTime}
+                onChange={(e) => setPracticeDateTime(e.target.value)}
+                className="input-field opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+              />
+              <div className="input-field text-center text-blue-600 pointer-events-none">
+                {(() => {
+                  const d = new Date(practiceDateTime);
+                  const year = d.getFullYear();
+                  const month = String(d.getMonth() + 1).padStart(2, '0');
+                  const day = String(d.getDate()).padStart(2, '0');
+                  const hour = String(d.getHours()).padStart(2, '0');
+                  const min = String(d.getMinutes()).padStart(2, '0');
+                  return `${year}/${month}/${day} ${hour}:${min}`;
+                })()}
+              </div>
+            </div>
           </div>
 
           {/* 当日参加者 */}
