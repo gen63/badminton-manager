@@ -126,6 +126,7 @@
   /* 入力フィールド */
   .input-field {
     width: 100%;
+    box-sizing: border-box;
     padding: 0.75rem 1rem;
     background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
     border: 2px solid #e2e8f0;
@@ -144,6 +145,7 @@
   /* セレクトボックス */
   .select-field {
     width: 100%;
+    box-sizing: border-box;
     padding: 0.75rem 1rem;
     padding-right: 2.5rem;
     background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
@@ -167,6 +169,7 @@
   /* テキストエリア */
   .textarea-field {
     width: 100%;
+    box-sizing: border-box;
     padding: 0.75rem 1rem;
     background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
     border: 2px solid #e2e8f0;
