@@ -140,11 +140,11 @@ export function MainPage() {
     .sort((a, b) => a.gamesPlayed - b.gamesPlayed); // 試合数昇順ソート
   const restingPlayers = players.filter((p) => p.isResting);
 
-  // スコア未入力の試合（0-0の試合）を最大5件
+  // スコア未入力の試合（0-0の試合）を最大2件
   const unfinishedMatches = [...matchHistory]
     .reverse()
     .filter((m) => m.scoreA === 0 && m.scoreB === 0)
-    .slice(0, 5);
+    .slice(0, 2);
 
   // 空のコート数
   const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
