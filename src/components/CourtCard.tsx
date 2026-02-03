@@ -94,7 +94,7 @@ export function CourtCard({
 
   return (
     <div
-      className={`card p-5 space-y-3 flex-1 min-w-0 ${
+      className={`card p-3 space-y-2 flex-1 min-w-0 ${
         court.isPlaying ? 'court-playing' : ''
       }`}
     >
