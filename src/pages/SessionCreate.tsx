@@ -202,6 +202,11 @@ export function SessionCreate() {
             {playerCount > 0 ? `${playerCount}人でスタート` : 'セッション開始'}
           </button>
         </div>
+
+        {/* バージョン表示 */}
+        <p className="text-center text-xs text-gray-400 mt-4">
+          v{__APP_VERSION__}
+        </p>
       </div>
     </div>
   );
