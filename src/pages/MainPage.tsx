@@ -4,7 +4,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts } from '../lib/algorithm';
-import { Settings, History, Coffee, Users, ArrowUp, Plus, X } from 'lucide-react';
+import { Settings, History, Coffee, Users, ArrowUp, Plus, X, ChevronDown } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { CourtCard } from '../components/CourtCard';
@@ -22,6 +22,7 @@ export function MainPage() {
     position?: number;
   } | null>(null);
   const [newPlayerName, setNewPlayerName] = useState('');
+  const [showAllUnfinished, setShowAllUnfinished] = useState(false);
 
   if (!session) {
     navigate('/');
@@ -148,11 +149,12 @@ export function MainPage() {
     .sort((a, b) => a.gamesPlayed - b.gamesPlayed); // 試合数昇順ソート
   const restingPlayers = players.filter((p) => p.isResting);
 
-  // スコア未入力の試合（0-0の試合）を最大2件
+  // スコア未入力の試合（0-0の試合）を最大4件
   const unfinishedMatches = [...matchHistory]
     .reverse()
     .filter((m) => m.scoreA === 0 && m.scoreB === 0)
-    .slice(0, 2);
+    .slice(0, 4);
+  const visibleUnfinished = showAllUnfinished ? unfinishedMatches : unfinishedMatches.slice(0, 1);
 
   // 空のコート数
   const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
@@ -338,36 +340,41 @@ export function MainPage() {
 
         {/* スコア未入力の試合 */}
         {unfinishedMatches.length > 0 && (
-          <div className="card p-6">
-            <h3 className="section-title mb-4 flex items-center gap-2">
-              <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
-              スコア未入力の試合
-            </h3>
+          <div className="card p-4">
             <div className="space-y-2">
-              {unfinishedMatches.map((match) => {
+              {visibleUnfinished.map((match) => {
                 const teamANames = match.teamA.map(getPlayerName).join(' ');
                 const teamBNames = match.teamB.map(getPlayerName).join(' ');
                 const matchNumber = matchHistory.findIndex((m) => m.id === match.id) + 1;
                 return (
                   <div
                     key={match.id}
-                    className="flex items-center gap-3 p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl text-sm border border-amber-100"
+                    className="flex items-center gap-2 p-2 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg text-sm border border-amber-100"
                   >
-                    <span className="font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full text-xs flex-shrink-0">
+                    <span className="font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full text-xs flex-shrink-0">
                       #{matchNumber}
                     </span>
-                    <div className="flex-1 min-w-0 truncate text-gray-700">
+                    <div className="flex-1 min-w-0 truncate text-gray-700 text-xs">
                       {teamANames} vs {teamBNames}
                     </div>
                     <button
                       onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
-                      className="btn-primary px-4 py-2 text-sm flex-shrink-0"
+                      className="btn-primary px-3 py-1.5 text-xs flex-shrink-0"
                     >
-                      スコア入力
+                      入力
                     </button>
                   </div>
                 );
               })}
+              {unfinishedMatches.length > 1 && (
+                <button
+                  onClick={() => setShowAllUnfinished(!showAllUnfinished)}
+                  className="w-full flex items-center justify-center gap-1 text-xs text-gray-500 py-1"
+                >
+                  <ChevronDown size={14} className={`transition-transform ${showAllUnfinished ? 'rotate-180' : ''}`} />
+                  {showAllUnfinished ? '閉じる' : `他${unfinishedMatches.length - 1}件`}
+                </button>
+              )}
             </div>
           </div>
         )}
