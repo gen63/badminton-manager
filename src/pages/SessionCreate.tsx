@@ -26,11 +26,6 @@ export function SessionCreate() {
   const [practiceDateTime, setPracticeDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
 
-  const playerCount = playerNames
-    .split('\n')
-    .map((name) => name.trim())
-    .filter((name) => name.length > 0).length;
-
   // 入力をパース: "名前 レーティング" or "名前\tレーティング" or "名前"
   const parsePlayerInput = (line: string): { name: string; rating?: number } | null => {
     const trimmed = line.trim();
@@ -207,13 +202,15 @@ export function SessionCreate() {
           </div>
 
           {/* 作成ボタン */}
-          <button
-            onClick={handleCreate}
-            className="btn-primary w-full text-base flex items-center justify-center gap-2"
-          >
-            <Sparkles size={18} />
-            {playerCount > 0 ? `${playerCount}人でスタート` : 'セッション開始'}
-          </button>
+          <div className="flex justify-center">
+            <button
+              onClick={handleCreate}
+              className="btn-primary text-base flex items-center justify-center gap-2"
+            >
+              <Sparkles size={18} />
+              開始
+            </button>
+          </div>
         </div>
 
         {/* バージョン表示 */}
