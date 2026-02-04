@@ -176,7 +176,7 @@ export function SettingsPage() {
             className="w-full min-h-[48px] bg-gradient-to-r from-red-500 to-red-600 text-white py-3 rounded-lg font-semibold hover:from-red-600 hover:to-red-700 active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-2 shadow-lg"
           >
             <Trash2 size={18} />
-            セッションをリセット
+            リセット
           </button>
         </div>
       </div>
