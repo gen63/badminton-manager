@@ -525,7 +525,7 @@ export function MainPage() {
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-gray-400">休憩メンバー無し</p>
+                <p className="text-sm text-gray-400 pb-4">休憩メンバー無し</p>
               )}
             </div>
           </div>
