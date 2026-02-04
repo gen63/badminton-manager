@@ -87,7 +87,7 @@ export function SettingsPage() {
             <div>
               <label className="label">目標点数</label>
               <div className="flex gap-3">
-                {[11, 15, 21].map((score) => (
+                {[15, 21].map((score) => (
                   <button
                     key={score}
                     onClick={() => handleTargetScoreChange(score)}
