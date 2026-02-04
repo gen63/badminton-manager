@@ -81,16 +81,6 @@ export function SessionCreate() {
   return (
     <div className="bg-app overflow-x-hidden">
       <div className="max-w-md mx-auto w-full px-4 py-6">
-        {/* ヘッダー */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 shadow-button mb-4">
-            <span className="text-3xl">🏸</span>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-800 tracking-tight">
-            バドミントン練習管理
-          </h1>
-        </div>
-
         <div className="card p-6 space-y-6 overflow-hidden">
           {/* コート数 */}
           <div>
