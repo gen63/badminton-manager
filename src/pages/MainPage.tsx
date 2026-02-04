@@ -400,7 +400,7 @@ export function MainPage() {
           </div>
           <div className="space-y-4">
             <div>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {activePlayers.map((player) => {
                   const isSelected = selectedPlayer?.id === player.id;
                   return (
@@ -483,7 +483,7 @@ export function MainPage() {
                 休憩中 ({restingPlayers.length}人)
               </h4>
               {restingPlayers.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {restingPlayers.map((player) => {
                     const isSelected = selectedPlayer?.id === player.id;
                     return (
