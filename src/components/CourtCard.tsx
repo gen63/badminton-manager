@@ -32,11 +32,11 @@ export function CourtCard({
 }: CourtCardProps) {
   const timer = useGameTimer(court.startedAt, court.isPlaying);
 
-  // プレイヤーピルボタン（44px以上のタップターゲット）
+  // プレイヤーピルボタン
   const PlayerPill = ({ playerId, position }: { playerId: string | null; position: number }) => {
     if (!playerId) {
       return (
-        <div className="h-12 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border-2 border-dashed border-gray-200" />
+        <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
       );
     }
 
@@ -45,7 +45,7 @@ export function CourtCard({
     return (
       <div
         onClick={() => onPlayerTap(playerId, position)}
-        className={`player-pill h-12 cursor-pointer ${
+        className={`player-pill h-9 cursor-pointer ${
           isSelected ? 'player-pill-selected' : ''
         }`}
       >
@@ -59,9 +59,9 @@ export function CourtCard({
               onClearSelection();
             }}
             aria-label="選択解除"
-            className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full transition-all duration-150"
+            className="min-w-[36px] min-h-[36px] -mr-1 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full transition-all duration-150"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         )}
       </div>
@@ -70,9 +70,9 @@ export function CourtCard({
 
   // 未配置状態
   const EmptySlots = () => (
-    <div className="space-y-2">
-      <div className="h-12 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border-2 border-dashed border-gray-200" />
-      <div className="h-12 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border-2 border-dashed border-gray-200" />
+    <div className="space-y-1">
+      <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
+      <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
     </div>
   );
 
@@ -115,7 +115,7 @@ export function CourtCard({
       {hasPlayers ? (
         <>
           {/* チームA */}
-          <div className="space-y-2">
+          <div className="space-y-1">
             {court.teamA[0] ? (
               <>
                 <PlayerPill playerId={court.teamA[0]} position={0} />
@@ -127,14 +127,14 @@ export function CourtCard({
           </div>
 
           {/* VS */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 my-1">
             <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
-            <span className="text-gray-400 text-xs font-bold px-2">VS</span>
+            <span className="text-gray-400 text-xs font-bold px-1">VS</span>
             <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
           </div>
 
           {/* チームB */}
-          <div className="space-y-2">
+          <div className="space-y-1">
             {court.teamB[0] ? (
               <>
                 <PlayerPill playerId={court.teamB[0]} position={2} />
@@ -150,14 +150,14 @@ export function CourtCard({
       )}
 
       {/* コントロールボタン */}
-      <div className="flex pt-2">
+      <div className="flex pt-1">
         {!court.isPlaying && !hasPlayers && (
           <button
             onClick={onAutoAssign}
             disabled={!canAutoAssign}
-            className="btn-secondary w-full flex items-center justify-center gap-1.5 text-sm py-2.5 whitespace-nowrap"
+            className="btn-secondary w-full flex items-center justify-center gap-1 text-xs py-1.5 whitespace-nowrap"
           >
-            <Users size={16} />
+            <Users size={14} />
             配置
           </button>
         )}
@@ -165,14 +165,14 @@ export function CourtCard({
           <>
             <button
               onClick={onStartGame}
-              className="btn-primary w-1/2 flex items-center justify-center gap-1 text-xs py-2.5 whitespace-nowrap px-1"
+              className="btn-primary w-1/2 flex items-center justify-center gap-1 text-xs py-1.5 whitespace-nowrap px-1"
             >
-              <Play size={14} />
+              <Play size={12} />
               開始
             </button>
             <button
               onClick={onClear}
-              className="btn-secondary w-1/2 flex items-center justify-center gap-1 text-xs py-2.5 whitespace-nowrap px-1"
+              className="btn-secondary w-1/2 flex items-center justify-center gap-1 text-xs py-1.5 whitespace-nowrap px-1"
             >
               クリア
             </button>
@@ -181,9 +181,9 @@ export function CourtCard({
         {court.isPlaying && (
           <button
             onClick={onFinishGame}
-            className="btn-warning w-full flex items-center justify-center gap-1.5 text-sm py-2.5"
+            className="btn-warning w-full flex items-center justify-center gap-1 text-xs py-1.5"
           >
-            <Square size={16} />
+            <Square size={14} />
             終了
           </button>
         )}
