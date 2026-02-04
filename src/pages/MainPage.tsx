@@ -317,9 +317,9 @@ export function MainPage() {
         )}
 
         {/* コート一覧 */}
-        <div className="flex gap-10 pb-2 justify-center">
-          {courts.map((court) => (
-            <div key={court.id} className="w-[26%]">
+        <div className="flex pb-2 justify-center">
+          {courts.map((court, index) => (
+            <div key={court.id} className={`w-[26%] ${index > 0 ? 'ml-6' : ''}`}>
               <CourtCard
                 court={court}
                 getPlayerName={getPlayerName}
