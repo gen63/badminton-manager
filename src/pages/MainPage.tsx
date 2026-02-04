@@ -301,25 +301,10 @@ export function MainPage() {
       </div>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
-        {/* メンバー交換の説明 */}
-        {selectedPlayer && (
-          <div className="bg-gradient-to-r from-indigo-50 to-indigo-50 border-2 border-indigo-200 rounded-xl p-4 text-sm text-indigo-700 flex items-center justify-between shadow-sm">
-            <span>
-              <strong className="font-semibold">{players.find(p => p.id === selectedPlayer.id)?.name}</strong> と交換したいプレイヤーをタップ
-            </span>
-            <button
-              onClick={() => setSelectedPlayer(null)}
-              className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
-            >
-              <X size={18} />
-            </button>
-          </div>
-        )}
-
         {/* コート一覧 */}
-        <div className="flex pb-2 justify-center" style={{ gap: '20px' }}>
+        <div className="flex pb-2 justify-center items-stretch" style={{ gap: '20px' }}>
           {courts.map((court) => (
-            <div key={court.id} style={{ width: '26%' }}>
+            <div key={court.id} className="flex" style={{ width: '26%' }}>
               <CourtCard
                 court={court}
                 getPlayerName={getPlayerName}
@@ -337,6 +322,21 @@ export function MainPage() {
             </div>
           ))}
         </div>
+
+        {/* メンバー交換の説明 */}
+        {selectedPlayer && (
+          <div className="bg-gradient-to-r from-indigo-50 to-indigo-50 border-2 border-indigo-200 rounded-xl p-4 text-sm text-indigo-700 flex items-center justify-between shadow-sm">
+            <span>
+              <strong className="font-semibold">{players.find(p => p.id === selectedPlayer.id)?.name}</strong> と交換したいプレイヤーをタップ
+            </span>
+            <button
+              onClick={() => setSelectedPlayer(null)}
+              className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        )}
 
         {/* スコア未入力の試合 */}
         {unfinishedMatches.length > 0 && (

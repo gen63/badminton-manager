@@ -531,6 +531,93 @@ body {
 
 ---
 
+## 12. レイアウト安定性（Layout Stability）
+
+**レイアウトジャンプ（CLS: Cumulative Layout Shift）を避ける**ことは、UXの重要な要素です。
+コンテンツが突然動くと、ユーザーは意図しない場所をタップしたり、読んでいた場所を見失います。
+
+### 基本原則
+
+| ルール | 説明 | 実装方法 |
+|--------|------|----------|
+| **高さを事前に確保** | 動的コンテンツでも高さを固定/最小値を設定 | `min-height`, `h-[固定値]` |
+| **flexで高さを揃える** | 並列要素の高さを自動で揃える | `items-stretch` + `flex` |
+| **スペースを予約** | 表示/非表示が切り替わる要素用のスペース確保 | プレースホルダー, `invisible` |
+| **アスペクト比を固定** | 画像・メディアの読み込み時のジャンプ防止 | `aspect-ratio`, `aspect-video` |
+
+### 実装パターン
+
+#### 1. 並列カードの高さを揃える（flex）
+```jsx
+{/* 親: items-stretch（デフォルト）で高さを揃える */}
+<div className="flex items-stretch gap-4">
+  {items.map(item => (
+    {/* 子: flex + w-full で親の高さに追従 */}
+    <div className="flex" style={{ width: '33%' }}>
+      <Card className="flex flex-col w-full">
+        {/* 可変コンテンツ部分を flex-1 で伸縮 */}
+        <div className="flex-1">
+          {content}
+        </div>
+        {/* 固定フッター */}
+        <div>buttons</div>
+      </Card>
+    </div>
+  ))}
+</div>
+```
+
+#### 2. 動的コンテンツに最小高さを設定
+```jsx
+{/* コンテンツが空でも高さを確保 */}
+<div className="min-h-[200px]">
+  {hasContent ? <Content /> : <Placeholder />}
+</div>
+```
+
+#### 3. 条件付き表示でスペースを確保
+```jsx
+{/* ❌ 悪い例: 表示時にレイアウトがジャンプ */}
+{error && <ErrorMessage />}
+
+{/* ✅ 良い例: スペースを常に確保 */}
+<div className="min-h-[24px]">
+  {error && <ErrorMessage />}
+</div>
+
+{/* ✅ 良い例: 見えないが場所は確保 */}
+<div className={error ? '' : 'invisible'}>
+  <ErrorMessage />
+</div>
+```
+
+#### 4. スケルトンローディング
+```jsx
+{/* コンテンツと同じサイズのスケルトン */}
+{isLoading ? (
+  <div className="h-[180px] bg-gray-200 rounded-xl animate-pulse" />
+) : (
+  <ActualContent />
+)}
+```
+
+### 避けるべきパターン
+
+| パターン | 問題 | 代替案 |
+|----------|------|--------|
+| 条件付きで要素を追加/削除 | 周囲のレイアウトが動く | min-height確保、invisibleで隠す |
+| 高さ未指定の動的リスト | 読み込み完了時にジャンプ | スケルトン、min-height |
+| サイズ未指定の画像 | 読み込み完了時にジャンプ | width/height属性、aspect-ratio |
+| フォント読み込み後のサイズ変化 | テキストが動く | font-display: swap + 同サイズのフォールバック |
+
+### チェック方法
+
+1. **Chrome DevTools** → Performance → "Layout Shift Regions" を有効化
+2. **Lighthouse** → Core Web Vitals → CLS スコアを確認（0.1未満が良好）
+3. **手動確認**: 状態変化時に周囲の要素が動かないか目視確認
+
+---
+
 ## チェックリスト
 
 ### ⚠️ 実装時に必ず確認すること
@@ -565,6 +652,12 @@ body {
 - [ ] transform/opacityのみ使用しているか
 - [ ] 300ms以下に収まっているか → `duration-150` or `duration-200`
 - [ ] prefers-reduced-motionを尊重しているか
+
+### レイアウト安定性
+- [ ] **並列カードの高さは揃っているか** → `flex` + `items-stretch`
+- [ ] **動的コンテンツに最小高さを設定しているか** → `min-h-[XXXpx]`
+- [ ] **条件付き表示でレイアウトがジャンプしないか** → スペース予約、`invisible`
+- [ ] 状態変化時に周囲の要素が動かないか目視確認
 
 ### アクセシビリティ
 - [ ] コントラスト比4.5:1以上か
@@ -601,4 +694,4 @@ body {
 
 ---
 
-**最終更新**: 2026-01-31
+**最終更新**: 2026-02-04

@@ -94,12 +94,12 @@ export function CourtCard({
 
   return (
     <div
-      className={`card p-2 space-y-2 ${
+      className={`card p-2 flex flex-col w-full ${
         court.isPlaying ? 'court-playing' : ''
       }`}
     >
       {/* コート番号とステータス */}
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex items-center justify-center gap-2 mb-2">
         <span className="text-2xl font-bold text-gray-400">
           {circledNumbers[court.id - 1] || court.id}
         </span>
@@ -112,6 +112,7 @@ export function CourtCard({
       </div>
 
       {/* プレイヤー表示エリア */}
+      <div className="flex-1 flex flex-col justify-center space-y-2">
       {hasPlayers ? (
         <>
           {/* チームA */}
@@ -148,6 +149,7 @@ export function CourtCard({
       ) : (
         <UnassignedDisplay />
       )}
+      </div>
 
       {/* コントロールボタン */}
       <div className="flex pt-1">
