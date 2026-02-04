@@ -305,7 +305,7 @@ export function MainPage() {
         {selectedPlayer && (
           <div className="bg-gradient-to-r from-indigo-50 to-indigo-50 border-2 border-indigo-200 rounded-xl p-4 text-sm text-indigo-700 flex items-center justify-between shadow-sm">
             <span>
-              <strong className="font-semibold">{players.find(p => p.id === selectedPlayer.id)?.name}</strong> を選択中 — 交換したいプレイヤーをタップ
+              <strong className="font-semibold">{players.find(p => p.id === selectedPlayer.id)?.name}</strong> と交換したいプレイヤーをタップ
             </span>
             <button
               onClick={() => setSelectedPlayer(null)}
@@ -317,7 +317,7 @@ export function MainPage() {
         )}
 
         {/* コート一覧 */}
-        <div className="flex gap-4 pb-2 justify-center">
+        <div className="flex gap-10 pb-2 justify-center">
           {courts.map((court) => (
             <div key={court.id} className="w-[26%]">
               <CourtCard
@@ -374,7 +374,7 @@ export function MainPage() {
                     </div>
                     <button
                       onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
-                      className="btn-primary px-3 py-1.5 text-xs flex-shrink-0"
+                      className="btn-secondary flex items-center justify-center text-xs py-1.5 px-3 flex-shrink-0"
                     >
                       入力
                     </button>
@@ -525,7 +525,7 @@ export function MainPage() {
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-gray-400">休憩メンバー無し</p>
+                <p className="text-sm text-gray-400 pb-4">休憩メンバー無し</p>
               )}
             </div>
           </div>
