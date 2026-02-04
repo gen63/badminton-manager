@@ -165,14 +165,14 @@ export function CourtCard({
           <>
             <button
               onClick={onStartGame}
-              className="btn-primary flex-1 flex items-center justify-center gap-1 text-xs py-2.5 whitespace-nowrap px-2"
+              className="btn-primary w-1/2 flex items-center justify-center gap-1 text-xs py-2.5 whitespace-nowrap px-1"
             >
               <Play size={14} />
               開始
             </button>
             <button
               onClick={onClear}
-              className="btn-secondary flex-1 flex items-center justify-center gap-1 text-xs py-2.5 whitespace-nowrap px-2"
+              className="btn-secondary w-1/2 flex items-center justify-center gap-1 text-xs py-2.5 whitespace-nowrap px-1"
             >
               クリア
             </button>
