@@ -341,10 +341,21 @@ export function MainPage() {
         {/* スコア未入力の試合 */}
         {unfinishedMatches.length > 0 && (
           <div className="card p-4">
-            <h3 className="section-title mb-2 flex items-center gap-2 text-sm">
-              <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
-              スコア未入力の試合
-            </h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="section-title flex items-center gap-2 text-sm">
+                <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+                スコア未入力の試合
+              </h3>
+              {unfinishedMatches.length > 1 && (
+                <button
+                  onClick={() => setShowAllUnfinished(!showAllUnfinished)}
+                  className="flex items-center gap-1 text-xs text-gray-500 px-2 py-1 hover:bg-gray-100 rounded"
+                >
+                  <ChevronDown size={14} className={`transition-transform ${showAllUnfinished ? 'rotate-180' : ''}`} />
+                  {showAllUnfinished ? '閉じる' : `他${unfinishedMatches.length - 1}件`}
+                </button>
+              )}
+            </div>
             <div className="space-y-2">
               {visibleUnfinished.map((match) => {
                 const teamANames = match.teamA.map(getPlayerName).join(' ');
@@ -370,15 +381,6 @@ export function MainPage() {
                   </div>
                 );
               })}
-              {unfinishedMatches.length > 1 && (
-                <button
-                  onClick={() => setShowAllUnfinished(!showAllUnfinished)}
-                  className="w-full flex items-center justify-center gap-1 text-xs text-gray-500 py-1"
-                >
-                  <ChevronDown size={14} className={`transition-transform ${showAllUnfinished ? 'rotate-180' : ''}`} />
-                  {showAllUnfinished ? '閉じる' : `他${unfinishedMatches.length - 1}件`}
-                </button>
-              )}
             </div>
           </div>
         )}
