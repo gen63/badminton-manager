@@ -321,7 +321,7 @@ export function MainPage() {
         {/* コート一覧 */}
         <div className="flex gap-2 pb-2">
           {courts.map((court) => (
-            <div key={court.id} className="flex-1 min-w-0">
+            <div key={court.id} className="w-[26%]">
               <CourtCard
                 court={court}
                 getPlayerName={getPlayerName}

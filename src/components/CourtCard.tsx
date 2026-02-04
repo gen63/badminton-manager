@@ -49,7 +49,7 @@ export function CourtCard({
           isSelected ? 'player-pill-selected' : ''
         }`}
       >
-        <span className="text-gray-800 text-sm font-medium truncate">
+        <span className="text-gray-800 text-xs font-medium truncate">
           {getPlayerName(playerId)}
         </span>
         {isSelected && (
