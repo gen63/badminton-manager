@@ -75,10 +75,6 @@ export function HistoryPage() {
               icon="🏸"
               title="まだ試合がありません"
               description="メイン画面でゲームを開始すると、ここに履歴が表示されます。"
-              action={{
-                label: 'メイン画面へ',
-                onClick: () => navigate('/main'),
-              }}
             />
           ) : (
             <div className="space-y-3">
