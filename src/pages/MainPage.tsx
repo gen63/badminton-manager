@@ -351,15 +351,13 @@ export function MainPage() {
                 return (
                   <div
                     key={match.id}
-                    className="flex items-center justify-between gap-3 p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl text-sm border border-amber-100"
+                    className="flex items-center gap-3 p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl text-sm border border-amber-100"
                   >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full text-xs">
-                        #{matchNumber}
-                      </span>
-                      <span className="text-gray-700 truncate">{teamANames}</span>
-                      <span className="text-gray-400 font-medium">vs</span>
-                      <span className="text-gray-700 truncate">{teamBNames}</span>
+                    <span className="font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full text-xs flex-shrink-0">
+                      #{matchNumber}
+                    </span>
+                    <div className="flex-1 min-w-0 truncate text-gray-700">
+                      {teamANames} vs {teamBNames}
                     </div>
                     <button
                       onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}

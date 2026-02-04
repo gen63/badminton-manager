@@ -75,10 +75,6 @@ export function HistoryPage() {
               icon="🏸"
               title="まだ試合がありません"
               description="メイン画面でゲームを開始すると、ここに履歴が表示されます。"
-              action={{
-                label: 'メイン画面へ',
-                onClick: () => navigate('/main'),
-              }}
             />
           ) : (
             <div className="space-y-3">
@@ -104,11 +100,9 @@ export function HistoryPage() {
                           <div className="grid grid-cols-[1fr_auto_1fr] items-center text-sm mb-2 gap-2">
                             <span className={`truncate text-right ${isTeamAWinner ? 'font-bold text-gray-800' : 'text-gray-600'}`}>
                               {teamANames}
-                              {isTeamAWinner && <span className="ml-1 text-amber-500">★</span>}
                             </span>
                             <span className="text-gray-400 font-bold text-xs px-2 bg-white rounded-full py-0.5">VS</span>
                             <span className={`truncate ${isTeamBWinner ? 'font-bold text-gray-800' : 'text-gray-600'}`}>
-                              {isTeamBWinner && <span className="mr-1 text-amber-500">★</span>}
                               {teamBNames}
                             </span>
                           </div>
