@@ -12,19 +12,23 @@
 
 **修正したら必ずデプロイ**
 
-- 変更後は即座に `npm run deploy` を実行
 - GitHub Pages で本番公開されるため、未デプロイ厳禁
 - デプロイ忘れ = ユーザーに反映されない
 
-## デプロイ手順
+## デプロイ手順（GitHub Actions）
+
+**⚠️ `npm run deploy` は使わない！masterへのpushで自動デプロイ**
 
 ```bash
 cd /home/gen/badminton-manager
-git add .
+git add -A
 git commit -m "変更内容"
 git push origin master
-npm run deploy
 ```
+
+- masterにpushすると GitHub Actions が自動でビルド＆デプロイ
+- 進捗確認: https://github.com/gen63/badminton-manager/actions
+- 完了まで1〜2分程度
 
 **デプロイ後:**
 - Genにキャッシュバスティング付きURLを連携（タイムスタンプ付き）
