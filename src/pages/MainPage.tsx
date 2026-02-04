@@ -341,6 +341,10 @@ export function MainPage() {
         {/* スコア未入力の試合 */}
         {unfinishedMatches.length > 0 && (
           <div className="card p-4">
+            <h3 className="section-title mb-2 flex items-center gap-2 text-sm">
+              <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+              スコア未入力の試合
+            </h3>
             <div className="space-y-2">
               {visibleUnfinished.map((match) => {
                 const teamANames = match.teamA.map(getPlayerName).join(' ');
