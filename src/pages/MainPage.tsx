@@ -317,9 +317,9 @@ export function MainPage() {
         )}
 
         {/* コート一覧 */}
-        <div className="flex pb-2 justify-center">
-          {courts.map((court, index) => (
-            <div key={court.id} className={`w-[26%] ${index > 0 ? 'ml-10' : ''}`}>
+        <div className="flex pb-2 justify-center" style={{ gap: '40px' }}>
+          {courts.map((court) => (
+            <div key={court.id} style={{ width: '26%' }}>
               <CourtCard
                 court={court}
                 getPlayerName={getPlayerName}
@@ -400,14 +400,14 @@ export function MainPage() {
           </div>
           <div className="space-y-4">
             <div>
-              <div className="grid gap-2 grid-cols-2 sm:grid-cols-3">
+              <div className="flex flex-wrap gap-2">
                 {activePlayers.map((player) => {
                   const isSelected = selectedPlayer?.id === player.id;
                   return (
                     <div
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
-                      className={`player-pill cursor-pointer ${
+                      className={`player-pill cursor-pointer max-w-[200px] ${
                         isSelected ? 'player-pill-selected' : ''
                       }`}
                     >
@@ -483,14 +483,14 @@ export function MainPage() {
                 休憩中 ({restingPlayers.length}人)
               </h4>
               {restingPlayers.length > 0 ? (
-                <div className="grid gap-2 grid-cols-2 sm:grid-cols-3">
+                <div className="flex flex-wrap gap-2">
                   {restingPlayers.map((player) => {
                     const isSelected = selectedPlayer?.id === player.id;
                     return (
                       <div
                         key={player.id}
                         onClick={() => handlePlayerTap(player.id)}
-                        className={`player-pill cursor-pointer ${
+                        className={`player-pill cursor-pointer max-w-[200px] ${
                           isSelected
                             ? 'player-pill-selected'
                             : 'bg-orange-50 border-orange-200'
