@@ -20,6 +20,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 全履歴取得（コミット数カウント用）
+
+      - name: Set version from commit count
+        run: |
+          COUNT=$(git rev-list --count HEAD)
+          npm version 1.0.$COUNT --no-git-tag-version
+          echo "Version set to 1.0.$COUNT"
 
       - name: Setup Node
         uses: actions/setup-node@v4
