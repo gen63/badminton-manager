@@ -88,7 +88,7 @@ export function SessionCreate() {
       <div className="max-w-md mx-auto w-full px-4 py-6">
         {/* ヘッダー */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-button mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 shadow-button mb-4">
             <span className="text-3xl">🏸</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-800 tracking-tight">
@@ -102,7 +102,7 @@ export function SessionCreate() {
             <label className="label">
               コート数
             </label>
-            <div className="flex gap-3">
+            <div className="flex gap-3 justify-center">
               {[1, 2, 3].map((count) => (
                 <button
                   key={count}
@@ -125,8 +125,8 @@ export function SessionCreate() {
             <label className="label">
               目標点数
             </label>
-            <div className="flex gap-3">
-              {[11, 15, 21].map((score) => (
+            <div className="flex gap-3 justify-center">
+              {[15, 21].map((score) => (
                 <button
                   key={score}
                   onClick={() => setTargetScore(score)}
@@ -174,7 +174,7 @@ export function SessionCreate() {
                 onChange={(e) => setPracticeDateTime(e.target.value)}
                 className="input-field opacity-0 absolute inset-0 w-full h-full cursor-pointer"
               />
-              <div className="input-field text-center text-blue-600 pointer-events-none">
+              <div className="input-field text-center text-indigo-600 pointer-events-none">
                 {(() => {
                   const d = new Date(practiceDateTime);
                   const year = d.getFullYear();

@@ -4,153 +4,138 @@
 
 /* カスタムコンポーネント */
 @layer components {
-  /* グラデーション背景 */
+  /* グラデーション背景 - ブルー→インディゴ */
   .bg-app {
-    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
+    background: linear-gradient(to bottom right, #eff6ff, #e0e7ff);
     min-height: 100vh;
   }
 
-  /* ヘッダーグラデーション */
+  /* ヘッダー - 白背景 + シャドウ */
   .header-gradient {
-    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 50%, #1e40af 100%);
+    background: white;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
   }
 
-  /* カードスタイル */
+  /* カードスタイル - shadow-lg */
   .card {
     background: white;
-    border-radius: 1.25rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.05);
-    border: 1px solid rgba(0, 0, 0, 0.03);
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
     transition: all 0.2s ease;
   }
 
   .card:hover {
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 20px 25px -5px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
   }
 
-  /* プライマリボタン */
+  /* プライマリボタン - インディゴ */
   .btn-primary {
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    background-color: #4f46e5;
     color: white;
     font-weight: 600;
-    border-radius: 9999px;
+    border-radius: 0.5rem;
     padding: 0.75rem 1.5rem;
     min-height: 48px;
     transition: all 0.15s ease;
-    box-shadow: 0 4px 14px 0 rgba(59, 130, 246, 0.35);
   }
 
   .btn-primary:hover {
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-    box-shadow: 0 6px 20px 0 rgba(59, 130, 246, 0.45);
-    transform: translateY(-1px);
+    background-color: #4338ca;
   }
 
   .btn-primary:active {
-    transform: scale(0.98) translateY(0);
-    box-shadow: 0 2px 8px 0 rgba(59, 130, 246, 0.3);
+    transform: scale(0.98);
   }
 
   .btn-primary:disabled {
-    background: #94a3b8;
-    box-shadow: none;
+    background-color: #9ca3af;
     cursor: not-allowed;
   }
 
   /* セカンダリボタン */
   .btn-secondary {
-    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-    color: #475569;
+    background-color: #e5e7eb;
+    color: #374151;
     font-weight: 600;
-    border-radius: 9999px;
+    border-radius: 0.5rem;
     padding: 0.75rem 1.5rem;
     min-height: 48px;
     transition: all 0.15s ease;
-    border: 1px solid rgba(0, 0, 0, 0.05);
   }
 
   .btn-secondary:hover {
-    background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
-    transform: translateY(-1px);
+    background-color: #d1d5db;
   }
 
   .btn-secondary:active {
-    transform: scale(0.98) translateY(0);
+    transform: scale(0.98);
   }
 
   /* アクセントボタン（緑） */
   .btn-accent {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    background-color: #059669;
     color: white;
     font-weight: 600;
-    border-radius: 9999px;
+    border-radius: 0.5rem;
     padding: 0.75rem 1.5rem;
     min-height: 48px;
     transition: all 0.15s ease;
-    box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.35);
   }
 
   .btn-accent:hover {
-    background: linear-gradient(135deg, #059669 0%, #047857 100%);
-    box-shadow: 0 6px 20px 0 rgba(16, 185, 129, 0.45);
-    transform: translateY(-1px);
+    background-color: #047857;
   }
 
   .btn-accent:active {
-    transform: scale(0.98) translateY(0);
-    box-shadow: 0 2px 8px 0 rgba(16, 185, 129, 0.3);
+    transform: scale(0.98);
   }
 
   /* 警告ボタン（オレンジ） */
   .btn-warning {
-    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+    background-color: #ea580c;
     color: white;
     font-weight: 600;
-    border-radius: 9999px;
+    border-radius: 0.5rem;
     padding: 0.75rem 1.5rem;
     min-height: 48px;
     transition: all 0.15s ease;
-    box-shadow: 0 4px 14px 0 rgba(249, 115, 22, 0.35);
   }
 
   .btn-warning:hover {
-    background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
-    box-shadow: 0 6px 20px 0 rgba(249, 115, 22, 0.45);
-    transform: translateY(-1px);
+    background-color: #c2410c;
   }
 
   .btn-warning:active {
-    transform: scale(0.98) translateY(0);
+    transform: scale(0.98);
   }
 
   /* 入力フィールド */
   .input-field {
     width: 100%;
     box-sizing: border-box;
-    padding: 0.75rem 1rem;
-    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-    border: 2px solid #e2e8f0;
-    border-radius: 0.875rem;
+    padding: 0.5rem 1rem;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
     font-size: 1rem;
     transition: all 0.15s ease;
   }
 
   .input-field:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
-    background: white;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
   }
 
   /* セレクトボックス */
   .select-field {
     width: 100%;
     box-sizing: border-box;
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 1rem;
     padding-right: 2.5rem;
-    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-    border: 2px solid #e2e8f0;
-    border-radius: 0.875rem;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
     font-size: 1rem;
     transition: all 0.15s ease;
     background-image: url('data:image/svg+xml;charset=UTF-8,%3csvg%20xmlns%3d%22http%3a%2f%2fwww.w3.org%2f2000%2fsvg%22%20width%3d%2224%22%20height%3d%2224%22%20viewBox%3d%220%200%2024%2024%22%20fill%3d%22none%22%20stroke%3d%22%236b7280%22%20stroke-width%3d%222%22%20stroke-linecap%3d%22round%22%20stroke-linejoin%3d%22round%22%3e%3cpolyline%20points%3d%226%209%2012%2015%2018%209%22%3e%3c%2fpolyline%3e%3c%2fsvg%3e');
@@ -161,19 +146,18 @@
 
   .select-field:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
-    background-color: white;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
   }
 
   /* テキストエリア */
   .textarea-field {
     width: 100%;
     box-sizing: border-box;
-    padding: 0.75rem 1rem;
-    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-    border: 2px solid #e2e8f0;
-    border-radius: 0.875rem;
+    padding: 0.5rem 1rem;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
     font-size: 1rem;
     resize: none;
     transition: all 0.15s ease;
@@ -181,9 +165,8 @@
 
   .textarea-field:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
-    background: white;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
   }
 
   /* コートカード - プレイ中状態 */
@@ -194,11 +177,11 @@
 
   /* プレイヤーピル */
   .player-pill {
-    min-height: 3rem; /* 48px - タップターゲット確保 */
+    min-height: 3rem;
     padding: 0 0.5rem 0 1rem;
     background: white;
-    border: 2px solid #e2e8f0;
-    border-radius: 9999px;
+    border: 2px solid #e5e7eb;
+    border-radius: 0.5rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -206,21 +189,21 @@
   }
 
   .player-pill:hover {
-    border-color: #cbd5e1;
-    background: #f8fafc;
+    border-color: #c7d2fe;
+    background: #f5f3ff;
   }
 
   .player-pill-selected {
-    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    background: #eef2ff;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
   }
 
   /* セクションタイトル */
   .section-title {
     font-size: 1rem;
     font-weight: 700;
-    color: #1e293b;
+    color: #1f2937;
     letter-spacing: -0.01em;
   }
 
@@ -228,9 +211,9 @@
   .label {
     display: block;
     font-size: 0.875rem;
-    font-weight: 600;
-    color: #475569;
-    margin-bottom: 0.5rem;  /* 8px - ラベルと入力は密接な関係 */
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 0.5rem;
   }
 
   /* ステータスバッジ */
@@ -245,41 +228,40 @@
   }
 
   .badge-playing {
-    background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+    background: #dcfce7;
     color: #15803d;
   }
 
   .badge-waiting {
-    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    background: #fef3c7;
     color: #b45309;
   }
 
   /* 選択ボタングループ */
   .select-button {
-    flex: 1;
-    min-height: 52px;
-    padding: 0.875rem;
-    border-radius: 0.875rem;
+    min-height: 48px;
+    padding: 0.75rem 2rem;
+    border-radius: 0.5rem;
     font-weight: 600;
-    font-size: 1.125rem;
+    font-size: 1rem;
     transition: all 0.15s ease;
     border: 2px solid transparent;
+    text-align: center;
   }
 
   .select-button-inactive {
-    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-    color: #64748b;
+    background: #e5e7eb;
+    color: #6b7280;
     border-color: transparent;
   }
 
   .select-button-inactive:hover {
-    background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+    background: #d1d5db;
   }
 
   .select-button-active {
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    background: #4f46e5;
     color: white;
-    box-shadow: 0 4px 14px 0 rgba(59, 130, 246, 0.35);
     transform: scale(1.02);
   }
 
@@ -290,15 +272,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 9999px;
+    border-radius: 0.5rem;
     transition: all 0.15s ease;
-    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-    color: #64748b;
+    background: #e5e7eb;
+    color: #6b7280;
   }
 
   .icon-btn:hover {
-    background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
-    color: #475569;
+    background: #d1d5db;
+    color: #374151;
   }
 
   .icon-btn:active {
@@ -308,12 +290,10 @@
 
 /* iOS Safari 対応 */
 @layer base {
-  /* タップハイライトを無効化 */
   * {
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* フォーム要素のiOSデフォルトスタイルをリセット */
   input,
   textarea,
   select,
@@ -322,14 +302,12 @@
     appearance: none;
   }
 
-  /* スムーズスクロール（慣性スクロール） */
   .overflow-auto,
   .overflow-y-auto,
   .overflow-x-auto {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* セーフエリア対応のユーティリティ */
   .safe-area-inset-top {
     padding-top: env(safe-area-inset-top);
   }
@@ -346,12 +324,10 @@
     padding-right: env(safe-area-inset-right);
   }
 
-  /* 下部の固定要素用（ホームインジケーター回避） */
   .pb-safe {
     padding-bottom: max(20px, env(safe-area-inset-bottom));
   }
 
-  /* アクティブ状態のフィードバック */
   button:active:not(:disabled),
   [role="button"]:active {
     transform: scale(0.98);

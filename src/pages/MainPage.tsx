@@ -269,7 +269,7 @@ export function MainPage() {
   return (
     <div className="bg-app pb-20">
       {/* ヘッダー */}
-      <div className="header-gradient text-white p-4 shadow-lg">
+      <div className="header-gradient text-gray-800 p-3">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <h1 className="text-lg font-bold flex items-center gap-2">
             <span className="text-xl">🏸</span>
@@ -279,7 +279,7 @@ export function MainPage() {
             <button
               onClick={() => handleAutoAssign()}
               disabled={!canAutoAssign}
-              className="px-4 py-2.5 bg-white/20 backdrop-blur-sm text-white rounded-full hover:bg-white/30 active:bg-white/40 active:scale-[0.98] transition-all duration-150 text-sm font-semibold flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] border border-white/20"
+              className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150 text-sm font-semibold flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] border border-gray-200"
             >
               <Users size={18} />
               一括配置
@@ -287,14 +287,14 @@ export function MainPage() {
             <button
               onClick={() => navigate('/history')}
               aria-label="履歴"
-              className="icon-btn bg-white/20 hover:bg-white/30 text-white border border-white/20"
+              className="icon-btn"
             >
               <History size={20} />
             </button>
             <button
               onClick={() => navigate('/settings')}
               aria-label="設定"
-              className="icon-btn bg-white/20 hover:bg-white/30 text-white border border-white/20"
+              className="icon-btn"
             >
               <Settings size={20} />
             </button>
@@ -305,13 +305,13 @@ export function MainPage() {
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         {/* メンバー交換の説明 */}
         {selectedPlayer && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4 text-sm text-blue-700 flex items-center justify-between shadow-sm">
+          <div className="bg-gradient-to-r from-indigo-50 to-indigo-50 border-2 border-indigo-200 rounded-xl p-4 text-sm text-indigo-700 flex items-center justify-between shadow-sm">
             <span>
               <strong className="font-semibold">{players.find(p => p.id === selectedPlayer.id)?.name}</strong> を選択中 — 交換したいプレイヤーをタップ
             </span>
             <button
               onClick={() => setSelectedPlayer(null)}
-              className="p-2 hover:bg-blue-100 rounded-full transition-colors"
+              className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
             >
               <X size={18} />
             </button>
@@ -507,7 +507,7 @@ export function MainPage() {
                               toggleRest(player.id);
                             }}
                             aria-label="復帰"
-                            className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 rounded-full flex-shrink-0 transition-all duration-150"
+                            className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 rounded-full flex-shrink-0 transition-all duration-150"
                           >
                             <ArrowUp size={18} />
                           </button>

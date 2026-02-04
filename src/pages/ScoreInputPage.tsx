@@ -75,6 +75,17 @@ export function ScoreInputPage() {
     setInputHistory([]);
   };
 
+  // 目標点数に対する最大点数を取得
+  const getMaxScore = (target: number): number => {
+    switch (target) {
+      case 21: return 30;
+      case 15: return 21;
+      default: return target + 9;
+    }
+  };
+
+  const maxScore = getMaxScore(targetScore);
+
   // スコアバリデーション
   const validateScore = (a: number, b: number): string | null => {
     // 同点禁止
@@ -82,9 +93,9 @@ export function ScoreInputPage() {
       return '同点は入力できません';
     }
     
-    // どちらかはtargetScore以上である必要がある
-    if (a < targetScore && b < targetScore) {
-      return 'どちらかは設定点数以上である必要があります';
+    // 最大点数到達時は2点差不要（先取で勝利）
+    if (a === maxScore || b === maxScore) {
+      return null;
     }
     
     // 両方targetScore以上の場合（デュース突入後）、2点差が必要
@@ -146,7 +157,7 @@ export function ScoreInputPage() {
           <div className="text-xs text-gray-500 text-center mb-3">コート {match.courtId}</div>
           
           {selectedPlayer && (
-            <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 text-center">
+            <div className="mb-3 p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-sm text-indigo-700 text-center">
               メンバーを選択中 — 交換したい相手をタップ
             </div>
           )}
@@ -159,9 +170,9 @@ export function ScoreInputPage() {
                   <button
                     key={idx}
                     onClick={() => handlePlayerTap(idx)}
-                    className={`flex-1 min-h-[44px] p-2 rounded-full text-sm font-medium transition-all duration-150 ${
+                    className={`flex-1 min-h-[44px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                       selectedPlayer?.position === idx
-                        ? 'bg-blue-500 text-white ring-2 ring-blue-300 scale-105'
+                        ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
                         : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
                     }`}
                   >
@@ -180,9 +191,9 @@ export function ScoreInputPage() {
                   <button
                     key={idx}
                     onClick={() => handlePlayerTap(idx + 2)}
-                    className={`flex-1 min-h-[44px] p-2 rounded-full text-sm font-medium transition-all duration-150 ${
+                    className={`flex-1 min-h-[44px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                       selectedPlayer?.position === idx + 2
-                        ? 'bg-blue-500 text-white ring-2 ring-blue-300 scale-105'
+                        ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
                         : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
                     }`}
                   >
@@ -200,11 +211,11 @@ export function ScoreInputPage() {
             <div className="text-3xl font-bold text-gray-800">
               {inputHistory.length > 0 ? (
                 <>
-                  <span className="text-blue-500">{scoreA}</span>
+                  <span className="text-indigo-500">{scoreA}</span>
                   {inputHistory.length === 2 && (
                     <>
                       <span className="text-gray-400 mx-4">-</span>
-                      <span className="text-blue-500">{scoreB}</span>
+                      <span className="text-indigo-500">{scoreB}</span>
                     </>
                   )}
                   {inputHistory.length === 1 && (
@@ -232,7 +243,7 @@ export function ScoreInputPage() {
                   disabled={inputHistory.length >= 2}
                   className={`min-h-[48px] min-w-[48px] rounded-xl text-base font-semibold transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed ${
                     isHighlighted
-                      ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 active:bg-blue-300 active:scale-[0.95]'
+                      ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 active:bg-indigo-300 active:scale-[0.95]'
                       : 'bg-gray-100 text-gray-800 hover:bg-gray-200 active:bg-gray-300 active:scale-[0.95]'
                   }`}
                 >
@@ -247,7 +258,7 @@ export function ScoreInputPage() {
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={handleClear}
-            className="min-h-[48px] py-3 bg-gray-100 text-gray-600 rounded-full font-semibold hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-2"
+            className="min-h-[48px] py-3 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-2"
           >
             <Trash2 size={18} />
             クリア
@@ -255,7 +266,7 @@ export function ScoreInputPage() {
           <button
             onClick={handleConfirm}
             disabled={inputHistory.length !== 2}
-            className="min-h-[48px] py-3 bg-blue-500 text-white rounded-full font-semibold hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all duration-150 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            className="min-h-[48px] py-3 bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-600 active:bg-indigo-700 active:scale-[0.98] transition-all duration-150 disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             確定
           </button>

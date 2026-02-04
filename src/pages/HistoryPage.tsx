@@ -47,12 +47,12 @@ export function HistoryPage() {
   return (
     <div className="bg-app pb-20">
       {/* ヘッダー */}
-      <div className="header-gradient text-white p-4 shadow-lg">
+      <div className="header-gradient text-gray-800 p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <button
             onClick={() => navigate('/main')}
             aria-label="戻る"
-            className="icon-btn bg-white/20 hover:bg-white/30 text-white border border-white/20"
+            className="icon-btn"
           >
             <ArrowLeft size={20} />
           </button>
@@ -60,7 +60,7 @@ export function HistoryPage() {
           <button
             onClick={handleCopyHistory}
             aria-label="コピー"
-            className="icon-btn bg-white/20 hover:bg-white/30 text-white border border-white/20"
+            className="icon-btn"
           >
             <Copy size={20} />
           </button>
@@ -97,7 +97,7 @@ export function HistoryPage() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-start gap-3 flex-1 min-w-0">
-                        <span className="text-sm font-bold text-blue-600 bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span className="text-sm font-bold text-indigo-600 bg-indigo-100 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0">
                           {matchNumber}
                         </span>
                         <div className="flex-1 min-w-0">
@@ -128,7 +128,7 @@ export function HistoryPage() {
                         <button
                           onClick={() => handleEdit(match.id)}
                           aria-label="編集"
-                          className="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                          className="p-2.5 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
                         >
                           <Edit3 size={18} />
                         </button>

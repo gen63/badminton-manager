@@ -38,12 +38,12 @@ export function SettingsPage() {
   return (
     <div className="bg-app pb-20">
       {/* ヘッダー */}
-      <div className="header-gradient text-white p-4 shadow-lg">
+      <div className="header-gradient text-gray-800 p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <button
             onClick={() => navigate('/main')}
             aria-label="戻る"
-            className="icon-btn bg-white/20 hover:bg-white/30 text-white border border-white/20"
+            className="icon-btn"
           >
             <ArrowLeft size={20} />
           </button>
@@ -58,7 +58,7 @@ export function SettingsPage() {
         {/* コート設定 */}
         <div className="card p-6">
           <h2 className="section-title mb-5 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+            <span className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
               <span className="text-lg">🏸</span>
             </span>
             コート設定
@@ -173,7 +173,7 @@ export function SettingsPage() {
           </h2>
           <button
             onClick={handleReset}
-            className="w-full min-h-[48px] bg-gradient-to-r from-red-500 to-red-600 text-white py-3 rounded-full font-semibold hover:from-red-600 hover:to-red-700 active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-2 shadow-lg"
+            className="w-full min-h-[48px] bg-gradient-to-r from-red-500 to-red-600 text-white py-3 rounded-lg font-semibold hover:from-red-600 hover:to-red-700 active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-2 shadow-lg"
           >
             <Trash2 size={18} />
             セッションをリセット

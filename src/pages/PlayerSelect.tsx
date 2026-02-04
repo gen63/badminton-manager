@@ -52,14 +52,14 @@ export function PlayerSelect() {
       <div className="max-w-2xl mx-auto px-5 py-8">
         {/* ヘッダー */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-button mb-4">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 shadow-button mb-4">
             <Users size={28} className="text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-800 tracking-tight">
             参加者を追加
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            現在: <span className="font-semibold text-blue-600">{players.length}人</span>
+            現在: <span className="font-semibold text-indigo-600">{players.length}人</span>
           </p>
         </div>
 

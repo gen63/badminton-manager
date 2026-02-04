@@ -78,10 +78,10 @@ export function PlayerSwapModal({
                           setSelectedPosition(index);
                         }}
                         disabled={!playerId}
-                        className={`min-h-[44px] px-3 py-2 rounded-full text-sm font-medium transition-all duration-150 ${
+                        className={`min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                           selectedCourt === court.id &&
                           selectedPosition === index
-                            ? 'bg-blue-500 text-white ring-2 ring-blue-300 scale-105'
+                            ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
                             : playerId
                             ? 'bg-white border border-gray-200 hover:border-gray-300 active:bg-gray-100 text-gray-800'
                             : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-50'
@@ -112,7 +112,7 @@ export function PlayerSwapModal({
                     <button
                       key={player.id}
                       onClick={() => handlePlayerSelect(player.id)}
-                      className="min-h-[44px] px-4 py-2 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 border border-blue-200 rounded-full text-gray-800 text-sm font-medium transition-all duration-150 active:scale-[0.98]"
+                      className="min-h-[44px] px-4 py-2 bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 border border-indigo-200 rounded-full text-gray-800 text-sm font-medium transition-all duration-150 active:scale-[0.98]"
                     >
                       {player.name}
                     </button>
