@@ -319,7 +319,7 @@ export function MainPage() {
         )}
 
         {/* コート一覧 */}
-        <div className="flex gap-2 pb-2">
+        <div className="flex gap-2 pb-2 justify-center">
           {courts.map((court) => (
             <div key={court.id} className="w-[26%]">
               <CourtCard

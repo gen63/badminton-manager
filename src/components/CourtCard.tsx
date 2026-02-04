@@ -150,7 +150,7 @@ export function CourtCard({
       )}
 
       {/* コントロールボタン */}
-      <div className="flex gap-2 pt-2">
+      <div className="flex pt-2">
         {!court.isPlaying && !hasPlayers && (
           <button
             onClick={onAutoAssign}
