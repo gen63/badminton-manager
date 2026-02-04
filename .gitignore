@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 dev-dist/
+
+# Test
+test-results/
+playwright-report/
+coverage/
