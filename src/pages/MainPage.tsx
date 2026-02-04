@@ -319,9 +319,9 @@ export function MainPage() {
         )}
 
         {/* コート一覧 */}
-        <div className="flex gap-2 pb-2 overflow-x-auto">
+        <div className="flex gap-2 pb-2">
           {courts.map((court) => (
-            <div key={court.id} className="w-[30%] min-w-[140px] flex-shrink-0">
+            <div key={court.id} className="flex-1 min-w-0">
               <CourtCard
                 court={court}
                 getPlayerName={getPlayerName}
