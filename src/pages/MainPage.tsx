@@ -319,7 +319,7 @@ export function MainPage() {
         {/* コート一覧 */}
         <div className="flex pb-2 justify-center">
           {courts.map((court, index) => (
-            <div key={court.id} className={`w-[26%] ${index > 0 ? 'ml-6' : ''}`}>
+            <div key={court.id} className={`w-[26%] ${index > 0 ? 'ml-10' : ''}`}>
               <CourtCard
                 court={court}
                 getPlayerName={getPlayerName}
