@@ -127,9 +127,9 @@ export function CourtCard({
           </div>
 
           {/* VS */}
-          <div className="flex items-center gap-2 my-1">
+          <div className="flex items-center gap-1 my-1">
             <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
-            <span className="text-gray-400 text-xs font-bold px-1">VS</span>
+            <span className="text-gray-400 text-[10px] font-bold">VS</span>
             <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
           </div>
 
