@@ -374,7 +374,7 @@ export function MainPage() {
                     </div>
                     <button
                       onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
-                      className="btn-primary px-3 py-1.5 text-xs flex-shrink-0"
+                      className="btn-secondary flex items-center justify-center text-xs py-1.5 px-3 flex-shrink-0"
                     >
                       入力
                     </button>
