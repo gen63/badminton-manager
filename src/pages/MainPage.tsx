@@ -317,7 +317,7 @@ export function MainPage() {
         )}
 
         {/* コート一覧 */}
-        <div className="flex pb-2 justify-center" style={{ gap: '40px' }}>
+        <div className="flex pb-2 justify-center" style={{ gap: '20px' }}>
           {courts.map((court) => (
             <div key={court.id} style={{ width: '26%' }}>
               <CourtCard
