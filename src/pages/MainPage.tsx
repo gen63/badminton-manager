@@ -477,12 +477,12 @@ export function MainPage() {
             </div>
 
             {/* 休憩中 */}
-            {restingPlayers.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold text-orange-500 mb-2 flex items-center gap-1.5">
-                  <Coffee size={14} />
-                  休憩中 ({restingPlayers.length}人)
-                </h4>
+            <div>
+              <h4 className="text-sm font-semibold text-orange-500 mb-2 flex items-center gap-1.5">
+                <Coffee size={14} />
+                休憩中 ({restingPlayers.length}人)
+              </h4>
+              {restingPlayers.length > 0 ? (
                 <div className="grid gap-2 grid-cols-2 sm:grid-cols-3">
                   {restingPlayers.map((player) => {
                     const isSelected = selectedPlayer?.id === player.id;
@@ -524,8 +524,10 @@ export function MainPage() {
                     );
                   })}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-sm text-gray-400">休憩メンバー無し</p>
+              )}
+            </div>
           </div>
         </div>
       </div>
