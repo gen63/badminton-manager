@@ -319,23 +319,24 @@ export function MainPage() {
         )}
 
         {/* コート一覧 */}
-        <div className="flex gap-2 pb-2">
+        <div className="flex gap-2 pb-2 overflow-x-auto">
           {courts.map((court) => (
-            <CourtCard
-              key={court.id}
-              court={court}
-              getPlayerName={getPlayerName}
-              onStartGame={() => handleStartGame(court.id)}
-              onFinishGame={() => handleFinishGame(court.id)}
-              onAutoAssign={() => handleAutoAssign(court.id)}
-              onClear={() => handleClearCourt(court.id)}
-              onPlayerTap={(playerId, position) =>
-                handlePlayerTap(playerId, court.id, position)
-              }
-              selectedPlayerId={selectedPlayer?.id}
-              onClearSelection={() => setSelectedPlayer(null)}
-              canAutoAssign={canAutoAssign}
-            />
+            <div key={court.id} className="w-[30%] min-w-[140px] flex-shrink-0">
+              <CourtCard
+                court={court}
+                getPlayerName={getPlayerName}
+                onStartGame={() => handleStartGame(court.id)}
+                onFinishGame={() => handleFinishGame(court.id)}
+                onAutoAssign={() => handleAutoAssign(court.id)}
+                onClear={() => handleClearCourt(court.id)}
+                onPlayerTap={(playerId, position) =>
+                  handlePlayerTap(playerId, court.id, position)
+                }
+                selectedPlayerId={selectedPlayer?.id}
+                onClearSelection={() => setSelectedPlayer(null)}
+                canAutoAssign={canAutoAssign}
+              />
+            </div>
           ))}
         </div>
 

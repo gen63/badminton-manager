@@ -94,7 +94,7 @@ export function CourtCard({
 
   return (
     <div
-      className={`card p-4 space-y-3 flex-1 min-w-0 ${
+      className={`card p-4 space-y-3 ${
         court.isPlaying ? 'court-playing' : ''
       }`}
     >
@@ -155,7 +155,7 @@ export function CourtCard({
           <button
             onClick={onAutoAssign}
             disabled={!canAutoAssign}
-            className="btn-secondary w-full flex items-center justify-center gap-1.5 text-sm py-2.5"
+            className="btn-secondary w-full flex items-center justify-center gap-1.5 text-sm py-2.5 whitespace-nowrap"
           >
             <Users size={16} />
             配置
