@@ -7,10 +7,10 @@ import { generateSessionId } from '../lib/utils';
 import { GYM_OPTIONS } from '../types/session';
 import { Sparkles } from 'lucide-react';
 
-// 現在日時を取得（分は00にリセット）
+// 現在日時を取得（時刻は12:00固定）
 const getInitialDateTime = () => {
   const now = new Date();
-  now.setMinutes(0, 0, 0);
+  now.setHours(12, 0, 0, 0);
   return now.toISOString().slice(0, 16);
 };
 
