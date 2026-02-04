@@ -156,11 +156,9 @@ export function ScoreInputPage() {
         <div className="bg-white rounded-2xl shadow-sm p-5">
           <div className="text-xs text-gray-500 text-center mb-3">コート {match.courtId}</div>
           
-          {selectedPlayer && (
-            <div className="mb-3 p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-sm text-indigo-700 text-center">
-              メンバーを選択中 — 交換したい相手をタップ
-            </div>
-          )}
+          <div className={`mb-3 p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-sm text-indigo-700 text-center ${selectedPlayer ? '' : 'invisible'}`}>
+            メンバーを選択中 — 交換したい相手をタップ
+          </div>
           
           <div className="space-y-3">
             {/* 上のペア */}
