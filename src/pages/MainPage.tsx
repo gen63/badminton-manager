@@ -305,7 +305,7 @@ export function MainPage() {
         {selectedPlayer && (
           <div className="bg-gradient-to-r from-indigo-50 to-indigo-50 border-2 border-indigo-200 rounded-xl p-4 text-sm text-indigo-700 flex items-center justify-between shadow-sm">
             <span>
-              <strong className="font-semibold">{players.find(p => p.id === selectedPlayer.id)?.name}</strong> を選択中 — 交換したいプレイヤーをタップ
+              <strong className="font-semibold">{players.find(p => p.id === selectedPlayer.id)?.name}</strong> と交換したいプレイヤーをタップ
             </span>
             <button
               onClick={() => setSelectedPlayer(null)}
