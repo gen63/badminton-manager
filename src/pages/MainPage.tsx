@@ -270,11 +270,7 @@ export function MainPage() {
     <div className="bg-app pb-20">
       {/* ヘッダー */}
       <div className="header-gradient text-gray-800 p-3">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <h1 className="text-lg font-bold flex items-center gap-2">
-            <span className="text-xl">🏸</span>
-            練習管理
-          </h1>
+        <div className="max-w-6xl mx-auto flex items-center justify-end">
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleAutoAssign()}
@@ -319,7 +315,7 @@ export function MainPage() {
         )}
 
         {/* コート一覧 */}
-        <div className="flex gap-2 pb-2 justify-center">
+        <div className="flex gap-4 pb-2 justify-center">
           {courts.map((court) => (
             <div key={court.id} className="w-[26%]">
               <CourtCard
