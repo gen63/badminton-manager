@@ -339,23 +339,23 @@ export function MainPage() {
         )}
 
         {/* スコア未入力の試合 */}
-        {unfinishedMatches.length > 0 && (
-          <div className="card p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="section-title flex items-center gap-2 text-sm">
-                <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
-                スコア未入力の試合
-              </h3>
-              {unfinishedMatches.length > 1 && (
-                <button
-                  onClick={() => setShowAllUnfinished(!showAllUnfinished)}
-                  className="flex items-center gap-1 text-xs text-gray-500 px-2 py-1 hover:bg-gray-100 rounded"
-                >
-                  <ChevronDown size={14} className={`transition-transform ${showAllUnfinished ? 'rotate-180' : ''}`} />
-                  {showAllUnfinished ? '閉じる' : `他${unfinishedMatches.length - 1}件`}
-                </button>
-              )}
-            </div>
+        <div className="card p-4" data-testid="unfinished-matches">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="section-title flex items-center gap-2 text-sm">
+              <span className={`w-2 h-2 rounded-full ${unfinishedMatches.length > 0 ? 'bg-amber-400 animate-pulse' : 'bg-gray-300'}`} />
+              スコア未入力の試合
+            </h3>
+            {unfinishedMatches.length > 1 && (
+              <button
+                onClick={() => setShowAllUnfinished(!showAllUnfinished)}
+                className="flex items-center gap-1 text-xs text-gray-500 px-2 py-1 hover:bg-gray-100 rounded"
+              >
+                <ChevronDown size={14} className={`transition-transform ${showAllUnfinished ? 'rotate-180' : ''}`} />
+                {showAllUnfinished ? '閉じる' : `他${unfinishedMatches.length - 1}件`}
+              </button>
+            )}
+          </div>
+          {unfinishedMatches.length > 0 ? (
             <div className="space-y-2">
               {visibleUnfinished.map((match) => {
                 const teamANames = match.teamA.map(getPlayerName).join(' ');
@@ -382,8 +382,10 @@ export function MainPage() {
                 );
               })}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className="text-sm text-gray-400">スコア未入力の試合がありません</p>
+          )}
+        </div>
 
         {/* プレイヤーリスト */}
         <div className="card p-6">
@@ -411,9 +413,9 @@ export function MainPage() {
                         isSelected ? 'player-pill-selected' : ''
                       }`}
                     >
-                      <span className="text-gray-800 text-sm truncate">
-                        {player.name}
-                        <span className="text-xs text-gray-400 ml-1.5 font-medium">
+                      <span className="text-gray-800 text-sm flex items-center min-w-0">
+                        <span className="truncate">{player.name}</span>
+                        <span className="text-xs text-gray-400 ml-1 font-medium flex-shrink-0">
                           ({player.gamesPlayed})
                         </span>
                       </span>
@@ -424,9 +426,9 @@ export function MainPage() {
                             setSelectedPlayer(null);
                           }}
                           aria-label="選択解除"
-                          className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
+                          className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
                         >
-                          <X size={18} />
+                          <X size={16} />
                         </button>
                       ) : (
                         <button
@@ -435,9 +437,9 @@ export function MainPage() {
                             toggleRest(player.id);
                           }}
                           aria-label="休憩"
-                          className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center text-gray-400 hover:text-orange-500 hover:bg-orange-50 active:bg-orange-100 rounded-full flex-shrink-0 transition-all duration-150"
+                          className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-gray-400 hover:text-orange-500 hover:bg-orange-50 active:bg-orange-100 rounded-full flex-shrink-0 transition-all duration-150"
                         >
-                          <Coffee size={18} />
+                          <Coffee size={16} />
                         </button>
                       )}
                     </div>
@@ -504,9 +506,9 @@ export function MainPage() {
                               setSelectedPlayer(null);
                             }}
                             aria-label="選択解除"
-                            className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
+                            className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
                           >
-                            <X size={18} />
+                            <X size={16} />
                           </button>
                         ) : (
                           <button
@@ -515,9 +517,9 @@ export function MainPage() {
                               toggleRest(player.id);
                             }}
                             aria-label="復帰"
-                            className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 rounded-full flex-shrink-0 transition-all duration-150"
+                            className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 rounded-full flex-shrink-0 transition-all duration-150"
                           >
-                            <ArrowUp size={18} />
+                            <ArrowUp size={16} />
                           </button>
                         )}
                       </div>

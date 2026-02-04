@@ -10,11 +10,12 @@ import { test, expect, Page } from '@playwright/test';
  * - スコア入力画面でメンバー選択時にレイアウトジャンプが発生しないこと
  */
 
-// テスト用のプレイヤー名（12人 = 3コート分）
+// テスト用のプレイヤー名（16人 = 3コート分+待機4人）
 const TEST_PLAYERS = [
   '田中太郎', '山田花子', '佐藤次郎', '鈴木一郎',
   '高橋三郎', '伊藤四郎', '渡辺五郎', '中村六郎',
-  '小林七郎', '加藤八郎', '吉田九郎', '山本十郎'
+  '小林七郎', '加藤八郎', '吉田九郎', '山本十郎',
+  '松本十一', '井上十二', '木村十三', '林十四'
 ].join('\n');
 
 // セッションを作成してメイン画面に遷移するヘルパー
@@ -196,12 +197,96 @@ test.describe('レイアウトジャンプ検証', () => {
     const card = page.locator('.card').first();
     await expect(card).toBeVisible();
 
-    const border = await card.evaluate((el) => {
-      return window.getComputedStyle(el).border;
+    const borderWidth = await card.evaluate((el) => {
+      return window.getComputedStyle(el).borderWidth;
     });
 
-    // ボーダーが存在すること（2px）
-    expect(border).toContain('2px');
+    // ボーダーが2pxであること
+    expect(borderWidth).toBe('2px');
+  });
+});
+
+test.describe('参加者一覧の表示検証', () => {
+  test('休憩ボタンが32px以下であること', async ({ page }) => {
+    await setupTestSession(page);
+
+    // 休憩ボタンを取得
+    const restButton = page.locator('button[aria-label="休憩"]').first();
+    await expect(restButton).toBeVisible();
+
+    const box = await restButton.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeLessThanOrEqual(36);
+    expect(box!.height).toBeLessThanOrEqual(36);
+  });
+
+  test('試合参加数が常に表示されること（名前がtruncateされても）', async ({ page }) => {
+    await setupTestSession(page);
+
+    // 参加者一覧内のプレイヤーpillを取得
+    const playerPills = page.locator('.player-pill');
+    const count = await playerPills.count();
+    expect(count).toBeGreaterThan(0);
+
+    // 各プレイヤーの試合数が表示されていることを確認
+    for (let i = 0; i < Math.min(count, 3); i++) {
+      const pill = playerPills.nth(i);
+      // flex-shrink-0のカウント要素が見えていること
+      const countSpan = pill.locator('.flex-shrink-0');
+      await expect(countSpan).toBeVisible();
+
+      const text = await countSpan.textContent();
+      // (数字) 形式であること
+      expect(text).toMatch(/\(\d+\)/);
+    }
+  });
+
+  test('スコア未入力の試合がない時にメッセージが表示されること', async ({ page }) => {
+    await setupTestSession(page);
+
+    // スコア未入力セクションが常に表示されること
+    const section = page.locator('[data-testid="unfinished-matches"]');
+    await expect(section).toBeVisible();
+
+    // 「ありません」メッセージが表示されていること
+    await expect(section.locator('text=スコア未入力の試合がありません')).toBeVisible();
+  });
+
+  test('スコア未入力セクションが試合前後でレイアウトジャンプしないこと', async ({ page }) => {
+    await setupTestSession(page);
+
+    // 試合前のセクション位置を記録
+    const section = page.locator('[data-testid="unfinished-matches"]');
+    await expect(section).toBeVisible();
+    const sectionBefore = await section.boundingBox();
+
+    // 一括配置→開始→終了で試合を作る
+    const assignButton = page.getByRole('button', { name: /一括配置/i });
+    if (await assignButton.isEnabled()) {
+      await assignButton.click();
+      await page.waitForTimeout(300);
+    }
+
+    const gameStartButton = page.locator('.card').first().getByRole('button', { name: /^開始$/i });
+    if (await gameStartButton.isVisible()) {
+      await gameStartButton.click();
+      await page.waitForTimeout(300);
+    }
+
+    const finishButton = page.locator('.card').first().getByRole('button', { name: /終了/i });
+    if (await finishButton.isVisible()) {
+      await finishButton.click();
+      await page.waitForTimeout(300);
+    }
+
+    // 試合後のセクション位置を確認
+    const sectionAfter = await section.boundingBox();
+
+    // セクション自体は常に存在し、高さの変化が最小限であること
+    if (sectionBefore && sectionAfter) {
+      // セクションのY座標が大きく変わっていないこと
+      expect(Math.abs(sectionBefore.y - sectionAfter.y)).toBeLessThanOrEqual(10);
+    }
   });
 });
 

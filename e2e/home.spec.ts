@@ -6,9 +6,9 @@ test.describe('セッション作成画面', () => {
   });
 
   test('コート数選択ボタンが表示される', async ({ page }) => {
-    await expect(page.getByRole('button', { name: '1' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '2' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '3' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '1', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '2', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '3', exact: true })).toBeVisible();
   });
 
   test('目標点数選択ボタンが表示される', async ({ page }) => {

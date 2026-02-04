@@ -10,6 +10,8 @@ describe('calculatePlayerStats', () => {
     gamesPlayed: 0,
     rating: 1500,
     isResting: false,
+    lastPlayedAt: null,
+    activatedAt: null,
   });
 
   const createMatch = (
@@ -26,7 +28,7 @@ describe('calculatePlayerStats', () => {
     scoreB,
     winner: scoreA > scoreB ? 'A' : 'B',
     startedAt: Date.now(),
-    endedAt: Date.now(),
+    finishedAt: Date.now(),
   });
 
   it('空の履歴では全員0試合', () => {
