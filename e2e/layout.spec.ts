@@ -148,8 +148,8 @@ test.describe('コート表示', () => {
     await setupTestSession(page);
 
     const cards = page.locator('.card');
-    // コートカード3枚 + スコア未入力セクション1枚 = 4枚以上
-    await expect(cards).toHaveCount(4, { timeout: 5000 });
+    // コートカード3枚 + スコア未入力セクション1枚 + 参加者一覧1枚 = 5枚
+    await expect(cards).toHaveCount(5, { timeout: 5000 });
   });
 
   test('未配置コートに配置ボタンが表示される', async ({ page }) => {
