@@ -47,9 +47,9 @@ function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, getPl
         isSelected ? 'player-pill-selected' : ''
       }`}
     >
-      <span className="text-gray-800 font-medium flex items-center min-w-0 overflow-hidden">
+      <span className="text-gray-800 font-medium flex items-center min-w-0 overflow-hidden flex-1">
         <span className="player-name-court flex-1 min-w-0">{name}</span>
-        <span className="text-[10px] text-gray-500 ml-1 flex-shrink-0 tabular-nums">
+        <span className="text-[10px] text-gray-400 ml-1 flex-shrink-0 tabular-nums">
           {gamesPlayed}
         </span>
       </span>
