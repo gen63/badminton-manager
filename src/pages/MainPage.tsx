@@ -413,8 +413,8 @@ export function MainPage() {
                         isSelected ? 'player-pill-selected' : ''
                       }`}
                     >
-                      <span className="text-gray-800 text-sm flex items-center min-w-0">
-                        <span className="truncate">{player.name}</span>
+                      <span className="text-gray-800 text-sm flex items-center min-w-0 overflow-hidden">
+                        <span className="truncate flex-1 min-w-0">{player.name}</span>
                         <span className="text-xs text-gray-400 ml-1 font-medium flex-shrink-0">
                           ({player.gamesPlayed})
                         </span>
