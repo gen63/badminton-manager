@@ -39,7 +39,7 @@ async function setupTestSession(page: Page, addPlayers = true) {
   await page.waitForLoadState('networkidle');
 
   // コートカードが表示されるまで待機
-  await expect(page.locator('.card').first()).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('[data-testid="unfinished-matches"]')).toBeVisible({ timeout: 10000 });
 }
 
 test.describe('レイアウト検証', () => {
@@ -50,11 +50,13 @@ test.describe('レイアウト検証', () => {
     const courtContainer = page.locator('.flex.justify-center.items-stretch').first();
     await expect(courtContainer).toBeVisible();
 
-    const gap = await courtContainer.evaluate((el) => {
-      return window.getComputedStyle(el).gap;
+    // columnGap（longhand）で確認（shorthand gapはブラウザにより空文字を返す場合がある）
+    const columnGap = await courtContainer.evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return style.columnGap || style.gap;
     });
 
-    expect(gap).toBe('20px');
+    expect(columnGap).toBe('20px');
   });
 
   test('参加者一覧が三列グリッドで表示されること', async ({ page }) => {
@@ -69,7 +71,7 @@ test.describe('レイアウト検証', () => {
       return window.getComputedStyle(el).gridTemplateColumns;
     });
 
-    // 3列のグリッドであることを確認
+    // 3列のグリッドであることを確認（"200px 200px 200px" のような形式）
     const columnCount = gridColumns.split(' ').length;
     expect(columnCount).toBe(3);
   });
@@ -96,7 +98,7 @@ test.describe('レイアウト検証', () => {
   test('未配置コートと配置済みコートの高さが揃っていること', async ({ page }) => {
     await setupTestSession(page);
 
-    // コートカードを取得
+    // コートカードを取得（最初の3つがコートカード）
     const courtCards = page.locator('.card');
     const count = await courtCards.count();
 
@@ -139,8 +141,8 @@ test.describe('レイアウトジャンプ検証', () => {
       // 配置ボタンをクリック
       await assignButton.click();
 
-      // 少し待機
-      await page.waitForTimeout(300);
+      // 開始ボタンが表示されるまで待機（配置完了の確認）
+      await page.locator('.card').first().getByRole('button', { name: /開始/ }).waitFor({ state: 'visible', timeout: 5000 });
 
       // 参加者一覧の位置を再取得
       const sectionAfter = await playerSection.boundingBox();
@@ -160,11 +162,12 @@ test.describe('レイアウトジャンプ検証', () => {
     const assignButton = page.getByRole('button', { name: /一括配置/i });
     if (await assignButton.isEnabled()) {
       await assignButton.click();
-      await page.waitForTimeout(300);
+      // 開始ボタンが表示されるまで待機
+      await page.locator('.card').first().getByRole('button', { name: /開始/ }).waitFor({ state: 'visible', timeout: 5000 });
     }
 
     // 開始ボタンを探す（コートカード内の開始ボタン）
-    const startButton = page.locator('.card').first().getByRole('button', { name: /^開始$/i });
+    const startButton = page.locator('.card').first().getByRole('button', { name: /開始/ });
 
     if (await startButton.isVisible()) {
       // コートカードの位置を記録
@@ -174,8 +177,8 @@ test.describe('レイアウトジャンプ検証', () => {
       // 開始ボタンをクリック
       await startButton.click();
 
-      // 少し待機
-      await page.waitForTimeout(300);
+      // 終了ボタンが表示されるまで待機（ゲーム開始の確認）
+      await page.locator('.card').first().getByRole('button', { name: /終了/ }).waitFor({ state: 'visible', timeout: 5000 });
 
       // コートカードの位置を再取得
       const cardAfter = await courtCard.boundingBox();
@@ -197,12 +200,14 @@ test.describe('レイアウトジャンプ検証', () => {
     const card = page.locator('.card').first();
     await expect(card).toBeVisible();
 
-    const borderWidth = await card.evaluate((el) => {
-      return window.getComputedStyle(el).borderWidth;
+    // borderTopWidth（longhand）で確認（shorthand borderWidthはブラウザにより空文字を返す場合がある）
+    const borderTopWidth = await card.evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return style.borderTopWidth;
     });
 
     // ボーダーが2pxであること
-    expect(borderWidth).toBe('2px');
+    expect(borderTopWidth).toBe('2px');
   });
 });
 
@@ -260,31 +265,33 @@ test.describe('参加者一覧の表示検証', () => {
     await expect(section).toBeVisible();
     const sectionBefore = await section.boundingBox();
 
-    // 一括配置→開始→終了で試合を作る
+    // 一括配置
     const assignButton = page.getByRole('button', { name: /一括配置/i });
     if (await assignButton.isEnabled()) {
       await assignButton.click();
-      await page.waitForTimeout(300);
+      await page.locator('.card').first().getByRole('button', { name: /開始/ }).waitFor({ state: 'visible', timeout: 5000 });
     }
 
-    const gameStartButton = page.locator('.card').first().getByRole('button', { name: /^開始$/i });
+    // ゲーム開始
+    const gameStartButton = page.locator('.card').first().getByRole('button', { name: /開始/ });
     if (await gameStartButton.isVisible()) {
       await gameStartButton.click();
-      await page.waitForTimeout(300);
+      await page.locator('.card').first().getByRole('button', { name: /終了/ }).waitFor({ state: 'visible', timeout: 5000 });
     }
 
-    const finishButton = page.locator('.card').first().getByRole('button', { name: /終了/i });
+    // ゲーム終了
+    const finishButton = page.locator('.card').first().getByRole('button', { name: /終了/ });
     if (await finishButton.isVisible()) {
       await finishButton.click();
-      await page.waitForTimeout(300);
+      // 終了後、コートがクリアされ配置ボタンに戻るまで待機
+      await page.locator('.card').first().getByRole('button', { name: /配置/ }).waitFor({ state: 'visible', timeout: 5000 });
     }
 
     // 試合後のセクション位置を確認
     const sectionAfter = await section.boundingBox();
 
-    // セクション自体は常に存在し、高さの変化が最小限であること
+    // セクション自体は常に存在し、Y座標の変化が最小限であること
     if (sectionBefore && sectionAfter) {
-      // セクションのY座標が大きく変わっていないこと
       expect(Math.abs(sectionBefore.y - sectionAfter.y)).toBeLessThanOrEqual(10);
     }
   });
@@ -298,33 +305,37 @@ test.describe('スコア入力画面のレイアウトジャンプ検証', () =>
     const assignButton = page.getByRole('button', { name: /一括配置/i });
     if (await assignButton.isEnabled()) {
       await assignButton.click();
-      await page.waitForTimeout(300);
+      await page.locator('.card').first().getByRole('button', { name: /開始/ }).waitFor({ state: 'visible', timeout: 5000 });
     }
 
     // ゲーム開始
-    const gameStartButton = page.locator('.card').first().getByRole('button', { name: /^開始$/i });
+    const gameStartButton = page.locator('.card').first().getByRole('button', { name: /開始/ });
     if (await gameStartButton.isVisible()) {
       await gameStartButton.click();
-      await page.waitForTimeout(300);
+      await page.locator('.card').first().getByRole('button', { name: /終了/ }).waitFor({ state: 'visible', timeout: 5000 });
     }
 
     // ゲーム終了
-    const finishButton = page.locator('.card').first().getByRole('button', { name: /終了/i });
+    const finishButton = page.locator('.card').first().getByRole('button', { name: /終了/ });
     if (await finishButton.isVisible()) {
       await finishButton.click();
-      await page.waitForTimeout(300);
+      // 終了後、未入力試合が出現するまで待機
+      await page.locator('[data-testid="unfinished-matches"]').getByRole('button', { name: /入力/ }).waitFor({ state: 'visible', timeout: 5000 });
     }
 
     // スコア入力ボタンをクリック
-    const scoreInputButton = page.getByRole('button', { name: /入力/i }).first();
+    const scoreInputButton = page.locator('[data-testid="unfinished-matches"]').getByRole('button', { name: /入力/ }).first();
     if (await scoreInputButton.isVisible()) {
       await scoreInputButton.click();
-      await page.waitForTimeout(500);
+
+      // スコア入力画面に遷移するまで待機
+      await page.waitForURL('**/score/**', { timeout: 5000 });
 
       // スコア入力画面でメンバー選択メッセージを確認
       const messageContainer = page.locator('.bg-indigo-50.border-indigo-200');
 
-      if (await messageContainer.isVisible()) {
+      // messageContainerはinvisibleでもDOM上に存在するため、count()で確認
+      if (await messageContainer.count() > 0) {
         // 初期状態では invisible クラスが付いていること
         const hasInvisible = await messageContainer.evaluate((el) => {
           return el.classList.contains('invisible');
