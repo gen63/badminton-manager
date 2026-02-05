@@ -2,8 +2,10 @@
 
 ## 概要
 
-当日の試合結果を Google スプレッドシートに自動記録する機能。
+当日の試合結果を Google スプレッドシートに記録する機能。
 Google Apps Script (GAS) を中継サーバーとして使い、フロントエンドから POST するシンプルな構成。
+
+**運用想定:** 練習中はオフライン。練習後に Wi-Fi 接続し、履歴画面からまとめてアップロード。
 
 ## アーキテクチャ
 
@@ -38,9 +40,13 @@ Google Apps Script (GAS) を中継サーバーとして使い、フロントエ�
 
 ## 送信タイミング
 
-- **試合終了時に自動送信**（`finishGame` 内で fire-and-forget）
-- **履歴画面から一括送信**（ヘッダーにボタン追加）
-- 送信失敗時はトーストで通知するのみ（リトライは手動）
+- **履歴画面からの手動アップロードのみ**
+  - 既存のコピーボタンの隣にアップロードボタンを配置
+  - 押すと全 `matchHistory` を一括送信
+  - 送信成功: 「Sheetsに送信しました」トースト
+  - 送信失敗: 「送信に失敗しました。Wi-Fi接続を確認してください」トースト
+- 自動送信なし（普段オフラインのため）
+- GAS URL 未設定時はボタン非表示
 
 ## GAS URL の保存先
 
@@ -95,20 +101,14 @@ interface SheetsPayload {
 - テキスト入力: GAS Web App URL
 - URL は `https://script.google.com/` で始まることを簡易バリデーション
 
-### 4. 試合終了時の自動送信
-- `gameStore.ts` の `finishGame` からは直接呼ばない（store間の結合を避ける）
-- **ScoreInputPage** でスコア確定後に送信を実行する
-  - settingsStore から URL を取得
-  - URL が空なら何もしない
-  - 送信成功: 「Sheetsに記録しました」トースト
-  - 送信失敗: 「Sheets送信に失敗しました」トースト（警告）
-
-### 5. 履歴画面から一括送信
-- `HistoryPage.tsx` ヘッダーに送信ボタン追加（既存のコピーボタンの隣）
-- 全 `matchHistory` を一括送信
+### 4. 履歴画面にアップロードボタン追加
+- `HistoryPage.tsx` の既存コピーボタンの隣にアップロードボタンを配置
+- 押すと全 `matchHistory` を一括送信
+- 送信中はローディング表示（ボタン無効化 + スピナー）
 - GAS URL 未設定時はボタン非表示
+- 結果をトーストで通知
 
-### 6. GAS スクリプト（参考実装）
+### 5. GAS スクリプト（参考実装）
 - `docs/gas-script.js` にサンプルコードを配置
 - ユーザーが GAS エディタに貼り付けて使う
 
@@ -148,8 +148,7 @@ function doPost(e) {
 | `src/stores/settingsStore.ts` | **新規** | GAS URL 永続化ストア |
 | `src/lib/sheetsApi.ts` | **新規** | 送信ロジック |
 | `src/pages/SettingsPage.tsx` | 変更 | GAS URL 入力セクション追加 |
-| `src/pages/HistoryPage.tsx` | 変更 | 一括送信ボタン追加 |
-| `src/pages/ScoreInputPage.tsx` | 変更 | 試合確定時に自動送信 |
+| `src/pages/HistoryPage.tsx` | 変更 | アップロードボタン追加 |
 | `docs/gas-script.js` | **新規** | GAS サンプルコード |
 
 ## 設計判断
@@ -158,6 +157,6 @@ function doPost(e) {
 |------|------|
 | settingsStore を SessionConfig と分離 | セッションリセットで URL が消えるのを防ぐ |
 | 送信済みフラグなし | ユーザー要望。同じ試合を複数回送信しても GAS 側で問題ない |
-| store 間を直接結合しない | finishGame 内で送信せず、UI 層（ScoreInputPage）で送信を呼ぶ |
-| 1試合ずつではなく配列で送信 | 一括送信にも対応しやすい。1試合送信は配列長1で同じ関数を使える |
+| 自動送信なし・手動アップロードのみ | 普段オフラインで運用するため。Wi-Fi 接続時にまとめて送信 |
+| 配列で一括送信 | 練習後にまとめて送る運用に合致 |
 | GAS URL のバリデーションは簡易 | 正確な検証は困難。`https://script.google.com/` プレフィックスのみ確認 |
