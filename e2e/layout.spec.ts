@@ -79,10 +79,10 @@ test.describe('レイアウト検証', () => {
     await expect(page.locator('.player-pill').first()).toBeVisible({ timeout: 10000 });
 
     // player-pillを含む参加者グリッドを確認（空のactive gridではなく休憩中グリッド）
-    const playerGrid = page.locator('.grid.grid-cols-3').filter({ has: page.locator('.player-pill') }).first();
+    const playerGrid = page.locator('.grid.grid-cols-2').filter({ has: page.locator('.player-pill') }).first();
     await expect(playerGrid).toBeVisible();
 
-    // grid-template-columnsが3列であることを確認
+    // grid-template-columnsが3列であることを確認（sm以上のビューポートで3列）
     const gridColumns = await playerGrid.evaluate((el) => {
       return window.getComputedStyle(el).gridTemplateColumns;
     });
@@ -100,8 +100,8 @@ test.describe('レイアウト検証', () => {
     const firstCourtCard = courtCards.first();
     await expect(firstCourtCard).toBeVisible();
 
-    // プレイヤー表示エリア（minHeight: 188pxを持つdiv）を取得
-    const playerArea = firstCourtCard.locator('div[style*="min-height"]');
+    // プレイヤー表示エリア（min-h-[188px]クラスを持つdiv）を取得
+    const playerArea = firstCourtCard.locator('.min-h-\\[188px\\]');
 
     if (await playerArea.count() > 0) {
       const minHeight = await playerArea.evaluate((el) => {
@@ -230,17 +230,17 @@ test.describe('レイアウトジャンプ検証', () => {
 });
 
 test.describe('参加者一覧の表示検証', () => {
-  test('プレイヤーピルのアクションボタンが36px以下であること', async ({ page }) => {
+  test('プレイヤーピルのアクションボタンが44px以上であること', async ({ page }) => {
     await setupTestSession(page);
 
-    // 全プレイヤーは休憩中で開始するため、復帰ボタンを確認（休憩ボタンと同サイズ: min-w-[32px] min-h-[32px]）
+    // 全プレイヤーは休憩中で開始するため、復帰ボタンを確認（min-w-[44px] min-h-[44px]）
     const actionButton = page.locator('button[aria-label="復帰"]').first();
     await expect(actionButton).toBeVisible({ timeout: 10000 });
 
     const box = await actionButton.boundingBox();
     expect(box).not.toBeNull();
-    expect(box!.width).toBeLessThanOrEqual(36);
-    expect(box!.height).toBeLessThanOrEqual(36);
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
   });
 
   test('試合参加数が常に表示されること（名前がtruncateされても）', async ({ page }) => {
