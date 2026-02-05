@@ -112,7 +112,7 @@ export function CourtCard({
       </div>
 
       {/* プレイヤー表示エリア - 高さを固定して配置時のジャンプを防止 */}
-      <div className="flex flex-col justify-center space-y-2" style={{ minHeight: '188px' }}>
+      <div className="flex flex-col justify-center space-y-2 min-h-[188px]">
       {hasPlayers ? (
         <>
           {/* チームA */}
