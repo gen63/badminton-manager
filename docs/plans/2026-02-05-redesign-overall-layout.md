@@ -48,15 +48,17 @@
 
 **影響**: 保守性が低く、機能追加が困難
 
-### 1.4 コートレイアウトがモバイルで窮屈
+### 1.4 コートカード内の省スペースが不十分
 
 ```jsx
-// 現状: 3コートを横並び、各26%幅
+// 現状: 3コートを横並び、各26%幅 + gap 20px
 <div className="flex" style={{ width: '26%' }}>
 ```
 
 - スマートフォン（375px幅）で1コートあたり約97px → 名前が収まらない
-- DESIGN.mdの44pxタップターゲットを満たすのが困難
+- 試合回数が括弧付き `(3)` で幅を消費
+- 長い名前（例: "たっちゃん"）で溢れる → フォント縮小の仕組みがない
+- 参考アプリでは3列横並びでも収まっている
 
 ### 1.5 コンテナ幅が不統一
 
@@ -135,35 +137,94 @@ App.tsx
 
 **共有するstate**: `selectedPlayer`はZustand storeに移動し、両ページで共有する。
 
-### 2.4 レスポンシブ対応のコートレイアウト
+### 2.4 コートカード3列横並びを維持＋省スペース最適化
 
-モバイルでは縦方向にスクロール、デスクトップでは横並び。
+参考アプリのように**モバイルでも3列横並びを維持**する。
+縦積みにすると一度に見える情報量が減り、コート間の状況把握が困難になるため。
+
+代わりに、カード内の要素を省スペース化してモバイルでも収まるようにする。
+
+#### 2.4.1 コート幅の最適化
 
 ```
-// モバイル（< 768px）: 縦に積む
-┌─────────────────┐
-│   コート ①       │
-├─────────────────┤
-│   コート ②       │
-├─────────────────┤
-│   コート ③       │
-└─────────────────┘
+// 変更前: 固定26% + gap 20px → 狭い
+<div style={{ width: '26%' }}>
 
-// デスクトップ（≥ 768px）: 横並び
-┌─────┐ ┌─────┐ ┌─────┐
-│ ①  │ │ ②  │ │ ③  │
-└─────┘ └─────┘ └─────┘
-```
-
-実装:
-```jsx
-<div className="flex flex-col md:flex-row gap-4 md:gap-5 md:justify-center md:items-stretch">
+// 変更後: flex-1で均等分割 + gap縮小
+<div className="flex gap-2 sm:gap-3 justify-center items-stretch px-2">
   {courts.map(court => (
-    <div key={court.id} className="w-full md:w-[30%]">
+    <div key={court.id} className="flex-1 min-w-0">
       <CourtCard ... />
     </div>
   ))}
 </div>
+```
+
+`flex-1 min-w-0` で均等に幅を使い切り、gapも `8px` に縮小。
+375px幅の場合: `(375 - 16*2 - 8*2) / 3 ≈ 109px` → 現状の97pxから12px改善。
+
+#### 2.4.2 プレイヤーピルの省スペース化（CourtCard内）
+
+**試合回数表示の改善**:
+
+```
+// 変更前: 括弧付き、幅を取る
+なかじ (3)
+
+// 変更後: 括弧なし、スペース区切り、小さめフォント
+なかじ 3
+```
+
+- 括弧 `()` を削除 → 約12px節約
+- 試合回数のフォントを `text-[10px]` + `tabular-nums` で数字幅を統一
+- 色を `text-gray-400` → `text-gray-500` に変更し控えめに
+
+#### 2.4.3 長い名前の自動フォント縮小（Shrink-to-fit）
+
+Excelのように、テキストがコンテナに収まらない場合にフォントサイズを自動縮小する。
+
+**CSSによるアプローチ**（JSなし、パフォーマンス◎）:
+
+```css
+/* コートカード内のプレイヤー名 */
+.player-name-court {
+  font-size: clamp(0.625rem, 2.5vw, 0.75rem);  /* 10px〜12px */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+```
+
+- `clamp()` でビューポート幅に応じてフォントサイズを連続的にスケール
+- 最小 `10px`（これ以下は可読性を損なう）
+- 最大 `12px`（現状の `text-xs` と同等）
+- それでも収まらない場合は `text-overflow: ellipsis` でトランケート
+
+**JS（container query）によるアプローチ**（より精密）:
+
+```tsx
+// 名前の文字数に応じてフォントサイズを動的に変更
+function getNameFontSize(name: string): string {
+  if (name.length <= 3) return 'text-xs';       // 12px
+  if (name.length <= 5) return 'text-[11px]';   // 11px
+  return 'text-[10px]';                          // 10px
+}
+```
+
+**判断**: まずCSSアプローチで実装し、不十分ならJS版に切り替える。
+
+#### 2.4.4 CourtCard内のパディング最適化
+
+```
+// 変更前
+.card p-2    → padding: 8px
+gap-2        → gap: 8px
+.player-pill padding: 0 4px 0 6px
+
+// 変更後
+.card p-1.5  → padding: 6px
+gap-1        → gap: 4px
+.player-pill padding: 0 2px 0 4px
 ```
 
 ### 2.5 コンテナ幅の統一
@@ -171,7 +232,7 @@ App.tsx
 | ページ | 変更前 | 変更後 | 理由 |
 |--------|--------|--------|------|
 | SessionCreate | `max-w-md` | `max-w-md` | フォーム画面は狭い方が使いやすい（変更なし） |
-| CourtPage | `max-w-6xl` | `max-w-3xl` | モバイルでの視認性を優先 |
+| CourtPage | `max-w-6xl` | コンテナ制約なし（全幅使用） | 3列横並びを最大限活かすため |
 | MembersPage | — (新規) | `max-w-2xl` | リスト表示に適切な幅 |
 | HistoryPage | `max-w-6xl` | `max-w-2xl` | リスト表示に適切な幅 |
 | SettingsPage | `max-w-2xl` | `max-w-2xl` | 変更なし |
@@ -404,16 +465,19 @@ interface ToastState {
 9. **各ページからヘッダー・背景・Toast削除** — AppLayoutに委譲
 10. **`MainPage.tsx`削除** — CourtPageとMembersPageに完全移行
 
-### Phase 3: レスポンシブ改善
+### Phase 3: コートカード省スペース最適化
 
-11. **CourtCardレスポンシブ対応** — モバイル縦積み / デスクトップ横並び
-12. **コンテナ幅の統一** — 各ページの`max-w-*`を見直し
+11. **コート幅の最適化** — `flex-1 min-w-0` + gap縮小で横幅を有効活用
+12. **プレイヤーピル省スペース化** — 括弧削除、試合回数フォント変更
+13. **長い名前のShrink-to-fit** — `clamp()` + 文字数ベースのフォントサイズ調整
+14. **CourtCard内パディング最適化** — padding/gapの縮小
+15. **コンテナ幅の統一** — 各ページの`max-w-*`を見直し
 
 ### Phase 4: 検証・仕上げ
 
-13. **ビルド確認** — `npm run build`でエラーがないこと
-14. **モバイル表示確認** — iPhone SE (375px)、iPhone 14 (390px) でのレイアウト
-15. **タブナビゲーション動作確認** — 全タブの遷移と状態保持
+16. **ビルド確認** — `npm run build`でエラーがないこと
+17. **モバイル表示確認** — iPhone SE (375px)、iPhone 14 (390px) でのレイアウト
+18. **タブナビゲーション動作確認** — 全タブの遷移と状態保持
 
 ---
 
