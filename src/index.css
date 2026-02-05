@@ -287,6 +287,20 @@
   .icon-btn:active {
     transform: scale(0.95);
   }
+
+  .icon-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .icon-btn:disabled:hover {
+    background: #e5e7eb;
+    color: #6b7280;
+  }
+
+  .icon-btn:disabled:active {
+    transform: none;
+  }
 }
 
 /* iOS Safari 対応 */
