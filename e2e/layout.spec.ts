@@ -148,8 +148,11 @@ test.describe('レイアウトジャンプ検証', () => {
     const assignButton = page.getByRole('button', { name: /一括配置/i });
     await expect(assignButton).toBeEnabled({ timeout: 5000 });
 
+    // activateAllPlayersでスクロールが発生するためページ最上部に戻す
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(100);
+
     // コートカード（ページ上部）の位置を記録
-    // 参加者一覧はプレイヤーが配置されると自然に縮むため、コートカードで検証
     const courtCard = page.locator('.card').first();
     const cardBefore = await courtCard.boundingBox();
 
@@ -158,6 +161,10 @@ test.describe('レイアウトジャンプ検証', () => {
 
     // 少し待機
     await page.waitForTimeout(500);
+
+    // ページ最上部にスクロール（viewport基準の座標を安定させる）
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(100);
 
     // コートカードの位置を再取得
     const cardAfter = await courtCard.boundingBox();
