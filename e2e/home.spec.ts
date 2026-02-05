@@ -6,8 +6,9 @@ test.describe('セッション作成画面', () => {
   });
 
   test('コート数選択ボタンが表示される', async ({ page }) => {
-    await expect(page.getByRole('button', { name: '1' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '2' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '1', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '2', exact: true })).toBeVisible();
+    // 3はデフォルト選択状態で「✓」が前置されるためexactなしで検索
     await expect(page.getByRole('button', { name: '3' })).toBeVisible();
   });
 
