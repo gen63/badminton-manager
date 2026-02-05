@@ -243,7 +243,7 @@ test.describe('参加者一覧の表示検証', () => {
     expect(box!.height).toBeLessThanOrEqual(36);
   });
 
-  test('試合参加数が常に表示されること（名前がtruncateされても）', async ({ page }) => {
+  test('試合参加数が常に表示されること', async ({ page }) => {
     await setupTestSession(page);
 
     // 全プレイヤーは休憩中で開始 → 数名を復帰させてアクティブプレイヤーpillを作る

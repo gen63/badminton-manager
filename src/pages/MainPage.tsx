@@ -414,7 +414,7 @@ export function MainPage() {
                       }`}
                     >
                       <span className="text-gray-800 text-sm flex items-center min-w-0 overflow-hidden">
-                        <span className="truncate flex-1 min-w-0">{player.name}</span>
+                        <span className="flex-1 min-w-0">{player.name}</span>
                         <span className="text-xs text-gray-400 ml-1 font-medium flex-shrink-0">
                           ({player.gamesPlayed})
                         </span>
@@ -498,7 +498,7 @@ export function MainPage() {
                             : 'bg-orange-50 border-orange-200'
                         }`}
                       >
-                        <span className="text-gray-700 text-sm truncate">{player.name}</span>
+                        <span className="text-gray-700 text-sm">{player.name}</span>
                         {isSelected ? (
                           <button
                             onClick={(e) => {
