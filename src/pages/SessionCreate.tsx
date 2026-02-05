@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import { generateSessionId } from '../lib/utils';
+import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { GYM_OPTIONS } from '../types/session';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Download, Loader2 } from 'lucide-react';
 
 // 現在日時を取得（時刻は12:00固定）
 const getInitialDateTime = () => {
@@ -23,11 +25,15 @@ export function SessionCreate() {
   const { addPlayers } = usePlayerStore();
   const initializeCourts = useGameStore((state) => state.initializeCourts);
 
+  const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
+
   const [courtCount, setCourtCount] = useState(3);
   const [targetScore, setTargetScore] = useState(21);
   const [selectedGym, setSelectedGym] = useState('');
   const [practiceDateTime, setPracticeDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
+  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   // 入力をパース: "名前 レーティング" or "名前\tレーティング" or "名前"
   const parsePlayerInput = (line: string): { name: string; rating?: number } | null => {
@@ -47,6 +53,18 @@ export function SessionCreate() {
       }
     }
     return { name };
+  };
+
+  const handleLoadFromSheets = async () => {
+    setIsLoadingMembers(true);
+    setLoadError('');
+    const result = await fetchMembersFromSheets(gasWebAppUrl);
+    if (result.success) {
+      setPlayerNames(membersToText(result.members));
+    } else {
+      setLoadError(result.message);
+    }
+    setIsLoadingMembers(false);
   };
 
   const handleCreate = () => {
@@ -181,6 +199,30 @@ export function SessionCreate() {
             <label className="label">
               練習参加メンバー
             </label>
+            {gasWebAppUrl && (
+              <div className="mb-2">
+                <button
+                  onClick={handleLoadFromSheets}
+                  disabled={isLoadingMembers}
+                  className="w-full min-h-[44px] px-4 py-2 rounded-lg border border-indigo-300 text-indigo-600 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isLoadingMembers ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      読み込み中...
+                    </>
+                  ) : (
+                    <>
+                      <Download size={16} />
+                      Sheetsから読み込み
+                    </>
+                  )}
+                </button>
+                {loadError && (
+                  <p className="text-xs text-red-500 mt-1 text-center">{loadError}</p>
+                )}
+              </div>
+            )}
             <textarea
               value={playerNames}
               onChange={(e) => setPlayerNames(e.target.value)}
