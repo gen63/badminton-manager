@@ -27,19 +27,21 @@ export function HistoryPage() {
   };
 
   const handleCopyHistory = async () => {
-    const today = new Date();
-    const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
-    const gymName = session?.config.gym;
+    const dateStr = session?.config.practiceDate || new Date().toISOString().slice(0, 10);
+    const gymName = session?.config.gym || '';
 
-    let text = gymName ? `${dateStr} ${gymName}\n` : `${dateStr}\n`;
-    matchHistory.forEach((match, index) => {
-      const teamANames = match.teamA.map(getPlayerName).join(' ');
-      const teamBNames = match.teamB.map(getPlayerName).join(' ');
-      text += `${index + 1} ${teamANames} ${match.scoreA}-${match.scoreB} ${teamBNames}\n`;
+    let text = '日付,場所,A選手1,A選手2,B選手1,B選手2,スコアA,スコアB,試合時間\n';
+    matchHistory.forEach((match) => {
+      const [a1, a2] = match.teamA.map(getPlayerName);
+      const [b1, b2] = match.teamB.map(getPlayerName);
+      const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
+      text += `${dateStr},${gymName},${a1},${a2},${b1},${b2},${match.scoreA},${match.scoreB},${duration}\n`;
     });
 
     const success = await copyToClipboard(text);
-    if (!success) {
+    if (success) {
+      toast.success('コピーしました');
+    } else {
       toast.error('コピーに失敗しました');
     }
   };
@@ -61,6 +63,7 @@ export function HistoryPage() {
             onClick={handleCopyHistory}
             aria-label="コピー"
             className="icon-btn"
+            disabled={matchHistory.length === 0}
           >
             <Copy size={20} />
           </button>
