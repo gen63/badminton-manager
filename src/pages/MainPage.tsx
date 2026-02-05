@@ -306,9 +306,9 @@ export function MainPage() {
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         {/* コート一覧 */}
-        <div className="flex pb-2 justify-center items-stretch gap-2 px-2">
+        <div className="flex pb-2 justify-center items-stretch" style={{ gap: '8px', padding: '0 8px' }}>
           {courts.map((court) => (
-            <div key={court.id} className="flex flex-1 min-w-0">
+            <div key={court.id} className="flex flex-1" style={{ minWidth: 0 }}>
               <CourtCard
                 court={court}
                 getPlayerName={getPlayerName}

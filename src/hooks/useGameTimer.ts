@@ -2,26 +2,22 @@ import { useState, useEffect } from 'react';
 
 /**
  * ゲームの経過時間を計算するカスタムフック
+ * nowをstateで管理し、setInterval経由で更新する
  */
 export function useGameTimer(startedAt: number | null, isPlaying: boolean) {
-  const [elapsed, setElapsed] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    if (!isPlaying || !startedAt) {
-      setElapsed(0);
-      return;
-    }
+    if (!isPlaying || !startedAt) return;
 
-    const updateElapsed = () => {
-      setElapsed(Date.now() - startedAt);
-    };
-
-    updateElapsed();
-    const interval = setInterval(updateElapsed, 1000);
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [startedAt, isPlaying]);
 
+  const elapsed = isPlaying && startedAt ? Math.max(0, now - startedAt) : 0;
   const minutes = Math.floor(elapsed / 60000);
   const seconds = Math.floor((elapsed % 60000) / 1000);
 

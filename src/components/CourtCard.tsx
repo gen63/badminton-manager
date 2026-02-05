@@ -19,6 +19,80 @@ interface CourtCardProps {
 // 丸囲み数字
 const circledNumbers = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
 
+interface PlayerPillProps {
+  playerId: string | null;
+  position: number;
+  selectedPlayerId?: string | null;
+  getPlayerName: (playerId: string) => string;
+  getPlayerGamesPlayed: (playerId: string) => number;
+  onPlayerTap: (playerId: string, position: number) => void;
+  onClearSelection: () => void;
+}
+
+function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, getPlayerGamesPlayed, onPlayerTap, onClearSelection }: PlayerPillProps) {
+  if (!playerId) {
+    return (
+      <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
+    );
+  }
+
+  const isSelected = selectedPlayerId === playerId;
+  const name = getPlayerName(playerId);
+  const gamesPlayed = getPlayerGamesPlayed(playerId);
+
+  return (
+    <div
+      onClick={() => onPlayerTap(playerId, position)}
+      className={`player-pill h-9 cursor-pointer ${
+        isSelected ? 'player-pill-selected' : ''
+      }`}
+    >
+      <span className="text-gray-800 font-medium flex items-center min-w-0 overflow-hidden">
+        <span className="player-name-court flex-1 min-w-0">{name}</span>
+        <span className="text-[10px] text-gray-500 ml-1 flex-shrink-0 tabular-nums">
+          {gamesPlayed}
+        </span>
+      </span>
+      {isSelected && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onClearSelection();
+          }}
+          aria-label="選択解除"
+          className="min-w-[36px] min-h-[36px] -mr-1 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full transition-all duration-150"
+        >
+          <X size={16} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function EmptySlots() {
+  return (
+    <div className="space-y-1">
+      <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
+      <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
+    </div>
+  );
+}
+
+function UnassignedDisplay() {
+  return (
+    <>
+      {/* 上ペア相当のスペース */}
+      <EmptySlots />
+
+      {/* VS相当のスペースに「未配置」テキスト */}
+      <div className="text-center text-gray-400 text-xs py-1 font-medium">未配置</div>
+
+      {/* 下ペア相当のスペース */}
+      <EmptySlots />
+    </>
+  );
+}
+
 export function CourtCard({
   court,
   getPlayerName,
@@ -34,71 +108,9 @@ export function CourtCard({
 }: CourtCardProps) {
   const timer = useGameTimer(court.startedAt, court.isPlaying);
 
-  // プレイヤーピルボタン
-  const PlayerPill = ({ playerId, position }: { playerId: string | null; position: number }) => {
-    if (!playerId) {
-      return (
-        <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
-      );
-    }
-
-    const isSelected = selectedPlayerId === playerId;
-
-    const name = getPlayerName(playerId);
-    const gamesPlayed = getPlayerGamesPlayed(playerId);
-
-    return (
-      <div
-        onClick={() => onPlayerTap(playerId, position)}
-        className={`player-pill h-9 cursor-pointer ${
-          isSelected ? 'player-pill-selected' : ''
-        }`}
-      >
-        <span className="text-gray-800 font-medium flex items-center min-w-0 overflow-hidden">
-          <span className="player-name-court flex-1 min-w-0">{name}</span>
-          <span className="text-[10px] text-gray-500 ml-1 flex-shrink-0 tabular-nums">
-            {gamesPlayed}
-          </span>
-        </span>
-        {isSelected && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onClearSelection();
-            }}
-            aria-label="選択解除"
-            className="min-w-[36px] min-h-[36px] -mr-1 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full transition-all duration-150"
-          >
-            <X size={16} />
-          </button>
-        )}
-      </div>
-    );
-  };
-
-  // 未配置状態
-  const EmptySlots = () => (
-    <div className="space-y-1">
-      <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
-      <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
-    </div>
-  );
-
-  // 完全未配置の表示（配置済みと同じ高さを確保）
-  const UnassignedDisplay = () => (
-    <>
-      {/* 上ペア相当のスペース */}
-      <EmptySlots />
-
-      {/* VS相当のスペースに「未配置」テキスト */}
-      <div className="text-center text-gray-400 text-xs py-1 font-medium">未配置</div>
-
-      {/* 下ペア相当のスペース */}
-      <EmptySlots />
-    </>
-  );
-
   const hasPlayers = court.teamA[0] || court.teamB[0];
+
+  const pillProps = { selectedPlayerId, getPlayerName, getPlayerGamesPlayed, onPlayerTap, onClearSelection };
 
   return (
     <div
@@ -127,8 +139,8 @@ export function CourtCard({
           <div className="space-y-1">
             {court.teamA[0] ? (
               <>
-                <PlayerPill playerId={court.teamA[0]} position={0} />
-                <PlayerPill playerId={court.teamA[1]} position={1} />
+                <PlayerPill playerId={court.teamA[0]} position={0} {...pillProps} />
+                <PlayerPill playerId={court.teamA[1]} position={1} {...pillProps} />
               </>
             ) : (
               <EmptySlots />
@@ -146,8 +158,8 @@ export function CourtCard({
           <div className="space-y-1">
             {court.teamB[0] ? (
               <>
-                <PlayerPill playerId={court.teamB[0]} position={2} />
-                <PlayerPill playerId={court.teamB[1]} position={3} />
+                <PlayerPill playerId={court.teamB[0]} position={2} {...pillProps} />
+                <PlayerPill playerId={court.teamB[1]} position={3} {...pillProps} />
               </>
             ) : (
               <EmptySlots />
