@@ -351,7 +351,7 @@ export function assignCourts(
     const courtId = targetCourtIds[i];
 
     // このコートに配置可能なプレイヤーを集める
-    let eligible = activePlayers.filter(p => {
+    const eligible = activePlayers.filter(p => {
       if (usedPlayers.has(p.id)) return false;
       
       if (totalCourtCount >= 3 && groups3) {

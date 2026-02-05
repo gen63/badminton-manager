@@ -11,7 +11,9 @@ describe('cn', () => {
   });
 
   it('条件付きクラスを処理する', () => {
-    expect(cn('base', true && 'active', false && 'hidden')).toBe('base active');
+    const isActive = true;
+    const isHidden = false;
+    expect(cn('base', isActive && 'active', isHidden && 'hidden')).toBe('base active');
   });
 
   it('Tailwindの競合するクラスをマージする', () => {
