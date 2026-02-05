@@ -231,8 +231,8 @@ test.describe('参加者一覧の表示検証', () => {
     // 各プレイヤーの試合数が表示されていることを確認
     for (let i = 0; i < Math.min(count, 3); i++) {
       const pill = playerPills.nth(i);
-      // flex-shrink-0のカウント要素が見えていること
-      const countSpan = pill.locator('.flex-shrink-0');
+      // flex-shrink-0のカウントspan要素が見えていること（buttonも同クラスを持つためspan指定）
+      const countSpan = pill.locator('span.flex-shrink-0');
       await expect(countSpan).toBeVisible();
 
       const text = await countSpan.textContent();
