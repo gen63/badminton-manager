@@ -6,9 +6,9 @@ type RatingGroup = 'upper' | 'middle' | 'lower';
 
 // 配置確率（3コート）
 const COURT_PROBABILITIES_3: Record<RatingGroup, number[]> = {
-  upper:  [0.50, 0.50, 0.00], // C1, C2, C3
+  upper:  [0.00, 0.50, 0.50], // C1, C2, C3
   middle: [0.25, 0.50, 0.25],
-  lower:  [0.00, 0.50, 0.50],
+  lower:  [0.50, 0.00, 0.50],
 };
 
 // 配置確率（2コート）
@@ -18,33 +18,146 @@ const COURT_PROBABILITIES_2: Record<'upper' | 'lower', number[]> = {
 };
 
 /**
- * プレイヤーをレーティングでグループ分け（3コート用）
+ * 各プレイヤーの連勝/連敗数を算出
+ * 正の値=連勝数、負の値=連敗数
+ */
+export function getStreaks(matchHistory: Match[]): Map<string, number> {
+  const streaks = new Map<string, number>();
+
+  // matchHistoryは新しい順（先頭が最新）の前提で、古い順に処理する
+  const chronological = [...matchHistory].reverse();
+
+  for (const match of chronological) {
+    const winners = match.winner === 'A' ? match.teamA : match.teamB;
+    const losers = match.winner === 'A' ? match.teamB : match.teamA;
+
+    for (const id of winners) {
+      const prev = streaks.get(id) ?? 0;
+      streaks.set(id, prev > 0 ? prev + 1 : 1);
+    }
+    for (const id of losers) {
+      const prev = streaks.get(id) ?? 0;
+      streaks.set(id, prev < 0 ? prev - 1 : -1);
+    }
+  }
+
+  return streaks;
+}
+
+/**
+ * 初期序列を構築（レーティング降順、0はmiddleに挿入）
+ */
+export function buildInitialOrder(players: Player[]): string[] {
+  const rated = players.filter(p => (p.rating ?? 0) > 0);
+  const unrated = players.filter(p => (p.rating ?? 0) === 0);
+
+  const sorted = [...rated].sort((a, b) => (b.rating ?? 1500) - (a.rating ?? 1500));
+
+  if (unrated.length === 0) {
+    return sorted.map(p => p.id);
+  }
+
+  // middleの開始位置に挿入
+  const ratedIds = sorted.map(p => p.id);
+  const middleStart = Math.floor(ratedIds.length / 3);
+  const unratedIds = unrated.map(p => p.id);
+
+  return [
+    ...ratedIds.slice(0, middleStart),
+    ...unratedIds,
+    ...ratedIds.slice(middleStart),
+  ];
+}
+
+/**
+ * matchHistoryの連勝/連敗に基づいて序列を動的に更新
+ * 二連勝で1つ上と交代、二連敗で1つ下と交代
+ */
+export function applyStreakSwaps(
+  initialOrder: string[],
+  matchHistory: Match[]
+): string[] {
+  const order = [...initialOrder];
+
+  // 古い順に処理
+  const chronological = [...matchHistory].reverse();
+
+  // 各プレイヤーの連勝/連敗カウント（処理中の累積）
+  const streaks = new Map<string, number>();
+
+  for (const match of chronological) {
+    const winners = match.winner === 'A' ? match.teamA : match.teamB;
+    const losers = match.winner === 'A' ? match.teamB : match.teamA;
+
+    for (const id of winners) {
+      const prev = streaks.get(id) ?? 0;
+      const newStreak = prev > 0 ? prev + 1 : 1;
+      streaks.set(id, newStreak);
+
+      // 二連勝ごとに1つ上と交代
+      if (newStreak >= 2 && newStreak % 2 === 0) {
+        const idx = order.indexOf(id);
+        if (idx > 0) {
+          [order[idx - 1], order[idx]] = [order[idx], order[idx - 1]];
+        }
+      }
+    }
+
+    for (const id of losers) {
+      const prev = streaks.get(id) ?? 0;
+      const newStreak = prev < 0 ? prev - 1 : -1;
+      streaks.set(id, newStreak);
+
+      // 二連敗ごとに1つ下と交代
+      if (newStreak <= -2 && newStreak % 2 === 0) {
+        const idx = order.indexOf(id);
+        if (idx >= 0 && idx < order.length - 1) {
+          [order[idx], order[idx + 1]] = [order[idx + 1], order[idx]];
+        }
+      }
+    }
+  }
+
+  return order;
+}
+
+/**
+ * 序列からグループ分け（3コート用）
  * 3等分、端数は中位へ
  */
-function groupPlayers3Court(players: Player[]): Map<RatingGroup, Set<string>> {
-  const sorted = [...players].sort((a, b) => (b.rating ?? 1500) - (a.rating ?? 1500));
-  const groupSize = Math.floor(sorted.length / 3);
-  const remainder = sorted.length % 3;
-  
+function groupPlayers3Court(
+  players: Player[],
+  matchHistory: Match[]
+): Map<RatingGroup, Set<string>> {
+  const initialOrder = buildInitialOrder(players);
+  const order = applyStreakSwaps(initialOrder, matchHistory);
+
+  // アクティブプレイヤーのIDセット
+  const activeIds = new Set(players.map(p => p.id));
+  // 序列に含まれるアクティブプレイヤーのみ
+  const activeOrder = order.filter(id => activeIds.has(id));
+
+  const groupSize = Math.floor(activeOrder.length / 3);
+  const remainder = activeOrder.length % 3;
   const upperSize = groupSize;
   const middleSize = groupSize + remainder;
-  
+
   const groups = new Map<RatingGroup, Set<string>>([
     ['upper', new Set()],
     ['middle', new Set()],
     ['lower', new Set()],
   ]);
-  
-  sorted.forEach((player, index) => {
+
+  activeOrder.forEach((id, index) => {
     if (index < upperSize) {
-      groups.get('upper')!.add(player.id);
+      groups.get('upper')!.add(id);
     } else if (index < upperSize + middleSize) {
-      groups.get('middle')!.add(player.id);
+      groups.get('middle')!.add(id);
     } else {
-      groups.get('lower')!.add(player.id);
+      groups.get('lower')!.add(id);
     }
   });
-  
+
   return groups;
 }
 
@@ -225,7 +338,7 @@ export function assignCourts(
   const practiceStartTime = options?.practiceStartTime ?? Date.now();
 
   // グループ分け
-  const groups3 = totalCourtCount >= 3 ? groupPlayers3Court(activePlayers) : null;
+  const groups3 = totalCourtCount >= 3 ? groupPlayers3Court(activePlayers, matchHistory) : null;
   const groups2 = totalCourtCount === 2 ? groupPlayers2Court(activePlayers) : null;
 
   const pairHistory = getPairHistory(matchHistory);

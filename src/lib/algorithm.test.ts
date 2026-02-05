@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculatePlayerStats } from './algorithm';
+import { calculatePlayerStats, getStreaks, buildInitialOrder, applyStreakSwaps } from './algorithm';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
 
@@ -137,5 +137,235 @@ describe('calculatePlayerStats', () => {
     expect(p5Stats.wins).toBe(0);
     expect(p5Stats.losses).toBe(0);
     expect(p5Stats.points).toBe(0);
+  });
+});
+
+// ヘルパー（テスト共通）
+const createPlayer = (id: string, name: string, rating: number = 1500): Player => ({
+  id,
+  name,
+  gamesPlayed: 0,
+  rating,
+  isResting: false,
+  lastPlayedAt: null,
+  activatedAt: null,
+});
+
+const createMatch = (
+  teamA: [string, string],
+  teamB: [string, string],
+  scoreA: number,
+  scoreB: number
+): Match => ({
+  id: `match-${Date.now()}-${Math.random()}`,
+  courtId: 1,
+  teamA,
+  teamB,
+  scoreA,
+  scoreB,
+  winner: scoreA > scoreB ? 'A' : 'B',
+  startedAt: Date.now(),
+  finishedAt: Date.now(),
+});
+
+describe('getStreaks', () => {
+  it('空の履歴では空のMap', () => {
+    expect(getStreaks([]).size).toBe(0);
+  });
+
+  it('1勝で連勝1', () => {
+    // matchHistoryは新しい順（先頭が最新）
+    const matches = [
+      createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15),
+    ];
+    const streaks = getStreaks(matches);
+    expect(streaks.get('p1')).toBe(1);
+    expect(streaks.get('p2')).toBe(1);
+    expect(streaks.get('p3')).toBe(-1);
+    expect(streaks.get('p4')).toBe(-1);
+  });
+
+  it('二連勝で連勝2', () => {
+    // 新しい順: match2が先頭
+    const matches = [
+      createMatch(['p1', 'p2'], ['p5', 'p6'], 21, 15), // 2試合目（最新）
+      createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15), // 1試合目
+    ];
+    const streaks = getStreaks(matches);
+    expect(streaks.get('p1')).toBe(2);
+    expect(streaks.get('p2')).toBe(2);
+  });
+
+  it('勝ち→負けで連勝リセット', () => {
+    const matches = [
+      createMatch(['p3', 'p4'], ['p1', 'p2'], 21, 15), // 2試合目: p1負け（最新）
+      createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15), // 1試合目: p1勝ち
+    ];
+    const streaks = getStreaks(matches);
+    expect(streaks.get('p1')).toBe(-1);
+  });
+
+  it('三連勝で連勝3', () => {
+    const matches = [
+      createMatch(['p1', 'p2'], ['p7', 'p8'], 21, 15), // 3試合目（最新）
+      createMatch(['p1', 'p2'], ['p5', 'p6'], 21, 15), // 2試合目
+      createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15), // 1試合目
+    ];
+    const streaks = getStreaks(matches);
+    expect(streaks.get('p1')).toBe(3);
+  });
+});
+
+describe('buildInitialOrder', () => {
+  it('レーティング降順で並ぶ', () => {
+    const players = [
+      createPlayer('A', 'A', 1800),
+      createPlayer('B', 'B', 1600),
+      createPlayer('C', 'C', 1400),
+    ];
+    expect(buildInitialOrder(players)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('レーティング0のプレイヤーはmiddle位置に挿入', () => {
+    const players = [
+      createPlayer('A', 'A', 1800),
+      createPlayer('B', 'B', 1600),
+      createPlayer('C', 'C', 1400),
+      createPlayer('X', 'X', 0),
+      createPlayer('D', 'D', 1200),
+      createPlayer('E', 'E', 1000),
+    ];
+    const order = buildInitialOrder(players);
+    // rated: A > B > C > D > E (5人), middleStart = floor(5/3) = 1
+    // → A, X, B, C, D, E
+    expect(order).toEqual(['A', 'X', 'B', 'C', 'D', 'E']);
+  });
+
+  it('レーティング0が複数いる場合', () => {
+    const players = [
+      createPlayer('A', 'A', 1800),
+      createPlayer('B', 'B', 1600),
+      createPlayer('C', 'C', 1400),
+      createPlayer('X', 'X', 0),
+      createPlayer('Y', 'Y', 0),
+      createPlayer('D', 'D', 1200),
+    ];
+    const order = buildInitialOrder(players);
+    // rated: A > B > C > D (4人), middleStart = floor(4/3) = 1
+    // → A, X, Y, B, C, D
+    expect(order).toEqual(['A', 'X', 'Y', 'B', 'C', 'D']);
+  });
+
+  it('全員レーティング0の場合', () => {
+    const players = [
+      createPlayer('X', 'X', 0),
+      createPlayer('Y', 'Y', 0),
+    ];
+    const order = buildInitialOrder(players);
+    // rated: 0人, middleStart = 0 → 全員先頭に
+    expect(order).toEqual(['X', 'Y']);
+  });
+});
+
+describe('applyStreakSwaps', () => {
+  it('履歴なしで序列変化なし', () => {
+    const order = ['A', 'B', 'C', 'D', 'E', 'F'];
+    expect(applyStreakSwaps(order, [])).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
+  });
+
+  it('二連勝で1つ上と交代', () => {
+    // D が二連勝: matchHistoryは新しい順
+    const matches = [
+      createMatch(['D', 'X'], ['Y', 'Z'], 21, 15), // 2試合目（最新）
+      createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 1試合目
+    ];
+    const order = applyStreakSwaps(
+      ['A', 'B', 'C', 'D', 'E', 'F'],
+      matches
+    );
+    // D(index 3) が C(index 2) と交代
+    expect(order).toEqual(['A', 'B', 'D', 'C', 'E', 'F']);
+  });
+
+  it('二連敗で1つ下と交代', () => {
+    // D が二連敗
+    const matches = [
+      createMatch(['Y', 'Z'], ['D', 'X'], 21, 15), // 2試合目（最新）
+      createMatch(['W', 'V'], ['D', 'X'], 21, 15), // 1試合目
+    ];
+    const order = applyStreakSwaps(
+      ['A', 'B', 'C', 'D', 'E', 'F'],
+      matches
+    );
+    // D(index 3) が E(index 4) と交代
+    expect(order).toEqual(['A', 'B', 'C', 'E', 'D', 'F']);
+  });
+
+  it('三連勝でも二連勝分の1回だけ交代', () => {
+    const matches = [
+      createMatch(['D', 'X'], ['Y', 'Z'], 21, 15), // 3試合目（最新）
+      createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 2試合目
+      createMatch(['D', 'X'], ['U', 'T'], 21, 15), // 1試合目
+    ];
+    const order = applyStreakSwaps(
+      ['A', 'B', 'C', 'D', 'E', 'F'],
+      matches
+    );
+    // 二連勝目でC→D交代、三連勝目はまだ4連勝目まで待つ
+    expect(order).toEqual(['A', 'B', 'D', 'C', 'E', 'F']);
+  });
+
+  it('四連勝で2回交代（2つ上がる）', () => {
+    const matches = [
+      createMatch(['D', 'X'], ['Y', 'Z'], 21, 15), // 4試合目（最新）
+      createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 3試合目
+      createMatch(['D', 'X'], ['U', 'T'], 21, 15), // 2試合目
+      createMatch(['D', 'X'], ['S', 'R'], 21, 15), // 1試合目
+    ];
+    const order = applyStreakSwaps(
+      ['A', 'B', 'C', 'D', 'E', 'F'],
+      matches
+    );
+    // 二連勝目: D(3)とC(2)交代 → A,B,D,C,E,F
+    // 四連勝目: D(2)とB(1)交代 → A,D,B,C,E,F
+    expect(order).toEqual(['A', 'D', 'B', 'C', 'E', 'F']);
+  });
+
+  it('最上位での二連勝は変化なし', () => {
+    const matches = [
+      createMatch(['A', 'X'], ['Y', 'Z'], 21, 15),
+      createMatch(['A', 'X'], ['W', 'V'], 21, 15),
+    ];
+    const order = applyStreakSwaps(
+      ['A', 'B', 'C'],
+      matches
+    );
+    // A は既に最上位（index 0）なので交代先がない
+    expect(order).toEqual(['A', 'B', 'C']);
+  });
+
+  it('最下位での二連敗は変化なし', () => {
+    const matches = [
+      createMatch(['Y', 'Z'], ['C', 'X'], 21, 15),
+      createMatch(['W', 'V'], ['C', 'X'], 21, 15),
+    ];
+    const order = applyStreakSwaps(
+      ['A', 'B', 'C'],
+      matches
+    );
+    // C は既に最下位（index 2）なので交代先がない
+    expect(order).toEqual(['A', 'B', 'C']);
+  });
+
+  it('勝ち→負けで連勝リセット、交代は発生しない', () => {
+    const matches = [
+      createMatch(['Y', 'Z'], ['D', 'X'], 21, 15), // 2試合目: D負け（最新）
+      createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 1試合目: D勝ち
+    ];
+    const order = applyStreakSwaps(
+      ['A', 'B', 'C', 'D', 'E', 'F'],
+      matches
+    );
+    expect(order).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
   });
 });
