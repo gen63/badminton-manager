@@ -306,7 +306,7 @@ export function MainPage() {
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         {/* コート一覧 */}
-        <div className="flex pb-2 justify-center items-stretch gap-2 sm:gap-3 px-2">
+        <div className="flex pb-2 justify-center items-stretch gap-2 px-2">
           {courts.map((court) => (
             <div key={court.id} className="flex flex-1 min-w-0">
               <CourtCard
