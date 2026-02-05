@@ -26,6 +26,8 @@ export function SessionCreate() {
   const initializeCourts = useGameStore((state) => state.initializeCourts);
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
+  const setGasWebAppUrl = useSettingsStore((state) => state.setGasWebAppUrl);
+  const [gasUrlInput, setGasUrlInput] = useState(gasWebAppUrl);
 
   const [courtCount, setCourtCount] = useState(3);
   const [targetScore, setTargetScore] = useState(21);
@@ -56,9 +58,17 @@ export function SessionCreate() {
   };
 
   const handleLoadFromSheets = async () => {
+    const url = gasUrlInput || gasWebAppUrl;
+    if (!url) {
+      setLoadError('GAS Web App URLを入力してください');
+      return;
+    }
+    if (url !== gasWebAppUrl) {
+      setGasWebAppUrl(url);
+    }
     setIsLoadingMembers(true);
     setLoadError('');
-    const result = await fetchMembersFromSheets(gasWebAppUrl);
+    const result = await fetchMembersFromSheets(url);
     if (result.success) {
       setPlayerNames(membersToText(result.members));
     } else {
@@ -199,30 +209,42 @@ export function SessionCreate() {
             <label className="label">
               練習参加メンバー
             </label>
-            {gasWebAppUrl && (
-              <div className="mb-2">
-                <button
-                  onClick={handleLoadFromSheets}
-                  disabled={isLoadingMembers}
-                  className="w-full min-h-[44px] px-4 py-2 rounded-lg border border-indigo-300 text-indigo-600 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isLoadingMembers ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      読み込み中...
-                    </>
-                  ) : (
-                    <>
-                      <Download size={16} />
-                      Sheetsから読み込み
-                    </>
-                  )}
-                </button>
-                {loadError && (
-                  <p className="text-xs text-red-500 mt-1 text-center">{loadError}</p>
+            <div className="mb-2">
+              {!gasWebAppUrl && (
+                <div className="mb-2">
+                  <input
+                    type="url"
+                    value={gasUrlInput}
+                    onChange={(e) => setGasUrlInput(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/..."
+                    className="input-field min-h-[44px] text-sm"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    GAS Web App URLを入力
+                  </p>
+                </div>
+              )}
+              <button
+                onClick={handleLoadFromSheets}
+                disabled={isLoadingMembers}
+                className="w-full min-h-[44px] px-4 py-2 rounded-lg border border-indigo-300 text-indigo-600 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isLoadingMembers ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    読み込み中...
+                  </>
+                ) : (
+                  <>
+                    <Download size={16} />
+                    Sheetsから読み込み
+                  </>
                 )}
-              </div>
-            )}
+              </button>
+              {loadError && (
+                <p className="text-xs text-red-500 mt-1 text-center">{loadError}</p>
+              )}
+            </div>
             <textarea
               value={playerNames}
               onChange={(e) => setPlayerNames(e.target.value)}
