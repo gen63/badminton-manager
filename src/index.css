@@ -268,7 +268,7 @@
 
   /* コートカード内プレイヤー名 - Shrink-to-fit */
   .player-name-court {
-    font-size: clamp(0.625rem, 2.5vw, 0.75rem);
+    font-size: clamp(0.75rem, 3.2vw, 0.875rem);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
