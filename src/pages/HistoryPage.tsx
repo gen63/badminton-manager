@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import { formatTime, copyToClipboard } from '../lib/utils';
-import { ArrowLeft, Copy, Trash2, Edit3, Clock } from 'lucide-react';
+import { sendMatchesToSheets } from '../lib/sheetsApi';
+import { ArrowLeft, Copy, Trash2, Edit3, Clock, Upload, Loader2 } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
@@ -13,7 +16,9 @@ export function HistoryPage() {
   const { matchHistory, deleteMatch } = useGameStore();
   const { players } = usePlayerStore();
   const session = useSessionStore((state) => state.session);
+  const { gasWebAppUrl } = useSettingsStore();
   const toast = useToast();
+  const [isUploading, setIsUploading] = useState(false);
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '不明';
   };
@@ -44,6 +49,26 @@ export function HistoryPage() {
     }
   };
 
+  const handleUpload = async () => {
+    if (!session || !gasWebAppUrl || isUploading) return;
+    setIsUploading(true);
+    try {
+      const result = await sendMatchesToSheets(
+        gasWebAppUrl,
+        matchHistory,
+        players,
+        session
+      );
+      if (result.success) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   return (
     <div className="bg-app pb-20">
       {/* ヘッダー */}
@@ -57,6 +82,16 @@ export function HistoryPage() {
             <ArrowLeft size={20} />
           </button>
           <h1 className="text-lg font-bold flex-1">試合履歴</h1>
+          {gasWebAppUrl && (
+            <button
+              onClick={handleUpload}
+              disabled={isUploading || matchHistory.length === 0}
+              aria-label="Sheetsにアップロード"
+              className="icon-btn disabled:opacity-50"
+            >
+              {isUploading ? <Loader2 size={20} className="animate-spin" /> : <Upload size={20} />}
+            </button>
+          )}
           <button
             onClick={handleCopyHistory}
             aria-label="コピー"
