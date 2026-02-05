@@ -42,6 +42,19 @@ async function setupTestSession(page: Page, addPlayers = true) {
   await expect(page.locator('.card').first()).toBeVisible({ timeout: 10000 });
 }
 
+// 全プレイヤーを休憩→待機に復帰させるヘルパー
+// （全プレイヤーはisResting:trueで開始するため、一括配置等の操作前に必要）
+async function activateAllPlayers(page: Page) {
+  await expect(page.locator('.player-pill').first()).toBeVisible({ timeout: 10000 });
+  const count = await page.locator('button[aria-label="復帰"]').count();
+  for (let i = 0; i < count; i++) {
+    await page.locator('button[aria-label="復帰"]').first().click();
+    await page.waitForTimeout(50);
+  }
+  // アクティブプレイヤーが表示されるまで待機
+  await expect(page.locator('button[aria-label="休憩"]').first()).toBeVisible({ timeout: 5000 });
+}
+
 test.describe('レイアウト検証', () => {
   test('コート間の余白が20pxであること', async ({ page }) => {
     await setupTestSession(page);
@@ -62,8 +75,11 @@ test.describe('レイアウト検証', () => {
   test('参加者一覧が三列グリッドで表示されること', async ({ page }) => {
     await setupTestSession(page);
 
-    // 参加者グリッドを確認
-    const playerGrid = page.locator('.grid.grid-cols-3').first();
+    // 全プレイヤーは休憩中で開始するため、player-pillが表示されるまで待機
+    await expect(page.locator('.player-pill').first()).toBeVisible({ timeout: 10000 });
+
+    // player-pillを含む参加者グリッドを確認（空のactive gridではなく休憩中グリッド）
+    const playerGrid = page.locator('.grid.grid-cols-3').filter({ has: page.locator('.player-pill') }).first();
     await expect(playerGrid).toBeVisible();
 
     // grid-template-columnsが3列であることを確認
@@ -126,69 +142,65 @@ test.describe('レイアウト検証', () => {
 test.describe('レイアウトジャンプ検証', () => {
   test('配置ボタン押下時にレイアウトジャンプが発生しないこと', async ({ page }) => {
     await setupTestSession(page);
+    await activateAllPlayers(page);
 
     // 一括配置ボタンを探す
     const assignButton = page.getByRole('button', { name: /一括配置/i });
+    await expect(assignButton).toBeEnabled({ timeout: 5000 });
 
-    // ボタンが有効になっているか確認
-    const isEnabled = await assignButton.isEnabled();
+    // 参加者一覧の位置を記録
+    const playerSection = page.locator('text=参加者一覧').first();
+    const sectionBefore = await playerSection.boundingBox();
 
-    if (isEnabled) {
-      // 参加者一覧の位置を記録
-      const playerSection = page.locator('text=参加者一覧').first();
-      const sectionBefore = await playerSection.boundingBox();
+    // 配置ボタンをクリック
+    await assignButton.click();
 
-      // 配置ボタンをクリック
-      await assignButton.click();
+    // 少し待機
+    await page.waitForTimeout(500);
 
-      // 少し待機
-      await page.waitForTimeout(500);
+    // 参加者一覧の位置を再取得
+    const sectionAfter = await playerSection.boundingBox();
 
-      // 参加者一覧の位置を再取得
-      const sectionAfter = await playerSection.boundingBox();
-
-      // Y座標の変化が最小限であることを確認（±10pxの許容誤差）
-      if (sectionBefore && sectionAfter) {
-        const yDiff = Math.abs(sectionBefore.y - sectionAfter.y);
-        expect(yDiff).toBeLessThanOrEqual(10);
-      }
+    // Y座標の変化が最小限であることを確認（±10pxの許容誤差）
+    if (sectionBefore && sectionAfter) {
+      const yDiff = Math.abs(sectionBefore.y - sectionAfter.y);
+      expect(yDiff).toBeLessThanOrEqual(10);
     }
   });
 
   test('ゲーム開始ボタン押下時にレイアウトジャンプが発生しないこと', async ({ page }) => {
     await setupTestSession(page);
+    await activateAllPlayers(page);
 
     // まず一括配置を行う
     const assignButton = page.getByRole('button', { name: /一括配置/i });
-    if (await assignButton.isEnabled()) {
-      await assignButton.click();
-      await page.waitForTimeout(500);
-    }
+    await expect(assignButton).toBeEnabled({ timeout: 5000 });
+    await assignButton.click();
+    await page.waitForTimeout(500);
 
     // 開始ボタンを探す（コートカード内の開始ボタン）
     const startButton = page.locator('.card').first().getByRole('button', { name: /開始/ });
+    await expect(startButton).toBeVisible({ timeout: 5000 });
 
-    if (await startButton.isVisible()) {
-      // コートカードの位置を記録
-      const courtCard = page.locator('.card').first();
-      const cardBefore = await courtCard.boundingBox();
+    // コートカードの位置を記録
+    const courtCard = page.locator('.card').first();
+    const cardBefore = await courtCard.boundingBox();
 
-      // 開始ボタンをクリック
-      await startButton.click();
+    // 開始ボタンをクリック
+    await startButton.click();
 
-      // 少し待機
-      await page.waitForTimeout(500);
+    // 少し待機
+    await page.waitForTimeout(500);
 
-      // コートカードの位置を再取得
-      const cardAfter = await courtCard.boundingBox();
+    // コートカードの位置を再取得
+    const cardAfter = await courtCard.boundingBox();
 
-      // コートカードのサイズ変化が最小限であることを確認
-      if (cardBefore && cardAfter) {
-        const widthDiff = Math.abs(cardBefore.width - cardAfter.width);
-        const heightDiff = Math.abs(cardBefore.height - cardAfter.height);
-        expect(widthDiff).toBeLessThanOrEqual(5);
-        expect(heightDiff).toBeLessThanOrEqual(5);
-      }
+    // コートカードのサイズ変化が最小限であることを確認
+    if (cardBefore && cardAfter) {
+      const widthDiff = Math.abs(cardBefore.width - cardAfter.width);
+      const heightDiff = Math.abs(cardBefore.height - cardAfter.height);
+      expect(widthDiff).toBeLessThanOrEqual(5);
+      expect(heightDiff).toBeLessThanOrEqual(5);
     }
   });
 
@@ -199,26 +211,25 @@ test.describe('レイアウトジャンプ検証', () => {
     const card = page.locator('.card').first();
     await expect(card).toBeVisible();
 
-    // borderTopWidth（longhand）で確認（shorthand borderWidthはブラウザにより空文字を返す場合がある）
-    const borderTopWidth = await card.evaluate((el) => {
-      const style = window.getComputedStyle(el);
-      return style.borderTopWidth;
-    });
-
-    // ボーダーが2pxであること
-    expect(borderTopWidth).toBe('2px');
+    // CSS読み込み遅延に対応するためリトライ付きで確認
+    await expect(async () => {
+      const borderTopWidth = await card.evaluate((el) => {
+        return window.getComputedStyle(el).borderTopWidth;
+      });
+      expect(borderTopWidth).toBe('2px');
+    }).toPass({ timeout: 5000 });
   });
 });
 
 test.describe('参加者一覧の表示検証', () => {
-  test('休憩ボタンが32px以下であること', async ({ page }) => {
+  test('プレイヤーピルのアクションボタンが36px以下であること', async ({ page }) => {
     await setupTestSession(page);
 
-    // 休憩ボタンを取得
-    const restButton = page.locator('button[aria-label="休憩"]').first();
-    await expect(restButton).toBeVisible();
+    // 全プレイヤーは休憩中で開始するため、復帰ボタンを確認（休憩ボタンと同サイズ: min-w-[32px] min-h-[32px]）
+    const actionButton = page.locator('button[aria-label="復帰"]').first();
+    await expect(actionButton).toBeVisible({ timeout: 10000 });
 
-    const box = await restButton.boundingBox();
+    const box = await actionButton.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeLessThanOrEqual(36);
     expect(box!.height).toBeLessThanOrEqual(36);
@@ -227,14 +238,25 @@ test.describe('参加者一覧の表示検証', () => {
   test('試合参加数が常に表示されること（名前がtruncateされても）', async ({ page }) => {
     await setupTestSession(page);
 
-    // 参加者一覧内のプレイヤーpillを取得
-    const playerPills = page.locator('.player-pill');
-    const count = await playerPills.count();
+    // 全プレイヤーは休憩中で開始 → 数名を復帰させてアクティブプレイヤーpillを作る
+    await expect(page.locator('button[aria-label="復帰"]').first()).toBeVisible({ timeout: 10000 });
+    for (let i = 0; i < 3; i++) {
+      const comebackBtn = page.locator('button[aria-label="復帰"]').first();
+      if (await comebackBtn.isVisible()) {
+        await comebackBtn.click();
+        await page.waitForTimeout(100);
+      }
+    }
+
+    // 復帰済みのアクティブプレイヤーpillを取得（休憩ボタンを持つもの = アクティブ状態）
+    await expect(page.locator('button[aria-label="休憩"]').first()).toBeVisible({ timeout: 5000 });
+    const activePills = page.locator('.player-pill').filter({ has: page.locator('button[aria-label="休憩"]') });
+    const count = await activePills.count();
     expect(count).toBeGreaterThan(0);
 
     // 各プレイヤーの試合数が表示されていることを確認
     for (let i = 0; i < Math.min(count, 3); i++) {
-      const pill = playerPills.nth(i);
+      const pill = activePills.nth(i);
       // flex-shrink-0のカウントspan要素が見えていること（buttonも同クラスを持つためspan指定）
       const countSpan = pill.locator('span.flex-shrink-0');
       await expect(countSpan).toBeVisible();
@@ -258,6 +280,7 @@ test.describe('参加者一覧の表示検証', () => {
 
   test('スコア未入力セクションが試合前後でレイアウトジャンプしないこと', async ({ page }) => {
     await setupTestSession(page);
+    await activateAllPlayers(page);
 
     // 試合前のセクション位置を記録
     const section = page.locator('[data-testid="unfinished-matches"]');
@@ -266,22 +289,19 @@ test.describe('参加者一覧の表示検証', () => {
 
     // 一括配置→開始→終了で試合を作る
     const assignButton = page.getByRole('button', { name: /一括配置/i });
-    if (await assignButton.isEnabled()) {
-      await assignButton.click();
-      await page.waitForTimeout(500);
-    }
+    await expect(assignButton).toBeEnabled({ timeout: 5000 });
+    await assignButton.click();
+    await page.waitForTimeout(500);
 
     const gameStartButton = page.locator('.card').first().getByRole('button', { name: /開始/ });
-    if (await gameStartButton.isVisible()) {
-      await gameStartButton.click();
-      await page.waitForTimeout(500);
-    }
+    await expect(gameStartButton).toBeVisible({ timeout: 5000 });
+    await gameStartButton.click();
+    await page.waitForTimeout(500);
 
     const finishButton = page.locator('.card').first().getByRole('button', { name: /終了/ });
-    if (await finishButton.isVisible()) {
-      await finishButton.click();
-      await page.waitForTimeout(500);
-    }
+    await expect(finishButton).toBeVisible({ timeout: 5000 });
+    await finishButton.click();
+    await page.waitForTimeout(500);
 
     // 試合後のセクション位置を確認
     const sectionAfter = await section.boundingBox();
@@ -297,69 +317,66 @@ test.describe('参加者一覧の表示検証', () => {
 test.describe('スコア入力画面のレイアウトジャンプ検証', () => {
   test('メンバー選択時にメッセージがinvisibleで表示されレイアウトジャンプが発生しないこと', async ({ page }) => {
     await setupTestSession(page);
+    await activateAllPlayers(page);
 
     // 一括配置
     const assignButton = page.getByRole('button', { name: /一括配置/i });
-    if (await assignButton.isEnabled()) {
-      await assignButton.click();
-      await page.waitForTimeout(500);
-    }
+    await expect(assignButton).toBeEnabled({ timeout: 5000 });
+    await assignButton.click();
+    await page.waitForTimeout(500);
 
     // ゲーム開始
     const gameStartButton = page.locator('.card').first().getByRole('button', { name: /開始/ });
-    if (await gameStartButton.isVisible()) {
-      await gameStartButton.click();
-      await page.waitForTimeout(500);
-    }
+    await expect(gameStartButton).toBeVisible({ timeout: 5000 });
+    await gameStartButton.click();
+    await page.waitForTimeout(500);
 
     // ゲーム終了
     const finishButton = page.locator('.card').first().getByRole('button', { name: /終了/ });
-    if (await finishButton.isVisible()) {
-      await finishButton.click();
-      await page.waitForTimeout(500);
-    }
+    await expect(finishButton).toBeVisible({ timeout: 5000 });
+    await finishButton.click();
+    await page.waitForTimeout(500);
 
     // スコア入力ボタンをクリック
     const scoreInputButton = page.getByRole('button', { name: /入力/i }).first();
-    if (await scoreInputButton.isVisible()) {
-      await scoreInputButton.click();
-      await page.waitForTimeout(500);
+    await expect(scoreInputButton).toBeVisible({ timeout: 5000 });
+    await scoreInputButton.click();
+    await page.waitForTimeout(500);
 
-      // スコア入力画面でメンバー選択メッセージを確認
-      const messageContainer = page.locator('.bg-indigo-50.border-indigo-200');
+    // スコア入力画面でメンバー選択メッセージを確認
+    const messageContainer = page.locator('.bg-indigo-50.border-indigo-200');
 
-      // messageContainerはinvisibleでもDOM上に存在するため、count()で確認
-      if (await messageContainer.count() > 0) {
-        // 初期状態では invisible クラスが付いていること
-        const hasInvisible = await messageContainer.evaluate((el) => {
+    // messageContainerはinvisibleでもDOM上に存在するため、count()で確認
+    if (await messageContainer.count() > 0) {
+      // 初期状態では invisible クラスが付いていること
+      const hasInvisible = await messageContainer.evaluate((el) => {
+        return el.classList.contains('invisible');
+      });
+      expect(hasInvisible).toBe(true);
+
+      // プレイヤーボタンをクリック
+      const playerButtons = page.locator('.bg-gray-50 button');
+      const firstPlayer = playerButtons.first();
+
+      if (await firstPlayer.isVisible()) {
+        // クリック前の位置を記録
+        const containerBefore = await messageContainer.boundingBox();
+
+        // プレイヤーをクリック
+        await firstPlayer.click();
+        await page.waitForTimeout(100);
+
+        // メッセージが表示されること（invisibleが外れる）
+        const isStillInvisible = await messageContainer.evaluate((el) => {
           return el.classList.contains('invisible');
         });
-        expect(hasInvisible).toBe(true);
+        expect(isStillInvisible).toBe(false);
 
-        // プレイヤーボタンをクリック
-        const playerButtons = page.locator('.bg-gray-50 button');
-        const firstPlayer = playerButtons.first();
+        // クリック後の位置を確認（変化がないこと）
+        const containerAfter = await messageContainer.boundingBox();
 
-        if (await firstPlayer.isVisible()) {
-          // クリック前の位置を記録
-          const containerBefore = await messageContainer.boundingBox();
-
-          // プレイヤーをクリック
-          await firstPlayer.click();
-          await page.waitForTimeout(100);
-
-          // メッセージが表示されること（invisibleが外れる）
-          const isStillInvisible = await messageContainer.evaluate((el) => {
-            return el.classList.contains('invisible');
-          });
-          expect(isStillInvisible).toBe(false);
-
-          // クリック後の位置を確認（変化がないこと）
-          const containerAfter = await messageContainer.boundingBox();
-
-          if (containerBefore && containerAfter) {
-            expect(Math.abs(containerBefore.y - containerAfter.y)).toBeLessThanOrEqual(2);
-          }
+        if (containerBefore && containerAfter) {
+          expect(Math.abs(containerBefore.y - containerAfter.y)).toBeLessThanOrEqual(2);
         }
       }
     }
