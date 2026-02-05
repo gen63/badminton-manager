@@ -39,9 +39,7 @@ export function HistoryPage() {
     });
 
     const success = await copyToClipboard(text);
-    if (success) {
-      toast.success('コピーしました');
-    } else {
+    if (!success) {
       toast.error('コピーに失敗しました');
     }
   };
