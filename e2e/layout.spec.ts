@@ -56,7 +56,7 @@ async function activateAllPlayers(page: Page) {
 }
 
 test.describe('レイアウト検証', () => {
-  test('コート間の余白が20pxであること', async ({ page }) => {
+  test('コート間の余白が8pxであること', async ({ page }) => {
     await setupTestSession(page);
 
     // コートコンテナのgapを確認
@@ -69,7 +69,7 @@ test.describe('レイアウト検証', () => {
       return style.columnGap || style.gap;
     });
 
-    expect(columnGap).toBe('20px');
+    expect(columnGap).toBe('8px');
   });
 
   test('参加者一覧が三列グリッドで表示されること', async ({ page }) => {
@@ -92,7 +92,7 @@ test.describe('レイアウト検証', () => {
     expect(columnCount).toBe(3);
   });
 
-  test('コートカードのプレイヤーエリアがminHeight 188pxを持つこと', async ({ page }) => {
+  test('コートカードのプレイヤーエリアがminHeight 172pxを持つこと', async ({ page }) => {
     await setupTestSession(page);
 
     // 各コートカード内のプレイヤー表示エリアを確認
@@ -100,14 +100,14 @@ test.describe('レイアウト検証', () => {
     const firstCourtCard = courtCards.first();
     await expect(firstCourtCard).toBeVisible();
 
-    // プレイヤー表示エリア（minHeight: 188pxを持つdiv）を取得
+    // プレイヤー表示エリア（minHeight: 172pxを持つdiv）を取得
     const playerArea = firstCourtCard.locator('div[style*="min-height"]');
 
     if (await playerArea.count() > 0) {
       const minHeight = await playerArea.evaluate((el) => {
         return window.getComputedStyle(el).minHeight;
       });
-      expect(minHeight).toBe('188px');
+      expect(minHeight).toBe('172px');
     }
   });
 
@@ -269,9 +269,9 @@ test.describe('参加者一覧の表示検証', () => {
       const countSpan = pill.locator('span.flex-shrink-0');
       await expect(countSpan).toBeVisible();
 
-      const text = await countSpan.textContent();
-      // (数字) 形式であること
-      expect(text).toMatch(/\(\d+\)/);
+      const text = (await countSpan.textContent())?.trim();
+      // 数字のみの形式であること（括弧なし）
+      expect(text).toMatch(/^\d+$/);
     }
   });
 
