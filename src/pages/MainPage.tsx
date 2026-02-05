@@ -138,6 +138,10 @@ export function MainPage() {
     return players.find((p) => p.id === playerId)?.name || '未設定';
   };
 
+  const getPlayerGamesPlayed = (playerId: string) => {
+    return players.find((p) => p.id === playerId)?.gamesPlayed || 0;
+  };
+
   // コート内のプレイヤーIDを取得（空文字列を除外）
   const playersInCourts = new Set(
     courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
@@ -302,12 +306,13 @@ export function MainPage() {
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         {/* コート一覧 */}
-        <div className="flex pb-2 justify-center items-stretch" style={{ gap: '20px' }}>
+        <div className="flex pb-2 justify-center items-stretch gap-2 sm:gap-3 px-2">
           {courts.map((court) => (
-            <div key={court.id} className="flex" style={{ width: '26%' }}>
+            <div key={court.id} className="flex flex-1 min-w-0">
               <CourtCard
                 court={court}
                 getPlayerName={getPlayerName}
+                getPlayerGamesPlayed={getPlayerGamesPlayed}
                 onStartGame={() => handleStartGame(court.id)}
                 onFinishGame={() => handleFinishGame(court.id)}
                 onAutoAssign={() => handleAutoAssign(court.id)}
@@ -415,8 +420,8 @@ export function MainPage() {
                     >
                       <span className="text-gray-800 text-sm flex items-center min-w-0 overflow-hidden">
                         <span className="flex-1 min-w-0">{player.name}</span>
-                        <span className="text-xs text-gray-400 ml-1 font-medium flex-shrink-0">
-                          ({player.gamesPlayed})
+                        <span className="text-[10px] text-gray-500 ml-1 flex-shrink-0 tabular-nums">
+                          {player.gamesPlayed}
                         </span>
                       </span>
                       {isSelected ? (
