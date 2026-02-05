@@ -364,17 +364,19 @@ export function MainPage() {
                 return (
                   <div
                     key={match.id}
-                    className="flex items-center gap-2 p-2 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg text-sm border border-amber-100"
+                    className="p-2 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg text-sm border border-amber-100"
                   >
-                    <span className="font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full text-xs flex-shrink-0">
-                      #{matchNumber}
-                    </span>
-                    <div className="flex-1 min-w-0 truncate text-gray-700 text-xs">
-                      {teamANames} vs {teamBNames}
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full text-xs flex-shrink-0">
+                        #{matchNumber}
+                      </span>
+                      <div className="flex-1 min-w-0 truncate text-gray-700 text-xs">
+                        {teamANames} vs {teamBNames}
+                      </div>
                     </div>
                     <button
                       onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
-                      className="btn-secondary flex items-center justify-center text-xs py-1.5 px-3 flex-shrink-0"
+                      className="btn-secondary w-full flex items-center justify-center gap-1 text-xs py-1.5 whitespace-nowrap mt-2"
                     >
                       入力
                     </button>
