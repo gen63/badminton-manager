@@ -123,14 +123,15 @@ test.describe('プレイヤー管理', () => {
       }
     }
 
-    // アクティブプレイヤーのピルに (数字) 形式の試合数が表示されている
+    // アクティブプレイヤーのピルに数字形式の試合数が表示されている（括弧なし）
     const activePills = page.locator('.player-pill').filter({ has: page.locator('button[aria-label="休憩"]') });
     const count = await activePills.count();
     expect(count).toBeGreaterThan(0);
 
     const countSpan = activePills.first().locator('span.flex-shrink-0');
     await expect(countSpan).toBeVisible();
-    await expect(countSpan).toHaveText(/\(\d+\)/);
+    const text = (await countSpan.textContent())?.trim();
+    expect(text).toMatch(/^\d+$/);
   });
 
   test('スコア未入力の試合がないときにメッセージが表示される', async ({ page }) => {
@@ -147,8 +148,8 @@ test.describe('コート表示', () => {
     await setupTestSession(page);
 
     const cards = page.locator('.card');
-    // コートカード3枚 + スコア未入力セクション1枚 = 4枚以上
-    await expect(cards).toHaveCount(4, { timeout: 5000 });
+    // コートカード3枚 + スコア未入力セクション1枚 + 参加者一覧1枚 = 5枚
+    await expect(cards).toHaveCount(5, { timeout: 5000 });
   });
 
   test('未配置コートに配置ボタンが表示される', async ({ page }) => {

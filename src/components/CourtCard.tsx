@@ -5,6 +5,7 @@ import type { Court } from '../types/court';
 interface CourtCardProps {
   court: Court;
   getPlayerName: (playerId: string) => string;
+  getPlayerGamesPlayed: (playerId: string) => number;
   onStartGame: () => void;
   onFinishGame: () => void;
   onAutoAssign: () => void;
@@ -23,11 +24,12 @@ interface PlayerPillProps {
   position: number;
   selectedPlayerId?: string | null;
   getPlayerName: (playerId: string) => string;
+  getPlayerGamesPlayed: (playerId: string) => number;
   onPlayerTap: (playerId: string, position: number) => void;
   onClearSelection: () => void;
 }
 
-function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, onPlayerTap, onClearSelection }: PlayerPillProps) {
+function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, getPlayerGamesPlayed, onPlayerTap, onClearSelection }: PlayerPillProps) {
   if (!playerId) {
     return (
       <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
@@ -35,6 +37,8 @@ function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, onPla
   }
 
   const isSelected = selectedPlayerId === playerId;
+  const name = getPlayerName(playerId);
+  const gamesPlayed = getPlayerGamesPlayed(playerId);
 
   return (
     <div
@@ -43,8 +47,11 @@ function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, onPla
         isSelected ? 'player-pill-selected' : ''
       }`}
     >
-      <span className="text-gray-800 text-xs font-medium truncate">
-        {getPlayerName(playerId)}
+      <span className="text-gray-800 font-medium flex items-center min-w-0 overflow-hidden">
+        <span className="player-name-court flex-1 min-w-0">{name}</span>
+        <span className="text-[10px] text-gray-500 ml-1 flex-shrink-0 tabular-nums">
+          {gamesPlayed}
+        </span>
       </span>
       {isSelected && (
         <button
@@ -89,6 +96,7 @@ function UnassignedDisplay() {
 export function CourtCard({
   court,
   getPlayerName,
+  getPlayerGamesPlayed,
   onStartGame,
   onFinishGame,
   onAutoAssign,
@@ -102,16 +110,16 @@ export function CourtCard({
 
   const hasPlayers = court.teamA[0] || court.teamB[0];
 
-  const pillProps = { selectedPlayerId, getPlayerName, onPlayerTap, onClearSelection };
+  const pillProps = { selectedPlayerId, getPlayerName, getPlayerGamesPlayed, onPlayerTap, onClearSelection };
 
   return (
     <div
-      className={`card p-2 flex flex-col w-full ${
+      className={`card p-1.5 flex flex-col w-full ${
         court.isPlaying ? 'court-playing' : ''
       }`}
     >
       {/* コート番号とステータス */}
-      <div className="flex items-center justify-center gap-2 mb-2">
+      <div className="flex items-center justify-center gap-1.5 mb-1.5">
         <span className="text-2xl font-bold text-gray-400">
           {circledNumbers[court.id - 1] || court.id}
         </span>
@@ -124,7 +132,7 @@ export function CourtCard({
       </div>
 
       {/* プレイヤー表示エリア - 高さを固定して配置時のジャンプを防止 */}
-      <div className="flex flex-col justify-center space-y-2" style={{ minHeight: '188px' }}>
+      <div className="flex flex-col justify-center space-y-1" style={{ minHeight: '172px' }}>
       {hasPlayers ? (
         <>
           {/* チームA */}
