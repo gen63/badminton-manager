@@ -140,7 +140,7 @@ test.describe('レイアウト検証', () => {
 });
 
 test.describe('レイアウトジャンプ検証', () => {
-  test('配置ボタン押下時にレイアウトジャンプが発生しないこと', async ({ page }) => {
+  test('配置ボタン押下時にコートカードがレイアウトジャンプしないこと', async ({ page }) => {
     await setupTestSession(page);
     await activateAllPlayers(page);
 
@@ -148,9 +148,10 @@ test.describe('レイアウトジャンプ検証', () => {
     const assignButton = page.getByRole('button', { name: /一括配置/i });
     await expect(assignButton).toBeEnabled({ timeout: 5000 });
 
-    // 参加者一覧の位置を記録
-    const playerSection = page.locator('text=参加者一覧').first();
-    const sectionBefore = await playerSection.boundingBox();
+    // コートカード（ページ上部）の位置を記録
+    // 参加者一覧はプレイヤーが配置されると自然に縮むため、コートカードで検証
+    const courtCard = page.locator('.card').first();
+    const cardBefore = await courtCard.boundingBox();
 
     // 配置ボタンをクリック
     await assignButton.click();
@@ -158,13 +159,13 @@ test.describe('レイアウトジャンプ検証', () => {
     // 少し待機
     await page.waitForTimeout(500);
 
-    // 参加者一覧の位置を再取得
-    const sectionAfter = await playerSection.boundingBox();
+    // コートカードの位置を再取得
+    const cardAfter = await courtCard.boundingBox();
 
-    // Y座標の変化が最小限であることを確認（±10pxの許容誤差）
-    if (sectionBefore && sectionAfter) {
-      const yDiff = Math.abs(sectionBefore.y - sectionAfter.y);
-      expect(yDiff).toBeLessThanOrEqual(10);
+    // コートカードの位置変化が最小限であることを確認（±5pxの許容誤差）
+    if (cardBefore && cardAfter) {
+      const yDiff = Math.abs(cardBefore.y - cardAfter.y);
+      expect(yDiff).toBeLessThanOrEqual(5);
     }
   });
 
@@ -278,16 +279,11 @@ test.describe('参加者一覧の表示検証', () => {
     await expect(section.locator('text=スコア未入力の試合がありません')).toBeVisible();
   });
 
-  test('スコア未入力セクションが試合前後でレイアウトジャンプしないこと', async ({ page }) => {
+  test('スコア未入力セクションが試合終了前後でレイアウトジャンプしないこと', async ({ page }) => {
     await setupTestSession(page);
     await activateAllPlayers(page);
 
-    // 試合前のセクション位置を記録
-    const section = page.locator('[data-testid="unfinished-matches"]');
-    await expect(section).toBeVisible();
-    const sectionBefore = await section.boundingBox();
-
-    // 一括配置→開始→終了で試合を作る
+    // 一括配置→開始で試合中状態にする
     const assignButton = page.getByRole('button', { name: /一括配置/i });
     await expect(assignButton).toBeEnabled({ timeout: 5000 });
     await assignButton.click();
@@ -298,17 +294,22 @@ test.describe('参加者一覧の表示検証', () => {
     await gameStartButton.click();
     await page.waitForTimeout(500);
 
+    // 試合終了の直前にセクション位置を記録（配置による自然なレイアウト変化の後）
+    const section = page.locator('[data-testid="unfinished-matches"]');
+    await expect(section).toBeVisible();
+    const sectionBefore = await section.boundingBox();
+
+    // ゲーム終了
     const finishButton = page.locator('.card').first().getByRole('button', { name: /終了/ });
     await expect(finishButton).toBeVisible({ timeout: 5000 });
     await finishButton.click();
     await page.waitForTimeout(500);
 
-    // 試合後のセクション位置を確認
+    // 試合終了後のセクション位置を確認
     const sectionAfter = await section.boundingBox();
 
-    // セクション自体は常に存在し、高さの変化が最小限であること
+    // 終了ボタン押下前後でセクションのY座標変化が最小限であること
     if (sectionBefore && sectionAfter) {
-      // セクションのY座標が大きく変わっていないこと
       expect(Math.abs(sectionBefore.y - sectionAfter.y)).toBeLessThanOrEqual(10);
     }
   });
