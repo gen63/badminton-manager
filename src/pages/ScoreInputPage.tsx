@@ -136,9 +136,9 @@ export function ScoreInputPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="bg-app">
       {/* ヘッダー */}
-      <div className="bg-white p-4 shadow-sm">
+      <div className="header-gradient text-gray-800 p-3">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <h1 className="text-base font-medium text-gray-600">スコア入力</h1>
           <button

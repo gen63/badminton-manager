@@ -302,9 +302,9 @@ export function MainPage() {
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         {/* コート一覧 */}
-        <div className="flex pb-2 justify-center items-stretch" style={{ gap: '20px' }}>
+        <div className="flex pb-2 justify-center items-stretch gap-5">
           {courts.map((court) => (
-            <div key={court.id} className="flex" style={{ width: '26%' }}>
+            <div key={court.id} className="flex w-[26%]">
               <CourtCard
                 court={court}
                 getPlayerName={getPlayerName}
@@ -339,7 +339,7 @@ export function MainPage() {
         )}
 
         {/* スコア未入力の試合 */}
-        <div className="card p-4" data-testid="unfinished-matches">
+        <div className="card p-6" data-testid="unfinished-matches">
           <div className="flex items-center justify-between mb-2">
             <h3 className="section-title flex items-center gap-2 text-sm">
               <span className={`w-2 h-2 rounded-full ${unfinishedMatches.length > 0 ? 'bg-amber-400 animate-pulse' : 'bg-gray-300'}`} />
@@ -404,14 +404,14 @@ export function MainPage() {
           </div>
           <div className="space-y-4">
             <div>
-              <div className="grid grid-cols-3 gap-2" style={{ maxWidth: '616px' }}>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-w-[616px]">
                 {activePlayers.map((player) => {
                   const isSelected = selectedPlayer?.id === player.id;
                   return (
                     <div
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
-                      className={`player-pill cursor-pointer max-w-[200px] ${
+                      className={`player-pill min-h-[44px] cursor-pointer max-w-[200px] ${
                         isSelected ? 'player-pill-selected' : ''
                       }`}
                     >
@@ -428,7 +428,7 @@ export function MainPage() {
                             setSelectedPlayer(null);
                           }}
                           aria-label="選択解除"
-                          className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
+                          className="min-w-[44px] min-h-[44px] -mr-1 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
                         >
                           <X size={16} />
                         </button>
@@ -439,7 +439,7 @@ export function MainPage() {
                             toggleRest(player.id);
                           }}
                           aria-label="休憩"
-                          className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-gray-400 hover:text-orange-500 hover:bg-orange-50 active:bg-orange-100 rounded-full flex-shrink-0 transition-all duration-150"
+                          className="min-w-[44px] min-h-[44px] -mr-1 flex items-center justify-center text-gray-400 hover:text-orange-500 hover:bg-orange-50 active:bg-orange-100 rounded-full flex-shrink-0 transition-all duration-150"
                         >
                           <Coffee size={16} />
                         </button>
@@ -487,14 +487,14 @@ export function MainPage() {
                 休憩中 ({restingPlayers.length}人)
               </h4>
               {restingPlayers.length > 0 ? (
-                <div className="grid grid-cols-3 gap-2" style={{ maxWidth: '616px' }}>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-w-[616px]">
                   {restingPlayers.map((player) => {
                     const isSelected = selectedPlayer?.id === player.id;
                     return (
                       <div
                         key={player.id}
                         onClick={() => handlePlayerTap(player.id)}
-                        className={`player-pill cursor-pointer max-w-[200px] ${
+                        className={`player-pill min-h-[44px] cursor-pointer max-w-[200px] ${
                           isSelected
                             ? 'player-pill-selected'
                             : 'bg-orange-50 border-orange-200'
@@ -508,7 +508,7 @@ export function MainPage() {
                               setSelectedPlayer(null);
                             }}
                             aria-label="選択解除"
-                            className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
+                            className="min-w-[44px] min-h-[44px] -mr-1 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
                           >
                             <X size={16} />
                           </button>
@@ -519,7 +519,7 @@ export function MainPage() {
                               toggleRest(player.id);
                             }}
                             aria-label="復帰"
-                            className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 rounded-full flex-shrink-0 transition-all duration-150"
+                            className="min-w-[44px] min-h-[44px] -mr-1 flex items-center justify-center text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 rounded-full flex-shrink-0 transition-all duration-150"
                           >
                             <ArrowUp size={16} />
                           </button>
