@@ -8,7 +8,7 @@
 
 ## 原因分析
 
-6つの問題を特定。優先度順に記載。
+9つの問題を特定。優先度順に記載。
 
 ### 問題1: GAS Cold Start タイムアウト（最も高頻度）
 
@@ -58,13 +58,19 @@ Zustand `persist` は localStorage から非同期にハイドレーションす
 
 GAS Web App は `script.google.com` → `script.googleusercontent.com` にリダイレクトする。GET の simple request として透過的に処理されるため大多数のブラウザでは問題ないが、一部のモバイルブラウザ/WebView でリダイレクト中間レスポンスに CORS ヘッダーがなく失敗する可能性がある。影響頻度は低い。
 
-### 問題7: GAS スクリプトにエラーハンドリングがない
+### 問題7: GAS スクリプトの配置場所が不適切
+
+**現状:** `docs/gas-script.js` に配置されている。
+
+**問題:** `docs/` は `plans/` 等の設計ドキュメント置き場。GAS スクリプトは参考実装コードであり、ドキュメントではない。`scripts/` 配下に移動すべき。
+
+### 問題8: GAS スクリプトにエラーハンドリングがない
 
 **現状:** `docs/gas-script.js` の `doGet` / `doPost` に try-catch がない。
 
 **問題:** GAS 側で例外が発生すると（シートアクセスエラー、データ不正等）、GAS ランタイムが **HTML エラーページ** を返す。フロントエンドはこれを JSON としてパースしようとして失敗し、問題3・4 に連鎖する。
 
-### 問題8: doPost の書き込み先が `getActiveSheet()`
+### 問題9: doPost の書き込み先が `getActiveSheet()`
 
 **現状:** `docs/gas-script.js` L57:
 
@@ -80,7 +86,7 @@ var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
 
 - `src/lib/sheetsMembers.ts` — フロントエンド読み込みロジック
 - `src/pages/SessionCreate.tsx` — UI 側の修正
-- `docs/gas-script.js` — GAS スクリプトのエラーハンドリング・堅牢化
+- `docs/gas-script.js` → `scripts/gas-script.js` — GAS スクリプトの移動・堅牢化
 
 ## 実装タスク
 
@@ -184,9 +190,11 @@ const result = await fetchMembersFromSheets(url, () => {
 });
 ```
 
-### タスク6: GAS スクリプト堅牢化（gas-script.js）
+### タスク6: GAS スクリプト移動 + 堅牢化（gas-script.js）
 
-**ファイル:** `docs/gas-script.js`
+**移動:** `docs/gas-script.js` → `scripts/gas-script.js`
+
+`docs/` はドキュメント（plans 等）の置き場。GAS スクリプトは参考実装コードのため `scripts/` に移動する。
 
 **6a. doGet / doPost に try-catch 追加**
 
@@ -263,7 +271,8 @@ npm run build
 |----------|------|----------|
 | `src/lib/sheetsMembers.ts` | **変更** | タイムアウト延長、リトライ追加、エラー分類改善、JSON パース安全化 |
 | `src/pages/SessionCreate.tsx` | **変更** | `gasUrlInput` 初期値修正、URL 優先順位修正、リトライ中テキスト表示 |
-| `docs/gas-script.js` | **変更** | try-catch 追加、doPost 書き込み先固定、入力バリデーション |
+| `docs/gas-script.js` | **移動** | → `scripts/gas-script.js` |
+| `scripts/gas-script.js` | **変更** | try-catch 追加、doPost 書き込み先固定、入力バリデーション |
 
 ## テスト計画
 
@@ -288,6 +297,7 @@ npm run build
 | `retryable` フラグは内部のみ | 外部インタフェース `FetchMembersResult` は変更しない |
 | JSON パースは `text()` + `JSON.parse()` | Content-Type が不安定な GAS に対して堅牢 |
 | `sheetsApi.ts` は今回のスコープ外 | POST は `no-cors` で仕組みが異なる。別途対応 |
+| `gas-script.js` を `scripts/` に移動 | `docs/` はドキュメント用。GAS スクリプトは参考実装コード |
 | GAS doPost の書き込み先を `当日結果` シート固定 | `getActiveSheet()` は表示中のシートに依存し不安定 |
 | シート不在時は自動作成 | ユーザーの手動作成ミスを防ぐ |
 | GAS に try-catch 必須 | 未処理例外は HTML エラーページを返し、フロントエンドの JSON パースが失敗する |
@@ -296,7 +306,7 @@ npm run build
 
 ## 実装順序
 
-1. `docs/gas-script.js` — try-catch 追加 + doPost 書き込み先固定 + 入力バリデーション
+1. `docs/gas-script.js` → `scripts/gas-script.js` に移動 + try-catch 追加 + doPost 書き込み先固定 + 入力バリデーション
 2. `src/lib/sheetsMembers.ts` — タイムアウト延長 + エラー分類 + JSON パース安全化
 3. `src/lib/sheetsMembers.ts` — リトライロジック追加（`onRetry` コールバック含む）
 4. `src/pages/SessionCreate.tsx` — `gasUrlInput` 初期値修正 + リトライ中テキスト表示
