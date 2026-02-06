@@ -27,7 +27,7 @@ export function SessionCreate() {
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
   const setGasWebAppUrl = useSettingsStore((state) => state.setGasWebAppUrl);
-  const [gasUrlInput, setGasUrlInput] = useState(gasWebAppUrl);
+  const [gasUrlInput, setGasUrlInput] = useState('');
 
   const [courtCount, setCourtCount] = useState(3);
   const [targetScore, setTargetScore] = useState(21);
@@ -35,6 +35,7 @@ export function SessionCreate() {
   const [practiceDateTime, setPracticeDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [loadingText, setLoadingText] = useState('読み込み中...');
   const [loadError, setLoadError] = useState('');
 
   // 入力をパース: "名前 レーティング" or "名前\tレーティング" or "名前"
@@ -58,7 +59,7 @@ export function SessionCreate() {
   };
 
   const handleLoadFromSheets = async () => {
-    const url = gasUrlInput || gasWebAppUrl;
+    const url = gasWebAppUrl || gasUrlInput;
     if (!url) {
       setLoadError('GAS Web App URLを入力してください');
       return;
@@ -67,8 +68,11 @@ export function SessionCreate() {
       setGasWebAppUrl(url);
     }
     setIsLoadingMembers(true);
+    setLoadingText('読み込み中...');
     setLoadError('');
-    const result = await fetchMembersFromSheets(url);
+    const result = await fetchMembersFromSheets(url, () => {
+      setLoadingText('再試行中...');
+    });
     if (result.success) {
       setPlayerNames(membersToText(result.members));
     } else {
@@ -232,7 +236,7 @@ export function SessionCreate() {
                 {isLoadingMembers ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
-                    読み込み中...
+                    {loadingText}
                   </>
                 ) : (
                   <>
