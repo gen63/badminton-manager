@@ -162,26 +162,34 @@ function groupPlayers3Court(
 }
 
 /**
- * プレイヤーをレーティングでグループ分け（2コート用）
+ * プレイヤーをストリーク調整済み序列でグループ分け（2コート用）
  * 2等分、端数は下位へ
  */
-function groupPlayers2Court(players: Player[]): Map<'upper' | 'lower', Set<string>> {
-  const sorted = [...players].sort((a, b) => (b.rating ?? 1500) - (a.rating ?? 1500));
-  const upperSize = Math.floor(sorted.length / 2);
-  
+function groupPlayers2Court(
+  players: Player[],
+  matchHistory: Match[]
+): Map<'upper' | 'lower', Set<string>> {
+  const initialOrder = buildInitialOrder(players);
+  const order = applyStreakSwaps(initialOrder, matchHistory);
+
+  const activeIds = new Set(players.map(p => p.id));
+  const activeOrder = order.filter(id => activeIds.has(id));
+
+  const upperSize = Math.floor(activeOrder.length / 2);
+
   const groups = new Map<'upper' | 'lower', Set<string>>([
     ['upper', new Set()],
     ['lower', new Set()],
   ]);
-  
-  sorted.forEach((player, index) => {
+
+  activeOrder.forEach((id, index) => {
     if (index < upperSize) {
-      groups.get('upper')!.add(player.id);
+      groups.get('upper')!.add(id);
     } else {
-      groups.get('lower')!.add(player.id);
+      groups.get('lower')!.add(id);
     }
   });
-  
+
   return groups;
 }
 
@@ -278,9 +286,147 @@ function getOpponentHistory(matchHistory: Match[]): Map<string, Set<string>> {
 }
 
 /**
+ * 4人からペア履歴・対戦履歴を考慮して最適な2チームを編成
+ * 全3パターン（AB vs CD, AC vs BD, AD vs BC）を探索
+ */
+function formTeams(
+  fourPlayers: Player[],
+  pairHistory: Map<string, Set<string>>,
+  opponentHistory: Map<string, Set<string>>
+): { teamA: [string, string]; teamB: [string, string] } {
+  const ids = fourPlayers.map(p => p.id);
+
+  const splits: [number, number, number, number][] = [
+    [0, 1, 2, 3],
+    [0, 2, 1, 3],
+    [0, 3, 1, 2],
+  ];
+
+  let bestA: [string, string] = [ids[0], ids[1]];
+  let bestB: [string, string] = [ids[2], ids[3]];
+  let bestScore = Infinity;
+
+  for (const [a1, a2, b1, b2] of splits) {
+    let score = 0;
+    // ペア履歴ペナルティ
+    if (pairHistory.get(ids[a1])?.has(ids[a2])) score += 10;
+    if (pairHistory.get(ids[b1])?.has(ids[b2])) score += 10;
+    // 対戦履歴ペナルティ
+    if (opponentHistory.get(ids[a1])?.has(ids[b1])) score += 5;
+    if (opponentHistory.get(ids[a1])?.has(ids[b2])) score += 5;
+    if (opponentHistory.get(ids[a2])?.has(ids[b1])) score += 5;
+    if (opponentHistory.get(ids[a2])?.has(ids[b2])) score += 5;
+
+    if (score < bestScore) {
+      bestScore = score;
+      bestA = [ids[a1], ids[a2]];
+      bestB = [ids[b1], ids[b2]];
+    }
+  }
+
+  return { teamA: bestA, teamB: bestB };
+}
+
+/**
+ * 2コート同時配置時の直近試合制約修正
+ * 各コートの4人が直近試合と3人以上重複していたら、コート間でスワップを試みる
+ */
+function tryFixRecentMatch(
+  court1: Player[],
+  court2: Player[],
+  matchHistory: Match[]
+): void {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const src = attempt === 0 ? court1 : court2;
+    const dst = attempt === 0 ? court2 : court1;
+
+    if (!hasSimilarRecentMatch(src.map(p => p.id), matchHistory)) continue;
+
+    // 末尾（序列的に境界に近い人）からスワップを試みる
+    for (let i = src.length - 1; i >= 0; i--) {
+      for (let j = 0; j < dst.length; j++) {
+        [src[i], dst[j]] = [dst[j], src[i]];
+        if (!hasSimilarRecentMatch(src.map(p => p.id), matchHistory) &&
+            !hasSimilarRecentMatch(dst.map(p => p.id), matchHistory)) {
+          return;
+        }
+        [src[i], dst[j]] = [dst[j], src[i]];
+      }
+    }
+  }
+}
+
+/**
+ * 2コート同時配置（ホリスティック・アプローチ）
+ * 8人を選出 → 序列でupper/lowerに分割 → コートに配置
+ */
+function assign2CourtsHolistic(
+  activePlayers: Player[],
+  targetCourtIds: number[],
+  matchHistory: Match[],
+  practiceStartTime: number,
+  groupingPlayers: Player[]
+): CourtAssignment[] {
+  const pairHistory = getPairHistory(matchHistory);
+  const opponentHistory = getOpponentHistory(matchHistory);
+
+  // 1. 優先度順にソート
+  const prioritySorted = [...activePlayers].sort((a, b) =>
+    calculatePriorityScore(a, practiceStartTime) - calculatePriorityScore(b, practiceStartTime)
+  );
+
+  // 2. 必要人数を選出（コート数 × 4人）
+  const requiredCount = targetCourtIds.length * 4;
+  const selected = prioritySorted.slice(0, requiredCount);
+
+  // 3. 全アクティブプレイヤーでグループ分け（グローバル序列）
+  const groups = groupPlayers2Court(groupingPlayers, matchHistory);
+  const upperIds = groups.get('upper')!;
+
+  // 4. 選ばれたプレイヤーを序列順に並べ替え
+  const initialOrder = buildInitialOrder(groupingPlayers);
+  const order = applyStreakSwaps(initialOrder, matchHistory);
+  const orderedSelected = order
+    .filter(id => selected.some(p => p.id === id))
+    .map(id => selected.find(p => p.id === id)!);
+
+  // 5. 確率ベースのコート振り分け
+  // グループ確率 + ランダムノイズでスコアを付与し、上位4人をC1に配置
+  // upper(70%) / lower(30%) の確率に基づきつつ、ランダム性で行き来が発生
+  const courtScores = orderedSelected.map(player => {
+    const isUpper = upperIds.has(player.id);
+    const probC1 = isUpper
+      ? COURT_PROBABILITIES_2.upper[0]   // 0.70
+      : COURT_PROBABILITIES_2.lower[0];  // 0.30
+    return {
+      player,
+      score: probC1 + Math.random() * 1.8,
+    };
+  });
+  courtScores.sort((a, b) => b.score - a.score);
+  const upperCourt = courtScores.slice(0, 4).map(cs => cs.player);
+  const lowerCourt = courtScores.slice(4).map(cs => cs.player);
+
+  // 6. 直近試合制約のチェック・修正
+  tryFixRecentMatch(upperCourt, lowerCourt, matchHistory);
+
+  // 7. コートID割り当て（小さいID = upperコート）
+  const sortedCourtIds = [...targetCourtIds].sort((a, b) => a - b);
+
+  // 8. チーム編成
+  const upperTeams = formTeams(upperCourt, pairHistory, opponentHistory);
+  const lowerTeams = formTeams(lowerCourt, pairHistory, opponentHistory);
+
+  return [
+    { courtId: sortedCourtIds[0], teamA: upperTeams.teamA, teamB: upperTeams.teamB },
+    { courtId: sortedCourtIds[1], teamA: lowerTeams.teamA, teamB: lowerTeams.teamB },
+  ];
+}
+
+/**
  * 自動配置アルゴリズム v2
  * - レーティングベースのグルーピング（3等分/2等分）
- * - 確率ベースのコート配置
+ * - 確率ベースのコート配置（3コート）/ ホリスティック配置（2コート同時）
  * - 直近3試合で3人同じを回避
  * - 上位/下位の孤立を回避（3コート）
  * - プレイ回数少ない人を優先
@@ -321,6 +467,7 @@ export function assignCourts(
     totalCourtCount?: number;
     targetCourtIds?: number[];
     practiceStartTime?: number;
+    allPlayers?: Player[];  // 全アクティブプレイヤー（他コートでプレイ中含む）。グループ分けに使用
   }
 ): CourtAssignment[] {
   const activePlayers = players.filter((p) => !p.isResting);
@@ -333,13 +480,21 @@ export function assignCourts(
   }
 
   const totalCourtCount = options?.totalCourtCount ?? courtCount;
-  const targetCourtIds = options?.targetCourtIds ?? 
+  const targetCourtIds = options?.targetCourtIds ??
     Array.from({ length: courtCount }, (_, i) => i + 1);
   const practiceStartTime = options?.practiceStartTime ?? Date.now();
 
-  // グループ分け
-  const groups3 = totalCourtCount >= 3 ? groupPlayers3Court(activePlayers, matchHistory) : null;
-  const groups2 = totalCourtCount === 2 ? groupPlayers2Court(activePlayers) : null;
+  // グループ分けは全アクティブプレイヤー（他コートでプレイ中含む）で行う
+  const groupingPlayers = options?.allPlayers ?? activePlayers;
+
+  // 2コート同時配置の場合はホリスティック・アプローチを使用
+  if (totalCourtCount === 2 && courtCount === 2) {
+    return assign2CourtsHolistic(activePlayers, targetCourtIds, matchHistory, practiceStartTime, groupingPlayers);
+  }
+
+  // グループ分け（グローバル）
+  const groups3 = totalCourtCount >= 3 ? groupPlayers3Court(groupingPlayers, matchHistory) : null;
+  const groups2 = totalCourtCount === 2 ? groupPlayers2Court(groupingPlayers, matchHistory) : null;
 
   const pairHistory = getPairHistory(matchHistory);
   const opponentHistory = getOpponentHistory(matchHistory);

@@ -59,6 +59,9 @@ export function MainPage() {
         (p) => !p.isResting && !playersInCourts.has(p.id)
       );
 
+      // 全アクティブプレイヤー（コートでプレイ中含む）をグループ分け用に渡す
+      const allActivePlayers = players.filter(p => !p.isResting);
+
       const assignments = assignCourts(
         waitingPlayers,
         courtsToAssign.length,
@@ -67,6 +70,7 @@ export function MainPage() {
           totalCourtCount: courts.length,
           targetCourtIds: courtsToAssign,
           practiceStartTime: session?.config.practiceStartTime,
+          allPlayers: allActivePlayers,
         }
       );
 
