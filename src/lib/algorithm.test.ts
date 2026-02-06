@@ -520,4 +520,55 @@ describe('assignCourts - 2コートホリスティック配置', () => {
     const allAssigned = assignments.flatMap(a => [...a.teamA, ...a.teamB]);
     expect(allAssigned).not.toContain('p9');
   });
+
+  it('1コート配置時: allPlayersでグローバルなupper/lower判定が行われる', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    // 全アクティブ15人（p1-p15）
+    const allPlayers = Array.from({ length: 15 }, (_, i) =>
+      createRatedPlayer(`p${i + 1}`, `P${i + 1}`, 2000 - i * 100)
+    );
+
+    // p1-p4はコート2でプレイ中 → 待機プレイヤーはp5-p15の11人
+    const waitingPlayers = allPlayers.slice(4);
+
+    // コート1（upperコート）に配置
+    const assignments = assignCourts(waitingPlayers, 1, [], {
+      totalCourtCount: 2,
+      targetCourtIds: [1],
+      practiceStartTime: now - 60 * 60 * 1000,
+      allPlayers,  // 全15人でグループ分け
+    });
+
+    expect(assignments).toHaveLength(1);
+    const assigned = [...assignments[0].teamA, ...assignments[0].teamB];
+    expect(assigned).toHaveLength(4);
+
+    // グローバルupper(p1-p7)の中で待機中はp5-p7
+    // コート1はupperコートなので、p5-p7が優先的に入る
+    const upperWaiting = ['p5', 'p6', 'p7'];
+    const upperCount = assigned.filter(id => upperWaiting.includes(id)).length;
+    expect(upperCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it('1コート配置時: allPlayersなしだと待機者だけでグループ分けされる', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    // 全アクティブ15人だが、allPlayersを渡さない
+    const allPlayers = Array.from({ length: 15 }, (_, i) =>
+      createRatedPlayer(`p${i + 1}`, `P${i + 1}`, 2000 - i * 100)
+    );
+    const waitingPlayers = allPlayers.slice(4); // p5-p15
+
+    // allPlayers未指定 → 待機者(p5-p15)だけでグループ分け
+    const assignments = assignCourts(waitingPlayers, 1, [], {
+      totalCourtCount: 2,
+      targetCourtIds: [1],
+      practiceStartTime: now - 60 * 60 * 1000,
+      // allPlayers未指定
+    });
+
+    const assigned = [...assignments[0].teamA, ...assignments[0].teamB];
+    expect(assigned).toHaveLength(4);
+  });
 });

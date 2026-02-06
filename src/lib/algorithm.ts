@@ -364,7 +364,8 @@ function assign2CourtsHolistic(
   activePlayers: Player[],
   targetCourtIds: number[],
   matchHistory: Match[],
-  practiceStartTime: number
+  practiceStartTime: number,
+  groupingPlayers: Player[]
 ): CourtAssignment[] {
   const pairHistory = getPairHistory(matchHistory);
   const opponentHistory = getOpponentHistory(matchHistory);
@@ -378,12 +379,12 @@ function assign2CourtsHolistic(
   const requiredCount = targetCourtIds.length * 4;
   const selected = prioritySorted.slice(0, requiredCount);
 
-  // 3. 選ばれた8人をストリーク調整済み序列でグループ分け
-  const groups = groupPlayers2Court(selected, matchHistory);
+  // 3. 全アクティブプレイヤーでグループ分け（グローバル序列）
+  const groups = groupPlayers2Court(groupingPlayers, matchHistory);
   const upperIds = groups.get('upper')!;
 
-  // 4. 序列順に並べ替え
-  const initialOrder = buildInitialOrder(selected);
+  // 4. 選ばれたプレイヤーを序列順に並べ替え
+  const initialOrder = buildInitialOrder(groupingPlayers);
   const order = applyStreakSwaps(initialOrder, matchHistory);
   const orderedSelected = order
     .filter(id => selected.some(p => p.id === id))
@@ -466,6 +467,7 @@ export function assignCourts(
     totalCourtCount?: number;
     targetCourtIds?: number[];
     practiceStartTime?: number;
+    allPlayers?: Player[];  // 全アクティブプレイヤー（他コートでプレイ中含む）。グループ分けに使用
   }
 ): CourtAssignment[] {
   const activePlayers = players.filter((p) => !p.isResting);
@@ -482,14 +484,17 @@ export function assignCourts(
     Array.from({ length: courtCount }, (_, i) => i + 1);
   const practiceStartTime = options?.practiceStartTime ?? Date.now();
 
+  // グループ分けは全アクティブプレイヤー（他コートでプレイ中含む）で行う
+  const groupingPlayers = options?.allPlayers ?? activePlayers;
+
   // 2コート同時配置の場合はホリスティック・アプローチを使用
   if (totalCourtCount === 2 && courtCount === 2) {
-    return assign2CourtsHolistic(activePlayers, targetCourtIds, matchHistory, practiceStartTime);
+    return assign2CourtsHolistic(activePlayers, targetCourtIds, matchHistory, practiceStartTime, groupingPlayers);
   }
 
-  // グループ分け
-  const groups3 = totalCourtCount >= 3 ? groupPlayers3Court(activePlayers, matchHistory) : null;
-  const groups2 = totalCourtCount === 2 ? groupPlayers2Court(activePlayers, matchHistory) : null;
+  // グループ分け（グローバル）
+  const groups3 = totalCourtCount >= 3 ? groupPlayers3Court(groupingPlayers, matchHistory) : null;
+  const groups2 = totalCourtCount === 2 ? groupPlayers2Court(groupingPlayers, matchHistory) : null;
 
   const pairHistory = getPairHistory(matchHistory);
   const opponentHistory = getOpponentHistory(matchHistory);
