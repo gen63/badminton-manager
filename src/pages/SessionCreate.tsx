@@ -190,7 +190,7 @@ export function SessionCreate() {
                 onChange={(e) => setPracticeDateTime(e.target.value)}
                 className="input-field opacity-0 absolute inset-0 w-full h-full cursor-pointer"
               />
-              <div className="input-field text-center text-indigo-600 pointer-events-none">
+              <div className="input-field text-center text-blue-600 pointer-events-none">
                 {(() => {
                   const d = new Date(practiceDateTime);
                   const year = d.getFullYear();
@@ -227,7 +227,7 @@ export function SessionCreate() {
               <button
                 onClick={handleLoadFromSheets}
                 disabled={isLoadingMembers}
-                className="w-full min-h-[44px] px-4 py-2 rounded-lg border border-indigo-300 text-indigo-600 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full min-h-[44px] px-4 py-2 rounded-lg border border-blue-300 text-blue-600 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {isLoadingMembers ? (
                   <>

@@ -330,13 +330,13 @@ export function MainPage() {
 
         {/* メンバー交換の説明 */}
         {selectedPlayer && (
-          <div className="bg-gradient-to-r from-indigo-50 to-indigo-50 border-2 border-indigo-200 rounded-xl p-4 text-sm text-indigo-700 flex items-center justify-between shadow-sm">
+          <div className="bg-gradient-to-r from-blue-50 to-blue-50 border-2 border-blue-200 rounded-xl p-4 text-sm text-blue-700 flex items-center justify-between shadow-sm">
             <span>
               <strong className="font-semibold">{players.find(p => p.id === selectedPlayer.id)?.name}</strong> と交換したいプレイヤーをタップ
             </span>
             <button
               onClick={() => setSelectedPlayer(null)}
-              className="p-2 hover:bg-indigo-100 rounded-full transition-colors"
+              className="p-2 hover:bg-blue-100 rounded-full transition-colors"
             >
               <X size={18} />
             </button>
@@ -522,7 +522,7 @@ export function MainPage() {
                               toggleRest(player.id);
                             }}
                             aria-label="復帰"
-                            className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 rounded-full flex-shrink-0 transition-all duration-150"
+                            className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 rounded-full flex-shrink-0 transition-all duration-150"
                           >
                             <ArrowUp size={16} />
                           </button>
