@@ -9,7 +9,7 @@ interface SettingsState {
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      gasWebAppUrl: '',
+      gasWebAppUrl: 'https://script.google.com/macros/s/AKfycbyG7Vud0xcxe8k3B-rhKu-4eJlWlcSMyAtSP3BFchGZ8b6E08sKN2noYmpy_PottXXQBA/exec',
       setGasWebAppUrl: (url) => set({ gasWebAppUrl: url }),
     }),
     {
