@@ -374,8 +374,9 @@ function assign2CourtsHolistic(
     calculatePriorityScore(a, practiceStartTime) - calculatePriorityScore(b, practiceStartTime)
   );
 
-  // 2. 上位8人を選出
-  const selected = prioritySorted.slice(0, 8);
+  // 2. 必要人数を選出（コート数 × 4人）
+  const requiredCount = targetCourtIds.length * 4;
+  const selected = prioritySorted.slice(0, requiredCount);
 
   // 3. 選ばれた8人をストリーク調整済み序列でグループ分け
   const groups = groupPlayers2Court(selected, matchHistory);
