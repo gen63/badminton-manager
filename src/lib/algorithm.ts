@@ -388,21 +388,22 @@ function assign2CourtsHolistic(
     .filter(id => selected.some(p => p.id === id))
     .map(id => selected.find(p => p.id === id)!);
 
-  // 5. upper/lowerコートに振り分け
-  const upperCourt: Player[] = [];
-  const lowerCourt: Player[] = [];
-
-  for (const player of orderedSelected) {
-    if (upperIds.has(player.id) && upperCourt.length < 4) {
-      upperCourt.push(player);
-    } else if (!upperIds.has(player.id) && lowerCourt.length < 4) {
-      lowerCourt.push(player);
-    } else if (upperCourt.length < 4) {
-      upperCourt.push(player);
-    } else {
-      lowerCourt.push(player);
-    }
-  }
+  // 5. 確率ベースのコート振り分け
+  // グループ確率 + ランダムノイズでスコアを付与し、上位4人をC1に配置
+  // upper(70%) / lower(30%) の確率に基づきつつ、ランダム性で行き来が発生
+  const courtScores = orderedSelected.map(player => {
+    const isUpper = upperIds.has(player.id);
+    const probC1 = isUpper
+      ? COURT_PROBABILITIES_2.upper[0]   // 0.70
+      : COURT_PROBABILITIES_2.lower[0];  // 0.30
+    return {
+      player,
+      score: probC1 + Math.random() * 1.8,
+    };
+  });
+  courtScores.sort((a, b) => b.score - a.score);
+  const upperCourt = courtScores.slice(0, 4).map(cs => cs.player);
+  const lowerCourt = courtScores.slice(4).map(cs => cs.player);
 
   // 6. 直近試合制約のチェック・修正
   tryFixRecentMatch(upperCourt, lowerCourt, matchHistory);

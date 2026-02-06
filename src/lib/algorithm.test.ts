@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { calculatePlayerStats, getStreaks, buildInitialOrder, applyStreakSwaps, assignCourts } from './algorithm';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
@@ -373,6 +373,10 @@ describe('applyStreakSwaps', () => {
 describe('assignCourts - 2コートホリスティック配置', () => {
   const now = Date.now();
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   const createRatedPlayer = (
     id: string,
     name: string,
@@ -388,25 +392,28 @@ describe('assignCourts - 2コートホリスティック配置', () => {
     activatedAt: now - 60 * 60 * 1000, // 1時間前
   });
 
-  it('レート上位4人がC1、下位4人がC2に配置される', () => {
-    const players = [
-      createRatedPlayer('p1', 'P1', 2000),
-      createRatedPlayer('p2', 'P2', 1800),
-      createRatedPlayer('p3', 'P3', 1600),
-      createRatedPlayer('p4', 'P4', 1400),
-      createRatedPlayer('p5', 'P5', 1200),
-      createRatedPlayer('p6', 'P6', 1000),
-      createRatedPlayer('p7', 'P7', 800),
-      createRatedPlayer('p8', 'P8', 600),
-    ];
+  const make8Players = () => [
+    createRatedPlayer('p1', 'P1', 2000),
+    createRatedPlayer('p2', 'P2', 1800),
+    createRatedPlayer('p3', 'P3', 1600),
+    createRatedPlayer('p4', 'P4', 1400),
+    createRatedPlayer('p5', 'P5', 1200),
+    createRatedPlayer('p6', 'P6', 1000),
+    createRatedPlayer('p7', 'P7', 800),
+    createRatedPlayer('p8', 'P8', 600),
+  ];
 
-    const assignments = assignCourts(players, 2, [], {
-      totalCourtCount: 2,
-      targetCourtIds: [1, 2],
-      practiceStartTime: now - 60 * 60 * 1000,
-    });
+  const defaultOptions = {
+    totalCourtCount: 2,
+    targetCourtIds: [1, 2],
+    practiceStartTime: now - 60 * 60 * 1000,
+  };
 
-    expect(assignments).toHaveLength(2);
+  it('ランダム固定時: レート上位4人がC1、下位4人がC2に配置される', () => {
+    // Math.randomが一定値→確率差でupper全員がC1になる
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    const assignments = assignCourts(make8Players(), 2, [], defaultOptions);
 
     const court1 = assignments.find(a => a.courtId === 1)!;
     const court2 = assignments.find(a => a.courtId === 2)!;
@@ -414,118 +421,102 @@ describe('assignCourts - 2コートホリスティック配置', () => {
     const court1Players = [...court1.teamA, ...court1.teamB].sort();
     const court2Players = [...court2.teamA, ...court2.teamB].sort();
 
-    // upper 4人(p1-p4)がC1に
-    expect(court1Players.sort()).toEqual(['p1', 'p2', 'p3', 'p4'].sort());
-    // lower 4人(p5-p8)がC2に
-    expect(court2Players.sort()).toEqual(['p5', 'p6', 'p7', 'p8'].sort());
+    expect(court1Players).toEqual(['p1', 'p2', 'p3', 'p4']);
+    expect(court2Players).toEqual(['p5', 'p6', 'p7', 'p8']);
   });
 
-  it('連勝によるストリーク調整で配置が変わる', () => {
-    const players = [
-      createRatedPlayer('p1', 'P1', 2000),
-      createRatedPlayer('p2', 'P2', 1800),
-      createRatedPlayer('p3', 'P3', 1600),
-      createRatedPlayer('p4', 'P4', 1400),
-      createRatedPlayer('p5', 'P5', 1200),
-      createRatedPlayer('p6', 'P6', 1000),
-      createRatedPlayer('p7', 'P7', 800),
-      createRatedPlayer('p8', 'P8', 600),
-    ];
+  it('ランダム固定時: 連勝によるストリーク調整で配置が変わる', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
 
     // p5(rating 1200)が二連勝 → 序列が1つ上がり、p4と入れ替わる
     const matches = [
-      createMatch(['p5', 'X'], ['Y', 'Z'], 21, 15), // 2試合目（最新）
-      createMatch(['p5', 'X'], ['W', 'V'], 21, 15), // 1試合目
+      createMatch(['p5', 'X'], ['Y', 'Z'], 21, 15),
+      createMatch(['p5', 'X'], ['W', 'V'], 21, 15),
     ];
 
-    const assignments = assignCourts(players, 2, matches, {
-      totalCourtCount: 2,
-      targetCourtIds: [1, 2],
-      practiceStartTime: now - 60 * 60 * 1000,
-    });
+    const assignments = assignCourts(make8Players(), 2, matches, defaultOptions);
 
     const court1 = assignments.find(a => a.courtId === 1)!;
     const court1Players = [...court1.teamA, ...court1.teamB];
 
-    // p5が昇格してupperに入り、p4がlowerに降格
     expect(court1Players).toContain('p5');
     expect(court1Players).not.toContain('p4');
   });
 
-  it('9人以上の場合、優先度の高い8人が選ばれる', () => {
-    const players = [
-      createRatedPlayer('p1', 'P1', 2000, 0), // gamesPlayed=0 → 最優先
-      createRatedPlayer('p2', 'P2', 1800, 0),
-      createRatedPlayer('p3', 'P3', 1600, 0),
-      createRatedPlayer('p4', 'P4', 1400, 0),
-      createRatedPlayer('p5', 'P5', 1200, 0),
-      createRatedPlayer('p6', 'P6', 1000, 0),
-      createRatedPlayer('p7', 'P7', 800, 0),
-      createRatedPlayer('p8', 'P8', 600, 0),
-      createRatedPlayer('p9', 'P9', 500, 5), // gamesPlayed=5 → 優先度低
-    ];
+  it('確率的にupper/lower間で行き来が発生する', () => {
+    const players = make8Players();
+    let pureUpperCount = 0;
+    const iterations = 100;
 
-    const assignments = assignCourts(players, 2, [], {
-      totalCourtCount: 2,
-      targetCourtIds: [1, 2],
-      practiceStartTime: now - 60 * 60 * 1000,
-    });
+    for (let i = 0; i < iterations; i++) {
+      const assignments = assignCourts(players, 2, [], defaultOptions);
+      const court1 = assignments.find(a => a.courtId === 1)!;
+      const court1Players = new Set([...court1.teamA, ...court1.teamB]);
 
-    const allAssigned = assignments.flatMap(a => [...a.teamA, ...a.teamB]);
+      // C1にupper全員（p1-p4）が揃う回数をカウント
+      const allUpperOnC1 = ['p1', 'p2', 'p3', 'p4'].every(id => court1Players.has(id));
+      if (allUpperOnC1) pureUpperCount++;
+    }
 
-    // gamesPlayed=0の8人が優先、p9(gamesPlayed=5)は除外
-    expect(allAssigned).toHaveLength(8);
-    expect(allAssigned).not.toContain('p9');
+    // 常に同じ配置ではない（ランダム性で行き来がある）
+    expect(pureUpperCount).toBeGreaterThan(3);
+    // 常にバラバラではない（upper傾向は維持される）
+    expect(pureUpperCount).toBeLessThan(90);
   });
 
-  it('各コートに正しく4人ずつ配置される', () => {
+  it('15人の場合、優先度の高い8人が選ばれる', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
     const players = [
-      createRatedPlayer('p1', 'P1', 2000),
-      createRatedPlayer('p2', 'P2', 1800),
-      createRatedPlayer('p3', 'P3', 1600),
-      createRatedPlayer('p4', 'P4', 1400),
-      createRatedPlayer('p5', 'P5', 1200),
-      createRatedPlayer('p6', 'P6', 1000),
-      createRatedPlayer('p7', 'P7', 800),
-      createRatedPlayer('p8', 'P8', 600),
+      ...make8Players(), // gamesPlayed=0 → 最優先
+      createRatedPlayer('p9', 'P9', 1900, 5),
+      createRatedPlayer('p10', 'P10', 1700, 5),
+      createRatedPlayer('p11', 'P11', 1500, 5),
+      createRatedPlayer('p12', 'P12', 1300, 5),
+      createRatedPlayer('p13', 'P13', 1100, 5),
+      createRatedPlayer('p14', 'P14', 900, 5),
+      createRatedPlayer('p15', 'P15', 700, 5),
     ];
 
-    const assignments = assignCourts(players, 2, [], {
-      totalCourtCount: 2,
-      targetCourtIds: [1, 2],
-      practiceStartTime: now - 60 * 60 * 1000,
-    });
+    const assignments = assignCourts(players, 2, [], defaultOptions);
+    const allAssigned = assignments.flatMap(a => [...a.teamA, ...a.teamB]);
 
-    expect(assignments).toHaveLength(2);
-    assignments.forEach(a => {
-      expect(a.teamA).toHaveLength(2);
-      expect(a.teamB).toHaveLength(2);
-    });
+    expect(allAssigned).toHaveLength(8);
+    // gamesPlayed=0の8人が優先
+    for (let i = 1; i <= 8; i++) {
+      expect(allAssigned).toContain(`p${i}`);
+    }
+    // gamesPlayed=5の7人は除外
+    for (let i = 9; i <= 15; i++) {
+      expect(allAssigned).not.toContain(`p${i}`);
+    }
+  });
 
-    // 重複なし
-    const allPlayers = assignments.flatMap(a => [...a.teamA, ...a.teamB]);
-    expect(new Set(allPlayers).size).toBe(8);
+  it('各コートに正しく4人ずつ配置される（ランダムあり）', () => {
+    // ランダム性があっても構造は常に正しい
+    for (let i = 0; i < 20; i++) {
+      const assignments = assignCourts(make8Players(), 2, [], defaultOptions);
+
+      expect(assignments).toHaveLength(2);
+      assignments.forEach(a => {
+        expect(a.teamA).toHaveLength(2);
+        expect(a.teamB).toHaveLength(2);
+      });
+
+      const allPlayers = assignments.flatMap(a => [...a.teamA, ...a.teamB]);
+      expect(new Set(allPlayers).size).toBe(8);
+    }
   });
 
   it('休憩中のプレイヤーは配置されない', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
     const players = [
-      createRatedPlayer('p1', 'P1', 2000),
-      createRatedPlayer('p2', 'P2', 1800),
-      createRatedPlayer('p3', 'P3', 1600),
-      createRatedPlayer('p4', 'P4', 1400),
-      createRatedPlayer('p5', 'P5', 1200),
-      createRatedPlayer('p6', 'P6', 1000),
-      createRatedPlayer('p7', 'P7', 800),
-      createRatedPlayer('p8', 'P8', 600),
-      { ...createRatedPlayer('p9', 'P9', 2500), isResting: true }, // 最高レートだが休憩中
+      ...make8Players(),
+      { ...createRatedPlayer('p9', 'P9', 2500), isResting: true },
     ];
 
-    const assignments = assignCourts(players, 2, [], {
-      totalCourtCount: 2,
-      targetCourtIds: [1, 2],
-      practiceStartTime: now - 60 * 60 * 1000,
-    });
-
+    const assignments = assignCourts(players, 2, [], defaultOptions);
     const allAssigned = assignments.flatMap(a => [...a.teamA, ...a.teamB]);
     expect(allAssigned).not.toContain('p9');
   });
