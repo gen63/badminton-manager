@@ -58,9 +58,29 @@ Zustand `persist` は localStorage から非同期にハイドレーションす
 
 GAS Web App は `script.google.com` → `script.googleusercontent.com` にリダイレクトする。GET の simple request として透過的に処理されるため大多数のブラウザでは問題ないが、一部のモバイルブラウザ/WebView でリダイレクト中間レスポンスに CORS ヘッダーがなく失敗する可能性がある。影響頻度は低い。
 
+### 問題7: GAS スクリプトにエラーハンドリングがない
+
+**現状:** `docs/gas-script.js` の `doGet` / `doPost` に try-catch がない。
+
+**問題:** GAS 側で例外が発生すると（シートアクセスエラー、データ不正等）、GAS ランタイムが **HTML エラーページ** を返す。フロントエンドはこれを JSON としてパースしようとして失敗し、問題3・4 に連鎖する。
+
+### 問題8: doPost の書き込み先が `getActiveSheet()`
+
+**現状:** `docs/gas-script.js` L57:
+
+```javascript
+var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+```
+
+**問題:** ユーザーがスプレッドシートで別シートを表示していると、試合結果が意図しないシートに書き込まれる。`getSheetByName()` で明示的に指定すべき。
+
 ## 修正方針
 
-影響範囲を `src/lib/sheetsMembers.ts` と `src/pages/SessionCreate.tsx` の **2ファイル** に限定する。GAS スクリプトの変更は不要。
+影響範囲を以下の **3ファイル** に限定する。
+
+- `src/lib/sheetsMembers.ts` — フロントエンド読み込みロジック
+- `src/pages/SessionCreate.tsx` — UI 側の修正
+- `docs/gas-script.js` — GAS スクリプトのエラーハンドリング・堅牢化
 
 ## 実装タスク
 
@@ -164,7 +184,74 @@ const result = await fetchMembersFromSheets(url, () => {
 });
 ```
 
-### タスク6: ビルド確認
+### タスク6: GAS スクリプト堅牢化（gas-script.js）
+
+**ファイル:** `docs/gas-script.js`
+
+**6a. doGet / doPost に try-catch 追加**
+
+例外発生時も必ず JSON を返すようにする。HTML エラーページの返却を防止。
+
+```javascript
+function doGet(e) {
+  try {
+    // ... 既存ロジック ...
+  } catch (err) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: 'error', message: err.message || '予期しないエラーが発生しました' })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doPost(e) {
+  try {
+    // ... 既存ロジック ...
+  } catch (err) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: 'error', message: err.message || '予期しないエラーが発生しました' })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+```
+
+**6b. doPost の書き込み先を固定シート名に変更**
+
+`getActiveSheet()` → `getSheetByName('試合結果')` に変更。シートが存在しない場合は自動作成。
+
+```javascript
+function doPost(e) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('試合結果');
+    if (!sheet) {
+      sheet = ss.insertSheet('試合結果');
+    }
+    // ... 書き込みロジック ...
+  } catch (err) { ... }
+}
+```
+
+**6c. doPost の入力バリデーション追加**
+
+`e.postData` や `data.matches` が不正な場合のエラーハンドリング。
+
+```javascript
+if (!e || !e.postData || !e.postData.contents) {
+  return ContentService.createTextOutput(
+    JSON.stringify({ status: 'error', message: 'リクエストデータがありません' })
+  ).setMimeType(ContentService.MimeType.JSON);
+}
+
+var data = JSON.parse(e.postData.contents);
+
+if (!data.matches || !Array.isArray(data.matches)) {
+  return ContentService.createTextOutput(
+    JSON.stringify({ status: 'error', message: '試合データの形式が不正です' })
+  ).setMimeType(ContentService.MimeType.JSON);
+}
+```
+
+### タスク7: ビルド確認
 
 ```bash
 npm run build
@@ -176,6 +263,7 @@ npm run build
 |----------|------|----------|
 | `src/lib/sheetsMembers.ts` | **変更** | タイムアウト延長、リトライ追加、エラー分類改善、JSON パース安全化 |
 | `src/pages/SessionCreate.tsx` | **変更** | `gasUrlInput` 初期値修正、URL 優先順位修正、リトライ中テキスト表示 |
+| `docs/gas-script.js` | **変更** | try-catch 追加、doPost 書き込み先固定、入力バリデーション |
 
 ## テスト計画
 
@@ -200,15 +288,21 @@ npm run build
 | `retryable` フラグは内部のみ | 外部インタフェース `FetchMembersResult` は変更しない |
 | JSON パースは `text()` + `JSON.parse()` | Content-Type が不安定な GAS に対して堅牢 |
 | `sheetsApi.ts` は今回のスコープ外 | POST は `no-cors` で仕組みが異なる。別途対応 |
+| GAS doPost の書き込み先を `試合結果` シート固定 | `getActiveSheet()` は表示中のシートに依存し不安定 |
+| シート不在時は自動作成 | ユーザーの手動作成ミスを防ぐ |
+| GAS に try-catch 必須 | 未処理例外は HTML エラーページを返し、フロントエンドの JSON パースが失敗する |
 | `gasUrlInput` 初期値を `''` に変更 | ハイドレーション前の stale な値をキャプチャしない |
 | `onRetry` コールバック | UI側にリトライ状態を伝える最小限のインタフェース |
 
 ## 実装順序
 
-1. `src/lib/sheetsMembers.ts` — タイムアウト延長 + エラー分類 + JSON パース安全化
-2. `src/lib/sheetsMembers.ts` — リトライロジック追加（`onRetry` コールバック含む）
-3. `src/pages/SessionCreate.tsx` — `gasUrlInput` 初期値修正 + リトライ中テキスト表示
-4. `npm run build` — ビルド確認
+1. `docs/gas-script.js` — try-catch 追加 + doPost 書き込み先固定 + 入力バリデーション
+2. `src/lib/sheetsMembers.ts` — タイムアウト延長 + エラー分類 + JSON パース安全化
+3. `src/lib/sheetsMembers.ts` — リトライロジック追加（`onRetry` コールバック含む）
+4. `src/pages/SessionCreate.tsx` — `gasUrlInput` 初期値修正 + リトライ中テキスト表示
+5. `npm run build` — ビルド確認
+
+**注意:** `docs/gas-script.js` を変更した場合、ユーザーは GAS エディタで再デプロイが必要。
 
 ## 参考
 
