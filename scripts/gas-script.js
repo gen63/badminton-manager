@@ -86,17 +86,13 @@ function doPost(e) {
       sheet.appendRow([
         match.date,
         match.gym,
-        match.matchNumber,
-        match.courtId,
         match.teamA[0],
         match.teamA[1],
-        match.scoreA,
-        match.scoreB,
         match.teamB[0],
         match.teamB[1],
+        match.scoreA,
+        match.scoreB,
         match.duration,
-        match.startedAt,
-        match.finishedAt,
       ]);
     });
 

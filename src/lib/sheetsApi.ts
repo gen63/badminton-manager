@@ -1,20 +1,15 @@
 import type { Match } from '../types/match';
 import type { Player } from '../types/player';
 import type { Session } from '../types/session';
-import { formatTime } from './utils';
 
 interface SheetMatch {
   date: string;
   gym: string;
-  matchNumber: number;
-  courtId: number;
   teamA: [string, string];
   teamB: [string, string];
   scoreA: number;
   scoreB: number;
   duration: number;
-  startedAt: string;
-  finishedAt: string;
 }
 
 interface SheetsPayload {
@@ -34,11 +29,9 @@ function formatMatchesForSheets(
   session: Session
 ): SheetsPayload {
   return {
-    matches: matches.map((match, index) => ({
+    matches: matches.map((match) => ({
       date: session.config.practiceDate,
       gym: session.config.gym || '',
-      matchNumber: index + 1,
-      courtId: match.courtId,
       teamA: [
         resolvePlayerName(match.teamA[0], players),
         resolvePlayerName(match.teamA[1], players),
@@ -50,8 +43,6 @@ function formatMatchesForSheets(
       scoreA: match.scoreA,
       scoreB: match.scoreB,
       duration: Math.round((match.finishedAt - match.startedAt) / 60000),
-      startedAt: formatTime(match.startedAt),
-      finishedAt: formatTime(match.finishedAt),
     })),
   };
 }
