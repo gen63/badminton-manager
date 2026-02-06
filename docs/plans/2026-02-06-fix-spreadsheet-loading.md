@@ -72,7 +72,7 @@ GAS Web App は `script.google.com` → `script.googleusercontent.com` にリダ
 var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
 ```
 
-**問題:** ユーザーがスプレッドシートで別シートを表示していると、試合結果が意図しないシートに書き込まれる。`getSheetByName()` で明示的に指定すべき。
+**問題:** ユーザーがスプレッドシートで別シートを表示していると、当日結果が意図しないシートに書き込まれる。`getSheetByName()` で明示的に指定すべき。
 
 ## 修正方針
 
@@ -216,15 +216,15 @@ function doPost(e) {
 
 **6b. doPost の書き込み先を固定シート名に変更**
 
-`getActiveSheet()` → `getSheetByName('試合結果')` に変更。シートが存在しない場合は自動作成。
+`getActiveSheet()` → `getSheetByName('当日結果')` に変更。シートが存在しない場合は自動作成。
 
 ```javascript
 function doPost(e) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName('試合結果');
+    var sheet = ss.getSheetByName('当日結果');
     if (!sheet) {
-      sheet = ss.insertSheet('試合結果');
+      sheet = ss.insertSheet('当日結果');
     }
     // ... 書き込みロジック ...
   } catch (err) { ... }
@@ -288,7 +288,7 @@ npm run build
 | `retryable` フラグは内部のみ | 外部インタフェース `FetchMembersResult` は変更しない |
 | JSON パースは `text()` + `JSON.parse()` | Content-Type が不安定な GAS に対して堅牢 |
 | `sheetsApi.ts` は今回のスコープ外 | POST は `no-cors` で仕組みが異なる。別途対応 |
-| GAS doPost の書き込み先を `試合結果` シート固定 | `getActiveSheet()` は表示中のシートに依存し不安定 |
+| GAS doPost の書き込み先を `当日結果` シート固定 | `getActiveSheet()` は表示中のシートに依存し不安定 |
 | シート不在時は自動作成 | ユーザーの手動作成ミスを防ぐ |
 | GAS に try-catch 必須 | 未処理例外は HTML エラーページを返し、フロントエンドの JSON パースが失敗する |
 | `gasUrlInput` 初期値を `''` に変更 | ハイドレーション前の stale な値をキャプチャしない |
