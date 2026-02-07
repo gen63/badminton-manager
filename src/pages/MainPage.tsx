@@ -175,7 +175,7 @@ export function MainPage() {
     totalCourtCount: courts.length,
     matchHistory,
     allActivePlayers: players.filter(p => !p.isResting),
-    practiceStartTime: session?.config.practiceStartTime ?? Date.now(),
+    practiceStartTime: session?.config.practiceStartTime ?? 0,
     useStayDuration: useStayDurationPriority,
   });
   const restingPlayers = players.filter((p) => p.isResting);
