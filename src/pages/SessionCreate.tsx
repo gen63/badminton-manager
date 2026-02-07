@@ -122,7 +122,7 @@ export function SessionCreate() {
             <label className="label">
               コート数
             </label>
-            <div className="flex gap-3 justify-center">
+            <div className="flex gap-3 justify-start">
               {[1, 2, 3].map((count) => (
                 <button
                   key={count}
@@ -145,7 +145,7 @@ export function SessionCreate() {
             <label className="label">
               目標点数
             </label>
-            <div className="flex gap-3 justify-center">
+            <div className="flex gap-3 justify-start">
               {[15, 21].map((score) => (
                 <button
                   key={score}
@@ -168,18 +168,20 @@ export function SessionCreate() {
             <label className="label">
               体育館
             </label>
-            <select
-              value={selectedGym}
-              onChange={(e) => setSelectedGym(e.target.value)}
-              className="select-field min-h-[52px] w-auto"
-            >
-              <option value="">選択してください</option>
-              {GYM_OPTIONS.map((gym) => (
-                <option key={gym} value={gym}>
-                  {gym}
-                </option>
-              ))}
-            </select>
+            <div className="max-w-[240px]">
+              <select
+                value={selectedGym}
+                onChange={(e) => setSelectedGym(e.target.value)}
+                className="select-field min-h-[52px]"
+              >
+                <option value="">選択してください</option>
+                {GYM_OPTIONS.map((gym) => (
+                  <option key={gym} value={gym}>
+                    {gym}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* 練習開始日時 */}
@@ -187,7 +189,7 @@ export function SessionCreate() {
             <label className="label">
               練習開始日時
             </label>
-            <div className="relative">
+            <div className="relative max-w-[240px]">
               <input
                 type="datetime-local"
                 value={practiceDateTime}
@@ -215,7 +217,7 @@ export function SessionCreate() {
             </label>
             <div className="mb-2">
               {!gasWebAppUrl && (
-                <div className="mb-2">
+                <div className="mb-2 max-w-[240px]">
                   <input
                     type="url"
                     value={gasUrlInput}
@@ -231,7 +233,7 @@ export function SessionCreate() {
               <button
                 onClick={handleLoadFromSheets}
                 disabled={isLoadingMembers}
-                className="btn-outline text-sm flex items-center justify-center gap-2 mx-auto"
+                className="btn-outline text-sm flex items-center justify-center gap-2"
               >
                 {isLoadingMembers ? (
                   <>
@@ -246,20 +248,22 @@ export function SessionCreate() {
                 )}
               </button>
               {loadError && (
-                <p className="text-xs text-red-500 mt-1 text-center">{loadError}</p>
+                <p className="text-xs text-red-500 mt-1">{loadError}</p>
               )}
             </div>
-            <textarea
-              value={playerNames}
-              onChange={(e) => setPlayerNames(e.target.value)}
-              placeholder="星野真吾&#10;山口裕史&#10;佐野朋美"
-              rows={5}
-              className="textarea-field"
-              style={{ WebkitAppearance: 'none' }}
-            />
-            <p className="text-xs text-gray-400 mt-2 text-center">
-              1行に1人ずつ入力してください（任意）
-            </p>
+            <div className="max-w-[240px]">
+              <textarea
+                value={playerNames}
+                onChange={(e) => setPlayerNames(e.target.value)}
+                placeholder="星野真吾&#10;山口裕史&#10;佐野朋美"
+                rows={5}
+                className="textarea-field"
+                style={{ WebkitAppearance: 'none' }}
+              />
+              <p className="text-xs text-gray-400 mt-2">
+                1行に1人ずつ入力してください（任意）
+              </p>
+            </div>
           </div>
 
           {/* 作成ボタン */}
