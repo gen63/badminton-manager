@@ -26,6 +26,6 @@ test.describe('セッション作成画面', () => {
     await page.getByRole('button', { name: /開始/i }).click();
 
     // メイン画面に遷移したことを確認（コートカードが表示される）
-    await expect(page.locator('.card')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.card').first()).toBeVisible({ timeout: 10000 });
   });
 });
