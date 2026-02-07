@@ -588,7 +588,7 @@ export function MainPage() {
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-gray-400 pb-[200px]">休憩メンバー無し</p>
+                <p className="text-sm text-gray-400 pb-12">休憩メンバー無し</p>
               )}
             </div>
           </div>

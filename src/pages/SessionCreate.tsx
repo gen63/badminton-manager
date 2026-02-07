@@ -30,7 +30,7 @@ export function SessionCreate() {
   const [gasUrlInput, setGasUrlInput] = useState('');
 
   const [courtCount, setCourtCount] = useState(3);
-  const [targetScore, setTargetScore] = useState(21);
+  const [targetScore, setTargetScore] = useState(15);
   const [selectedGym, setSelectedGym] = useState('');
   const [practiceDateTime, setPracticeDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
