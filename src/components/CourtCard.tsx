@@ -119,7 +119,7 @@ export function CourtCard({
       }`}
     >
       {/* コート番号とステータス */}
-      <div className="flex items-center justify-center gap-1.5 mb-1.5">
+      <div className="flex items-center justify-center gap-1.5 mb-1.5 min-h-[36px]">
         <span className="text-2xl font-bold text-gray-400">
           {circledNumbers[court.id - 1] || court.id}
         </span>
@@ -172,7 +172,7 @@ export function CourtCard({
       </div>
 
       {/* コントロールボタン */}
-      <div className="flex pt-1">
+      <div className="flex pt-1 min-h-[48px]">
         {!court.isPlaying && !hasPlayers && (
           <button
             onClick={onAutoAssign}

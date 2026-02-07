@@ -80,7 +80,7 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto p-4 space-y-4">
+      <div className="max-w-md mx-auto p-4 space-y-4">
         {/* コート設定 */}
         <div className="card p-6">
           <h2 className="section-title mb-5 flex items-center gap-2">
@@ -138,7 +138,7 @@ export function SettingsPage() {
               <select
                 value={session.config.gym || ''}
                 onChange={(e) => updateConfig({ gym: e.target.value || undefined })}
-                className="select-field min-h-[52px]"
+                className="select-field min-h-[52px] w-auto"
               >
                 <option value="">選択してください</option>
                 {GYM_OPTIONS.map((gym) => (
@@ -196,7 +196,7 @@ export function SettingsPage() {
                 updateConfig({ practiceStartTime: newTime });
               }
             }}
-            className="input-field min-h-[52px]"
+            className="input-field min-h-[52px] w-auto"
           />
         </div>
 
@@ -210,7 +210,7 @@ export function SettingsPage() {
           </h2>
           <button
             onClick={() => navigate('/players')}
-            className="btn-primary w-full flex items-center justify-center gap-2"
+            className="btn-primary flex items-center gap-2"
           >
             <Users size={18} />
             参加者を管理
@@ -239,7 +239,7 @@ export function SettingsPage() {
             <button
               onClick={handleUpload}
               disabled={!gasWebAppUrl || matchHistory.length === 0 || isUploading}
-              className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isUploading ? (
                 <Loader2 size={18} className="animate-spin" />
@@ -263,7 +263,7 @@ export function SettingsPage() {
           </h2>
           <button
             onClick={handleReset}
-            className="w-full min-h-[48px] bg-gradient-to-r from-red-500 to-red-600 text-white py-3 rounded-lg font-semibold hover:from-red-600 hover:to-red-700 active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-2 shadow-lg"
+            className="btn-danger min-h-[48px] py-3 flex items-center gap-2"
           >
             <Trash2 size={18} />
             リセット
