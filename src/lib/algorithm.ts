@@ -465,6 +465,56 @@ function calculatePriorityScore(
   return player.gamesPlayed / stayMinutes;
 }
 
+/**
+ * 候補から制約を満たす最適な4人の組み合わせを探索
+ * グリーディではなく全組み合わせを探索し、優先スコア合計が最小の有効な組を返す
+ * 有効な組が見つからない場合は制約を緩和して上位4人を返す
+ */
+function selectBestFour(
+  candidates: Player[],
+  matchHistory: Match[],
+  groups3: Map<RatingGroup, Set<string>> | null,
+  totalCourtCount: number,
+  practiceStartTime: number,
+  useStayDuration: boolean,
+): Player[] {
+  if (candidates.length <= 4) return candidates;
+
+  // candidatesは優先スコア昇順でソート済みの前提
+  const isValid = (ids: string[]): boolean => {
+    if (hasSimilarRecentMatch(ids, matchHistory)) return false;
+    if (totalCourtCount >= 3 && groups3 && hasIsolatedExtreme(ids, groups3)) return false;
+    return true;
+  };
+
+  let bestCombo: Player[] | null = null;
+  let bestScore = Infinity;
+
+  const n = candidates.length;
+  for (let i = 0; i < n - 3; i++) {
+    for (let j = i + 1; j < n - 2; j++) {
+      for (let k = j + 1; k < n - 1; k++) {
+        for (let l = k + 1; l < n; l++) {
+          const combo = [candidates[i], candidates[j], candidates[k], candidates[l]];
+          const ids = combo.map(p => p.id);
+          if (!isValid(ids)) continue;
+
+          const s = combo.reduce((sum, p) =>
+            sum + calculatePriorityScore(p, practiceStartTime, useStayDuration), 0);
+
+          if (s < bestScore) {
+            bestScore = s;
+            bestCombo = combo;
+          }
+        }
+      }
+    }
+  }
+
+  // 有効な組み合わせが見つからない場合は制約緩和（上位4人）
+  return bestCombo ?? candidates.slice(0, 4);
+}
+
 export function assignCourts(
   players: Player[],
   courtCount: number,
@@ -537,87 +587,36 @@ export function assignCourts(
       calculatePriorityScore(a, practiceStartTime, useStayDuration) - calculatePriorityScore(b, practiceStartTime, useStayDuration)
     );
 
-    // 4人選ぶ
-    const selected: Player[] = [];
-    
-    for (const player of eligible) {
-      if (selected.length >= 4) break;
-      
-      const testIds = [...selected.map(p => p.id), player.id];
-      
-      // 直近3試合で3人同じチェック
-      if (selected.length >= 3) {
-        if (hasSimilarRecentMatch(testIds, matchHistory)) {
-          continue;
-        }
-      }
-      
-      // 上位/下位の孤立チェック（3コートの場合、4人目の時）
-      if (totalCourtCount >= 3 && groups3 && testIds.length === 4) {
-        if (hasIsolatedExtreme(testIds, groups3)) {
-          continue;
-        }
-      }
-      
-      selected.push(player);
-      usedPlayers.add(player.id);
-    }
-
-    // 制約で4人揃わなかった場合、フォールバック
-    if (selected.length < 4) {
-      const remaining = activePlayers
+    // 組み合わせ探索で最適な4人を選出
+    let selected: Player[];
+    if (eligible.length >= 4) {
+      selected = selectBestFour(
+        eligible, matchHistory, groups3, totalCourtCount,
+        practiceStartTime, useStayDuration
+      );
+    } else {
+      // eligibleが不足 → グループ制約を緩和して全activeから探索
+      const allAvailable = activePlayers
         .filter(p => !usedPlayers.has(p.id))
         .sort((a, b) =>
-          calculatePriorityScore(a, practiceStartTime, useStayDuration) - calculatePriorityScore(b, practiceStartTime, useStayDuration)
+          calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+          calculatePriorityScore(b, practiceStartTime, useStayDuration)
         );
-      
-      for (const player of remaining) {
-        if (selected.length >= 4) break;
-        selected.push(player);
-        usedPlayers.add(player.id);
-      }
+      selected = selectBestFour(
+        allAvailable, matchHistory, groups3, totalCourtCount,
+        practiceStartTime, useStayDuration
+      );
     }
 
     if (selected.length < 4) {
       throw new Error('プレイヤーの割り当てに失敗しました');
     }
 
+    selected.forEach(p => usedPlayers.add(p.id));
+
     // チーム分け（ペア履歴・対戦履歴を考慮）
-    const teamA: [string, string] = [selected[0].id, selected[1].id];
-    let teamB: [string, string] | null = null;
-    let bestScore = Infinity;
-
-    // 残り2人でチームBを組む（組み合わせを探索）
-    for (let j = 0; j < 2; j++) {
-      for (let k = j + 1; k < 4; k++) {
-        if (j < 2 && k < 2) continue; // teamAの組み合わせはスキップ
-        
-        const candidate = [selected[j === 0 ? 2 : j === 1 ? 3 : j], selected[k === 2 ? 3 : k]];
-        if (!candidate[0] || !candidate[1]) continue;
-        
-        const p1 = selected[2];
-        const p2 = selected[3];
-        
-        // スコア計算
-        let score = 0;
-        if (pairHistory.get(p1.id)?.has(p2.id)) score += 10;
-        teamA.forEach((aId) => {
-          if (opponentHistory.get(p1.id)?.has(aId)) score += 5;
-          if (opponentHistory.get(p2.id)?.has(aId)) score += 5;
-        });
-        
-        if (score < bestScore) {
-          bestScore = score;
-          teamB = [p1.id, p2.id];
-        }
-      }
-    }
-
-    if (!teamB) {
-      teamB = [selected[2].id, selected[3].id];
-    }
-
-    assignments.push({ courtId, teamA, teamB });
+    const teams = formTeams(selected, pairHistory, opponentHistory);
+    assignments.push({ courtId, teamA: teams.teamA, teamB: teams.teamB });
   }
 
   return assignments;
