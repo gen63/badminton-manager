@@ -70,19 +70,24 @@ export function buildInitialOrder(players: Player[]): string[] {
 }
 
 /**
- * matchHistoryの連勝/連敗に基づいて序列を動的に更新
- * 二連勝で1つ上と交代、二連敗で1つ下と交代
+ * matchHistoryの勝敗に基づいて序列を動的に更新
+ * - 勝利: 1つ上に移動
+ * - 2連勝ごと: グループ1つ分上に移動
+ * - 敗北: 移動なし（勝者の昇格により自然に繰り下がる）
+ * groupCount: グループ数（3コート=3, 2コート=2）
  */
 export function applyStreakSwaps(
   initialOrder: string[],
-  matchHistory: Match[]
+  matchHistory: Match[],
+  groupCount: number = 3
 ): string[] {
   const order = [...initialOrder];
+  const stepSize = Math.max(1, Math.floor(order.length / groupCount));
 
   // 古い順に処理
   const chronological = [...matchHistory].reverse();
 
-  // 各プレイヤーの連勝/連敗カウント（処理中の累積）
+  // 各プレイヤーの連勝カウント（処理中の累積）
   const streaks = new Map<string, number>();
 
   for (const match of chronological) {
@@ -94,27 +99,26 @@ export function applyStreakSwaps(
       const newStreak = prev > 0 ? prev + 1 : 1;
       streaks.set(id, newStreak);
 
-      // 二連勝ごとに1つ上と交代
+      const idx = order.indexOf(id);
       if (newStreak >= 2 && newStreak % 2 === 0) {
-        const idx = order.indexOf(id);
+        // 2連勝ごとにグループ1つ分上に移動
+        const newIdx = Math.max(0, idx - stepSize);
+        if (newIdx < idx) {
+          order.splice(idx, 1);
+          order.splice(newIdx, 0, id);
+        }
+      } else {
+        // 通常の勝利: 1つ上に移動
         if (idx > 0) {
-          [order[idx - 1], order[idx]] = [order[idx], order[idx - 1]];
+          order.splice(idx, 1);
+          order.splice(idx - 1, 0, id);
         }
       }
     }
 
+    // 敗北側はストリークのリセットのみ（移動なし）
     for (const id of losers) {
-      const prev = streaks.get(id) ?? 0;
-      const newStreak = prev < 0 ? prev - 1 : -1;
-      streaks.set(id, newStreak);
-
-      // 二連敗ごとに1つ下と交代
-      if (newStreak <= -2 && newStreak % 2 === 0) {
-        const idx = order.indexOf(id);
-        if (idx >= 0 && idx < order.length - 1) {
-          [order[idx], order[idx + 1]] = [order[idx + 1], order[idx]];
-        }
-      }
+      streaks.set(id, 0);
     }
   }
 
@@ -130,7 +134,7 @@ function groupPlayers3Court(
   matchHistory: Match[]
 ): Map<RatingGroup, Set<string>> {
   const initialOrder = buildInitialOrder(players);
-  const order = applyStreakSwaps(initialOrder, matchHistory);
+  const order = applyStreakSwaps(initialOrder, matchHistory, 3);
 
   // アクティブプレイヤーのIDセット
   const activeIds = new Set(players.map(p => p.id));
@@ -170,7 +174,7 @@ function groupPlayers2Court(
   matchHistory: Match[]
 ): Map<'upper' | 'lower', Set<string>> {
   const initialOrder = buildInitialOrder(players);
-  const order = applyStreakSwaps(initialOrder, matchHistory);
+  const order = applyStreakSwaps(initialOrder, matchHistory, 2);
 
   const activeIds = new Set(players.map(p => p.id));
   const activeOrder = order.filter(id => activeIds.has(id));
@@ -330,7 +334,7 @@ function assign2CourtsHolistic(
 
   // 4. 選ばれたプレイヤーを序列順に並べ替え
   const initialOrder = buildInitialOrder(groupingPlayers);
-  const order = applyStreakSwaps(initialOrder, matchHistory);
+  const order = applyStreakSwaps(initialOrder, matchHistory, 2);
   const orderedSelected = order
     .filter(id => selected.some(p => p.id === id))
     .map(id => selected.find(p => p.id === id)!);
@@ -505,7 +509,8 @@ export function assignCourts(
   const groups2 = totalCourtCount === 2 ? groupPlayers2Court(groupingPlayers, matchHistory) : null;
 
   // 序列を計算（formTeamsのペアリングに使用）
-  const playerOrder = applyStreakSwaps(buildInitialOrder(groupingPlayers), matchHistory);
+  const groupCount = totalCourtCount >= 3 ? 3 : 2;
+  const playerOrder = applyStreakSwaps(buildInitialOrder(groupingPlayers), matchHistory, groupCount);
 
   const assignments: CourtAssignment[] = [];
   const usedPlayers = new Set<string>();
