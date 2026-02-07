@@ -207,18 +207,24 @@ function getPlayerGroup(
 }
 
 /**
- * 直近3試合で4人中3人が同じかチェック
+ * 候補4人それぞれの直近2試合と、4人中3人以上が重複するかチェック
+ * グローバル直近N試合ではなく、各個人の視点で判定する
  */
 function hasSimilarRecentMatch(
   fourPlayerIds: string[],
   matchHistory: Match[]
 ): boolean {
-  const recent3 = matchHistory.slice(0, 3);
-  
-  for (const match of recent3) {
-    const matchMembers = [...match.teamA, ...match.teamB];
-    const overlap = fourPlayerIds.filter(id => matchMembers.includes(id));
-    if (overlap.length >= 3) return true;
+  for (const playerId of fourPlayerIds) {
+    let found = 0;
+    for (const match of matchHistory) {
+      if (found >= 2) break;
+      const matchMembers = [...match.teamA, ...match.teamB];
+      if (!matchMembers.includes(playerId)) continue;
+      found++;
+
+      const overlap = fourPlayerIds.filter(id => matchMembers.includes(id));
+      if (overlap.length >= 3) return true;
+    }
   }
   return false;
 }
