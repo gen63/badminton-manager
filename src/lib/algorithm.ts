@@ -364,7 +364,8 @@ function tryFixRecentMatch(
 
 /**
  * 2コート同時配置（ホリスティック・アプローチ）
- * 8人を選出 → 序列でupper/lowerに分割 → コートに配置
+ * 優先スコア順で8人を選出 → 序列・確率ベースでC1/C2に振り分け
+ * → 各個人の直近2試合で重複があればコート間スワップ → チーム編成
  */
 function assign2CourtsHolistic(
   activePlayers: Player[],
@@ -434,7 +435,7 @@ function assign2CourtsHolistic(
  * 自動配置アルゴリズム v2
  * - レーティングベースのグルーピング（3等分/2等分）
  * - 確率ベースのコート配置（3コート）/ ホリスティック配置（2コート同時）
- * - 直近3試合で3人同じを回避
+ * - 各個人の直近2試合で3人以上の重複を回避
  * - 上位/下位の孤立を回避（3コート）
  * - プレイ回数少ない人を優先
  */
@@ -496,7 +497,7 @@ function selectBestFour(
 
   const playerScore = (p: Player): number => {
     const base = calculatePriorityScore(p, practiceStartTime, useStayDuration);
-    if (base === -Infinity) return -Infinity; // gamesPlayed=0は最優先を保証
+    if (base === -Infinity) return -1e9; // 有限値にして複数の未プレイ者を含む組の比較を可能にする
     return base + (courtPenalties?.get(p.id) ?? 0);
   };
 

@@ -143,7 +143,7 @@ penalty = Math.random() × (1 - courtProb)
 comboScore = Σ playerScore(p)
 
 playerScore(p) =
-  gamesPlayed === 0  → -Infinity（最優先保証）
+  gamesPlayed === 0  → -1e9（最優先保証、有限値で組み合わせ比較可能）
   otherwise          → calculatePriorityScore(p) + courtPenalty(p)
 ```
 
