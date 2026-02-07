@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
-import { assignCourts } from '../lib/algorithm';
+import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { useSettingsStore } from '../stores/settingsStore';
 import { Settings, History, Coffee, Users, ArrowUp, Plus, X, ChevronDown } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -164,9 +164,20 @@ export function MainPage() {
   );
 
   // 待機中のプレイヤー（コート外 & 休憩中でない）
-  const activePlayers = players
-    .filter((p) => !p.isResting && !playersInCourts.has(p.id))
-    .sort((a, b) => a.gamesPlayed - b.gamesPlayed); // 試合数昇順ソート
+  const waitingPlayersUnsorted = players
+    .filter((p) => !p.isResting && !playersInCourts.has(p.id));
+
+  // 空きコートとグループを考慮した配置優先度順ソート
+  const activePlayers = sortWaitingPlayers(waitingPlayersUnsorted, {
+    emptyCourtIds: courts
+      .filter(c => !c.teamA[0] || c.teamA[0] === '')
+      .map(c => c.id),
+    totalCourtCount: courts.length,
+    matchHistory,
+    allActivePlayers: players.filter(p => !p.isResting),
+    practiceStartTime: session?.config.practiceStartTime ?? Date.now(),
+    useStayDuration: useStayDurationPriority,
+  });
   const restingPlayers = players.filter((p) => p.isResting);
   const restingAndPlaceholderPlayers = players.filter(
     p => p.isResting || recentlyRestoredIds.has(p.id)

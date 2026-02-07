@@ -624,6 +624,57 @@ export function assignCourts(
 }
 
 /**
+ * 待機メンバーを配置優先度順にソート
+ * 空きコートに対してeligible（確率>0）な人を上位に、その中で優先スコア昇順
+ */
+export function sortWaitingPlayers(
+  waitingPlayers: Player[],
+  options: {
+    emptyCourtIds: number[];
+    totalCourtCount: number;
+    matchHistory: Match[];
+    allActivePlayers: Player[];
+    practiceStartTime: number;
+    useStayDuration: boolean;
+  }
+): Player[] {
+  const { emptyCourtIds, totalCourtCount, matchHistory, allActivePlayers, practiceStartTime, useStayDuration } = options;
+
+  // 空きコートがない or 3コート未満 → 優先スコア順のみ
+  if (emptyCourtIds.length === 0 || totalCourtCount < 3) {
+    return [...waitingPlayers].sort((a, b) =>
+      calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+      calculatePriorityScore(b, practiceStartTime, useStayDuration)
+    );
+  }
+
+  // 3コート: グループ分けしてeligibility判定
+  const groups = groupPlayers3Court(allActivePlayers, matchHistory);
+  const eligibility = new Map<string, boolean>();
+
+  for (const player of waitingPlayers) {
+    const group = getPlayerGroup(player.id, groups) as RatingGroup;
+    const eligible = emptyCourtIds.some(courtId => {
+      const prob = COURT_PROBABILITIES_3[group]?.[courtId - 1] ?? 0;
+      return prob > 0;
+    });
+    eligibility.set(player.id, eligible);
+  }
+
+  return [...waitingPlayers].sort((a, b) => {
+    const aEligible = eligibility.get(a.id) ?? true;
+    const bEligible = eligibility.get(b.id) ?? true;
+
+    if (aEligible !== bEligible) {
+      return aEligible ? -1 : 1;
+    }
+
+    return calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+           calculatePriorityScore(b, practiceStartTime, useStayDuration);
+  });
+}
+
+/**
  * プレイヤー統計を計算
  */
 export function calculatePlayerStats(
