@@ -38,22 +38,18 @@ export function SettingsPage() {
     (m) => !uploadedMatchIds.includes(m.id)
   );
 
-  const allUploaded = unuploadedMatches.length === 0 && matchHistory.length > 0;
-
   const handleUpload = async () => {
-    if (!session || !gasWebAppUrl || isUploading) return;
-    const targets = unuploadedMatches.length > 0 ? unuploadedMatches : matchHistory;
-    if (targets.length === 0) return;
+    if (!session || !gasWebAppUrl || isUploading || unuploadedMatches.length === 0) return;
     setIsUploading(true);
     try {
       const result = await sendMatchesToSheets(
         gasWebAppUrl,
-        targets,
+        unuploadedMatches,
         players,
         session
       );
       if (result.success) {
-        markMatchesAsUploaded(targets.map((m) => m.id));
+        markMatchesAsUploaded(unuploadedMatches.map((m) => m.id));
         toast.success(result.message);
       } else {
         toast.error(result.message);
@@ -219,7 +215,7 @@ export function SettingsPage() {
             </div>
             <button
               onClick={handleUpload}
-              disabled={!gasWebAppUrl || matchHistory.length === 0 || isUploading}
+              disabled={!gasWebAppUrl || unuploadedMatches.length === 0 || isUploading}
               className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isUploading ? (
@@ -229,8 +225,8 @@ export function SettingsPage() {
               )}
               {isUploading
                 ? '送信中...'
-                : allUploaded
-                  ? `全件再送信（${matchHistory.length}件）`
+                : unuploadedMatches.length === 0
+                  ? '送信済み'
                   : `Sheetsにアップロード（${unuploadedMatches.length}件）`}
             </button>
           </div>

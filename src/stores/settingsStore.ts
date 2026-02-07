@@ -6,7 +6,6 @@ interface SettingsState {
   uploadedMatchIds: string[];
   setGasWebAppUrl: (url: string) => void;
   markMatchesAsUploaded: (ids: string[]) => void;
-  clearUploadedMatchIds: () => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -19,10 +18,10 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({
           uploadedMatchIds: [...new Set([...state.uploadedMatchIds, ...ids])],
         })),
-      clearUploadedMatchIds: () => set({ uploadedMatchIds: [] }),
     }),
     {
       name: 'badminton-settings',
+      partialize: (state) => ({ gasWebAppUrl: state.gasWebAppUrl }),
     }
   )
 );
