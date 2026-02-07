@@ -1,12 +1,25 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
+import { useGameStore } from '../stores/gameStore';
+import { buildInitialOrder, applyStreakSwaps } from '../lib/algorithm';
 import { Trash2, UserPlus, Users, ArrowRight } from 'lucide-react';
 
 export function PlayerSelect() {
   const navigate = useNavigate();
   const { players, addPlayers, removePlayer } = usePlayerStore();
+  const { matchHistory } = useGameStore();
   const [newPlayerNames, setNewPlayerNames] = useState('');
+
+  // 動的序列でソート（弱い順 = 序列の逆順）
+  const dynamicOrder = applyStreakSwaps(buildInitialOrder(players), matchHistory, 3);
+  const sortedPlayers = [...players].sort((a, b) => {
+    const aIdx = dynamicOrder.indexOf(a.id);
+    const bIdx = dynamicOrder.indexOf(b.id);
+    const aPos = aIdx === -1 ? Infinity : aIdx;
+    const bPos = bIdx === -1 ? Infinity : bIdx;
+    return bPos - aPos;
+  });
 
   // 入力をパース: "名前 レーティング" or "名前\tレーティング" or "名前"
   const parsePlayerInput = (line: string): { name: string; rating?: number } | null => {
@@ -106,7 +119,7 @@ export function PlayerSelect() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {players.map((player) => (
+              {sortedPlayers.map((player) => (
                 <div
                   key={player.id}
                   className="player-pill"
