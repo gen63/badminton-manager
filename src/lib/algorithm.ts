@@ -207,18 +207,24 @@ function getPlayerGroup(
 }
 
 /**
- * 直近3試合で4人中3人が同じかチェック
+ * 候補4人それぞれの直近2試合と、4人中3人以上が重複するかチェック
+ * グローバル直近N試合ではなく、各個人の視点で判定する
  */
 function hasSimilarRecentMatch(
   fourPlayerIds: string[],
   matchHistory: Match[]
 ): boolean {
-  const recent3 = matchHistory.slice(0, 3);
-  
-  for (const match of recent3) {
-    const matchMembers = [...match.teamA, ...match.teamB];
-    const overlap = fourPlayerIds.filter(id => matchMembers.includes(id));
-    if (overlap.length >= 3) return true;
+  for (const playerId of fourPlayerIds) {
+    let found = 0;
+    for (const match of matchHistory) {
+      if (found >= 2) break;
+      const matchMembers = [...match.teamA, ...match.teamB];
+      if (!matchMembers.includes(playerId)) continue;
+      found++;
+
+      const overlap = fourPlayerIds.filter(id => matchMembers.includes(id));
+      if (overlap.length >= 3) return true;
+    }
   }
   return false;
 }
@@ -358,7 +364,8 @@ function tryFixRecentMatch(
 
 /**
  * 2コート同時配置（ホリスティック・アプローチ）
- * 8人を選出 → 序列でupper/lowerに分割 → コートに配置
+ * 優先スコア順で8人を選出 → 序列・確率ベースでC1/C2に振り分け
+ * → 各個人の直近2試合で重複があればコート間スワップ → チーム編成
  */
 function assign2CourtsHolistic(
   activePlayers: Player[],
@@ -425,14 +432,6 @@ function assign2CourtsHolistic(
 }
 
 /**
- * 自動配置アルゴリズム v2
- * - レーティングベースのグルーピング（3等分/2等分）
- * - 確率ベースのコート配置（3コート）/ ホリスティック配置（2コート同時）
- * - 直近3試合で3人同じを回避
- * - 上位/下位の孤立を回避（3コート）
- * - プレイ回数少ない人を優先
- */
-/**
  * 滞在時間ベースの優先度を計算
  * 優先スコア = 試合回数 / max(滞在時間(分), 5)
  * スコアが低い人を優先
@@ -465,6 +464,70 @@ function calculatePriorityScore(
   return player.gamesPlayed / stayMinutes;
 }
 
+/**
+ * 候補から制約を満たす最適な4人の組み合わせを探索
+ * グリーディではなく全組み合わせを探索し、優先スコア合計が最小の有効な組を返す
+ * 有効な組が見つからない場合は制約を緩和して上位4人を返す
+ */
+function selectBestFour(
+  candidates: Player[],
+  matchHistory: Match[],
+  groups3: Map<RatingGroup, Set<string>> | null,
+  totalCourtCount: number,
+  practiceStartTime: number,
+  useStayDuration: boolean,
+  courtPenalties?: Map<string, number>,
+): Player[] {
+  if (candidates.length <= 4) return candidates;
+
+  // candidatesは優先スコア昇順でソート済みの前提
+  const isValid = (ids: string[]): boolean => {
+    if (hasSimilarRecentMatch(ids, matchHistory)) return false;
+    if (totalCourtCount >= 3 && groups3 && hasIsolatedExtreme(ids, groups3)) return false;
+    return true;
+  };
+
+  const playerScore = (p: Player): number => {
+    const base = calculatePriorityScore(p, practiceStartTime, useStayDuration);
+    if (base === -Infinity) return -1e9; // 有限値にして複数の未プレイ者を含む組の比較を可能にする
+    return base + (courtPenalties?.get(p.id) ?? 0);
+  };
+
+  let bestCombo: Player[] | null = null;
+  let bestScore = Infinity;
+
+  const n = candidates.length;
+  for (let i = 0; i < n - 3; i++) {
+    for (let j = i + 1; j < n - 2; j++) {
+      for (let k = j + 1; k < n - 1; k++) {
+        for (let l = k + 1; l < n; l++) {
+          const combo = [candidates[i], candidates[j], candidates[k], candidates[l]];
+          const ids = combo.map(p => p.id);
+          if (!isValid(ids)) continue;
+
+          const s = combo.reduce((sum, p) => sum + playerScore(p), 0);
+
+          if (s < bestScore) {
+            bestScore = s;
+            bestCombo = combo;
+          }
+        }
+      }
+    }
+  }
+
+  // 有効な組み合わせが見つからない場合は制約緩和（上位4人）
+  return bestCombo ?? candidates.slice(0, 4);
+}
+
+/**
+ * 自動配置アルゴリズム v2
+ * - レーティングベースのグルーピング（3等分/2等分）
+ * - 確率ベースのコート配置（3コート）/ ホリスティック配置（2コート同時）
+ * - 各個人の直近2試合で3人以上の重複を回避
+ * - 上位/下位の孤立を回避（3コート）
+ * - プレイ回数少ない人を優先
+ */
 export function assignCourts(
   players: Player[],
   courtCount: number,
@@ -513,114 +576,132 @@ export function assignCourts(
   for (let i = 0; i < courtCount; i++) {
     const courtId = targetCourtIds[i];
 
-    // このコートに配置可能なプレイヤーを集める
+    // このコートに配置可能なプレイヤーを集める（prob=0のハード制約のみ）
     const eligible = activePlayers.filter(p => {
       if (usedPlayers.has(p.id)) return false;
-      
+
       if (totalCourtCount >= 3 && groups3) {
         const group = getPlayerGroup(p.id, groups3);
         const prob = COURT_PROBABILITIES_3[group as RatingGroup]?.[courtId - 1] ?? 0;
         if (prob === 0) return false;
-        // 確率に基づいてランダムで除外（ランダム性を持たせる）
-        if (Math.random() > prob * 1.5) return false;
-      } else if (totalCourtCount === 2 && groups2) {
-        const group = getPlayerGroup(p.id, groups2);
-        const prob = COURT_PROBABILITIES_2[group as 'upper' | 'lower']?.[courtId - 1] ?? 0.5;
-        if (Math.random() > prob * 1.3) return false;
       }
-      
+
       return true;
     });
+
+    // コート適性ペナルティを計算
+    // 1試合分の優先スコア差を基準にスケーリングし、1試合差以内なら入替を許容
+    const courtPenalties = new Map<string, number>();
+    const now = Date.now();
+    for (const p of eligible) {
+      if (p.gamesPlayed === 0) continue; // 未プレイは最優先を保証
+      let prob = 0.5; // デフォルト（1コート等）
+      if (totalCourtCount >= 3 && groups3) {
+        const group = getPlayerGroup(p.id, groups3) as RatingGroup;
+        prob = COURT_PROBABILITIES_3[group]?.[courtId - 1] ?? 0.5;
+      } else if (totalCourtCount === 2 && groups2) {
+        const group = getPlayerGroup(p.id, groups2) as 'upper' | 'lower';
+        prob = COURT_PROBABILITIES_2[group]?.[courtId - 1] ?? 0.5;
+      }
+      // 1試合分の優先スコア差でスケーリング（OFF: 1.0、ON: 1/滞在分）
+      let oneGameDelta = 1.0;
+      if (useStayDuration) {
+        const stayStart = Math.max(practiceStartTime, p.activatedAt ?? now);
+        const stayMinutes = Math.max((now - stayStart) / (1000 * 60), 5);
+        oneGameDelta = 1 / stayMinutes;
+      }
+      courtPenalties.set(p.id, Math.random() * (1 - prob) * oneGameDelta);
+    }
 
     // 優先度でソート（スコアが低い人を優先）
     eligible.sort((a, b) =>
       calculatePriorityScore(a, practiceStartTime, useStayDuration) - calculatePriorityScore(b, practiceStartTime, useStayDuration)
     );
 
-    // 4人選ぶ
-    const selected: Player[] = [];
-    
-    for (const player of eligible) {
-      if (selected.length >= 4) break;
-      
-      const testIds = [...selected.map(p => p.id), player.id];
-      
-      // 直近3試合で3人同じチェック
-      if (selected.length >= 3) {
-        if (hasSimilarRecentMatch(testIds, matchHistory)) {
-          continue;
-        }
-      }
-      
-      // 上位/下位の孤立チェック（3コートの場合、4人目の時）
-      if (totalCourtCount >= 3 && groups3 && testIds.length === 4) {
-        if (hasIsolatedExtreme(testIds, groups3)) {
-          continue;
-        }
-      }
-      
-      selected.push(player);
-      usedPlayers.add(player.id);
-    }
-
-    // 制約で4人揃わなかった場合、フォールバック
-    if (selected.length < 4) {
-      const remaining = activePlayers
+    // 組み合わせ探索で最適な4人を選出
+    let selected: Player[];
+    if (eligible.length >= 4) {
+      selected = selectBestFour(
+        eligible, matchHistory, groups3, totalCourtCount,
+        practiceStartTime, useStayDuration, courtPenalties
+      );
+    } else {
+      // eligibleが不足 → グループ制約を緩和して全activeから探索
+      const allAvailable = activePlayers
         .filter(p => !usedPlayers.has(p.id))
         .sort((a, b) =>
-          calculatePriorityScore(a, practiceStartTime, useStayDuration) - calculatePriorityScore(b, practiceStartTime, useStayDuration)
+          calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+          calculatePriorityScore(b, practiceStartTime, useStayDuration)
         );
-      
-      for (const player of remaining) {
-        if (selected.length >= 4) break;
-        selected.push(player);
-        usedPlayers.add(player.id);
-      }
+      selected = selectBestFour(
+        allAvailable, matchHistory, groups3, totalCourtCount,
+        practiceStartTime, useStayDuration, courtPenalties
+      );
     }
 
     if (selected.length < 4) {
       throw new Error('プレイヤーの割り当てに失敗しました');
     }
 
+    selected.forEach(p => usedPlayers.add(p.id));
+
     // チーム分け（ペア履歴・対戦履歴を考慮）
-    const teamA: [string, string] = [selected[0].id, selected[1].id];
-    let teamB: [string, string] | null = null;
-    let bestScore = Infinity;
-
-    // 残り2人でチームBを組む（組み合わせを探索）
-    for (let j = 0; j < 2; j++) {
-      for (let k = j + 1; k < 4; k++) {
-        if (j < 2 && k < 2) continue; // teamAの組み合わせはスキップ
-        
-        const candidate = [selected[j === 0 ? 2 : j === 1 ? 3 : j], selected[k === 2 ? 3 : k]];
-        if (!candidate[0] || !candidate[1]) continue;
-        
-        const p1 = selected[2];
-        const p2 = selected[3];
-        
-        // スコア計算
-        let score = 0;
-        if (pairHistory.get(p1.id)?.has(p2.id)) score += 10;
-        teamA.forEach((aId) => {
-          if (opponentHistory.get(p1.id)?.has(aId)) score += 5;
-          if (opponentHistory.get(p2.id)?.has(aId)) score += 5;
-        });
-        
-        if (score < bestScore) {
-          bestScore = score;
-          teamB = [p1.id, p2.id];
-        }
-      }
-    }
-
-    if (!teamB) {
-      teamB = [selected[2].id, selected[3].id];
-    }
-
-    assignments.push({ courtId, teamA, teamB });
+    const teams = formTeams(selected, pairHistory, opponentHistory);
+    assignments.push({ courtId, teamA: teams.teamA, teamB: teams.teamB });
   }
 
   return assignments;
+}
+
+/**
+ * 待機メンバーを配置優先度順にソート
+ * 空きコートに対してeligible（確率>0）な人を上位に、その中で優先スコア昇順
+ */
+export function sortWaitingPlayers(
+  waitingPlayers: Player[],
+  options: {
+    emptyCourtIds: number[];
+    totalCourtCount: number;
+    matchHistory: Match[];
+    allActivePlayers: Player[];
+    practiceStartTime: number;
+    useStayDuration: boolean;
+  }
+): Player[] {
+  const { emptyCourtIds, totalCourtCount, matchHistory, allActivePlayers, practiceStartTime, useStayDuration } = options;
+
+  // 空きコートがない or 3コート未満 → 優先スコア順のみ
+  if (emptyCourtIds.length === 0 || totalCourtCount < 3) {
+    return [...waitingPlayers].sort((a, b) =>
+      calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+      calculatePriorityScore(b, practiceStartTime, useStayDuration)
+    );
+  }
+
+  // 3コート: グループ分けしてeligibility判定
+  const groups = groupPlayers3Court(allActivePlayers, matchHistory);
+  const eligibility = new Map<string, boolean>();
+
+  for (const player of waitingPlayers) {
+    const group = getPlayerGroup(player.id, groups) as RatingGroup;
+    const eligible = emptyCourtIds.some(courtId => {
+      const prob = COURT_PROBABILITIES_3[group]?.[courtId - 1] ?? 0;
+      return prob > 0;
+    });
+    eligibility.set(player.id, eligible);
+  }
+
+  return [...waitingPlayers].sort((a, b) => {
+    const aEligible = eligibility.get(a.id) ?? true;
+    const bEligible = eligibility.get(b.id) ?? true;
+
+    if (aEligible !== bEligible) {
+      return aEligible ? -1 : 1;
+    }
+
+    return calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+           calculatePriorityScore(b, practiceStartTime, useStayDuration);
+  });
 }
 
 /**
