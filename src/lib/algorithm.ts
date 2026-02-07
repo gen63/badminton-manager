@@ -589,8 +589,10 @@ export function assignCourts(
       return true;
     });
 
-    // コート適性ペナルティを計算（確率が低い→ペナルティ大、ランダム性あり）
+    // コート適性ペナルティを計算
+    // 1試合分の優先スコア差を基準にスケーリングし、1試合差以内なら入替を許容
     const courtPenalties = new Map<string, number>();
+    const now = Date.now();
     for (const p of eligible) {
       if (p.gamesPlayed === 0) continue; // 未プレイは最優先を保証
       let prob = 0.5; // デフォルト（1コート等）
@@ -601,8 +603,14 @@ export function assignCourts(
         const group = getPlayerGroup(p.id, groups2) as 'upper' | 'lower';
         prob = COURT_PROBABILITIES_2[group]?.[courtId - 1] ?? 0.5;
       }
-      // prob低い人ほどペナルティが大きく、ランダムで揺らぐ
-      courtPenalties.set(p.id, Math.random() * (1 - prob));
+      // 1試合分の優先スコア差でスケーリング（OFF: 1.0、ON: 1/滞在分）
+      let oneGameDelta = 1.0;
+      if (useStayDuration) {
+        const stayStart = Math.max(practiceStartTime, p.activatedAt ?? now);
+        const stayMinutes = Math.max((now - stayStart) / (1000 * 60), 5);
+        oneGameDelta = 1 / stayMinutes;
+      }
+      courtPenalties.set(p.id, Math.random() * (1 - prob) * oneGameDelta);
     }
 
     // 優先度でソート（スコアが低い人を優先）
