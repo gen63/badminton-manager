@@ -171,7 +171,7 @@ export function SessionCreate() {
             <select
               value={selectedGym}
               onChange={(e) => setSelectedGym(e.target.value)}
-              className="select-field min-h-[52px]"
+              className="select-field min-h-[52px] w-auto"
             >
               <option value="">選択してください</option>
               {GYM_OPTIONS.map((gym) => (
@@ -231,7 +231,7 @@ export function SessionCreate() {
               <button
                 onClick={handleLoadFromSheets}
                 disabled={isLoadingMembers}
-                className="w-full min-h-[44px] px-4 py-2 rounded-lg border border-blue-300 text-blue-600 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                className="btn-outline text-sm flex items-center justify-center gap-2 mx-auto"
               >
                 {isLoadingMembers ? (
                   <>

@@ -37,13 +37,13 @@ export function PWAPrompt() {
             <div className="flex gap-2">
               <button
                 onClick={() => updateServiceWorker(true)}
-                className="flex-1 px-4 py-2 bg-indigo-500 text-white rounded-lg text-sm font-medium hover:bg-indigo-600 active:bg-indigo-700 active:scale-[0.98] transition-all duration-150"
+                className="btn-primary flex-1 text-sm py-2"
               >
                 更新する
               </button>
               <button
                 onClick={close}
-                className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150"
+                className="btn-secondary text-sm py-2"
               >
                 後で
               </button>

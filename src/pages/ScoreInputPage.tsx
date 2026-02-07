@@ -256,7 +256,7 @@ export function ScoreInputPage() {
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={handleClear}
-            className="min-h-[48px] py-3 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-2"
+            className="btn-secondary min-h-[48px] py-3 flex items-center justify-center gap-2"
           >
             <Trash2 size={18} />
             クリア
@@ -264,7 +264,7 @@ export function ScoreInputPage() {
           <button
             onClick={handleConfirm}
             disabled={inputHistory.length !== 2}
-            className="min-h-[48px] py-3 bg-indigo-500 text-white rounded-lg font-semibold hover:bg-indigo-600 active:bg-indigo-700 active:scale-[0.98] transition-all duration-150 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            className="btn-primary min-h-[48px] py-3 font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             確定
           </button>

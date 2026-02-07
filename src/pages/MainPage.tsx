@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
@@ -25,6 +25,15 @@ export function MainPage() {
   } | null>(null);
   const [newPlayerName, setNewPlayerName] = useState('');
   const [showAllUnfinished, setShowAllUnfinished] = useState(false);
+  const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
+  const playerCardRef = useRef<HTMLDivElement>(null);
+  const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    return () => {
+      if (heightLockTimer.current) clearTimeout(heightLockTimer.current);
+    };
+  }, []);
 
   if (!session) {
     navigate('/');
@@ -159,6 +168,9 @@ export function MainPage() {
     .filter((p) => !p.isResting && !playersInCourts.has(p.id))
     .sort((a, b) => a.gamesPlayed - b.gamesPlayed); // 試合数昇順ソート
   const restingPlayers = players.filter((p) => p.isResting);
+  const restingAndPlaceholderPlayers = players.filter(
+    p => p.isResting || recentlyRestoredIds.has(p.id)
+  );
 
   // スコア未入力の試合（0-0の試合）を最大4件
   const unfinishedMatches = [...matchHistory]
@@ -202,6 +214,35 @@ export function MainPage() {
     if (newPlayer?.isResting) {
       updatePlayer(newPlayerId, { isResting: false });
     }
+  };
+
+  const handleToggleRestWithLock = (playerId: string) => {
+    const player = players.find(p => p.id === playerId);
+
+    if (player?.isResting) {
+      // 復帰時：プレースホルダーを残してグリッド内リフローを防止
+      setRecentlyRestoredIds(prev => new Set(prev).add(playerId));
+      setTimeout(() => {
+        setRecentlyRestoredIds(prev => {
+          const next = new Set(prev);
+          next.delete(playerId);
+          return next;
+        });
+      }, 300);
+    }
+
+    // カード全体の高さをロックしてセクション間ジャンプを防止
+    if (playerCardRef.current) {
+      playerCardRef.current.style.minHeight = `${playerCardRef.current.offsetHeight}px`;
+      if (heightLockTimer.current) clearTimeout(heightLockTimer.current);
+      heightLockTimer.current = setTimeout(() => {
+        if (playerCardRef.current) {
+          playerCardRef.current.style.minHeight = '';
+        }
+      }, 300);
+    }
+
+    toggleRest(playerId);
   };
 
   const handlePlayerTap = (
@@ -288,7 +329,7 @@ export function MainPage() {
             <button
               onClick={() => handleAutoAssign()}
               disabled={!canAutoAssign}
-              className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] transition-all duration-150 text-sm font-semibold flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] border border-gray-200"
+              className="btn-secondary rounded-full text-sm flex items-center gap-1.5 border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Users size={18} />
               一括配置
@@ -386,7 +427,7 @@ export function MainPage() {
                     </div>
                     <button
                       onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
-                      className="text-xs font-semibold text-amber-700 bg-white hover:bg-amber-50 active:bg-amber-100 active:scale-[0.98] py-1.5 px-3 rounded-lg border border-amber-200 flex-shrink-0 transition-all duration-150"
+                      className="btn-outline text-xs py-1.5 px-3 flex-shrink-0"
                     >
                       入力
                     </button>
@@ -400,7 +441,7 @@ export function MainPage() {
         </div>
 
         {/* プレイヤーリスト */}
-        <div className="card p-6">
+        <div className="card p-6" ref={playerCardRef}>
           <div className="flex items-baseline justify-between mb-4">
             <h3 className="section-title">
               参加者一覧
@@ -446,7 +487,7 @@ export function MainPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            toggleRest(player.id);
+                            handleToggleRestWithLock(player.id);
                           }}
                           aria-label="休憩"
                           className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-gray-400 hover:text-orange-500 hover:bg-orange-50 active:bg-orange-100 rounded-full flex-shrink-0 transition-all duration-150"
@@ -496,9 +537,12 @@ export function MainPage() {
                 <Coffee size={14} />
                 休憩中 ({restingPlayers.length}人)
               </h4>
-              {restingPlayers.length > 0 ? (
+              {restingAndPlaceholderPlayers.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2" style={{ maxWidth: '616px' }}>
-                  {restingPlayers.map((player) => {
+                  {restingAndPlaceholderPlayers.map((player) => {
+                    if (recentlyRestoredIds.has(player.id)) {
+                      return <div key={player.id} className="player-pill max-w-[200px]" style={{ visibility: 'hidden' }} />;
+                    }
                     const isSelected = selectedPlayer?.id === player.id;
                     return (
                       <div
@@ -526,7 +570,7 @@ export function MainPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              toggleRest(player.id);
+                              handleToggleRestWithLock(player.id);
                             }}
                             aria-label="復帰"
                             className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 rounded-full flex-shrink-0 transition-all duration-150"
