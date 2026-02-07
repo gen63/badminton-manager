@@ -50,13 +50,24 @@
 ### 3コート用: upper / middle / lower の3分割
 
 1. `buildInitialOrder`: レート降順で並べる（未設定はmiddle位置に挿入）
-2. `applyStreakSwaps`: 2連勝→1つ上と交代、2連敗→1つ下と交代
+2. `applyStreakSwaps`: 2連勝→グループ1つ分上に移動、2連敗→グループ1つ分下に移動
 3. 3等分（端数はmiddleに）
 
 ### 2コート用: upper / lower の2分割
 
-1. 同様に序列構築
+1. 同様に序列構築（ストリーク移動幅 = floor(人数/2)）
 2. 2等分（端数はlowerに）
+
+### applyStreakSwaps の移動幅
+
+2連勝/2連敗ごとに **グループ1つ分**（`floor(人数/グループ数)`）移動する。
+これにより、2連勝すればlowerからmiddleへ、さらに2連勝でmiddleからupperへ一気に昇格できる。
+
+```
+例: 12人、3コート（groupSize = 4）
+  12番(lower最下位)が2連勝 → 4つ上（8番の位置）に移動 → middle入り
+  さらに2連勝(計4連勝) → さらに4つ上（4番の位置）に移動 → upper入り
+```
 
 ### 1コート
 グループ分けなし。
