@@ -5,83 +5,66 @@
 
 ---
 
-## 現状の問題
+## 仕様の明確化
 
-### 現在の `formTeams` の動作
+### ペア・対戦の重複に対する考え方
 
-4人が選出された後、3つのペアリングパターンを試し、**ペア履歴・対戦履歴のペナルティが最も少ないもの**を選んでいる。
+| 状況 | OK? | 理由 |
+|------|-----|------|
+| 同じ人と連続でペアを組む | **OK** | ペア被りは問題ない |
+| 同じペアで異なる相手と対戦 | **OK** | 相手が違えば問題ない |
+| 同じ4人が再度同じコートに入る | **NG** | `selectBestFour` の `hasSimilarRecentMatch` で防止済み |
 
-```
-4人 = [A, B, C, D]
-
-パターン1: A-B vs C-D
-パターン2: A-C vs B-D
-パターン3: A-D vs B-C
-
-スコア:
-  同チーム履歴 → +10
-  対戦履歴     → +5（×4組）
-
-→ 最小スコアを選択
-```
-
-**問題**: スキルレベル（序列）が一切考慮されていない。そのため、強い者同士・弱い者同士がペアになる可能性がある。
-
-### あるべき仕様
+### あるべきペアリング
 
 4人の中で序列順に並べた場合（1=最強, 4=最弱）:
 
 ```
 序列: [1, 2, 3, 4]
-正しいペアリング: 1-4 vs 2-3 （最強+最弱 vs 中間2人）
+正しいペアリング: 1-4 vs 2-3（最強+最弱 vs 中間2人）
 ```
 
-これによりチーム力が均衡する。
+---
+
+## 現状の問題
+
+### 現在の `formTeams` (algorithm.ts:298-334)
+
+3つのペアリングパターンを試し、履歴ペナルティが最小のものを選択:
+
+```
+スコア:
+  同チーム履歴（pairHistory）   → +10  ← 不要
+  対戦履歴（opponentHistory）  → +5×4 ← 不要
+```
+
+### 問題点
+
+1. **`pairHistory` ペナルティ (+10)**: 仕様上、同じペアは問題ない → **削除すべき**
+2. **`opponentHistory` ペナルティ (+5)**: 4人はすでに確定済み。どう組んでも相手は残り2人。4人の重複は `selectBestFour` が防いでおり、`formTeams` で考慮する意味がない → **削除すべき**
+3. **スキルバランス**: 最強+最弱ペアリングのロジックが欠落 → **追加すべき**
 
 ---
 
 ## 修正方針
 
-### 案: 序列ベースのペアリング優先 + 履歴ペナルティの併用
+### `formTeams` をシンプル化: 序列ベースの固定ペアリング
 
-1. `formTeams` に序列情報（`playerOrder: string[]`）を追加パラメータとして渡す
-2. 4人を序列順にソート
-3. 3つのペアリングパターンに対して、序列バランスペナルティを導入
-
-### スコア計算の変更
+履歴ペナルティを全て削除し、序列のみでペアリングを決定する。
 
 ```
-現在:
-  score = pairHistoryPenalty + opponentHistoryPenalty
-
-変更後:
-  score = skillImbalancePenalty + pairHistoryPenalty + opponentHistoryPenalty
+入力: 4人 + 序列情報（playerOrder: string[]）
+処理:
+  1. 4人を序列順にソート → [1位, 2位, 3位, 4位]
+  2. 固定で 1位+4位 vs 2位+3位 を返す
 ```
 
-#### skillImbalancePenalty の計算
+3パターン探索も不要。序列でソートして最強+最弱をペアにするだけ。
 
-4人を序列順に [1位, 2位, 3位, 4位] とソートした場合:
+### 序列が同じ場合（全員未レート等）
 
-- **1位+4位 vs 2位+3位** → skillImbalancePenalty = 0 （理想のペアリング）
-- **1位+2位 vs 3位+4位** → skillImbalancePenalty = 大きい値
-- **1位+3位 vs 2位+4位** → skillImbalancePenalty = 中程度の値
-
-具体的には、各チームの序列合計の差をペナルティとする:
-
-```
-teamASum = チームAメンバーの序列合計
-teamBSum = チームBメンバーの序列合計
-skillImbalancePenalty = |teamASum - teamBSum| × 重み
-
-例（4人の序列 = [0, 1, 2, 3]）:
-  1位+4位 vs 2位+3位 → |0+3 - (1+2)| = 0 → ペナルティ = 0
-  1位+3位 vs 2位+4位 → |0+2 - (1+3)| = 2 → ペナルティ = 2 × 重み
-  1位+2位 vs 3位+4位 → |0+1 - (2+3)| = 4 → ペナルティ = 4 × 重み
-```
-
-重み = 20（ペア履歴10より優先させるため）
-
-→ これにより、序列バランスが最重要、次にペア履歴、最後に対戦履歴の優先度になる。
+序列上の位置が同じ場合は、どのペアリングでも実力差がないため、
+`playerOrder` 内の相対順序で決まる（事実上ランダム）。問題なし。
 
 ---
 
@@ -90,19 +73,25 @@ skillImbalancePenalty = |teamASum - teamBSum| × 重み
 ### 1. `formTeams` 関数 (algorithm.ts:298-334)
 
 **変更内容**:
-- 引数に `playerOrder: string[]` を追加
+- 引数を `(fourPlayers: Player[], playerOrder: string[])` に変更
+- `pairHistory`, `opponentHistory` 引数を削除
 - 4人を `playerOrder` 内の順番でソート
-- 各パターンの score に `skillImbalancePenalty` を加算
+- 1位+4位 vs 2位+3位 を返す
 
 ### 2. `formTeams` の呼び出し元（3箇所）
 
 | 行番号 | 呼び出し元 | 変更内容 |
 |-------|-----------|---------|
-| 425 | `assign2CourtsHolistic` (upperCourt) | `order` を渡す |
-| 426 | `assign2CourtsHolistic` (lowerCourt) | `order` を渡す |
+| 425 | `assign2CourtsHolistic` (upperCourt) | `order` を渡す（計算済み） |
+| 426 | `assign2CourtsHolistic` (lowerCourt) | `order` を渡す（計算済み） |
 | 649 | `assignCourts` メインフロー | `order` を計算して渡す |
 
-### 3. `assignCourts` 内での序列情報の取得
+### 3. 不要コードの削除
+
+- `getPairHistory` / `getOpponentHistory` が `formTeams` 以外で使われていなければ削除
+- `assignCourts` / `assign2CourtsHolistic` 内の `pairHistory` / `opponentHistory` 変数の削除
+
+### 4. `assignCourts` 内での序列情報の取得
 
 `assignCourts` ではすでに `groupingPlayers`（全アクティブプレイヤー）が利用可能。
 `buildInitialOrder` + `applyStreakSwaps` で序列を計算して `formTeams` に渡す。
@@ -113,14 +102,13 @@ skillImbalancePenalty = |teamASum - teamBSum| × 重み
 
 ## 影響範囲
 
-- `formTeams` のペアリング結果が変わる
+- `formTeams` のペアリング結果が変わる（履歴ベース → 序列ベース）
 - 配置アルゴリズムの他の部分（selectBestFour, グループ分け等）には影響なし
-- 既存のペア履歴・対戦履歴の考慮は維持（副次的要素として残る）
+- 不要な履歴計算の削除によりコードがシンプルになる
 
 ---
 
 ## テスト確認
 
 - `npm run build` でビルド通ること
-- 4人選出後のペアリングが「序列1位+4位 vs 2位+3位」になることを確認
-- 序列情報が同じ（全員未レート）の場合、従来通り履歴ベースで決まること
+- 4人選出後のペアリングが「序列1位+4位 vs 2位+3位」になること
