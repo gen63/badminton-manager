@@ -16,7 +16,7 @@ export function HistoryPage() {
   const { matchHistory, deleteMatch } = useGameStore();
   const { players } = usePlayerStore();
   const session = useSessionStore((state) => state.session);
-  const { gasWebAppUrl } = useSettingsStore();
+  const { gasWebAppUrl, uploadedMatchIds, markMatchesAsUploaded } = useSettingsStore();
   const toast = useToast();
   const [isUploading, setIsUploading] = useState(false);
   const getPlayerName = (playerId: string) => {
@@ -49,17 +49,26 @@ export function HistoryPage() {
     }
   };
 
+  const unuploadedMatches = matchHistory.filter(
+    (m) => !uploadedMatchIds.includes(m.id)
+  );
+
   const handleUpload = async () => {
     if (!session || !gasWebAppUrl || isUploading) return;
+    if (unuploadedMatches.length === 0) {
+      toast.success('すべての試合は送信済みです');
+      return;
+    }
     setIsUploading(true);
     try {
       const result = await sendMatchesToSheets(
         gasWebAppUrl,
-        matchHistory,
+        unuploadedMatches,
         players,
         session
       );
       if (result.success) {
+        markMatchesAsUploaded(unuploadedMatches.map((m) => m.id));
         toast.success(result.message);
       } else {
         toast.error(result.message);
@@ -85,7 +94,7 @@ export function HistoryPage() {
           {gasWebAppUrl && (
             <button
               onClick={handleUpload}
-              disabled={isUploading || matchHistory.length === 0}
+              disabled={isUploading || unuploadedMatches.length === 0}
               aria-label="Sheetsにアップロード"
               className="icon-btn disabled:opacity-50"
             >

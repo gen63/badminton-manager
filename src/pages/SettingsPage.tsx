@@ -16,7 +16,7 @@ export function SettingsPage() {
   const { players } = usePlayerStore();
   const { clearPlayers } = usePlayerStore();
   const { matchHistory, clearHistory, initializeCourts } = useGameStore();
-  const { gasWebAppUrl, setGasWebAppUrl } = useSettingsStore();
+  const { gasWebAppUrl, setGasWebAppUrl, uploadedMatchIds, markMatchesAsUploaded } = useSettingsStore();
   const toast = useToast();
   const [isUploading, setIsUploading] = useState(false);
 
@@ -34,17 +34,26 @@ export function SettingsPage() {
     updateConfig({ targetScore: score });
   };
 
+  const unuploadedMatches = matchHistory.filter(
+    (m) => !uploadedMatchIds.includes(m.id)
+  );
+
   const handleUpload = async () => {
     if (!session || !gasWebAppUrl || isUploading) return;
+    if (unuploadedMatches.length === 0) {
+      toast.success('すべての試合は送信済みです');
+      return;
+    }
     setIsUploading(true);
     try {
       const result = await sendMatchesToSheets(
         gasWebAppUrl,
-        matchHistory,
+        unuploadedMatches,
         players,
         session
       );
       if (result.success) {
+        markMatchesAsUploaded(unuploadedMatches.map((m) => m.id));
         toast.success(result.message);
       } else {
         toast.error(result.message);
@@ -210,7 +219,7 @@ export function SettingsPage() {
             </div>
             <button
               onClick={handleUpload}
-              disabled={!gasWebAppUrl || matchHistory.length === 0 || isUploading}
+              disabled={!gasWebAppUrl || unuploadedMatches.length === 0 || isUploading}
               className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isUploading ? (
@@ -220,7 +229,9 @@ export function SettingsPage() {
               )}
               {isUploading
                 ? '送信中...'
-                : `Sheetsにアップロード（${matchHistory.length}件）`}
+                : unuploadedMatches.length === 0
+                  ? '送信済み'
+                  : `Sheetsにアップロード（${unuploadedMatches.length}件）`}
             </button>
           </div>
         </div>
