@@ -441,8 +441,8 @@ export function MainPage() {
         </div>
 
         {/* プレイヤーリスト */}
-        <div className="card p-6" ref={playerCardRef}>
-          <div className="flex items-baseline justify-between mb-4">
+        <div className="card p-4" ref={playerCardRef}>
+          <div className="flex items-baseline justify-between mb-2">
             <h3 className="section-title">
               参加者一覧
               <span className="ml-2 text-sm font-normal text-gray-500">
@@ -453,7 +453,7 @@ export function MainPage() {
               待機中 {activePlayers.length}人
             </span>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div>
               <div className="grid grid-cols-3 gap-2" style={{ maxWidth: '616px' }}>
                 {activePlayers.map((player) => {
@@ -466,11 +466,11 @@ export function MainPage() {
                         isSelected ? 'player-pill-selected' : ''
                       }`}
                     >
-                      <span className="text-gray-800 text-sm flex items-center min-w-0 overflow-hidden">
-                        <span className="flex-1 min-w-0">{player.name}</span>
-                        <span className="text-[10px] text-gray-500 ml-1 flex-shrink-0 tabular-nums">
-                          {player.gamesPlayed}
-                        </span>
+                      <span className="text-gray-800 font-medium min-w-0 overflow-hidden flex-1 player-name-court">
+                        {player.name}
+                      </span>
+                      <span className="text-[13px] text-gray-400 mx-1.5 flex-shrink-0 tabular-nums">
+                        {player.gamesPlayed}
                       </span>
                       {isSelected ? (
                         <button
@@ -532,7 +532,7 @@ export function MainPage() {
             </div>
 
             {/* 休憩中 */}
-            <div>
+            <div className="pt-2">
               <h4 className="text-sm font-semibold text-orange-500 mb-2 flex items-center gap-1.5">
                 <Coffee size={14} />
                 休憩中 ({restingPlayers.length}人)
@@ -554,7 +554,12 @@ export function MainPage() {
                             : 'bg-orange-50 border-orange-200'
                         }`}
                       >
-                        <span className="text-gray-700 text-sm">{player.name}</span>
+                        <span className="text-gray-700 font-medium min-w-0 overflow-hidden flex-1 player-name-court">
+                          {player.name}
+                        </span>
+                        <span className="text-[13px] text-gray-400 mx-1.5 flex-shrink-0 tabular-nums">
+                          {player.gamesPlayed}
+                        </span>
                         {isSelected ? (
                           <button
                             onClick={(e) => {
