@@ -70,8 +70,10 @@ export function buildInitialOrder(players: Player[]): string[] {
 }
 
 /**
- * matchHistoryの連勝/連敗に基づいて序列を動的に更新
- * 二連勝ごとにグループ1つ分上に移動、二連敗ごとにグループ1つ分下に移動
+ * matchHistoryの勝敗に基づいて序列を動的に更新
+ * - 勝利: 1つ上に移動
+ * - 2連勝ごと: グループ1つ分上に移動
+ * - 敗北: 移動なし（勝者の昇格により自然に繰り下がる）
  * groupCount: グループ数（3コート=3, 2コート=2）
  */
 export function applyStreakSwaps(
@@ -85,7 +87,7 @@ export function applyStreakSwaps(
   // 古い順に処理
   const chronological = [...matchHistory].reverse();
 
-  // 各プレイヤーの連勝/連敗カウント（処理中の累積）
+  // 各プレイヤーの連勝カウント（処理中の累積）
   const streaks = new Map<string, number>();
 
   for (const match of chronological) {
@@ -97,31 +99,26 @@ export function applyStreakSwaps(
       const newStreak = prev > 0 ? prev + 1 : 1;
       streaks.set(id, newStreak);
 
-      // 二連勝ごとにグループ1つ分上に移動
+      const idx = order.indexOf(id);
       if (newStreak >= 2 && newStreak % 2 === 0) {
-        const idx = order.indexOf(id);
+        // 2連勝ごとにグループ1つ分上に移動
         const newIdx = Math.max(0, idx - stepSize);
         if (newIdx < idx) {
           order.splice(idx, 1);
           order.splice(newIdx, 0, id);
         }
+      } else {
+        // 通常の勝利: 1つ上に移動
+        if (idx > 0) {
+          order.splice(idx, 1);
+          order.splice(idx - 1, 0, id);
+        }
       }
     }
 
+    // 敗北側はストリークのリセットのみ（移動なし）
     for (const id of losers) {
-      const prev = streaks.get(id) ?? 0;
-      const newStreak = prev < 0 ? prev - 1 : -1;
-      streaks.set(id, newStreak);
-
-      // 二連敗ごとにグループ1つ分下に移動
-      if (newStreak <= -2 && newStreak % 2 === 0) {
-        const idx = order.indexOf(id);
-        const newIdx = Math.min(order.length - 1, idx + stepSize);
-        if (newIdx > idx) {
-          order.splice(idx, 1);
-          order.splice(newIdx, 0, id);
-        }
-      }
+      streaks.set(id, 0);
     }
   }
 
