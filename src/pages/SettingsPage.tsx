@@ -16,7 +16,7 @@ export function SettingsPage() {
   const { players } = usePlayerStore();
   const { clearPlayers } = usePlayerStore();
   const { matchHistory, clearHistory, initializeCourts } = useGameStore();
-  const { gasWebAppUrl, setGasWebAppUrl } = useSettingsStore();
+  const { gasWebAppUrl, setGasWebAppUrl, useStayDurationPriority, setUseStayDurationPriority } = useSettingsStore();
   const toast = useToast();
   const [isUploading, setIsUploading] = useState(false);
 
@@ -147,6 +147,34 @@ export function SettingsPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="label mb-0">滞在時間で優先度調整</label>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {useStayDurationPriority
+                      ? '長く居て試合が少ない人を優先'
+                      : '試合回数のみで優先度を決定'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={useStayDurationPriority}
+                  onClick={() => setUseStayDurationPriority(!useStayDurationPriority)}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 flex-shrink-0 ${
+                    useStayDurationPriority ? 'bg-indigo-500' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                      useStayDurationPriority ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -365,14 +365,15 @@ function assign2CourtsHolistic(
   targetCourtIds: number[],
   matchHistory: Match[],
   practiceStartTime: number,
-  groupingPlayers: Player[]
+  groupingPlayers: Player[],
+  useStayDuration: boolean = true
 ): CourtAssignment[] {
   const pairHistory = getPairHistory(matchHistory);
   const opponentHistory = getOpponentHistory(matchHistory);
 
   // 1. 優先度順にソート
   const prioritySorted = [...activePlayers].sort((a, b) =>
-    calculatePriorityScore(a, practiceStartTime) - calculatePriorityScore(b, practiceStartTime)
+    calculatePriorityScore(a, practiceStartTime, useStayDuration) - calculatePriorityScore(b, practiceStartTime, useStayDuration)
   );
 
   // 2. 必要人数を選出（コート数 × 4人）
@@ -438,24 +439,29 @@ function assign2CourtsHolistic(
  */
 function calculatePriorityScore(
   player: Player,
-  practiceStartTime: number
+  practiceStartTime: number,
+  useStayDuration: boolean = true
 ): number {
+  // まだ1回も試合してない人は最優先（1回保証）
+  if (player.gamesPlayed === 0) {
+    return -Infinity;
+  }
+
+  if (!useStayDuration) {
+    return player.gamesPlayed;
+  }
+
   const now = Date.now();
-  
+
   // 滞在開始時刻 = max(練習開始日時, 休憩解除時刻)
   const stayStart = Math.max(
     practiceStartTime,
     player.activatedAt ?? now
   );
-  
+
   // 滞在時間（分）、最低5分
   const stayMinutes = Math.max((now - stayStart) / (1000 * 60), 5);
-  
-  // まだ1回も試合してない人は最優先（1回保証）
-  if (player.gamesPlayed === 0) {
-    return -Infinity;
-  }
-  
+
   return player.gamesPlayed / stayMinutes;
 }
 
@@ -468,6 +474,7 @@ export function assignCourts(
     targetCourtIds?: number[];
     practiceStartTime?: number;
     allPlayers?: Player[];  // 全アクティブプレイヤー（他コートでプレイ中含む）。グループ分けに使用
+    useStayDurationPriority?: boolean;
   }
 ): CourtAssignment[] {
   const activePlayers = players.filter((p) => !p.isResting);
@@ -483,13 +490,14 @@ export function assignCourts(
   const targetCourtIds = options?.targetCourtIds ??
     Array.from({ length: courtCount }, (_, i) => i + 1);
   const practiceStartTime = options?.practiceStartTime ?? Date.now();
+  const useStayDuration = options?.useStayDurationPriority ?? true;
 
   // グループ分けは全アクティブプレイヤー（他コートでプレイ中含む）で行う
   const groupingPlayers = options?.allPlayers ?? activePlayers;
 
   // 2コート同時配置の場合はホリスティック・アプローチを使用
   if (totalCourtCount === 2 && courtCount === 2) {
-    return assign2CourtsHolistic(activePlayers, targetCourtIds, matchHistory, practiceStartTime, groupingPlayers);
+    return assign2CourtsHolistic(activePlayers, targetCourtIds, matchHistory, practiceStartTime, groupingPlayers, useStayDuration);
   }
 
   // グループ分け（グローバル）
@@ -524,9 +532,9 @@ export function assignCourts(
       return true;
     });
 
-    // 滞在時間ベースの優先度でソート（スコアが低い人を優先）
-    eligible.sort((a, b) => 
-      calculatePriorityScore(a, practiceStartTime) - calculatePriorityScore(b, practiceStartTime)
+    // 優先度でソート（スコアが低い人を優先）
+    eligible.sort((a, b) =>
+      calculatePriorityScore(a, practiceStartTime, useStayDuration) - calculatePriorityScore(b, practiceStartTime, useStayDuration)
     );
 
     // 4人選ぶ
@@ -559,8 +567,8 @@ export function assignCourts(
     if (selected.length < 4) {
       const remaining = activePlayers
         .filter(p => !usedPlayers.has(p.id))
-        .sort((a, b) => 
-          calculatePriorityScore(a, practiceStartTime) - calculatePriorityScore(b, practiceStartTime)
+        .sort((a, b) =>
+          calculatePriorityScore(a, practiceStartTime, useStayDuration) - calculatePriorityScore(b, practiceStartTime, useStayDuration)
         );
       
       for (const player of remaining) {
