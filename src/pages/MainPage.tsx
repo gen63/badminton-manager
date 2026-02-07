@@ -27,7 +27,7 @@ export function MainPage() {
   const [showAllUnfinished, setShowAllUnfinished] = useState(false);
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
   const playerCardRef = useRef<HTMLDivElement>(null);
-  const heightLockTimer = useRef<ReturnType<typeof setTimeout>>();
+  const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     return () => {
