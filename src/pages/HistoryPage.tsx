@@ -55,20 +55,18 @@ export function HistoryPage() {
 
   const handleUpload = async () => {
     if (!session || !gasWebAppUrl || isUploading) return;
-    if (unuploadedMatches.length === 0) {
-      toast.success('すべての試合は送信済みです');
-      return;
-    }
+    const targets = unuploadedMatches.length > 0 ? unuploadedMatches : matchHistory;
+    if (targets.length === 0) return;
     setIsUploading(true);
     try {
       const result = await sendMatchesToSheets(
         gasWebAppUrl,
-        unuploadedMatches,
+        targets,
         players,
         session
       );
       if (result.success) {
-        markMatchesAsUploaded(unuploadedMatches.map((m) => m.id));
+        markMatchesAsUploaded(targets.map((m) => m.id));
         toast.success(result.message);
       } else {
         toast.error(result.message);
@@ -94,7 +92,7 @@ export function HistoryPage() {
           {gasWebAppUrl && (
             <button
               onClick={handleUpload}
-              disabled={isUploading || unuploadedMatches.length === 0}
+              disabled={isUploading || matchHistory.length === 0}
               aria-label="Sheetsにアップロード"
               className="icon-btn disabled:opacity-50"
             >
