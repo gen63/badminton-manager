@@ -247,90 +247,30 @@ function hasIsolatedExtreme(
   return false;
 }
 
-/**
- * ペアの組み合わせ履歴を取得
- */
-function getPairHistory(matchHistory: Match[]): Map<string, Set<string>> {
-  const pairMap = new Map<string, Set<string>>();
-
-  matchHistory.forEach((match) => {
-    const [a1, a2] = match.teamA;
-    if (!pairMap.has(a1)) pairMap.set(a1, new Set());
-    if (!pairMap.has(a2)) pairMap.set(a2, new Set());
-    pairMap.get(a1)!.add(a2);
-    pairMap.get(a2)!.add(a1);
-
-    const [b1, b2] = match.teamB;
-    if (!pairMap.has(b1)) pairMap.set(b1, new Set());
-    if (!pairMap.has(b2)) pairMap.set(b2, new Set());
-    pairMap.get(b1)!.add(b2);
-    pairMap.get(b2)!.add(b1);
-  });
-
-  return pairMap;
-}
 
 /**
- * 対戦履歴を取得
- */
-function getOpponentHistory(matchHistory: Match[]): Map<string, Set<string>> {
-  const opponentMap = new Map<string, Set<string>>();
-
-  matchHistory.forEach((match) => {
-    match.teamA.forEach((playerId) => {
-      if (!opponentMap.has(playerId)) opponentMap.set(playerId, new Set());
-      match.teamB.forEach((opId) => opponentMap.get(playerId)!.add(opId));
-    });
-
-    match.teamB.forEach((playerId) => {
-      if (!opponentMap.has(playerId)) opponentMap.set(playerId, new Set());
-      match.teamA.forEach((opId) => opponentMap.get(playerId)!.add(opId));
-    });
-  });
-
-  return opponentMap;
-}
-
-/**
- * 4人からペア履歴・対戦履歴を考慮して最適な2チームを編成
- * 全3パターン（AB vs CD, AC vs BD, AD vs BC）を探索
+ * 4人を序列に基づいて最強+最弱ペアリングで2チームに編成
+ * 序列順にソートし、1位+4位 vs 2位+3位 を返す
  */
 function formTeams(
   fourPlayers: Player[],
-  pairHistory: Map<string, Set<string>>,
-  opponentHistory: Map<string, Set<string>>
+  playerOrder: string[]
 ): { teamA: [string, string]; teamB: [string, string] } {
-  const ids = fourPlayers.map(p => p.id);
+  // 序列順にソート（playerOrder内の位置が若い = 上位）
+  const sorted = [...fourPlayers].sort((a, b) => {
+    const idxA = playerOrder.indexOf(a.id);
+    const idxB = playerOrder.indexOf(b.id);
+    // playerOrderに含まれない場合は末尾扱い
+    return (idxA === -1 ? Infinity : idxA) - (idxB === -1 ? Infinity : idxB);
+  });
 
-  const splits: [number, number, number, number][] = [
-    [0, 1, 2, 3],
-    [0, 2, 1, 3],
-    [0, 3, 1, 2],
-  ];
+  const ids = sorted.map(p => p.id);
 
-  let bestA: [string, string] = [ids[0], ids[1]];
-  let bestB: [string, string] = [ids[2], ids[3]];
-  let bestScore = Infinity;
-
-  for (const [a1, a2, b1, b2] of splits) {
-    let score = 0;
-    // ペア履歴ペナルティ
-    if (pairHistory.get(ids[a1])?.has(ids[a2])) score += 10;
-    if (pairHistory.get(ids[b1])?.has(ids[b2])) score += 10;
-    // 対戦履歴ペナルティ
-    if (opponentHistory.get(ids[a1])?.has(ids[b1])) score += 5;
-    if (opponentHistory.get(ids[a1])?.has(ids[b2])) score += 5;
-    if (opponentHistory.get(ids[a2])?.has(ids[b1])) score += 5;
-    if (opponentHistory.get(ids[a2])?.has(ids[b2])) score += 5;
-
-    if (score < bestScore) {
-      bestScore = score;
-      bestA = [ids[a1], ids[a2]];
-      bestB = [ids[b1], ids[b2]];
-    }
-  }
-
-  return { teamA: bestA, teamB: bestB };
+  // 1位+4位 vs 2位+3位（最強+最弱ペア）
+  return {
+    teamA: [ids[0], ids[3]],
+    teamB: [ids[1], ids[2]],
+  };
 }
 
 /**
@@ -375,9 +315,6 @@ function assign2CourtsHolistic(
   groupingPlayers: Player[],
   useStayDuration: boolean = true
 ): CourtAssignment[] {
-  const pairHistory = getPairHistory(matchHistory);
-  const opponentHistory = getOpponentHistory(matchHistory);
-
   // 1. 優先度順にソート
   const prioritySorted = [...activePlayers].sort((a, b) =>
     calculatePriorityScore(a, practiceStartTime, useStayDuration) - calculatePriorityScore(b, practiceStartTime, useStayDuration)
@@ -421,9 +358,9 @@ function assign2CourtsHolistic(
   // 7. コートID割り当て（小さいID = upperコート）
   const sortedCourtIds = [...targetCourtIds].sort((a, b) => a - b);
 
-  // 8. チーム編成
-  const upperTeams = formTeams(upperCourt, pairHistory, opponentHistory);
-  const lowerTeams = formTeams(lowerCourt, pairHistory, opponentHistory);
+  // 8. チーム編成（序列ベースの最強+最弱ペアリング）
+  const upperTeams = formTeams(upperCourt, order);
+  const lowerTeams = formTeams(lowerCourt, order);
 
   return [
     { courtId: sortedCourtIds[0], teamA: upperTeams.teamA, teamB: upperTeams.teamB },
@@ -567,8 +504,9 @@ export function assignCourts(
   const groups3 = totalCourtCount >= 3 ? groupPlayers3Court(groupingPlayers, matchHistory) : null;
   const groups2 = totalCourtCount === 2 ? groupPlayers2Court(groupingPlayers, matchHistory) : null;
 
-  const pairHistory = getPairHistory(matchHistory);
-  const opponentHistory = getOpponentHistory(matchHistory);
+  // 序列を計算（formTeamsのペアリングに使用）
+  const playerOrder = applyStreakSwaps(buildInitialOrder(groupingPlayers), matchHistory);
+
   const assignments: CourtAssignment[] = [];
   const usedPlayers = new Set<string>();
 
@@ -645,8 +583,8 @@ export function assignCourts(
 
     selected.forEach(p => usedPlayers.add(p.id));
 
-    // チーム分け（ペア履歴・対戦履歴を考慮）
-    const teams = formTeams(selected, pairHistory, opponentHistory);
+    // チーム分け（序列ベースの最強+最弱ペアリング）
+    const teams = formTeams(selected, playerOrder);
     assignments.push({ courtId, teamA: teams.teamA, teamB: teams.teamB });
   }
 
