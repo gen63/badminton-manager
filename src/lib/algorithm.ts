@@ -389,8 +389,9 @@ function calculatePriorityScore(player: Player): number {
 }
 
 /**
- * 待機時間順の上位4人を選出し、制約NGなら1人ずつ入替えて有効な4人を探す
- * candidatesは待機時間順（優先スコア昇順）でソート済みの前提
+ * 候補から制約を満たす最適な4人の組み合わせを探索
+ * 全組み合わせを探索し、優先スコア合計が最小の有効な組を返す
+ * 有効な組が見つからない場合は制約を緩和して上位4人を返す
  */
 function selectTopFour(
   candidates: Player[],
@@ -406,28 +407,40 @@ function selectTopFour(
     return true;
   };
 
-  // 上位4人を取る
-  const selected = candidates.slice(0, 4);
-  if (isValid(selected.map(p => p.id))) return selected;
+  const playerScore = (p: Player): number => {
+    const base = calculatePriorityScore(p);
+    if (base === -Infinity) return -1e9;
+    return base;
+  };
 
-  // 制約NGなら、優先度の低い方から1人ずつ入替を試みる
-  for (let replacePos = 3; replacePos >= 0; replacePos--) {
-    const original = selected[replacePos];
-    for (let i = 4; i < candidates.length; i++) {
-      if (selected.includes(candidates[i])) continue;
-      selected[replacePos] = candidates[i];
-      if (isValid(selected.map(p => p.id))) return selected;
+  let bestCombo: Player[] | null = null;
+  let bestScore = Infinity;
+
+  const n = candidates.length;
+  for (let i = 0; i < n - 3; i++) {
+    for (let j = i + 1; j < n - 2; j++) {
+      for (let k = j + 1; k < n - 1; k++) {
+        for (let l = k + 1; l < n; l++) {
+          const combo = [candidates[i], candidates[j], candidates[k], candidates[l]];
+          const ids = combo.map(p => p.id);
+          if (!isValid(ids)) continue;
+
+          const s = combo.reduce((sum, p) => sum + playerScore(p), 0);
+          if (s < bestScore) {
+            bestScore = s;
+            bestCombo = combo;
+          }
+        }
+      }
     }
-    selected[replacePos] = original; // 元に戻す
   }
 
-  // 全パターンNG → 制約緩和して上位4人を返す
-  return candidates.slice(0, 4);
+  return bestCombo ?? candidates.slice(0, 4);
 }
 
 /**
  * 自動配置アルゴリズム v2
- * - 待機時間が長い人を優先（グリーディ選出）
+ * - 待機時間が長い人を優先（全組み合わせ探索）
  * - レーティングベースのグルーピング（3等分/2等分）
  * - 確率ベースのコート配置（3コート）/ ホリスティック配置（2コート同時）
  * - 各個人の直近2試合で3人以上の重複を回避
