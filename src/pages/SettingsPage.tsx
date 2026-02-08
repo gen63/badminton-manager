@@ -189,7 +189,7 @@ export function SettingsPage() {
           </h2>
           <input
             type="datetime-local"
-            value={new Date(session.config.practiceStartTime).toISOString().slice(0, 16)}
+            value={new Date(session.config.practiceStartTime - new Date(session.config.practiceStartTime).getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
             onChange={(e) => {
               const newTime = new Date(e.target.value).getTime();
               if (!isNaN(newTime)) {
