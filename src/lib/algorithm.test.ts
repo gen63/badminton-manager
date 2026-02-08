@@ -385,14 +385,15 @@ describe('assignCourts - 2コートホリスティック配置', () => {
     id: string,
     name: string,
     rating: number,
-    gamesPlayed: number = 0
+    gamesPlayed: number = 0,
+    lastPlayedAt: number | null = null
   ): Player => ({
     id,
     name,
     gamesPlayed,
     rating,
     isResting: false,
-    lastPlayedAt: null,
+    lastPlayedAt,
     activatedAt: now - 60 * 60 * 1000, // 1時間前
   });
 
@@ -410,7 +411,6 @@ describe('assignCourts - 2コートホリスティック配置', () => {
   const defaultOptions = {
     totalCourtCount: 2,
     targetCourtIds: [1, 2],
-    practiceStartTime: now - 60 * 60 * 1000,
   };
 
   it('ランダム固定時: レート上位4人がC1、下位4人がC2に配置される', () => {
@@ -473,13 +473,13 @@ describe('assignCourts - 2コートホリスティック配置', () => {
 
     const players = [
       ...make8Players(), // gamesPlayed=0 → 最優先
-      createRatedPlayer('p9', 'P9', 1900, 5),
-      createRatedPlayer('p10', 'P10', 1700, 5),
-      createRatedPlayer('p11', 'P11', 1500, 5),
-      createRatedPlayer('p12', 'P12', 1300, 5),
-      createRatedPlayer('p13', 'P13', 1100, 5),
-      createRatedPlayer('p14', 'P14', 900, 5),
-      createRatedPlayer('p15', 'P15', 700, 5),
+      createRatedPlayer('p9', 'P9', 1900, 5, now - 5 * 60 * 1000),  // 5分前に試合終了
+      createRatedPlayer('p10', 'P10', 1700, 5, now - 5 * 60 * 1000),
+      createRatedPlayer('p11', 'P11', 1500, 5, now - 5 * 60 * 1000),
+      createRatedPlayer('p12', 'P12', 1300, 5, now - 5 * 60 * 1000),
+      createRatedPlayer('p13', 'P13', 1100, 5, now - 5 * 60 * 1000),
+      createRatedPlayer('p14', 'P14', 900, 5, now - 5 * 60 * 1000),
+      createRatedPlayer('p15', 'P15', 700, 5, now - 5 * 60 * 1000),
     ];
 
     const assignments = assignCourts(players, 2, [], defaultOptions);
@@ -540,7 +540,6 @@ describe('assignCourts - 2コートホリスティック配置', () => {
     const assignments = assignCourts(waitingPlayers, 1, [], {
       totalCourtCount: 2,
       targetCourtIds: [1],
-      practiceStartTime: now - 60 * 60 * 1000,
       allPlayers,  // 全15人でグループ分け
     });
 
@@ -568,7 +567,6 @@ describe('assignCourts - 2コートホリスティック配置', () => {
     const assignments = assignCourts(waitingPlayers, 1, [], {
       totalCourtCount: 2,
       targetCourtIds: [1],
-      practiceStartTime: now - 60 * 60 * 1000,
       // allPlayers未指定
     });
 

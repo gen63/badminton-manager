@@ -4,7 +4,6 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
-import { useSettingsStore } from '../stores/settingsStore';
 import { Settings, History, Coffee, Users, ArrowUp, Plus, X, ChevronDown } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
@@ -16,7 +15,6 @@ export function MainPage() {
   const { players, toggleRest, updatePlayer, addPlayers } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame } =
     useGameStore();
-  const { useStayDurationPriority } = useSettingsStore();
   const toast = useToast();
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;
@@ -80,9 +78,7 @@ export function MainPage() {
         {
           totalCourtCount: courts.length,
           targetCourtIds: courtsToAssign,
-          practiceStartTime: session?.config.practiceStartTime,
           allPlayers: allActivePlayers,
-          useStayDurationPriority,
         }
       );
 
@@ -175,8 +171,6 @@ export function MainPage() {
     totalCourtCount: courts.length,
     matchHistory,
     allActivePlayers: players.filter(p => !p.isResting),
-    practiceStartTime: session?.config.practiceStartTime ?? 0,
-    useStayDuration: useStayDurationPriority,
   });
   const restingPlayers = players.filter((p) => p.isResting);
   const restingAndPlaceholderPlayers = players.filter(
