@@ -14,7 +14,7 @@ import { EmptyState } from '../components/EmptyState';
 export function HistoryPage() {
   const navigate = useNavigate();
   const { matchHistory, deleteMatch } = useGameStore();
-  const { players } = usePlayerStore();
+  const { players, updatePlayer } = usePlayerStore();
   const session = useSessionStore((state) => state.session);
   const { gasWebAppUrl } = useSettingsStore();
   const toast = useToast();
@@ -28,6 +28,17 @@ export function HistoryPage() {
   };
 
   const handleDelete = (matchId: string) => {
+    const match = matchHistory.find((m) => m.id === matchId);
+    if (match) {
+      [...match.teamA, ...match.teamB].forEach((playerId) => {
+        const player = players.find((p) => p.id === playerId);
+        if (player && player.gamesPlayed > 0) {
+          updatePlayer(playerId, {
+            gamesPlayed: player.gamesPlayed - 1,
+          });
+        }
+      });
+    }
     deleteMatch(matchId);
   };
 
