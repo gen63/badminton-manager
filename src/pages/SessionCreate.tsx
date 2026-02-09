@@ -4,7 +4,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
-import { generateSessionId } from '../lib/utils';
+import { generateSessionId, parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { GYM_OPTIONS } from '../types/session';
 import { Sparkles, Download, Loader2 } from 'lucide-react';
@@ -38,25 +38,6 @@ export function SessionCreate() {
   const [loadingText, setLoadingText] = useState('読み込み中...');
   const [loadError, setLoadError] = useState('');
 
-  // 入力をパース: "名前 レーティング" or "名前\tレーティング" or "名前"
-  const parsePlayerInput = (line: string): { name: string; rating?: number } | null => {
-    const trimmed = line.trim();
-    if (!trimmed) return null;
-
-    // タブまたは2つ以上のスペースで分割
-    const parts = trimmed.split(/\t|\s{2,}/);
-    const name = parts[0].trim();
-    if (!name) return null;
-
-    if (parts.length >= 2) {
-      const ratingStr = parts[parts.length - 1].trim();
-      const rating = parseInt(ratingStr, 10);
-      if (!isNaN(rating)) {
-        return { name, rating };
-      }
-    }
-    return { name };
-  };
 
   const handleLoadFromSheets = async () => {
     const url = gasUrlInput || gasWebAppUrl;
@@ -85,8 +66,8 @@ export function SessionCreate() {
     if (playerNames.trim()) {
       const inputs = playerNames
         .split('\n')
-        .map(parsePlayerInput)
-        .filter((input): input is { name: string; rating?: number } => input !== null);
+        .map((line) => parsePlayerInput(line))
+        .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
       if (inputs.length > 0) {
         addPlayers(inputs);
       }

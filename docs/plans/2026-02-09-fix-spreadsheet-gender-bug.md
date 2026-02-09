@@ -1,7 +1,9 @@
 # スプレッドシート読み込み時の性別が全て「女」になる不具合修正
 
 **日付**: 2026-02-09
-**対象**: `docs/Code.js`, `src/lib/sheetsMembers.ts`, `src/pages/SessionCreate.tsx`
+**対象**: `src/lib/sheetsMembers.ts`, `src/pages/SessionCreate.tsx`
+
+> GAS スクリプトは別リポジトリで管理。本リポジトリでの GAS 修正はスコープ外。
 
 ---
 
@@ -13,29 +15,19 @@
 
 ## 原因分析
 
-データフロー全体を追跡し、**3箇所の不具合**を特定。
+データフロー全体を追跡し、**フロントエンド側に2箇所の不具合**を特定。
 
 ### データフロー
 
 ```
 [スプレッドシート] → [GAS doGet()] → [fetchMembersFromSheets()] → [membersToText()] → [textarea] → [parsePlayerInput()] → [addPlayers()]
+                     ^^^^^^^^^^^                                     ^^^^^^^^^^^^^^^^                  ^^^^^^^^^^^^^^^^^^
+                     別リポジトリ                                     Bug 1（主原因）                   Bug 2
 ```
 
 ---
 
-### Bug 1: GAS が性別列を読んでいない（`docs/Code.js:36-46`）
-
-```javascript
-// 現状: A列(名前)とB列(レーティング)のみ読み取り
-var name = String(data[i][0]).trim();
-var rating = parseInt(data[i][1], 10);
-```
-
-C列に性別があってもGASが読み飛ばしている。ただしユーザーが独自にGASを修正してC列の性別を返すようにしている場合でも、Bug 2 により全て「女」になる。
-
----
-
-### Bug 2（主原因）: `membersToText()` の性別判定が英字のみ（`src/lib/sheetsMembers.ts:126`）
+### Bug 1（主原因）: `membersToText()` の性別判定が英字のみ（`src/lib/sheetsMembers.ts:126`）
 
 ```typescript
 if (m.gender) parts.push(m.gender === 'M' ? '男' : '女');
@@ -51,7 +43,7 @@ GASから返される性別値が日本語（`"男"` / `"女"`）の場合:
 
 ---
 
-### Bug 3: `SessionCreate.tsx` のローカル `parsePlayerInput` が性別未対応（`src/pages/SessionCreate.tsx:42-59`）
+### Bug 2: `SessionCreate.tsx` のローカル `parsePlayerInput` が性別未対応（`src/pages/SessionCreate.tsx:42-59`）
 
 ```typescript
 // SessionCreate.tsx 内のローカル関数（性別を処理しない）
@@ -69,73 +61,22 @@ const parsePlayerInput = (line: string): { name: string; rating?: number } | nul
 ## 不具合の影響チェーン
 
 ```
-Bug 1: GAS が性別を読まない
-  → 性別なしで返却 → textareaに性別表示されない
+GAS が性別を "男"/"女" で送信:
+  → Bug 1: "男" === 'M' が false → textarea上で全員「女」表示
 
-Bug 1 が修正済み or ユーザーが独自GASで性別送信:
-  → Bug 2: "男" === 'M' が false → 全員「女」表示
-
-Bug 2 も修正して textarea に正しく表示:
-  → Bug 3: ローカル parser が性別を無視 → Player に gender が設定されない
+Bug 1 を修正して textarea に正しく表示:
+  → Bug 2: ローカル parser が性別を無視 → Player に gender が設定されない
 ```
 
-3つ全て修正しないと、スプレッドシートからの性別読み込みは正しく動作しない。
+2つ全て修正しないと、スプレッドシートからの性別読み込みは正しく動作しない。
 
 ---
 
 ## 修正方針
 
-### Fix 1: GAS `doGet()` でC列（性別）を読み取る（`docs/Code.js`）
+### Fix 1: `membersToText()` で日本語性別にも対応（`src/lib/sheetsMembers.ts`）
 
-```javascript
-// 修正後
-for (var i = 1; i < data.length; i++) {
-  var name = String(data[i][0]).trim();
-  if (!name) continue;
-
-  var member = { name: name };
-
-  var rating = parseInt(data[i][1], 10);
-  if (!isNaN(rating)) {
-    member.rating = rating;
-  }
-
-  // C列: 性別（任意）
-  var gender = String(data[i][2] || '').trim().toUpperCase();
-  if (gender === 'M' || gender === '男') {
-    member.gender = 'M';
-  } else if (gender === 'F' || gender === '女') {
-    member.gender = 'F';
-  }
-
-  members.push(member);
-}
-```
-
-- C列が空でもエラーにならない（`data[i][2] || ''` で安全）
-- GAS側で正規化して `'M'` / `'F'` で返す → フロントエンドの型定義と一致
-
-### Fix 2: `membersToText()` で日本語性別にも対応（`src/lib/sheetsMembers.ts`）
-
-GAS側で正規化してもユーザーが独自GASを使う可能性があるため、フロントエンド側も防御的に実装:
-
-```typescript
-export function membersToText(members: MemberFromSheet[]): string {
-  return members
-    .map((m) => {
-      const parts = [m.name];
-      if (m.gender) {
-        const g = String(m.gender).toUpperCase();
-        parts.push(g === 'M' || g === '男' ? '男' : '女');
-      }
-      if (m.rating != null) parts.push(String(m.rating));
-      return parts.join('  ');
-    })
-    .join('\n');
-}
-```
-
-もしくはよりシンプルに、`'F'` と `'女'` を明示チェック:
+GASから送られる性別値が `'M'`/`'F'` でも `'男'`/`'女'` でも正しく処理する:
 
 ```typescript
 if (m.gender) {
@@ -145,7 +86,7 @@ if (m.gender) {
 }
 ```
 
-### Fix 3: `SessionCreate.tsx` のローカル parser を `utils.ts` の共通版に置換
+### Fix 2: `SessionCreate.tsx` のローカル parser を `utils.ts` の共通版に置換
 
 ```typescript
 // Before: ローカルの parsePlayerInput（性別未対応）
@@ -171,19 +112,9 @@ import { parsePlayerInput } from '../lib/utils';
 
 | ファイル | 変更内容 |
 |---------|---------|
-| `docs/Code.js` | `doGet()` でC列（性別）を読み取り、'M'/'F' に正規化して返す |
+| `docs/Code.js` | **削除**（GASスクリプトは別リポジトリで管理） |
 | `src/lib/sheetsMembers.ts` | `membersToText()` で日本語性別値にも対応 |
 | `src/pages/SessionCreate.tsx` | ローカル `parsePlayerInput` を削除し、`utils.ts` の共通版を使用 |
-
----
-
-## スプレッドシートのシート構成（修正後）
-
-| 列 | 内容 | 例 | 必須 |
-|----|------|-----|------|
-| A | 名前 | 田中太郎 | ○ |
-| B | レーティング | 1500 | × |
-| C | 性別 | 男 / 女 / M / F | × |
 
 ---
 
@@ -191,19 +122,18 @@ import { parsePlayerInput } from '../lib/utils';
 
 | # | シナリオ | 期待結果 |
 |---|---------|----------|
-| 1 | C列に「男」「女」混在のシートから読み込み | textareaに正しく「男」「女」表示 |
-| 2 | C列に「M」「F」混在のシートから読み込み | 同上 |
-| 3 | C列が空のシートから読み込み | 性別なし（名前とレーティングのみ表示） |
-| 4 | C列がないシートから読み込み | エラーなく動作、性別なし |
-| 5 | 読み込み後「開始」でセッション作成 | Player の gender が正しく 'M'/'F' に設定される |
-| 6 | 手動入力「田中太郎  男  1500」で開始 | 同上 |
-| 7 | ビルド成功 | `npm run build` エラーなし |
+| 1 | GASが性別を「男」「女」で返す場合 | textareaに正しく「男」「女」表示 |
+| 2 | GASが性別を「M」「F」で返す場合 | 同上 |
+| 3 | GASが性別を返さない場合 | 性別なし（名前とレーティングのみ表示） |
+| 4 | 読み込み後「開始」でセッション作成 | Player の gender が正しく 'M'/'F' に設定される |
+| 5 | 手動入力「田中太郎  男  1500」で開始 | 同上 |
+| 6 | ビルド成功 | `npm run build` エラーなし |
 
 ---
 
 ## 実装順序
 
-1. `docs/Code.js` — `doGet()` にC列読み取り追加
+1. `docs/Code.js` — 削除（GASは別リポジトリ管理）
 2. `src/lib/sheetsMembers.ts` — `membersToText()` の性別判定修正
 3. `src/pages/SessionCreate.tsx` — ローカル parser 削除、`utils.ts` の共通版を import
 4. `npm run build` — ビルド確認
@@ -214,9 +144,6 @@ import { parsePlayerInput } from '../lib/utils';
 
 | 判断 | 理由 |
 |------|------|
-| GAS 側で 'M'/'F' に正規化 | フロントエンド型 `'M' \| 'F'` と一致。ネットワーク転送も軽量 |
-| フロントエンド側も防御的に日本語チェック | ユーザーが独自GASを使う可能性、型安全が実行時に保証されないため |
+| GAS スクリプトを本リポジトリから削除 | 別リポジトリで管理するため |
+| フロントエンド側で防御的に日本語チェック | GAS側の実装に依存しない。型安全が実行時に保証されないため |
 | ローカル parser を削除して共通版を使う | 同じロジックの重複を排除。共通版は性別対応済み |
-| C列は任意（後方互換） | 既存のA・B列のみのシートでもエラーにならない |
-
-**注意:** `docs/Code.js` を変更した場合、ユーザーは GAS エディタで再デプロイが必要。
