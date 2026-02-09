@@ -6,7 +6,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Settings, History, Coffee, Users, ArrowUp, Plus, X, ChevronDown } from 'lucide-react';
+import { Settings, History, Coffee, Users, ArrowUp, Plus, X, ChevronDown, Repeat } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { CourtCard } from '../components/CourtCard';
@@ -17,7 +17,7 @@ export function MainPage() {
   const { players, toggleRest, updatePlayer, addPlayers } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame } =
     useGameStore();
-  const { useStayDurationPriority } = useSettingsStore();
+  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode } = useSettingsStore();
   const toast = useToast();
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;
@@ -149,6 +149,67 @@ export function MainPage() {
       finishedAt: null,
       restingPlayerIds: [],
     });
+
+    // 連続試合モード: 自動で次の試合を配置・開始
+    if (continuousMatchMode) {
+      handleContinuousNext(courtId);
+    }
+  };
+
+  const handleContinuousNext = (courtId: number) => {
+    try {
+      // Zustandストアから最新状態を直接読み取る（React再レンダリング前でも正確）
+      const { courts: currentCourts, matchHistory: currentHistory, updateCourt: storeUpdateCourt, startGame: storeStartGame } = useGameStore.getState();
+      const { players: currentPlayers } = usePlayerStore.getState();
+      const { useStayDurationPriority: currentPriority } = useSettingsStore.getState();
+
+      const currentPlayersInCourts = new Set(
+        currentCourts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
+      );
+
+      const waitingPlayers = currentPlayers.filter(
+        (p) => !p.isResting && !currentPlayersInCourts.has(p.id)
+      );
+
+      if (waitingPlayers.length < 4) {
+        toast.error('待機中のプレイヤーが足りないため自動配置できません');
+        return;
+      }
+
+      const allActivePlayers = currentPlayers.filter(p => !p.isResting);
+
+      const assignments = assignCourts(
+        waitingPlayers,
+        1,
+        currentHistory,
+        {
+          totalCourtCount: currentCourts.length,
+          targetCourtIds: [courtId],
+          practiceStartTime: session?.config.practiceStartTime,
+          allPlayers: allActivePlayers,
+          useStayDurationPriority: currentPriority,
+        }
+      );
+
+      if (assignments[0]) {
+        storeUpdateCourt(courtId, {
+          teamA: assignments[0].teamA,
+          teamB: assignments[0].teamB,
+          scoreA: 0,
+          scoreB: 0,
+          isPlaying: false,
+          startedAt: null,
+          finishedAt: null,
+        });
+        storeStartGame(courtId);
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : '自動配置に失敗しました'
+      );
+    }
   };
 
   const getPlayerName = (playerId: string) => {
@@ -342,6 +403,17 @@ export function MainPage() {
       <div className="header-gradient text-gray-800 p-3">
         <div className="max-w-6xl mx-auto flex items-center justify-end">
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setContinuousMatchMode(!continuousMatchMode)}
+              className={`rounded-full text-sm flex items-center gap-1.5 px-3 py-1.5 transition-all duration-200 ${
+                continuousMatchMode
+                  ? 'bg-green-500 text-white shadow-sm'
+                  : 'btn-secondary border border-gray-200'
+              }`}
+            >
+              <Repeat size={16} />
+              連続
+            </button>
             <button
               onClick={() => handleAutoAssign()}
               disabled={!canAutoAssign}
