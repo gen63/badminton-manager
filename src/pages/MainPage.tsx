@@ -407,11 +407,12 @@ export function MainPage() {
               onClick={() => setContinuousMatchMode(!continuousMatchMode)}
               className={`rounded-full text-sm flex items-center gap-1.5 px-3 py-1.5 transition-all duration-200 ${
                 continuousMatchMode
-                  ? 'bg-green-500 text-white shadow-sm'
+                  ? 'bg-green-500 text-white shadow-sm border border-green-500'
                   : 'btn-secondary border border-gray-200'
               }`}
             >
-              <Repeat size={16} />
+              <Repeat size={18} />
+              {continuousMatchMode && <span>✓</span>}
               連続
             </button>
             <button
