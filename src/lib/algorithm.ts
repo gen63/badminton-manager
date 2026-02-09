@@ -253,10 +253,19 @@ function hasIsolatedExtreme(
 
 
 /**
+ * ペアがMF（男女混合）かどうかを判定
+ */
+function isMixedPair(p1: Player, p2: Player): boolean {
+  if (!p1.gender || !p2.gender) return false;
+  return p1.gender !== p2.gender;
+}
+
+/**
  * 4人を序列に基づいて最強+最弱ペアリングで2チームに編成
  * 序列順にソートし、1位+4位 vs 2位+3位 を返す
+ * 2M+2Fの場合、MF vs MFになるようペアリングを調整する
  */
-function formTeams(
+export function formTeams(
   fourPlayers: Player[],
   playerOrder: string[]
 ): { teamA: [string, string]; teamB: [string, string] } {
@@ -268,12 +277,29 @@ function formTeams(
     return (idxA === -1 ? Infinity : idxA) - (idxB === -1 ? Infinity : idxB);
   });
 
-  const ids = sorted.map(p => p.id);
+  // 性別構成チェック: 全員性別設定済み && 2M+2F の場合のみMIXペアリング
+  const genders = sorted.map(p => p.gender).filter(Boolean);
+  const is2M2F = genders.length === 4 && genders.filter(g => g === 'M').length === 2;
 
-  // 1位+4位 vs 2位+3位（最強+最弱ペア）
+  if (is2M2F) {
+    // デフォルト（1+4 vs 2+3）がMFペアか確認
+    const defaultIsMix = isMixedPair(sorted[0], sorted[3]) && isMixedPair(sorted[1], sorted[2]);
+    if (!defaultIsMix) {
+      // 1+3 vs 2+4 を試す（1+2 vs 3+4 よりスキルバランスが良い）
+      const altIsMix = isMixedPair(sorted[0], sorted[2]) && isMixedPair(sorted[1], sorted[3]);
+      if (altIsMix) {
+        return {
+          teamA: [sorted[0].id, sorted[2].id],
+          teamB: [sorted[1].id, sorted[3].id],
+        };
+      }
+    }
+  }
+
+  // デフォルト: 1位+4位 vs 2位+3位（最強+最弱ペア）
   return {
-    teamA: [ids[0], ids[3]],
-    teamB: [ids[1], ids[2]],
+    teamA: [sorted[0].id, sorted[3].id],
+    teamB: [sorted[1].id, sorted[2].id],
   };
 }
 
@@ -406,6 +432,27 @@ function calculatePriorityScore(
 }
 
 /**
+ * 4人の性別構成に基づくペナルティを計算
+ * 4人全員に性別が設定されている場合のみ有効
+ * 2-2（MIX）or 4-0（同性）→ 0、3-1 → ペナルティ
+ */
+function getGenderPenalty(
+  combo: Player[],
+  oneGameDelta: number
+): number {
+  const genders = combo.map(p => p.gender).filter(Boolean);
+  if (genders.length < 4) return 0; // 性別未設定がいる場合は影響なし
+
+  const maleCount = genders.filter(g => g === 'M').length;
+  // 4-0, 0-4 (同性対決) or 2-2 (MIX) → ペナルティなし
+  // 3-1, 1-3 → MIXにも同性にもならない → 小ペナルティ
+  if (maleCount === 1 || maleCount === 3) {
+    return oneGameDelta * 0.5;
+  }
+  return 0;
+}
+
+/**
  * 候補から制約を満たす最適な4人の組み合わせを探索
  * グリーディではなく全組み合わせを探索し、優先スコア合計が最小の有効な組を返す
  * 有効な組が見つからない場合は制約を緩和して上位4人を返す
@@ -434,6 +481,11 @@ function selectBestFour(
     return base + (courtPenalties?.get(p.id) ?? 0);
   };
 
+  // 性別ペナルティ用の基準値（1試合分のスコア差）
+  const oneGameDelta = useStayDuration
+    ? 1 / Math.max((Date.now() - practiceStartTime) / (1000 * 60), 5)
+    : 1.0;
+
   let bestCombo: Player[] | null = null;
   let bestScore = Infinity;
 
@@ -446,7 +498,8 @@ function selectBestFour(
           const ids = combo.map(p => p.id);
           if (!isValid(ids)) continue;
 
-          const s = combo.reduce((sum, p) => sum + playerScore(p), 0);
+          const s = combo.reduce((sum, p) => sum + playerScore(p), 0)
+            + getGenderPenalty(combo, oneGameDelta);
 
           if (s < bestScore) {
             bestScore = s;

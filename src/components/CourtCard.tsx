@@ -6,6 +6,7 @@ interface CourtCardProps {
   court: Court;
   getPlayerName: (playerId: string) => string;
   getPlayerGamesPlayed: (playerId: string) => number;
+  getPlayerGender?: (playerId: string) => 'M' | 'F' | undefined;
   onStartGame: () => void;
   onFinishGame: () => void;
   onAutoAssign: () => void;
@@ -25,11 +26,12 @@ interface PlayerPillProps {
   selectedPlayerId?: string | null;
   getPlayerName: (playerId: string) => string;
   getPlayerGamesPlayed: (playerId: string) => number;
+  getPlayerGender?: (playerId: string) => 'M' | 'F' | undefined;
   onPlayerTap: (playerId: string, position: number) => void;
   onClearSelection: () => void;
 }
 
-function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, getPlayerGamesPlayed, onPlayerTap, onClearSelection }: PlayerPillProps) {
+function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, getPlayerGamesPlayed, getPlayerGender, onPlayerTap, onClearSelection }: PlayerPillProps) {
   if (!playerId) {
     return (
       <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
@@ -39,12 +41,16 @@ function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, getPl
   const isSelected = selectedPlayerId === playerId;
   const name = getPlayerName(playerId);
   const gamesPlayed = getPlayerGamesPlayed(playerId);
+  const gender = getPlayerGender?.(playerId);
 
   return (
     <div
       onClick={() => onPlayerTap(playerId, position)}
       className={`player-pill h-9 cursor-pointer ${
-        isSelected ? 'player-pill-selected' : ''
+        isSelected ? 'player-pill-selected'
+        : gender === 'M' ? 'player-pill-male'
+        : gender === 'F' ? 'player-pill-female'
+        : ''
       }`}
     >
       <span className="text-gray-800 font-medium flex items-center min-w-0 overflow-hidden flex-1">
@@ -97,6 +103,7 @@ export function CourtCard({
   court,
   getPlayerName,
   getPlayerGamesPlayed,
+  getPlayerGender,
   onStartGame,
   onFinishGame,
   onAutoAssign,
@@ -110,7 +117,7 @@ export function CourtCard({
 
   const hasPlayers = court.teamA[0] || court.teamB[0];
 
-  const pillProps = { selectedPlayerId, getPlayerName, getPlayerGamesPlayed, onPlayerTap, onClearSelection };
+  const pillProps = { selectedPlayerId, getPlayerName, getPlayerGamesPlayed, getPlayerGender, onPlayerTap, onClearSelection };
 
   return (
     <div

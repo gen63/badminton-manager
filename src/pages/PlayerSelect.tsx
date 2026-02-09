@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { buildInitialOrder, applyStreakSwaps } from '../lib/algorithm';
+import { parsePlayerInput } from '../lib/utils';
 import { Trash2, UserPlus, Users, ArrowRight } from 'lucide-react';
 
 export function PlayerSelect() {
@@ -21,33 +22,13 @@ export function PlayerSelect() {
     return bPos - aPos;
   });
 
-  // 入力をパース: "名前 レーティング" or "名前\tレーティング" or "名前"
-  const parsePlayerInput = (line: string): { name: string; rating?: number } | null => {
-    const trimmed = line.trim();
-    if (!trimmed) return null;
-
-    // タブまたは2つ以上のスペースで分割
-    const parts = trimmed.split(/\t|\s{2,}/);
-    const name = parts[0].trim();
-    if (!name) return null;
-
-    if (parts.length >= 2) {
-      const ratingStr = parts[parts.length - 1].trim();
-      const rating = parseInt(ratingStr, 10);
-      if (!isNaN(rating)) {
-        return { name, rating };
-      }
-    }
-    return { name };
-  };
-
   const handleAddPlayers = () => {
     if (newPlayerNames.trim()) {
       // 改行で分割して、パース
       const inputs = newPlayerNames
         .split('\n')
-        .map(parsePlayerInput)
-        .filter((input): input is { name: string; rating?: number } => input !== null);
+        .map(line => parsePlayerInput(line))
+        .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
 
       if (inputs.length > 0) {
         addPlayers(inputs);
@@ -80,12 +61,13 @@ export function PlayerSelect() {
         <div className="card p-6 mb-4">
           <label className="label">
             名前を入力（1行に1人、複数行で一度に追加できます）
+            <span className="block text-xs text-gray-400 mt-0.5">例: 田中  M  1500</span>
           </label>
           <div className="space-y-3">
             <textarea
               value={newPlayerNames}
               onChange={(e) => setNewPlayerNames(e.target.value)}
-              placeholder="田中太郎&#10;山田花子&#10;佐藤次郎&#10;鈴木一郎"
+              placeholder="星野真吾  M&#10;佐野朋美  F  1500&#10;山口裕史"
               rows={6}
               className="textarea-field"
             />
@@ -122,7 +104,11 @@ export function PlayerSelect() {
               {sortedPlayers.map((player) => (
                 <div
                   key={player.id}
-                  className="player-pill"
+                  className={`player-pill ${
+                    player.gender === 'M' ? 'player-pill-male'
+                    : player.gender === 'F' ? 'player-pill-female'
+                    : ''
+                  }`}
                 >
                   <span className="font-medium text-gray-800 text-sm truncate">
                     {player.name}

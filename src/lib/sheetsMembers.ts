@@ -1,6 +1,7 @@
 interface MemberFromSheet {
   name: string;
   rating?: number;
+  gender?: 'M' | 'F';
 }
 
 interface FetchMembersResult {
@@ -120,6 +121,11 @@ export async function fetchMembersFromSheets(
 
 export function membersToText(members: MemberFromSheet[]): string {
   return members
-    .map((m) => (m.rating != null ? `${m.name}  ${m.rating}` : m.name))
+    .map((m) => {
+      const parts = [m.name];
+      if (m.gender) parts.push(m.gender);
+      if (m.rating != null) parts.push(String(m.rating));
+      return parts.join('  ');
+    })
     .join('\n');
 }

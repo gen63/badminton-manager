@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { calculatePlayerStats, getStreaks, buildInitialOrder, applyStreakSwaps, assignCourts } from './algorithm';
+import { calculatePlayerStats, getStreaks, buildInitialOrder, applyStreakSwaps, assignCourts, formTeams } from './algorithm';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
 
@@ -574,5 +574,147 @@ describe('assignCourts - 2コートホリスティック配置', () => {
 
     const assigned = [...assignments[0].teamA, ...assignments[0].teamB];
     expect(assigned).toHaveLength(4);
+  });
+});
+
+describe('formTeams - MIXペアリング', () => {
+  const createGenderedPlayer = (
+    id: string, name: string, rating: number, gender: 'M' | 'F'
+  ): Player => ({
+    id, name, rating, gender,
+    gamesPlayed: 0, isResting: false, lastPlayedAt: null, activatedAt: null,
+  });
+
+  it('2M+2Fでデフォルト（1+4 vs 2+3）がMF → そのまま', () => {
+    // 序列: M, F, F, M → 1+4=MM? いや、1位M+4位M=MM → デフォルトではMIXにならない
+    // 序列: M, F, M, F → 1+4=MF, 2+3=FM → MIX ✓
+    const players = [
+      createGenderedPlayer('p1', 'P1', 2000, 'M'),
+      createGenderedPlayer('p2', 'P2', 1800, 'F'),
+      createGenderedPlayer('p3', 'P3', 1600, 'M'),
+      createGenderedPlayer('p4', 'P4', 1400, 'F'),
+    ];
+    const order = ['p1', 'p2', 'p3', 'p4'];
+    const result = formTeams(players, order);
+
+    // 1+4 vs 2+3 → MF vs FM
+    expect(result.teamA).toEqual(['p1', 'p4']);
+    expect(result.teamB).toEqual(['p2', 'p3']);
+  });
+
+  it('2M+2Fでデフォルトが同性 → 代替ペアリングでMIXに', () => {
+    // 序列: M, F, F, M → デフォルト 1+4=MM, 2+3=FF → 同性 → 代替へ
+    const players = [
+      createGenderedPlayer('p1', 'P1', 2000, 'M'),
+      createGenderedPlayer('p2', 'P2', 1800, 'F'),
+      createGenderedPlayer('p3', 'P3', 1600, 'F'),
+      createGenderedPlayer('p4', 'P4', 1400, 'M'),
+    ];
+    const order = ['p1', 'p2', 'p3', 'p4'];
+    const result = formTeams(players, order);
+
+    // 代替: 1+3 vs 2+4 → MF vs FM
+    expect(result.teamA).toEqual(['p1', 'p3']);
+    expect(result.teamB).toEqual(['p2', 'p4']);
+  });
+
+  it('4M（同性のみ）→ デフォルトのまま', () => {
+    const players = [
+      createGenderedPlayer('p1', 'P1', 2000, 'M'),
+      createGenderedPlayer('p2', 'P2', 1800, 'M'),
+      createGenderedPlayer('p3', 'P3', 1600, 'M'),
+      createGenderedPlayer('p4', 'P4', 1400, 'M'),
+    ];
+    const order = ['p1', 'p2', 'p3', 'p4'];
+    const result = formTeams(players, order);
+
+    expect(result.teamA).toEqual(['p1', 'p4']);
+    expect(result.teamB).toEqual(['p2', 'p3']);
+  });
+
+  it('性別未設定あり → デフォルトのまま', () => {
+    const players: Player[] = [
+      createGenderedPlayer('p1', 'P1', 2000, 'M'),
+      createGenderedPlayer('p2', 'P2', 1800, 'F'),
+      { id: 'p3', name: 'P3', rating: 1600, gamesPlayed: 0, isResting: false, lastPlayedAt: null, activatedAt: null },
+      createGenderedPlayer('p4', 'P4', 1400, 'M'),
+    ];
+    const order = ['p1', 'p2', 'p3', 'p4'];
+    const result = formTeams(players, order);
+
+    // 性別未設定がいるのでデフォルト
+    expect(result.teamA).toEqual(['p1', 'p4']);
+    expect(result.teamB).toEqual(['p2', 'p3']);
+  });
+});
+
+describe('assignCourts - 性別ペナルティ', () => {
+  const now = Date.now();
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const createGenderedPlayer = (
+    id: string, name: string, rating: number, gender: 'M' | 'F',
+    gamesPlayed: number = 1
+  ): Player => ({
+    id, name, rating, gender, gamesPlayed,
+    isResting: false, lastPlayedAt: null,
+    activatedAt: now - 60 * 60 * 1000,
+  });
+
+  it('同優先度で2M+2Fが3M+1Fより優先される', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    // 5人: M1, M2, M3, F1, F2 （全員同じ優先度）
+    const players = [
+      createGenderedPlayer('m1', 'M1', 1500, 'M'),
+      createGenderedPlayer('m2', 'M2', 1500, 'M'),
+      createGenderedPlayer('m3', 'M3', 1500, 'M'),
+      createGenderedPlayer('f1', 'F1', 1500, 'F'),
+      createGenderedPlayer('f2', 'F2', 1500, 'F'),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: now - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+    });
+
+    const assigned = [...assignments[0].teamA, ...assignments[0].teamB];
+    const maleCount = assigned.filter(id => id.startsWith('m')).length;
+    const femaleCount = assigned.filter(id => id.startsWith('f')).length;
+
+    // 2M+2Fが選ばれるはず（3M+1Fや1M+3Fにはペナルティ）
+    expect(maleCount).toBe(2);
+    expect(femaleCount).toBe(2);
+  });
+
+  it('優先度差が大きい場合は性別より優先度が勝つ', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    // M1: gamesPlayed=0（最優先）, M2,M3: gamesPlayed=0, F1: gamesPlayed=5（低優先度）, F2: gamesPlayed=5
+    const players = [
+      createGenderedPlayer('m1', 'M1', 1500, 'M', 0),
+      createGenderedPlayer('m2', 'M2', 1500, 'M', 0),
+      createGenderedPlayer('m3', 'M3', 1500, 'M', 0),
+      createGenderedPlayer('m4', 'M4', 1500, 'M', 0),
+      createGenderedPlayer('f1', 'F1', 1500, 'F', 5),
+      createGenderedPlayer('f2', 'F2', 1500, 'F', 5),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: now - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+    });
+
+    const assigned = [...assignments[0].teamA, ...assignments[0].teamB];
+
+    // 優先度が圧倒的に違うので、gamesPlayed=0の4人（全員M）が選ばれる
+    expect(assigned.sort()).toEqual(['m1', 'm2', 'm3', 'm4']);
   });
 });

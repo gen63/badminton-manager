@@ -5,6 +5,7 @@ import type { Player } from '../types/player';
 interface PlayerInput {
   name: string;
   rating?: number;
+  gender?: 'M' | 'F';
 }
 
 interface PlayerState {
@@ -28,6 +29,7 @@ export const usePlayerStore = create<PlayerState>()(
               id: `player-${Date.now()}-${Math.random()}`,
               name: input.name,
               rating: input.rating,
+              gender: input.gender,
               isResting: true, // 全員休憩で開始（チェックイン待ち）
               gamesPlayed: 0,
               lastPlayedAt: null,

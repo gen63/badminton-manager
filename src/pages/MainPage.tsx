@@ -4,6 +4,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
+import { parsePlayerInput } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
 import { Settings, History, Coffee, Users, ArrowUp, Plus, X, ChevronDown } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -152,6 +153,10 @@ export function MainPage() {
 
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '未設定';
+  };
+
+  const getPlayerGender = (playerId: string): 'M' | 'F' | undefined => {
+    return players.find((p) => p.id === playerId)?.gender;
   };
 
   const getPlayerGamesPlayed = (playerId: string) => {
@@ -372,6 +377,7 @@ export function MainPage() {
                 court={court}
                 getPlayerName={getPlayerName}
                 getPlayerGamesPlayed={getPlayerGamesPlayed}
+                getPlayerGender={getPlayerGender}
                 onStartGame={() => handleStartGame(court.id)}
                 onFinishGame={() => handleFinishGame(court.id)}
                 onAutoAssign={() => handleAutoAssign(court.id)}
@@ -474,7 +480,10 @@ export function MainPage() {
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
                       className={`player-pill cursor-pointer max-w-[200px] ${
-                        isSelected ? 'player-pill-selected' : ''
+                        isSelected ? 'player-pill-selected'
+                        : player.gender === 'M' ? 'player-pill-male'
+                        : player.gender === 'F' ? 'player-pill-female'
+                        : ''
                       }`}
                     >
                       <span className="text-gray-800 font-medium min-w-0 overflow-hidden flex-1 player-name-court">
@@ -520,17 +529,19 @@ export function MainPage() {
                 onChange={(e) => setNewPlayerName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newPlayerName.trim()) {
-                    addPlayers([{ name: newPlayerName.trim() }]);
+                    const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
+                    if (parsed) addPlayers([parsed]);
                     setNewPlayerName('');
                   }
                 }}
-                placeholder="メンバー名を入力"
+                placeholder="名前 M/F"
                 className="input-field flex-1"
               />
               <button
                 onClick={() => {
                   if (newPlayerName.trim()) {
-                    addPlayers([{ name: newPlayerName.trim() }]);
+                    const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
+                    if (parsed) addPlayers([parsed]);
                     setNewPlayerName('');
                   }
                 }}
@@ -562,6 +573,8 @@ export function MainPage() {
                         className={`player-pill cursor-pointer max-w-[200px] ${
                           isSelected
                             ? 'player-pill-selected'
+                            : player.gender === 'M' ? 'player-pill-male'
+                            : player.gender === 'F' ? 'player-pill-female'
                             : 'bg-orange-50 border-orange-200'
                         }`}
                       >

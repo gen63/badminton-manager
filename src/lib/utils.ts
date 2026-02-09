@@ -57,3 +57,43 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * プレイヤー入力行をパース
+ * "名前 性別 レーティング" の組み合わせ（順不同）
+ * 性別: M/F/男/女
+ * delimiter: フィールド区切りの正規表現
+ *   - 複数行入力（textarea）: /\t|\s{2,}/（タブ or 2+スペース）
+ *   - 単一行入力（inline）: /\s+/（任意スペース）
+ */
+export function parsePlayerInput(
+  line: string,
+  delimiter: RegExp = /\t|\s{2,}/
+): { name: string; rating?: number; gender?: 'M' | 'F' } | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+
+  const parts = trimmed.split(delimiter);
+  const name = parts[0].trim();
+  if (!name) return null;
+
+  let rating: number | undefined;
+  let gender: 'M' | 'F' | undefined;
+
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i].trim();
+    const upper = part.toUpperCase();
+    if (upper === 'M' || part === '男') {
+      gender = 'M';
+    } else if (upper === 'F' || part === '女') {
+      gender = 'F';
+    } else {
+      const num = parseInt(part, 10);
+      if (!isNaN(num)) {
+        rating = num;
+      }
+    }
+  }
+
+  return { name, rating, gender };
+}
