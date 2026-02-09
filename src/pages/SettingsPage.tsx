@@ -149,32 +149,37 @@ export function SettingsPage() {
               </select>
             </div>
 
-            <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg w-fit max-w-md">
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-[240px]">
-                  <label className="label mb-0">滞在時間で優先度調整</label>
-                  <p className="text-xs text-gray-600 mt-0.5">
-                    {useStayDurationPriority
-                      ? '長く居て試合が少ない人を優先'
-                      : '試合回数のみで優先度を決定'}
-                  </p>
-                </div>
+            <div>
+              <label className="label">配置モード</label>
+              <div className="flex gap-3">
                 <button
-                  type="button"
-                  role="switch"
-                  aria-checked={useStayDurationPriority}
-                  onClick={() => setUseStayDurationPriority(!useStayDurationPriority)}
-                  className={`relative inline-flex h-10 w-20 items-center rounded-full transition-colors duration-200 flex-shrink-0 ${
-                    useStayDurationPriority ? 'bg-indigo-500' : 'bg-gray-300'
+                  onClick={() => setUseStayDurationPriority(true)}
+                  className={`select-button ${
+                    useStayDurationPriority
+                      ? 'select-button-active'
+                      : 'select-button-inactive'
                   }`}
                 >
-                  <span
-                    className={`inline-block h-8 w-8 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                      useStayDurationPriority ? 'translate-x-11' : 'translate-x-1'
-                    }`}
-                  />
+                  {useStayDurationPriority && <span className="mr-1">✓</span>}
+                  待機時間モード
+                </button>
+                <button
+                  onClick={() => setUseStayDurationPriority(false)}
+                  className={`select-button ${
+                    !useStayDurationPriority
+                      ? 'select-button-active'
+                      : 'select-button-inactive'
+                  }`}
+                >
+                  {!useStayDurationPriority && <span className="mr-1">✓</span>}
+                  試合回数モード
                 </button>
               </div>
+              <p className="text-xs text-gray-600 mt-2">
+                {useStayDurationPriority
+                  ? '滞在時間が長い人を優先します'
+                  : '試合回数が少ない人を優先します（待機時間を考慮しない）'}
+              </p>
             </div>
           </div>
         </div>

@@ -388,7 +388,7 @@ function calculatePriorityScore(
   }
 
   if (!useStayDuration) {
-    return player.gamesPlayed;
+    return player.gamesPlayed * 0.4;
   }
 
   const now = Date.now();
@@ -546,14 +546,16 @@ export function assignCourts(
         const group = getPlayerGroup(p.id, groups2) as 'upper' | 'lower';
         prob = COURT_PROBABILITIES_2[group]?.[courtId - 1] ?? 0.5;
       }
-      // 1試合分の優先スコア差でスケーリング（OFF: 1.0、ON: 1/滞在分）
-      let oneGameDelta = 1.0;
       if (useStayDuration) {
+        // 待機時間モード: コート適性 × 1試合分の優先スコア差でスケーリング
         const stayStart = Math.max(practiceStartTime, p.activatedAt ?? now);
         const stayMinutes = Math.max((now - stayStart) / (1000 * 60), 5);
-        oneGameDelta = 1 / stayMinutes;
+        const oneGameDelta = 1 / stayMinutes;
+        courtPenalties.set(p.id, Math.random() * (1 - prob) * oneGameDelta);
+      } else {
+        // 試合回数モード: 純粋なランダムノイズ（上限0.8）
+        courtPenalties.set(p.id, Math.random() * 0.8);
       }
-      courtPenalties.set(p.id, Math.random() * (1 - prob) * oneGameDelta);
     }
 
     // 優先度でソート（スコアが低い人を優先）
