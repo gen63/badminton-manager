@@ -548,7 +548,7 @@ export function MainPage() {
                     setNewPlayerName('');
                   }
                 }}
-                placeholder="メンバー名を入力（M/F で性別指定可）"
+                placeholder="名前 M/F"
                 className="input-field flex-1"
               />
               <button
