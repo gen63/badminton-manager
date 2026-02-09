@@ -4,7 +4,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
-import { generateSessionId } from '../lib/utils';
+import { generateSessionId, parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { GYM_OPTIONS } from '../types/session';
 import { Sparkles, Download, Loader2 } from 'lucide-react';
@@ -38,26 +38,6 @@ export function SessionCreate() {
   const [loadingText, setLoadingText] = useState('読み込み中...');
   const [loadError, setLoadError] = useState('');
 
-  // 入力をパース: "名前 レーティング" or "名前\tレーティング" or "名前"
-  const parsePlayerInput = (line: string): { name: string; rating?: number } | null => {
-    const trimmed = line.trim();
-    if (!trimmed) return null;
-
-    // タブまたは2つ以上のスペースで分割
-    const parts = trimmed.split(/\t|\s{2,}/);
-    const name = parts[0].trim();
-    if (!name) return null;
-
-    if (parts.length >= 2) {
-      const ratingStr = parts[parts.length - 1].trim();
-      const rating = parseInt(ratingStr, 10);
-      if (!isNaN(rating)) {
-        return { name, rating };
-      }
-    }
-    return { name };
-  };
-
   const handleLoadFromSheets = async () => {
     const url = gasUrlInput || gasWebAppUrl;
     if (!url) {
@@ -85,8 +65,8 @@ export function SessionCreate() {
     if (playerNames.trim()) {
       const inputs = playerNames
         .split('\n')
-        .map(parsePlayerInput)
-        .filter((input): input is { name: string; rating?: number } => input !== null);
+        .map(line => parsePlayerInput(line))
+        .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
       if (inputs.length > 0) {
         addPlayers(inputs);
       }
@@ -253,13 +233,13 @@ export function SessionCreate() {
               <textarea
                 value={playerNames}
                 onChange={(e) => setPlayerNames(e.target.value)}
-                placeholder="星野真吾&#10;山口裕史&#10;佐野朋美"
+                placeholder={"星野真吾  男  1500\n山口裕史\n佐野朋美  女"}
                 rows={5}
                 className="textarea-field"
                 style={{ WebkitAppearance: 'none' }}
               />
               <p className="text-xs text-gray-400 mt-2">
-                1行に1人ずつ入力してください（任意）
+                1行に1人ずつ入力（スペース2つ区切りで性別・レートも可）
               </p>
             </div>
           </div>

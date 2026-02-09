@@ -529,18 +529,18 @@ export function MainPage() {
                 onChange={(e) => setNewPlayerName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newPlayerName.trim()) {
-                    const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
+                    const parsed = parsePlayerInput(newPlayerName.trim());
                     if (parsed) addPlayers([parsed]);
                     setNewPlayerName('');
                   }
                 }}
-                placeholder="名前 男/女"
+                placeholder="名前  男/女  レート"
                 className="input-field flex-1"
               />
               <button
                 onClick={() => {
                   if (newPlayerName.trim()) {
-                    const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
+                    const parsed = parsePlayerInput(newPlayerName.trim());
                     if (parsed) addPlayers([parsed]);
                     setNewPlayerName('');
                   }
