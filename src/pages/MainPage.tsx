@@ -534,7 +534,7 @@ export function MainPage() {
                     setNewPlayerName('');
                   }
                 }}
-                placeholder="名前 M/F"
+                placeholder="名前 男/女"
                 className="input-field flex-1"
               />
               <button
