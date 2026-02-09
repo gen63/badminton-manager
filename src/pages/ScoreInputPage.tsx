@@ -269,7 +269,7 @@ export function ScoreInputPage() {
       </div>
 
       {/* アクションボタン - 画面下部に固定 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 pb-safe">
+      <div className="fixed bottom-0 left-0 right-0 bg-white p-3 pb-safe">
         <div className="max-w-2xl mx-auto grid grid-cols-2 gap-3">
           <button
             onClick={handleClear}
