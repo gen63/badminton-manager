@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { buildInitialOrder, applyStreakSwaps } from '../lib/algorithm';
+import { parsePlayerInput } from '../lib/utils';
 import { Trash2, UserPlus, Users, ArrowRight } from 'lucide-react';
 
 export function PlayerSelect() {
@@ -21,45 +22,13 @@ export function PlayerSelect() {
     return bPos - aPos;
   });
 
-  // 入力をパース: "名前 性別 レーティング" の組み合わせ（順不同）
-  // 性別: M/F/男/女
-  const parsePlayerInput = (line: string): { name: string; rating?: number; gender?: 'M' | 'F' } | null => {
-    const trimmed = line.trim();
-    if (!trimmed) return null;
-
-    // タブまたは2つ以上のスペースで分割
-    const parts = trimmed.split(/\t|\s{2,}/);
-    const name = parts[0].trim();
-    if (!name) return null;
-
-    let rating: number | undefined;
-    let gender: 'M' | 'F' | undefined;
-
-    for (let i = 1; i < parts.length; i++) {
-      const part = parts[i].trim();
-      const upper = part.toUpperCase();
-      if (upper === 'M' || part === '男') {
-        gender = 'M';
-      } else if (upper === 'F' || part === '女') {
-        gender = 'F';
-      } else {
-        const num = parseInt(part, 10);
-        if (!isNaN(num)) {
-          rating = num;
-        }
-      }
-    }
-
-    return { name, rating, gender };
-  };
-
   const handleAddPlayers = () => {
     if (newPlayerNames.trim()) {
       // 改行で分割して、パース
       const inputs = newPlayerNames
         .split('\n')
-        .map(parsePlayerInput)
-        .filter((input): input is { name: string; rating?: number } => input !== null);
+        .map(line => parsePlayerInput(line))
+        .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
 
       if (inputs.length > 0) {
         addPlayers(inputs);

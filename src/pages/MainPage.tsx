@@ -4,6 +4,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
+import { parsePlayerInput } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
 import { Settings, History, Coffee, Users, ArrowUp, Plus, X, ChevronDown } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -34,21 +35,6 @@ export function MainPage() {
       if (heightLockTimer.current) clearTimeout(heightLockTimer.current);
     };
   }, []);
-
-  // インライン入力のパース（名前の末尾に M/F/男/女 があれば性別として扱う）
-  const parseInlinePlayerInput = (input: string): { name: string; gender?: 'M' | 'F' } => {
-    const parts = input.split(/\s+/);
-    if (parts.length >= 2) {
-      const last = parts[parts.length - 1].toUpperCase();
-      if (last === 'M' || parts[parts.length - 1] === '男') {
-        return { name: parts.slice(0, -1).join(' '), gender: 'M' };
-      }
-      if (last === 'F' || parts[parts.length - 1] === '女') {
-        return { name: parts.slice(0, -1).join(' '), gender: 'F' };
-      }
-    }
-    return { name: input };
-  };
 
   if (!session) {
     navigate('/');
@@ -543,8 +529,8 @@ export function MainPage() {
                 onChange={(e) => setNewPlayerName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newPlayerName.trim()) {
-                    const parsed = parseInlinePlayerInput(newPlayerName.trim());
-                    addPlayers([parsed]);
+                    const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
+                    if (parsed) addPlayers([parsed]);
                     setNewPlayerName('');
                   }
                 }}
@@ -554,8 +540,8 @@ export function MainPage() {
               <button
                 onClick={() => {
                   if (newPlayerName.trim()) {
-                    const parsed = parseInlinePlayerInput(newPlayerName.trim());
-                    addPlayers([parsed]);
+                    const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
+                    if (parsed) addPlayers([parsed]);
                     setNewPlayerName('');
                   }
                 }}
