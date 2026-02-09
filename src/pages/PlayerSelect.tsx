@@ -61,13 +61,13 @@ export function PlayerSelect() {
         <div className="card p-6 mb-4">
           <label className="label">
             名前を入力（1行に1人、複数行で一度に追加できます）
-            <span className="block text-xs text-gray-400 mt-0.5">例: 田中  M  1500</span>
+            <span className="block text-xs text-gray-400 mt-0.5">例: 田中  男  1500</span>
           </label>
           <div className="space-y-3">
             <textarea
               value={newPlayerNames}
               onChange={(e) => setNewPlayerNames(e.target.value)}
-              placeholder="星野真吾  M&#10;佐野朋美  F  1500&#10;山口裕史"
+              placeholder="星野真吾  男&#10;佐野朋美  女  1500&#10;山口裕史"
               rows={6}
               className="textarea-field"
             />

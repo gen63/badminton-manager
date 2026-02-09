@@ -123,7 +123,7 @@ export function membersToText(members: MemberFromSheet[]): string {
   return members
     .map((m) => {
       const parts = [m.name];
-      if (m.gender) parts.push(m.gender);
+      if (m.gender) parts.push(m.gender === 'M' ? '男' : '女');
       if (m.rating != null) parts.push(String(m.rating));
       return parts.join('  ');
     })
