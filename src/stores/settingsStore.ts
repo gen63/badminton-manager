@@ -6,6 +6,8 @@ interface SettingsState {
   setGasWebAppUrl: (url: string) => void;
   useStayDurationPriority: boolean;
   setUseStayDurationPriority: (value: boolean) => void;
+  continuousMatchMode: boolean;
+  setContinuousMatchMode: (value: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -15,6 +17,8 @@ export const useSettingsStore = create<SettingsState>()(
       setGasWebAppUrl: (url) => set({ gasWebAppUrl: url }),
       useStayDurationPriority: true,
       setUseStayDurationPriority: (value) => set({ useStayDurationPriority: value }),
+      continuousMatchMode: true,
+      setContinuousMatchMode: (value) => set({ continuousMatchMode: value }),
     }),
     {
       name: 'badminton-settings',

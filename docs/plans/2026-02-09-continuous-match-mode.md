@@ -97,25 +97,20 @@ const handleContinuousNext = (courtId: number) => {
 
 ### UI変更
 
-#### 設定ページ（SettingsPage.tsx）
-
-「コート設定」セクション内にON/OFFトグルを追加：
-
-```
-連続試合モード
-[ON] [OFF]
-試合終了時に自動で次の試合を配置・開始します
-```
-
 #### メインページ（MainPage.tsx）
 
-連続試合モードがONの時、ヘッダーに小さなバッジを表示して状態を視覚化する。
+ヘッダーの「一括配置」ボタンの左に「連続」ボタンを配置。
+単一ボタンの状態変化でON/OFFを表現する：
+
+- **OFF**: 通常のセカンダリボタンスタイル（グレー系）
+- **ON**: 緑背景+白文字でアクティブ状態を視覚化
+
+アイコン: Repeat（リピートアイコン）
 
 ## 変更対象ファイル
 
 1. `src/stores/settingsStore.ts` - 設定追加
-2. `src/pages/MainPage.tsx` - 自動配置ロジック追加
-3. `src/pages/SettingsPage.tsx` - トグルUI追加
+2. `src/pages/MainPage.tsx` - ボタンUI + 自動配置ロジック追加
 
 ## スコープ外
 
