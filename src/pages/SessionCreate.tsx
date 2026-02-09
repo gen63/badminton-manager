@@ -27,7 +27,7 @@ export function SessionCreate() {
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
   const setGasWebAppUrl = useSettingsStore((state) => state.setGasWebAppUrl);
-  const [gasUrlInput, setGasUrlInput] = useState('');
+  const [gasUrlInput, setGasUrlInput] = useState(gasWebAppUrl);
 
   const [courtCount, setCourtCount] = useState(3);
   const [targetScore, setTargetScore] = useState(15);
@@ -59,7 +59,7 @@ export function SessionCreate() {
   };
 
   const handleLoadFromSheets = async () => {
-    const url = gasWebAppUrl || gasUrlInput;
+    const url = gasUrlInput || gasWebAppUrl;
     if (!url) {
       setLoadError('GAS Web App URLを入力してください');
       return;
@@ -216,20 +216,18 @@ export function SessionCreate() {
               練習参加メンバー
             </label>
             <div className="mb-2">
-              {!gasWebAppUrl && (
-                <div className="mb-2 max-w-[240px]">
-                  <input
-                    type="url"
-                    value={gasUrlInput}
-                    onChange={(e) => setGasUrlInput(e.target.value)}
-                    placeholder="https://script.google.com/macros/s/..."
-                    className="input-field min-h-[44px] text-sm"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">
-                    GAS Web App URLを入力
-                  </p>
-                </div>
-              )}
+              <div className="mb-2 max-w-[240px]">
+                <input
+                  type="url"
+                  value={gasUrlInput}
+                  onChange={(e) => setGasUrlInput(e.target.value)}
+                  placeholder="https://script.google.com/macros/s/..."
+                  className="input-field min-h-[44px] text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  GAS Web App URLを入力
+                </p>
+              </div>
               <button
                 onClick={handleLoadFromSheets}
                 disabled={isLoadingMembers}

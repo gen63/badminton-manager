@@ -11,7 +11,7 @@ interface SettingsState {
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      gasWebAppUrl: 'https://script.google.com/macros/s/AKfycbyW2kn3h7UrLE3Bb8mxjnsfCCiEOsbBvBpmqR9aY0XY6pu-CYh2-pmWZJbah7ahpW-SgQ/exec',
+      gasWebAppUrl: 'https://script.google.com/macros/s/AKfycbz4sCGJS-6aXtkzTYrrtpNBQRGJBwE2DmONwOBGhFLy4XZjOWMySjDi768yscdF0n6IWA/exec',
       setGasWebAppUrl: (url) => set({ gasWebAppUrl: url }),
       useStayDurationPriority: true,
       setUseStayDurationPriority: (value) => set({ useStayDurationPriority: value }),
