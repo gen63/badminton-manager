@@ -160,46 +160,61 @@ export function ScoreInputPage() {
             </div>
           )}
 
-          <div className="space-y-2">
-            {/* 上のペア（縦並び） */}
-            <div className="bg-gray-50 rounded-xl p-2">
-              <div className="space-y-1.5">
-                {match.teamA.map((playerId, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handlePlayerTap(idx)}
-                    className={`w-full min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                      selectedPlayer?.position === idx
-                        ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                        : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
-                    }`}
-                  >
-                    {getPlayerName(playerId)}
-                  </button>
-                ))}
-              </div>
-            </div>
+          {/* A  VS  C */}
+          {/* B      D */}
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3 gap-y-1.5">
+            {/* A */}
+            <button
+              onClick={() => handlePlayerTap(0)}
+              className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                selectedPlayer?.position === 0
+                  ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
+                  : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
+              }`}
+            >
+              {getPlayerName(match.teamA[0])}
+            </button>
 
-            <div className="text-center text-gray-400 text-xs">vs</div>
+            {/* VS */}
+            <span className="text-gray-400 font-bold text-xs row-span-2 self-center">VS</span>
 
-            {/* 下のペア（縦並び） */}
-            <div className="bg-gray-50 rounded-xl p-2">
-              <div className="space-y-1.5">
-                {match.teamB.map((playerId, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handlePlayerTap(idx + 2)}
-                    className={`w-full min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                      selectedPlayer?.position === idx + 2
-                        ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                        : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
-                    }`}
-                  >
-                    {getPlayerName(playerId)}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* C */}
+            <button
+              onClick={() => handlePlayerTap(2)}
+              className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                selectedPlayer?.position === 2
+                  ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
+                  : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
+              }`}
+            >
+              {getPlayerName(match.teamB[0])}
+            </button>
+
+            {/* B */}
+            <button
+              onClick={() => handlePlayerTap(1)}
+              className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                selectedPlayer?.position === 1
+                  ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
+                  : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
+              }`}
+            >
+              {getPlayerName(match.teamA[1])}
+            </button>
+
+            {/* (VSのrow-span-2で埋まる) */}
+
+            {/* D */}
+            <button
+              onClick={() => handlePlayerTap(3)}
+              className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                selectedPlayer?.position === 3
+                  ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
+                  : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
+              }`}
+            >
+              {getPlayerName(match.teamB[1])}
+            </button>
           </div>
         </div>
 
