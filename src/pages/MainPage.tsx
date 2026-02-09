@@ -35,6 +35,21 @@ export function MainPage() {
     };
   }, []);
 
+  // インライン入力のパース（名前の末尾に M/F/男/女 があれば性別として扱う）
+  const parseInlinePlayerInput = (input: string): { name: string; gender?: 'M' | 'F' } => {
+    const parts = input.split(/\s+/);
+    if (parts.length >= 2) {
+      const last = parts[parts.length - 1].toUpperCase();
+      if (last === 'M' || parts[parts.length - 1] === '男') {
+        return { name: parts.slice(0, -1).join(' '), gender: 'M' };
+      }
+      if (last === 'F' || parts[parts.length - 1] === '女') {
+        return { name: parts.slice(0, -1).join(' '), gender: 'F' };
+      }
+    }
+    return { name: input };
+  };
+
   if (!session) {
     navigate('/');
     return null;
@@ -152,6 +167,10 @@ export function MainPage() {
 
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '未設定';
+  };
+
+  const getPlayerGender = (playerId: string): 'M' | 'F' | undefined => {
+    return players.find((p) => p.id === playerId)?.gender;
   };
 
   const getPlayerGamesPlayed = (playerId: string) => {
@@ -372,6 +391,7 @@ export function MainPage() {
                 court={court}
                 getPlayerName={getPlayerName}
                 getPlayerGamesPlayed={getPlayerGamesPlayed}
+                getPlayerGender={getPlayerGender}
                 onStartGame={() => handleStartGame(court.id)}
                 onFinishGame={() => handleFinishGame(court.id)}
                 onAutoAssign={() => handleAutoAssign(court.id)}
@@ -474,7 +494,10 @@ export function MainPage() {
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
                       className={`player-pill cursor-pointer max-w-[200px] ${
-                        isSelected ? 'player-pill-selected' : ''
+                        isSelected ? 'player-pill-selected'
+                        : player.gender === 'M' ? 'player-pill-male'
+                        : player.gender === 'F' ? 'player-pill-female'
+                        : ''
                       }`}
                     >
                       <span className="text-gray-800 font-medium min-w-0 overflow-hidden flex-1 player-name-court">
@@ -520,17 +543,19 @@ export function MainPage() {
                 onChange={(e) => setNewPlayerName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newPlayerName.trim()) {
-                    addPlayers([{ name: newPlayerName.trim() }]);
+                    const parsed = parseInlinePlayerInput(newPlayerName.trim());
+                    addPlayers([parsed]);
                     setNewPlayerName('');
                   }
                 }}
-                placeholder="メンバー名を入力"
+                placeholder="メンバー名を入力（M/F で性別指定可）"
                 className="input-field flex-1"
               />
               <button
                 onClick={() => {
                   if (newPlayerName.trim()) {
-                    addPlayers([{ name: newPlayerName.trim() }]);
+                    const parsed = parseInlinePlayerInput(newPlayerName.trim());
+                    addPlayers([parsed]);
                     setNewPlayerName('');
                   }
                 }}
@@ -562,6 +587,8 @@ export function MainPage() {
                         className={`player-pill cursor-pointer max-w-[200px] ${
                           isSelected
                             ? 'player-pill-selected'
+                            : player.gender === 'M' ? 'player-pill-male'
+                            : player.gender === 'F' ? 'player-pill-female'
                             : 'bg-orange-50 border-orange-200'
                         }`}
                       >

@@ -21,8 +21,9 @@ export function PlayerSelect() {
     return bPos - aPos;
   });
 
-  // 入力をパース: "名前 レーティング" or "名前\tレーティング" or "名前"
-  const parsePlayerInput = (line: string): { name: string; rating?: number } | null => {
+  // 入力をパース: "名前 レーティング 性別" の組み合わせ
+  // 性別: M/F/男/女
+  const parsePlayerInput = (line: string): { name: string; rating?: number; gender?: 'M' | 'F' } | null => {
     const trimmed = line.trim();
     if (!trimmed) return null;
 
@@ -31,14 +32,25 @@ export function PlayerSelect() {
     const name = parts[0].trim();
     if (!name) return null;
 
-    if (parts.length >= 2) {
-      const ratingStr = parts[parts.length - 1].trim();
-      const rating = parseInt(ratingStr, 10);
-      if (!isNaN(rating)) {
-        return { name, rating };
+    let rating: number | undefined;
+    let gender: 'M' | 'F' | undefined;
+
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i].trim();
+      const upper = part.toUpperCase();
+      if (upper === 'M' || part === '男') {
+        gender = 'M';
+      } else if (upper === 'F' || part === '女') {
+        gender = 'F';
+      } else {
+        const num = parseInt(part, 10);
+        if (!isNaN(num)) {
+          rating = num;
+        }
       }
     }
-    return { name };
+
+    return { name, rating, gender };
   };
 
   const handleAddPlayers = () => {
@@ -80,6 +92,7 @@ export function PlayerSelect() {
         <div className="card p-6 mb-4">
           <label className="label">
             名前を入力（1行に1人、複数行で一度に追加できます）
+            <span className="block text-xs text-gray-400 mt-0.5">性別: 名前の後に M/F または 男/女</span>
           </label>
           <div className="space-y-3">
             <textarea
@@ -122,7 +135,11 @@ export function PlayerSelect() {
               {sortedPlayers.map((player) => (
                 <div
                   key={player.id}
-                  className="player-pill"
+                  className={`player-pill ${
+                    player.gender === 'M' ? 'player-pill-male'
+                    : player.gender === 'F' ? 'player-pill-female'
+                    : ''
+                  }`}
                 >
                   <span className="font-medium text-gray-800 text-sm truncate">
                     {player.name}

@@ -2,6 +2,7 @@ export interface Player {
   id: string;
   name: string;
   rating?: number;
+  gender?: 'M' | 'F';
   isResting: boolean;
   gamesPlayed: number;
   lastPlayedAt: number | null;
