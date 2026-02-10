@@ -19,7 +19,7 @@
 
 ## 採用アプローチ: フルUndo/Redo（C案）
 
-フルスナップショット方式で最大3回のUndo/Redoを提供。
+フルスナップショット方式で最大50回のUndo/Redoを提供。
 
 ### 検討した他の案
 
@@ -35,7 +35,7 @@
 | 項目 | 仕様 |
 |---|---|
 | 対象操作 | 試合終了のみ |
-| Undo回数 | 最大3回 |
+| Undo回数 | 最大50回 |
 | Redo | あり（Undo後に新しい試合終了でRedo履歴クリア） |
 | 永続化 | localStorage（Zustand persist） |
 | UI | ヘッダーにUndo/Redoボタン |
@@ -62,7 +62,7 @@ interface UndoEntry {
 - players: ~2KB
 - courts: ~0.6KB
 - matchHistory: ~7.5KB
-- 1エントリ: ~10KB × 3 = ~30KB（localStorage的に問題なし）
+- 1エントリ: ~10KB × 50 = ~500KB（localStorage的に問題なし）
 
 ### 2. undoStore（新規ストア）
 
@@ -70,8 +70,8 @@ gameStore / playerStore とは独立した専用ストアを新設。
 
 ```typescript
 interface UndoState {
-  undoStack: UndoEntry[];  // 最大3
-  redoStack: UndoEntry[];  // 最大3
+  undoStack: UndoEntry[];  // 最大50
+  redoStack: UndoEntry[];  // 最大50
 
   // アクション
   pushUndo: (entry: UndoEntry) => void;  // undoStack に追加、redoStack クリア
@@ -135,7 +135,7 @@ MainPage ヘッダーに Undo/Redo ボタンを配置：
 | ケース | 対応 |
 |---|---|
 | Undo後に試合終了 | 通常通りスナップショット取得。redoStack クリア |
-| 4回目の試合終了 | undoStack の oldest を drop して push（FIFO） |
+| 51回目の試合終了 | undoStack の oldest を drop して push（FIFO） |
 | 連続モードで自動配置された試合のUndo | フルスナップショットなので自動配置前の状態に丸ごと戻る |
 | 複数コート同時終了 | 各終了が順番にスナップショットを push |
 | アプリリロード | localStorage から復元。Undo/Redo 可能 |
