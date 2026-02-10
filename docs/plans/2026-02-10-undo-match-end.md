@@ -71,7 +71,8 @@ const snapshot: UndoEntry = {
 - players: ~2KB
 - courts: ~0.6KB
 - matchHistory: ~7.5KB
-- 1エントリ: ~10KB × 50 = ~500KB（localStorage的に問題なし）
+- 1エントリ: ~10KB（セッション後半はmatchHistory増加で ~20KB）
+- 50エントリ合計: ~500KB〜1MB（localStorage 5MB制限に対して十分余裕あり）
 
 ### 2. undoStore（新規ストア）
 
@@ -149,7 +150,7 @@ MainPage ヘッダーに Undo/Redo ボタンを配置：
 | 連続モードで自動配置された試合のUndo | フルスナップショットなので自動配置前の状態に丸ごと戻る |
 | 複数コート同時終了 | 各終了が順番にスナップショットを push |
 | アプリリロード | localStorage から復元。Undo/Redo 可能 |
-| セッションクリア時 | undoStack/redoStack も clearAll() |
+| セッションクリア時 | `SettingsPage.tsx` の既存クリア処理（L58-60）に `undoStore.clearAll()` を追加 |
 | Undo中に別の操作（休憩切替等） | Undo対象は試合終了のみなので、他の操作はundo/redoに影響しない ※注意点あり（後述） |
 
 ### 6. 注意点: フルスナップショットの制約
@@ -218,6 +219,7 @@ Undoすると**自動開始された試合も消えて、元の試合が進行�
 | `src/types/undo.ts`（新規） | UndoEntry 型定義 |
 | `src/stores/undoStore.ts`（新規） | Undo/Redo ストア |
 | `src/pages/MainPage.tsx` | スナップショット取得、ヘッダーUI、Undo/Redo呼び出し |
+| `src/pages/SettingsPage.tsx` | セッションクリア時に `undoStore.clearAll()` 追加 |
 
-既存ファイルの変更は `MainPage.tsx` のみ。
+既存ファイルの変更は `MainPage.tsx` と `SettingsPage.tsx`。
 新規ファイル2つはいずれも小規模。
