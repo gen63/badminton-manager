@@ -1,7 +1,7 @@
 # 試合終了の取り消し機能（Undo Match End）
 
 **日付**: 2026-02-10
-**ステータス**: 計画中
+**ステータス**: 確定
 
 ---
 
@@ -17,140 +17,167 @@
 
 取り消す手段がなく、手動でのリカバリーが困難。
 
-## 採用アプローチ: 取り消しトースト（B案）
+## 採用アプローチ: フルUndo/Redo（C案）
 
-「終了」実行後に一定時間「元に戻す」ボタン付きトーストを表示。
-タップで直前の試合終了を巻き戻す。
+フルスナップショット方式で最大3回のUndo/Redoを提供。
 
-### 不採用案
+### 検討した他の案
 
 | 案 | 理由 |
 |---|---|
 | A: 確認ダイアログ | 毎回の操作に摩擦。連続モードの思想と矛盾 |
-| C: フルUndo履歴 | 改修規模が大きすぎる。現状の課題に対してオーバー |
+| B: 取り消しトースト（1回のみ） | 機能として弱い。複数回の誤操作に対応できない |
+
+---
+
+## 確定仕様
+
+| 項目 | 仕様 |
+|---|---|
+| 対象操作 | 試合終了のみ |
+| Undo回数 | 最大3回 |
+| Redo | あり（Undo後に新しい試合終了でRedo履歴クリア） |
+| 永続化 | localStorage（Zustand persist） |
+| UI | ヘッダーにUndo/Redoボタン |
+| スナップショット方式 | フルスナップショット（courts + players + matchHistory を丸ごと保存） |
 
 ---
 
 ## 設計
 
-### 1. 巻き戻し用スナップショット（gameStore に追加）
+### 1. スナップショット方式
+
+試合終了の**前に**、関連する全ストアの状態を丸ごと保存する。
 
 ```typescript
-interface UndoSnapshot {
-  // 終了した試合の情報
-  match: Match;
-  courtId: number;
-  // 終了前のコート状態（復元用）
-  previousCourt: Court;
-  // 終了前の各プレイヤー状態（復元用）
-  previousPlayers: Array<{
-    id: string;
-    gamesPlayed: number;
-    lastPlayedAt: number | null;
-    isResting: boolean;
-  }>;
-  // 連続モードで自動配置された場合の情報
-  autoAssigned?: {
-    courtId: number;
-    newCourt: Court;  // 自動配置後のコート状態
-    // 自動開始されたので、これもリセットが必要
-  };
+interface UndoEntry {
+  courts: Court[];
+  players: Player[];
+  matchHistory: Match[];
+  timestamp: number;  // スナップショット取得時刻
 }
 ```
 
-gameStore に追加するステート・アクション：
+メモリ見積もり（選手20人・試合50件・コート3面）：
+- players: ~2KB
+- courts: ~0.6KB
+- matchHistory: ~7.5KB
+- 1エントリ: ~10KB × 3 = ~30KB（localStorage的に問題なし）
+
+### 2. undoStore（新規ストア）
+
+gameStore / playerStore とは独立した専用ストアを新設。
 
 ```typescript
-interface GameState {
-  // 既存...
+interface UndoState {
+  undoStack: UndoEntry[];  // 最大3
+  redoStack: UndoEntry[];  // 最大3
 
-  // 追加
-  undoSnapshot: UndoSnapshot | null;
-
-  // 追加アクション
-  setUndoSnapshot: (snapshot: UndoSnapshot | null) => void;
-  clearUndoSnapshot: () => void;
+  // アクション
+  pushUndo: (entry: UndoEntry) => void;  // undoStack に追加、redoStack クリア
+  undo: () => void;                       // undoStack から pop、復元、redoStack に push
+  redo: () => void;                       // redoStack から pop、復元、undoStack に push
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+  clearAll: () => void;
 }
 ```
 
-### 2. handleFinishGame の修正（MainPage.tsx）
+persist設定：
+- `name: 'undo-storage'`
+- localStorage に保存（通常のストアと同じ）
 
-試合終了処理の **前に** スナップショットを取得・保存：
-
-```
-1. スナップショット取得（現在のコート状態、4人のプレイヤー状態）
-2. 既存の試合終了処理を実行
-3. 連続モード自動配置を実行（実行された場合、スナップショットに追記）
-4. undoSnapshot をストアに保存
-5. トースト表示（「元に戻す」ボタン付き、5秒間）
-```
-
-### 3. undoMatchEnd アクション
-
-「元に戻す」ボタンタップ時の処理：
+### 3. Undo/Redo フロー
 
 ```
-1. undoSnapshot を読み取り
-2. matchHistory から該当 match を削除
-3. 4人のプレイヤー状態を復元（gamesPlayed, lastPlayedAt, isResting）
-4. コート状態を復元（previousCourt）
-5. 自動配置が行われていた場合：
-   a. 自動配置されたコートをリセット（teams, isPlaying を戻す）
-   b. 自動配置で選ばれた新しい4人のプレイヤー状態も復元
-      （gamesPlayed は変わっていないが、コートに配置された状態を解除）
-6. undoSnapshot をクリア
-7. トースト「試合終了を取り消しました」
+【試合終了時】
+1. 現在の状態をスナップショット: { courts, players, matchHistory }
+2. undoStack.push(snapshot)  ※3件超えたら oldest を drop
+3. redoStack = []  ※新しい操作でRedo履歴クリア
+4. 既存の試合終了処理を実行
+5. （連続モード時）自動配置＋自動開始
+
+【Undo時】
+1. 現在の状態をスナップショット
+2. redoStack.push(現在の状態)
+3. undoStack.pop() → 復元対象
+4. gameStore.setState({ courts, matchHistory })
+5. playerStore.setState({ players })
+6. トースト「試合終了を取り消しました」
+
+【Redo時】
+1. 現在の状態をスナップショット
+2. undoStack.push(現在の状態)
+3. redoStack.pop() → 復元対象
+4. gameStore.setState({ courts, matchHistory })
+5. playerStore.setState({ players })
+6. トースト「試合終了をやり直しました」
 ```
 
-### 4. トーストUI の拡張
+### 4. ヘッダーUI
 
-既存の `Toast.tsx` / `useToast.ts` を拡張：
-
-- `action` プロパティ追加: `{ label: string; onClick: () => void }`
-- 表示時間: 5秒（通常トーストより長め）
-- アクションボタンタップ時はトースト即閉じ
+MainPage ヘッダーに Undo/Redo ボタンを配置：
 
 ```
-┌──────────────────────────────────────┐
-│  試合を終了しました    [元に戻す]     │
-└──────────────────────────────────────┘
+┌─────────────────────────────────────────┐
+│  ↩  ↪  │  バドミントン管理  │  連続 ⚙  │
+│ undo redo                               │
+└─────────────────────────────────────────┘
 ```
+
+- `↩` Undoボタン: `undoStack.length > 0` で活性化、それ以外はグレーアウト
+- `↪` Redoボタン: `redoStack.length > 0` で活性化、それ以外はグレーアウト
+- アイコン: lucide-react の `Undo2` / `Redo2`
+- タップターゲット: 44px以上（DESIGN.md準拠）
 
 ### 5. エッジケース
 
 | ケース | 対応 |
 |---|---|
-| トースト表示中に別コートの試合終了 | 前のスナップショットを破棄し新しいものに置き換え。1回分のみ保持 |
-| トースト表示中にアプリリロード | スナップショットは persist しない。リロードで消失（許容） |
-| 元に戻した後、再度「終了」 | 通常通り終了処理。新しいスナップショットが作られる |
-| 連続モード OFF で誤操作 | 同様にトースト表示。自動配置部分がないだけ |
-| スコア入力後の終了 | スコアも含めてスナップショットに保存。復元時にスコアも戻る |
+| Undo後に試合終了 | 通常通りスナップショット取得。redoStack クリア |
+| 4回目の試合終了 | undoStack の oldest を drop して push（FIFO） |
+| 連続モードで自動配置された試合のUndo | フルスナップショットなので自動配置前の状態に丸ごと戻る |
+| 複数コート同時終了 | 各終了が順番にスナップショットを push |
+| アプリリロード | localStorage から復元。Undo/Redo 可能 |
+| セッションクリア時 | undoStack/redoStack も clearAll() |
+| Undo中に別の操作（休憩切替等） | Undo対象は試合終了のみなので、他の操作はundo/redoに影響しない ※注意点あり（後述） |
+
+### 6. 注意点: フルスナップショットの制約
+
+フルスナップショットはUndo時に **players の全状態** を復元する。
+そのため、試合終了後にプレイヤーの休憩状態を手動で変更した場合、
+Undoするとその手動変更も巻き戻される。
+
+→ これは許容する。Undoは「その時点の状態に完全に戻す」という明確なセマンティクス。
+→ UIでUndo時にトーストで通知すれば、ユーザーは何が起きたか理解できる。
 
 ---
 
 ## 実装ステップ
 
-### Step 1: Toast の拡張
-- `useToast` にアクションボタン対応を追加
-- `Toast.tsx` にボタンUIを追加
+### Step 1: UndoEntry 型定義
+- `src/types/undo.ts` に `UndoEntry` インターフェースを定義
 
-### Step 2: UndoSnapshot 型定義と gameStore 拡張
-- 型定義を `types/` に追加
-- `gameStore` に `undoSnapshot` と関連アクションを追加
-- persist 対象外にする（`partialize` で除外）
+### Step 2: undoStore 作成
+- `src/stores/undoStore.ts` を新規作成
+- `undoStack` / `redoStack` / アクション実装
+- Zustand persist 設定
 
-### Step 3: スナップショット取得ロジック
-- `handleFinishGame` の冒頭でスナップショットを作成
-- 連続モード自動配置後に `autoAssigned` を追記
+### Step 3: handleFinishGame にスナップショット取得を追加
+- `MainPage.tsx` の試合終了処理の冒頭でスナップショット取得
+- `undoStore.pushUndo()` 呼び出し
 
-### Step 4: undoMatchEnd の実装
-- ストア状態の巻き戻しロジック
-- プレイヤー状態の復元
-- コート状態の復元
+### Step 4: Undo/Redo ロジック実装
+- `undoStore.undo()`: gameStore / playerStore の状態を復元
+- `undoStore.redo()`: 同上
 
-### Step 5: UI統合
-- 試合終了時にアクション付きトーストを表示
-- 「元に戻す」ボタンから `undoMatchEnd` を呼び出し
+### Step 5: ヘッダーUI
+- MainPage ヘッダーに Undo/Redo ボタン追加
+- 活性/非活性の制御
+- トースト通知
+
+### Step 6: ビルド確認
+- `npm run build` で型エラー・ビルドエラーがないことを確認
 
 ---
 
@@ -158,10 +185,9 @@ interface GameState {
 
 | ファイル | 変更内容 |
 |---|---|
-| `src/types/court.ts` または新規 `types/undo.ts` | UndoSnapshot 型定義 |
-| `src/stores/gameStore.ts` | undoSnapshot ステート・アクション追加 |
-| `src/hooks/useToast.ts` | アクションボタン対応 |
-| `src/components/Toast.tsx` | ボタンUI追加 |
-| `src/pages/MainPage.tsx` | スナップショット取得・トースト表示・undo呼び出し |
+| `src/types/undo.ts`（新規） | UndoEntry 型定義 |
+| `src/stores/undoStore.ts`（新規） | Undo/Redo ストア |
+| `src/pages/MainPage.tsx` | スナップショット取得、ヘッダーUI、Undo/Redo呼び出し |
 
-新規ファイルの追加は最小限（型定義のみ、場合により既存ファイルに追記）。
+既存ファイルの変更は `MainPage.tsx` のみ。
+新規ファイル2つはいずれも小規模。
