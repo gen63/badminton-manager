@@ -6,10 +6,11 @@ import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Settings, History, Coffee, Users, ArrowUp, Plus, X, ChevronDown, Repeat } from 'lucide-react';
+import { Settings, History, Coffee, Users, ArrowUp, Plus, X, ChevronDown, Repeat, Undo2, Redo2 } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { CourtCard } from '../components/CourtCard';
+import { useUndoStore } from '../stores/undoStore';
 
 export function MainPage() {
   const navigate = useNavigate();
@@ -18,6 +19,7 @@ export function MainPage() {
   const { courts, matchHistory, updateCourt, startGame, finishGame } =
     useGameStore();
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode } = useSettingsStore();
+  const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
   const toast = useToast();
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;
@@ -118,6 +120,14 @@ export function MainPage() {
     const court = courts.find((c) => c.id === courtId);
     if (!court) return;
 
+    // Undo用スナップショットを取得（試合終了処理の前に）
+    pushUndo({
+      courts: structuredClone(useGameStore.getState().courts),
+      players: structuredClone(usePlayerStore.getState().players),
+      matchHistory: structuredClone(useGameStore.getState().matchHistory),
+      timestamp: Date.now(),
+    });
+
     finishGame(courtId, court.scoreA, court.scoreB);
 
     // プレイヤーの統計を更新
@@ -209,6 +219,18 @@ export function MainPage() {
           ? error.message
           : '自動配置に失敗しました'
       );
+    }
+  };
+
+  const handleUndo = () => {
+    if (undo()) {
+      toast.success('試合終了を取り消しました');
+    }
+  };
+
+  const handleRedo = () => {
+    if (redo()) {
+      toast.success('試合終了をやり直しました');
     }
   };
 
@@ -403,6 +425,22 @@ export function MainPage() {
       <div className="header-gradient text-gray-800 p-3">
         <div className="max-w-6xl mx-auto flex items-center justify-end">
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleUndo}
+              disabled={undoStack.length === 0}
+              aria-label="元に戻す"
+              className="icon-btn disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Undo2 size={20} />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={redoStack.length === 0}
+              aria-label="やり直す"
+              className="icon-btn disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Redo2 size={20} />
+            </button>
             <button
               onClick={() => setContinuousMatchMode(!continuousMatchMode)}
               className={`rounded-full text-sm flex items-center gap-1.5 px-3 py-1.5 transition-all duration-200 ${

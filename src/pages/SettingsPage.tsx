@@ -4,6 +4,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useUndoStore } from '../stores/undoStore';
 import { GYM_OPTIONS } from '../types/session';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
 import { ArrowLeft, Trash2, Users, Settings as SettingsIcon, Clock, MapPin, Upload, Loader2 } from 'lucide-react';
@@ -17,6 +18,7 @@ export function SettingsPage() {
   const { clearPlayers } = usePlayerStore();
   const { matchHistory, clearHistory, initializeCourts } = useGameStore();
   const { gasWebAppUrl, setGasWebAppUrl, useStayDurationPriority, setUseStayDurationPriority } = useSettingsStore();
+  const { clearAll: clearUndo } = useUndoStore();
   const toast = useToast();
   const [isUploading, setIsUploading] = useState(false);
 
@@ -57,6 +59,7 @@ export function SettingsPage() {
   const handleReset = () => {
     clearHistory();
     clearPlayers();
+    clearUndo();
     clearSession();
     navigate('/');
   };
