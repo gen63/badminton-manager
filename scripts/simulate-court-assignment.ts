@@ -673,6 +673,372 @@ for (const pt of probTables) {
   );
 }
 
+// ============================
+// テスト12a: 完全固定 + 隣接グループ借用方式
+// ============================
+console.log('\n### テスト12a: 完全固定 + 隣接グループ段階的借用（14-21人、100回平均）');
+console.log('  ロジック: home groupでデッドロック → 隣接グループの境界メンバーを1人ずつ追加\n');
+
+function simulate3CourtsWithBorrowing(
+  totalPlayers: number,
+  rounds: number,
+): {
+  crossGroupCount: number;
+  deadlockCount: number;
+  sameGroupRepeatCount: number;
+  playerStats: Map<string, { games: number; courts: Map<number, number> }>;
+  borrowDetails: { courtId: number; borrowed: number; round: number }[];
+} {
+  const groupSize = Math.floor(totalPlayers / 3);
+  const remainder = totalPlayers % 3;
+  const upperSize = groupSize;
+  const middleSize = groupSize + remainder;
+  const lowerSize = groupSize;
+
+  const players: SimPlayer[] = [];
+  for (let i = 0; i < upperSize; i++) {
+    players.push({ id: `U${i + 1}`, name: `Upper${i + 1}`, rating: 2000 - i * 50, group: 'upper', gamesPlayed: 0 });
+  }
+  for (let i = 0; i < middleSize; i++) {
+    players.push({ id: `M${i + 1}`, name: `Middle${i + 1}`, rating: 1500 - i * 50, group: 'middle', gamesPlayed: 0 });
+  }
+  for (let i = 0; i < lowerSize; i++) {
+    players.push({ id: `L${i + 1}`, name: `Lower${i + 1}`, rating: 1000 - i * 50, group: 'lower', gamesPlayed: 0 });
+  }
+
+  const matchHistory: SimMatch[] = [];
+  let crossGroupCount = 0;
+  let deadlockCount = 0;
+  let sameGroupRepeatCount = 0;
+  const borrowDetails: { courtId: number; borrowed: number; round: number }[] = [];
+
+  const playerStats = new Map<string, { games: number; courts: Map<number, number> }>();
+  for (const p of players) {
+    playerStats.set(p.id, { games: 0, courts: new Map() });
+  }
+
+  // 序列順（rating降順、全プレイヤー）
+  const globalOrder = [...players].sort((a, b) => b.rating - a.rating).map(p => p.id);
+
+  const results: SimMatch[][] = [];
+
+  for (let round = 0; round < rounds; round++) {
+    const usedPlayers = new Set<string>();
+    const roundMatches: SimMatch[] = [];
+
+    for (let courtId = 1; courtId <= 3; courtId++) {
+      const courtGroup = courtId === 1 ? 'upper' : courtId === 2 ? 'middle' : 'lower';
+
+      // Step 1: homeグループのみ
+      const homeGroup = players.filter(p =>
+        p.group === courtGroup && !usedPlayers.has(p.id)
+      );
+      homeGroup.sort((a, b) => a.gamesPlayed - b.gamesPlayed);
+
+      // 隣接グループの候補（序列的に近い順）
+      const adjacentCandidates: SimPlayer[] = [];
+      if (courtGroup === 'upper') {
+        // middle の上位（序列順で upper に近い）
+        const middlePlayers = players
+          .filter(p => p.group === 'middle' && !usedPlayers.has(p.id))
+          .sort((a, b) => b.rating - a.rating); // rating高い順（upperに近い）
+        adjacentCandidates.push(...middlePlayers);
+      } else if (courtGroup === 'lower') {
+        // middle の下位（序列順で lower に近い）
+        const middlePlayers = players
+          .filter(p => p.group === 'middle' && !usedPlayers.has(p.id))
+          .sort((a, b) => a.rating - b.rating); // rating低い順（lowerに近い）
+        adjacentCandidates.push(...middlePlayers);
+      } else {
+        // middle: upper の下位 + lower の上位
+        const upperBottom = players
+          .filter(p => p.group === 'upper' && !usedPlayers.has(p.id))
+          .sort((a, b) => a.rating - b.rating); // rating低い順（middleに近い）
+        const lowerTop = players
+          .filter(p => p.group === 'lower' && !usedPlayers.has(p.id))
+          .sort((a, b) => b.rating - a.rating); // rating高い順（middleに近い）
+        // 交互に追加
+        const maxLen = Math.max(upperBottom.length, lowerTop.length);
+        for (let i = 0; i < maxLen; i++) {
+          if (i < upperBottom.length) adjacentCandidates.push(upperBottom[i]);
+          if (i < lowerTop.length) adjacentCandidates.push(lowerTop[i]);
+        }
+      }
+
+      // 段階的に候補を拡大
+      let bestCombo: string[] | null = null;
+      let borrowedCount = 0;
+
+      for (let expand = 0; expand <= adjacentCandidates.length; expand++) {
+        const candidates = [...homeGroup];
+        if (expand > 0) {
+          candidates.push(...adjacentCandidates.slice(0, expand));
+        }
+        candidates.sort((a, b) => a.gamesPlayed - b.gamesPlayed);
+
+        if (candidates.length < 4) continue;
+
+        // 組み合わせ探索
+        let localBest: string[] | null = null;
+        let localBestScore = Infinity;
+
+        for (const combo of combinations4(candidates.map(p => p.id))) {
+          if (hasSimilarRecentMatch(combo, matchHistory)) continue;
+
+          let score = 0;
+          for (const pid of combo) {
+            const p = players.find(pl => pl.id === pid)!;
+            score += p.gamesPlayed;
+            // 非homeグループにペナルティ
+            if (p.group !== courtGroup) score += 3;
+          }
+          if (score < localBestScore) {
+            localBestScore = score;
+            localBest = combo;
+          }
+        }
+
+        if (localBest) {
+          bestCombo = localBest;
+          borrowedCount = expand;
+          break;
+        }
+      }
+
+      if (!bestCombo) {
+        deadlockCount++;
+        // 最終フォールバック
+        const allAvailable = players
+          .filter(p => !usedPlayers.has(p.id))
+          .sort((a, b) => a.gamesPlayed - b.gamesPlayed);
+        bestCombo = allAvailable.slice(0, 4).map(p => p.id);
+      }
+
+      if (borrowedCount > 0) {
+        borrowDetails.push({ courtId, borrowed: borrowedCount, round: round + 1 });
+      }
+
+      // 統計
+      for (const pid of bestCombo) {
+        const p = players.find(pl => pl.id === pid)!;
+        if (p.group !== courtGroup) crossGroupCount++;
+        usedPlayers.add(pid);
+        p.gamesPlayed++;
+        const stat = playerStats.get(pid)!;
+        stat.games++;
+        stat.courts.set(courtId, (stat.courts.get(courtId) ?? 0) + 1);
+      }
+
+      // 前ラウンド比較
+      if (round > 0 && results[round - 1]) {
+        const prevMatch = results[round - 1].find(m => m.courtId === courtId);
+        if (prevMatch) {
+          const overlap = bestCombo.filter(id => prevMatch.players.includes(id));
+          if (overlap.length === 4) sameGroupRepeatCount++;
+        }
+      }
+
+      matchHistory.unshift({ courtId, players: bestCombo, round: round + 1 });
+      roundMatches.push({ courtId, players: bestCombo, round: round + 1 });
+    }
+    results.push(roundMatches);
+  }
+
+  return { crossGroupCount, deadlockCount, sameGroupRepeatCount, playerStats, borrowDetails };
+}
+
+console.log('  人数  グループ   crossGroup deadlock sameRepeat  借用発生回数  公平性(stddev)');
+console.log('  ' + '-'.repeat(80));
+
+for (let n = 14; n <= 21; n++) {
+  const groupSize = Math.floor(n / 3);
+  const remainder = n % 3;
+  const groupLabel = `${groupSize}/${groupSize + remainder}/${groupSize}`;
+
+  let totalCross = 0, totalDead = 0, totalRepeat = 0, totalBorrow = 0, totalStddev = 0;
+  const trials = 100;
+
+  for (let t = 0; t < trials; t++) {
+    const result = simulate3CourtsWithBorrowing(n, 20);
+    totalCross += result.crossGroupCount;
+    totalDead += result.deadlockCount;
+    totalRepeat += result.sameGroupRepeatCount;
+    totalBorrow += result.borrowDetails.length;
+
+    const games = Array.from(result.playerStats.values()).map(s => s.games);
+    const avg = games.reduce((a, b) => a + b, 0) / games.length;
+    const stddev = Math.sqrt(games.reduce((s, g) => s + (g - avg) ** 2, 0) / games.length);
+    totalStddev += stddev;
+  }
+
+  console.log(
+    `  ${String(n).padStart(2)}人  ${groupLabel.padEnd(9)} ` +
+    `${(totalCross / trials).toFixed(1).padStart(10)} ` +
+    `${(totalDead / trials).toFixed(1).padStart(8)} ` +
+    `${(totalRepeat / trials).toFixed(1).padStart(10)} ` +
+    `${(totalBorrow / trials).toFixed(1).padStart(12)} ` +
+    `${(totalStddev / trials).toFixed(2).padStart(14)}`
+  );
+}
+
+// 借用の詳細（21人1回分）
+console.log('\n  --- 21人、借用方式 1回分の詳細 ---');
+const detail21 = simulate3CourtsWithBorrowing(21, 20);
+if (detail21.borrowDetails.length === 0) {
+  console.log('  借用なし（全ラウンドhomeグループ内で解決）');
+} else {
+  for (const b of detail21.borrowDetails) {
+    const courtName = b.courtId === 1 ? 'C1(upper)' : b.courtId === 2 ? 'C2(middle)' : 'C3(lower)';
+    console.log(`  R${String(b.round).padStart(2)} ${courtName}: 隣接${b.borrowed}人追加で解決`);
+  }
+}
+
+// 固定(0.90)方式との比較表
+console.log('\n  --- 方式比較（21人、100回平均）---');
+{
+  // 固定(0.90)
+  let c1 = 0, d1 = 0, s1 = 0, sd1 = 0;
+  for (let t = 0; t < 100; t++) {
+    const r = simulate3Courts(21, 20, newProb);
+    c1 += r.crossGroupCount; d1 += r.deadlockCount; s1 += r.sameGroupRepeatCount;
+    const games = Array.from(r.playerStats.values()).map(s => s.games);
+    const avg = games.reduce((a, b) => a + b, 0) / games.length;
+    sd1 += Math.sqrt(games.reduce((s, g) => s + (g - avg) ** 2, 0) / games.length);
+  }
+  // 借用方式
+  let c2 = 0, d2 = 0, s2 = 0, sd2 = 0, borrow2 = 0;
+  for (let t = 0; t < 100; t++) {
+    const r = simulate3CourtsWithBorrowing(21, 20);
+    c2 += r.crossGroupCount; d2 += r.deadlockCount; s2 += r.sameGroupRepeatCount;
+    borrow2 += r.borrowDetails.length;
+    const games = Array.from(r.playerStats.values()).map(s => s.games);
+    const avg = games.reduce((a, b) => a + b, 0) / games.length;
+    sd2 += Math.sqrt(games.reduce((s, g) => s + (g - avg) ** 2, 0) / games.length);
+  }
+  console.log(`  固定(0.90)     : cross=${(c1/100).toFixed(1)} deadlock=${(d1/100).toFixed(1)} repeat=${(s1/100).toFixed(1)} stddev=${(sd1/100).toFixed(2)}`);
+  console.log(`  借用方式        : cross=${(c2/100).toFixed(1)} deadlock=${(d2/100).toFixed(1)} repeat=${(s2/100).toFixed(1)} borrow=${(borrow2/100).toFixed(1)} stddev=${(sd2/100).toFixed(2)}`);
+}
+
+// ============================
+// テスト12: 14-21人 × 確率テーブル比較（100回試行平均）
+// ============================
+console.log('\n### テスト12: 14-21人 × 確率テーブル比較（3コート、20ラウンド、100回平均）');
+console.log('  ※グループサイズ = [upper, middle, lower]\n');
+
+const probConfigs = [
+  { name: '現行(分散)',   prob: currentProb },
+  { name: '固定(0.90)',  prob: newProb },
+  { name: '完全固定',    prob: fixedProb },
+];
+
+console.log('  人数  グループ   方式              crossGroup deadlock sameRepeat  公平性(stddev)');
+console.log('  ' + '-'.repeat(85));
+
+for (let n = 14; n <= 21; n++) {
+  const groupSize = Math.floor(n / 3);
+  const remainder = n % 3;
+  const upperSize = groupSize;
+  const middleSize = groupSize + remainder;
+  const lowerSize = groupSize;
+  const groupLabel = `${upperSize}/${middleSize}/${lowerSize}`;
+
+  for (const cfg of probConfigs) {
+    let totalCross = 0, totalDead = 0, totalRepeat = 0;
+    let totalStddev = 0;
+
+    const trials = 100;
+    for (let t = 0; t < trials; t++) {
+      const result = simulate3Courts(n, 20, cfg.prob);
+      totalCross += result.crossGroupCount;
+      totalDead += result.deadlockCount;
+      totalRepeat += result.sameGroupRepeatCount;
+
+      // 公平性
+      const games = Array.from(result.playerStats.values()).map(s => s.games);
+      const avg = games.reduce((a, b) => a + b, 0) / games.length;
+      const stddev = Math.sqrt(games.reduce((s, g) => s + (g - avg) ** 2, 0) / games.length);
+      totalStddev += stddev;
+    }
+
+    console.log(
+      `  ${String(n).padStart(2)}人  ${groupLabel.padEnd(9)} ` +
+      `${cfg.name.padEnd(16)} ` +
+      `${(totalCross / trials).toFixed(1).padStart(10)} ` +
+      `${(totalDead / trials).toFixed(1).padStart(8)} ` +
+      `${(totalRepeat / trials).toFixed(1).padStart(10)} ` +
+      `${(totalStddev / trials).toFixed(2).padStart(14)}`
+    );
+  }
+  console.log('');
+}
+
+// ============================
+// テスト13: 14-21人 単独グループのデッドロック検証
+// ============================
+console.log('\n### テスト13: 各グループサイズでのデッドロック検証（30ラウンド）');
+console.log('  ※ 3コートの最小グループサイズ（upper/lower）に該当\n');
+
+for (let size = 4; size <= 8; size++) {
+  const results = [];
+  for (const p of params) {
+    const result = simulateFixedGroup(size, 30, p.recent, p.threshold);
+    results.push({
+      label: p.label,
+      deadlock: result.deadlockRound,
+    });
+  }
+  console.log(`  ${size}人グループ:`);
+  for (const r of results) {
+    const status = r.deadlock ? `デッドロック@R${r.deadlock}` : '30ラウンドOK';
+    console.log(`    ${r.label.padEnd(25)}: ${status}`);
+  }
+  console.log('');
+}
+
+// ============================
+// テスト14: 14-21人 × 性別パターン（固定0.90、100回平均）
+// ============================
+console.log('\n### テスト14: 14-21人 × 女性3割（固定0.90、20ラウンド、100回平均）');
+console.log('  ※ 女性を各グループに均等に近く配分\n');
+
+console.log('  人数  グループ   F配分     MIX率  同性率  3-1率  crossGroup  deadlock');
+console.log('  ' + '-'.repeat(75));
+
+for (let n = 14; n <= 21; n++) {
+  const groupSize = Math.floor(n / 3);
+  const remainder = n % 3;
+  const sizes = [groupSize, groupSize + remainder, groupSize];
+  const groupLabel = `${sizes[0]}/${sizes[1]}/${sizes[2]}`;
+
+  // 女性3割（均等分配）
+  const totalFemale = Math.round(n * 0.3);
+  const fPerGroup = Math.floor(totalFemale / 3);
+  const fRemainder = totalFemale % 3;
+  const femalePattern = [fPerGroup, fPerGroup + fRemainder, fPerGroup];
+  const fLabel = femalePattern.join('/');
+
+  let totalMix = 0, totalSame = 0, totalUnbal = 0, totalCross = 0, totalDead = 0;
+  const trials = 100;
+  for (let t = 0; t < trials; t++) {
+    const r = simulate3CourtsWithGender(n, 20, newProb, femalePattern);
+    totalMix += r.mixRate;
+    totalSame += r.sameGenderRate;
+    totalUnbal += r.unbalancedRate;
+    totalCross += r.crossGroupCount;
+    totalDead += r.deadlockCount;
+  }
+
+  console.log(
+    `  ${String(n).padStart(2)}人  ${groupLabel.padEnd(9)} ` +
+    `F:${fLabel.padEnd(7)} ` +
+    `${((totalMix / trials) * 100).toFixed(0).padStart(4)}% ` +
+    `${((totalSame / trials) * 100).toFixed(0).padStart(5)}% ` +
+    `${((totalUnbal / trials) * 100).toFixed(0).padStart(5)}% ` +
+    `${(totalCross / trials).toFixed(1).padStart(10)} ` +
+    `${(totalDead / trials).toFixed(1).padStart(8)}`
+  );
+}
+
 console.log('\n' + '='.repeat(70));
 console.log('シミュレーション完了');
 console.log('='.repeat(70));
