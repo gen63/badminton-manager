@@ -48,6 +48,7 @@
 ### 1. スナップショット方式
 
 試合終了の**前に**、関連する全ストアの状態を丸ごと保存する。
+**必ず `structuredClone()` でディープコピーすること。** 参照を保存すると後続のストア変更でスナップショットが壊れる。
 
 ```typescript
 interface UndoEntry {
@@ -56,6 +57,14 @@ interface UndoEntry {
   matchHistory: Match[];
   timestamp: number;  // スナップショット取得時刻
 }
+
+// スナップショット取得例
+const snapshot: UndoEntry = {
+  courts: structuredClone(useGameStore.getState().courts),
+  players: structuredClone(usePlayerStore.getState().players),
+  matchHistory: structuredClone(useGameStore.getState().matchHistory),
+  timestamp: Date.now(),
+};
 ```
 
 メモリ見積もり（選手20人・試合50件・コート3面）：
@@ -75,11 +84,12 @@ interface UndoState {
 
   // アクション
   pushUndo: (entry: UndoEntry) => void;  // undoStack に追加、redoStack クリア
-  undo: () => void;                       // undoStack から pop、復元、redoStack に push
-  redo: () => void;                       // redoStack から pop、復元、undoStack に push
+  undo: () => void;                       // undoStack から pop → gameStore/playerStore を復元 → redoStack に push
+  redo: () => void;                       // redoStack から pop → gameStore/playerStore を復元 → undoStack に push
   canUndo: () => boolean;
   canRedo: () => boolean;
   clearAll: () => void;
+  // ※ undo() / redo() 内で useGameStore.setState() / usePlayerStore.setState() を呼ぶ（クロスストア依存）
 }
 ```
 
@@ -92,7 +102,7 @@ persist設定：
 ```
 【試合終了時】
 1. 現在の状態をスナップショット: { courts, players, matchHistory }
-2. undoStack.push(snapshot)  ※3件超えたら oldest を drop
+2. undoStack.push(snapshot)  ※50件超えたら oldest を drop
 3. redoStack = []  ※新しい操作でRedo履歴クリア
 4. 既存の試合終了処理を実行
 5. （連続モード時）自動配置＋自動開始
@@ -144,12 +154,32 @@ MainPage ヘッダーに Undo/Redo ボタンを配置：
 
 ### 6. 注意点: フルスナップショットの制約
 
-フルスナップショットはUndo時に **players の全状態** を復元する。
-そのため、試合終了後にプレイヤーの休憩状態を手動で変更した場合、
-Undoするとその手動変更も巻き戻される。
+フルスナップショットはUndo時に **全ストア状態** をスナップショット時点に復元する。
+そのため、試合終了後〜Undo実行までの間に行われた**他の操作も巻き戻される**。
+
+具体的に巻き戻される操作の例：
+- プレイヤーの休憩状態の手動切替
+- **プレイヤーの新規追加**（追加したプレイヤーが消える）
+- **プレイヤーの削除**（削除したプレイヤーが復活する）
+- コートへの手動配置
 
 → これは許容する。Undoは「その時点の状態に完全に戻す」という明確なセマンティクス。
 → UIでUndo時にトーストで通知すれば、ユーザーは何が起きたか理解できる。
+
+### 7. 注意点: 連続モードで進行中の試合に対するUndo
+
+連続モードでは試合終了後に自動で次の試合が開始される。
+Undoすると**自動開始された試合も消えて、元の試合が進行中の状態に戻る**。
+
+```
+例:
+  コート1: 試合A進行中 → 終了 → 試合B自動開始（進行中）
+  Undo → コート1: 試合A進行中に戻る（試合Bは消える）
+```
+
+試合Bがしばらく進行してからUndoされると混乱する可能性があるが、
+これはフルスナップショット方式の意図通りの動作。
+ユーザーが意識的にUndoボタンを押す操作なので許容する。
 
 ---
 
