@@ -453,6 +453,25 @@ function getGenderPenalty(
 }
 
 /**
+ * セッション通算で同じ4人の組み合わせが繰り返される場合のペナルティ
+ * 2回目までは許容、3回目以降は強いペナルティを加算
+ */
+function getComboRepeatPenalty(
+  comboIds: string[],
+  matchHistory: Match[],
+  oneGameDelta: number
+): number {
+  const key = [...comboIds].sort().join(',');
+  let count = 0;
+  for (const match of matchHistory) {
+    const matchKey = [...match.teamA, ...match.teamB].sort().join(',');
+    if (matchKey === key) count++;
+  }
+  // 3回目以降を強く回避（2回までは許容）
+  return count >= 2 ? oneGameDelta * 3 : 0;
+}
+
+/**
  * 候補から制約を満たす最適な4人の組み合わせを探索
  * グリーディではなく全組み合わせを探索し、優先スコア合計が最小の有効な組を返す
  * 有効な組が見つからない場合は制約を緩和して上位4人を返す
@@ -499,7 +518,8 @@ function selectBestFour(
           if (!isValid(ids)) continue;
 
           const s = combo.reduce((sum, p) => sum + playerScore(p), 0)
-            + getGenderPenalty(combo, oneGameDelta);
+            + getGenderPenalty(combo, oneGameDelta)
+            + getComboRepeatPenalty(ids, matchHistory, oneGameDelta);
 
           if (s < bestScore) {
             bestScore = s;

@@ -1349,6 +1349,243 @@ for (const n of [14, 16, 18, 21]) {
   console.log(`  ${n}人: groupSize=${gs}, ceil(gs/2)=${ceil2}(${Math.ceil(gs / ceil2)}敗で越え), ceil(gs/3)=${ceil3}(${Math.ceil(gs / ceil3)}敗で越え)`);
 }
 
+// ============================
+// テスト16: 組み合わせ繰り返し検証（3回以上同じ4人組の出現頻度）
+// ============================
+console.log('\n### テスト16: 組み合わせ繰り返し検証（借用+敗北降下、100回平均、20ラウンド）');
+console.log('  同じ4人の組が何回出現するかをセッション通算で計測\n');
+
+function simulate3CourtsComboRepeat(
+  totalPlayers: number,
+  rounds: number,
+  useComboRepeatPenalty: boolean,
+): {
+  comboRepeat3plus: number;  // 3回以上出現した組み合わせ数
+  comboRepeat2: number;      // 2回出現した組み合わせ数
+  maxRepeat: number;         // 最大繰り返し回数
+  deadlockCount: number;
+  borrowCount: number;
+  stddev: number;
+} {
+  const order: string[] = [];
+  const streaks = new Map<string, number>();
+  const gamesPlayed = new Map<string, number>();
+
+  const groupSize = Math.floor(totalPlayers / 3);
+  const remainder = totalPlayers % 3;
+  const upperSize = groupSize;
+  const middleSize = groupSize + remainder;
+
+  for (let i = 0; i < totalPlayers; i++) {
+    const id = `P${i + 1}`;
+    order.push(id);
+    streaks.set(id, 0);
+    gamesPlayed.set(id, 0);
+  }
+
+  // 全試合の組み合わせ（comboKey → 出現回数）
+  const comboCount = new Map<string, number>();
+  const matchHistory: SimMatch[] = [];
+  let deadlockCount = 0;
+  let borrowCount = 0;
+
+  function getGroup(playerId: string): 'upper' | 'middle' | 'lower' {
+    const idx = order.indexOf(playerId);
+    if (idx < upperSize) return 'upper';
+    if (idx < upperSize + middleSize) return 'middle';
+    return 'lower';
+  }
+
+  for (let round = 0; round < rounds; round++) {
+    const usedPlayers = new Set<string>();
+    const roundMatches: SimMatch[] = [];
+
+    for (let courtId = 1; courtId <= 3; courtId++) {
+      const courtGroup = courtId === 1 ? 'upper' : courtId === 2 ? 'middle' : 'lower';
+
+      const homeGroup = order
+        .filter(id => getGroup(id) === courtGroup && !usedPlayers.has(id))
+        .map(id => ({ id, gamesPlayed: gamesPlayed.get(id) ?? 0 }));
+      homeGroup.sort((a, b) => a.gamesPlayed - b.gamesPlayed);
+
+      const adjacentCandidates: { id: string; gamesPlayed: number }[] = [];
+      if (courtGroup === 'upper') {
+        adjacentCandidates.push(
+          ...order
+            .filter(id => getGroup(id) === 'middle' && !usedPlayers.has(id))
+            .map(id => ({ id, gamesPlayed: gamesPlayed.get(id) ?? 0 }))
+        );
+      } else if (courtGroup === 'lower') {
+        adjacentCandidates.push(
+          ...order
+            .filter(id => getGroup(id) === 'middle' && !usedPlayers.has(id))
+            .map(id => ({ id, gamesPlayed: gamesPlayed.get(id) ?? 0 }))
+            .reverse()
+        );
+      } else {
+        const up = order
+          .filter(id => getGroup(id) === 'upper' && !usedPlayers.has(id))
+          .map(id => ({ id, gamesPlayed: gamesPlayed.get(id) ?? 0 }))
+          .reverse();
+        const lo = order
+          .filter(id => getGroup(id) === 'lower' && !usedPlayers.has(id))
+          .map(id => ({ id, gamesPlayed: gamesPlayed.get(id) ?? 0 }));
+        const maxLen = Math.max(up.length, lo.length);
+        for (let i = 0; i < maxLen; i++) {
+          if (i < up.length) adjacentCandidates.push(up[i]);
+          if (i < lo.length) adjacentCandidates.push(lo[i]);
+        }
+      }
+
+      let bestCombo: string[] | null = null;
+      let borrowed = 0;
+
+      for (let expand = 0; expand <= adjacentCandidates.length; expand++) {
+        const candidates = [...homeGroup];
+        if (expand > 0) {
+          candidates.push(...adjacentCandidates.slice(0, expand));
+        }
+        candidates.sort((a, b) => a.gamesPlayed - b.gamesPlayed);
+        if (candidates.length < 4) continue;
+
+        let localBest: string[] | null = null;
+        let localBestScore = Infinity;
+
+        for (const combo of combinations4(candidates.map(c => c.id))) {
+          if (hasSimilarRecentMatch(combo, matchHistory)) continue;
+          let score = 0;
+          for (const pid of combo) {
+            score += gamesPlayed.get(pid) ?? 0;
+            if (getGroup(pid) !== courtGroup) score += 3;
+          }
+
+          // 組み合わせ繰り返しペナルティ
+          if (useComboRepeatPenalty) {
+            const comboKey = [...combo].sort().join(',');
+            const cnt = comboCount.get(comboKey) ?? 0;
+            if (cnt >= 2) {
+              score += 10; // 3回目以降を強く回避
+            }
+          }
+
+          if (score < localBestScore) {
+            localBestScore = score;
+            localBest = combo;
+          }
+        }
+
+        if (localBest) {
+          bestCombo = localBest;
+          borrowed = expand;
+          break;
+        }
+      }
+
+      if (!bestCombo) {
+        deadlockCount++;
+        const allAvailable = order
+          .filter(id => !usedPlayers.has(id))
+          .sort((a, b) => (gamesPlayed.get(a) ?? 0) - (gamesPlayed.get(b) ?? 0));
+        bestCombo = allAvailable.slice(0, 4);
+      }
+
+      if (borrowed > 0) borrowCount++;
+
+      // 組み合わせカウント
+      const comboKey = [...bestCombo].sort().join(',');
+      comboCount.set(comboKey, (comboCount.get(comboKey) ?? 0) + 1);
+
+      for (const pid of bestCombo) {
+        usedPlayers.add(pid);
+        gamesPlayed.set(pid, (gamesPlayed.get(pid) ?? 0) + 1);
+      }
+
+      matchHistory.unshift({ courtId, players: bestCombo, round: round + 1 });
+      roundMatches.push({ courtId, players: bestCombo, round: round + 1 });
+    }
+
+    // 勝敗シミュレート + 序列変動
+    for (const match of roundMatches) {
+      const winners = Math.random() < 0.5
+        ? [match.players[0], match.players[1]]
+        : [match.players[2], match.players[3]];
+      const losers = match.players.filter(id => !winners.includes(id));
+
+      for (const id of winners) {
+        const prev = streaks.get(id) ?? 0;
+        const newStreak = prev > 0 ? prev + 1 : 1;
+        streaks.set(id, newStreak);
+        const idx = order.indexOf(id);
+        const currentGroupSize = Math.max(1, Math.floor(order.length / 3));
+        if (newStreak >= 2 && newStreak % 2 === 0) {
+          const newIdx = Math.max(0, idx - currentGroupSize);
+          if (newIdx < idx) { order.splice(idx, 1); order.splice(newIdx, 0, id); }
+        } else {
+          if (idx > 0) { order.splice(idx, 1); order.splice(idx - 1, 0, id); }
+        }
+      }
+
+      const currentGroupSize = Math.max(1, Math.floor(order.length / 3));
+      const dropAmount = Math.max(1, Math.ceil(currentGroupSize / 2));
+      for (const id of losers) {
+        streaks.set(id, 0);
+        const idx = order.indexOf(id);
+        const newIdx = Math.min(order.length - 1, idx + dropAmount);
+        if (newIdx > idx) { order.splice(idx, 1); order.splice(newIdx, 0, id); }
+      }
+    }
+  }
+
+  // 統計
+  let comboRepeat2 = 0;
+  let comboRepeat3plus = 0;
+  let maxRepeat = 0;
+  for (const [, count] of comboCount) {
+    if (count >= 3) comboRepeat3plus++;
+    if (count === 2) comboRepeat2++;
+    if (count > maxRepeat) maxRepeat = count;
+  }
+
+  const games = Array.from(gamesPlayed.values());
+  const avg = games.reduce((a, b) => a + b, 0) / games.length;
+  const stddev = Math.sqrt(games.reduce((s, g) => s + (g - avg) ** 2, 0) / games.length);
+
+  return { comboRepeat3plus, comboRepeat2, maxRepeat, deadlockCount, borrowCount, stddev };
+}
+
+console.log('  人数  方式                   2回組  3回+組  最大繰返  dead  borrow  公平性');
+console.log('  ' + '-'.repeat(80));
+
+for (const n of [14, 16, 18, 21]) {
+  for (const usePenalty of [false, true]) {
+    const label = usePenalty ? 'ペナルティあり' : 'ペナルティなし';
+
+    let total2 = 0, total3plus = 0, totalMax = 0, totalDead = 0, totalBorrow = 0, totalStddev = 0;
+    const trials = 100;
+
+    for (let t = 0; t < trials; t++) {
+      const r = simulate3CourtsComboRepeat(n, 20, usePenalty);
+      total2 += r.comboRepeat2;
+      total3plus += r.comboRepeat3plus;
+      totalMax = Math.max(totalMax, r.maxRepeat);
+      totalDead += r.deadlockCount;
+      totalBorrow += r.borrowCount;
+      totalStddev += r.stddev;
+    }
+
+    console.log(
+      `  ${String(n).padStart(2)}人  ${label.padEnd(20)} ` +
+      `${(total2 / trials).toFixed(1).padStart(5)} ` +
+      `${(total3plus / trials).toFixed(1).padStart(6)} ` +
+      `${String(totalMax).padStart(8)} ` +
+      `${(totalDead / trials).toFixed(1).padStart(5)} ` +
+      `${(totalBorrow / trials).toFixed(1).padStart(7)} ` +
+      `${(totalStddev / trials).toFixed(2).padStart(7)}`
+    );
+  }
+  console.log('');
+}
+
 console.log('\n' + '='.repeat(70));
 console.log('シミュレーション完了');
 console.log('='.repeat(70));

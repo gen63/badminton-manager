@@ -68,6 +68,31 @@ const eligible = emptyCourtIds.some(courtId => {
 
 借用発生時のスキルバランス保護として引き続き有効。
 
+### 6. 同一組み合わせ3回以上の回避
+
+セッション通算で同じ4人の組み合わせが3回目以上になる場合、ペナルティを加算して回避する。
+
+- `matchHistory` からコンボの出現回数を算出（`[...teamA, ...teamB]` をソートしてキー化）
+- 2回目までは許容、**3回目以降は `oneGameDelta * 3` のペナルティ**
+- ハード禁止ではなくペナルティ方式 → 他に有効な組がなければ3回目も許容（デッドロック回避）
+- 借用フォールバックと連動: ペナルティにより選ばれなかった場合 → 自然に借用が発動
+
+```typescript
+function getComboRepeatPenalty(
+  comboIds: string[],
+  matchHistory: Match[],
+  oneGameDelta: number
+): number {
+  const key = [...comboIds].sort().join(',');
+  let count = 0;
+  for (const match of matchHistory) {
+    const matchKey = [...match.teamA, ...match.teamB].sort().join(',');
+    if (matchKey === key) count++;
+  }
+  return count >= 2 ? oneGameDelta * 3 : 0;
+}
+```
+
 ---
 
 ## シミュレーション結果（21人、100回平均、20ラウンド）
@@ -92,7 +117,9 @@ const eligible = emptyCourtIds.some(courtId => {
 | `src/lib/algorithm.ts` | sortWaitingPlayers 判定調整 |
 | `src/lib/algorithm.test.ts` | テスト更新 |
 
-変更不要: `selectBestFour`, `formTeams`, `assign2CourtsHolistic`, `hasIsolatedExtreme`, `getGenderPenalty`
+| `src/lib/algorithm.ts` | 組み合わせ繰り返しペナルティ追加（selectBestFour） |
+
+変更不要: `formTeams`, `assign2CourtsHolistic`, `hasIsolatedExtreme`, `getGenderPenalty`
 
 ---
 
