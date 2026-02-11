@@ -1039,6 +1039,316 @@ for (let n = 14; n <= 21; n++) {
   );
 }
 
+// ============================
+// テスト15: 借用方式 + 敗北時降下（序列変動あり）
+// ============================
+console.log('\n### テスト15: 借用方式 + 敗北時降下（14-21人、100回平均、20ラウンド）');
+console.log('  勝利: 1つ上、2連勝でgroupSizeジャンプ');
+console.log('  敗北: ceil(groupSize/2)下がる（≒2連敗で境界越え）');
+console.log('  試合結果: 50%ランダム勝敗\n');
+
+function simulate3CourtsWithStreaks(
+  totalPlayers: number,
+  rounds: number,
+  dropMode: 'none' | 'ceil2' | 'ceil3',
+): {
+  crossGroupCount: number;
+  deadlockCount: number;
+  borrowCount: number;
+  playerStats: Map<string, { games: number; courts: Map<number, number> }>;
+  groupChanges: number; // グループ境界を越えた回数
+  uniqueOpponents: Map<string, Set<string>>; // 各プレイヤーが対戦した相手の集合
+} {
+  // 序列（全プレイヤーのID配列、rating降順）
+  const order: string[] = [];
+  const streaks = new Map<string, number>();
+  const gamesPlayed = new Map<string, number>();
+
+  const groupSize = Math.floor(totalPlayers / 3);
+  const remainder = totalPlayers % 3;
+  const upperSize = groupSize;
+  const middleSize = groupSize + remainder;
+  const lowerSize = groupSize;
+
+  // 初期化
+  for (let i = 0; i < upperSize; i++) {
+    const id = `P${i + 1}`;
+    order.push(id);
+    streaks.set(id, 0);
+    gamesPlayed.set(id, 0);
+  }
+  for (let i = 0; i < middleSize; i++) {
+    const id = `P${upperSize + i + 1}`;
+    order.push(id);
+    streaks.set(id, 0);
+    gamesPlayed.set(id, 0);
+  }
+  for (let i = 0; i < lowerSize; i++) {
+    const id = `P${upperSize + middleSize + i + 1}`;
+    order.push(id);
+    streaks.set(id, 0);
+    gamesPlayed.set(id, 0);
+  }
+
+  const matchHistory: SimMatch[] = [];
+  let crossGroupCount = 0;
+  let deadlockCount = 0;
+  let borrowCount = 0;
+  let groupChanges = 0;
+
+  const playerStats = new Map<string, { games: number; courts: Map<number, number> }>();
+  const uniqueOpponents = new Map<string, Set<string>>();
+  for (const id of order) {
+    playerStats.set(id, { games: 0, courts: new Map() });
+    uniqueOpponents.set(id, new Set());
+  }
+
+  // グループ判定関数
+  function getGroup(playerId: string): 'upper' | 'middle' | 'lower' {
+    const idx = order.indexOf(playerId);
+    if (idx < upperSize) return 'upper';
+    if (idx < upperSize + middleSize) return 'middle';
+    return 'lower';
+  }
+
+  const results: SimMatch[][] = [];
+
+  for (let round = 0; round < rounds; round++) {
+    // 現在の序列からグループを計算
+    const prevGroups = new Map<string, string>();
+    for (const id of order) {
+      prevGroups.set(id, getGroup(id));
+    }
+
+    const usedPlayers = new Set<string>();
+    const roundMatches: SimMatch[] = [];
+
+    for (let courtId = 1; courtId <= 3; courtId++) {
+      const courtGroup = courtId === 1 ? 'upper' : courtId === 2 ? 'middle' : 'lower';
+
+      // homeグループのプレイヤー
+      const homeGroup = order
+        .filter(id => getGroup(id) === courtGroup && !usedPlayers.has(id))
+        .map(id => ({ id, gamesPlayed: gamesPlayed.get(id) ?? 0 }));
+      homeGroup.sort((a, b) => a.gamesPlayed - b.gamesPlayed);
+
+      // 隣接グループ候補
+      const adjacentCandidates: { id: string; gamesPlayed: number }[] = [];
+      if (courtGroup === 'upper') {
+        const mid = order
+          .filter(id => getGroup(id) === 'middle' && !usedPlayers.has(id))
+          .map(id => ({ id, gamesPlayed: gamesPlayed.get(id) ?? 0 }));
+        adjacentCandidates.push(...mid);
+      } else if (courtGroup === 'lower') {
+        const mid = order
+          .filter(id => getGroup(id) === 'middle' && !usedPlayers.has(id))
+          .map(id => ({ id, gamesPlayed: gamesPlayed.get(id) ?? 0 }))
+          .reverse();
+        adjacentCandidates.push(...mid);
+      } else {
+        const up = order
+          .filter(id => getGroup(id) === 'upper' && !usedPlayers.has(id))
+          .map(id => ({ id, gamesPlayed: gamesPlayed.get(id) ?? 0 }))
+          .reverse();
+        const lo = order
+          .filter(id => getGroup(id) === 'lower' && !usedPlayers.has(id))
+          .map(id => ({ id, gamesPlayed: gamesPlayed.get(id) ?? 0 }));
+        const maxLen = Math.max(up.length, lo.length);
+        for (let i = 0; i < maxLen; i++) {
+          if (i < up.length) adjacentCandidates.push(up[i]);
+          if (i < lo.length) adjacentCandidates.push(lo[i]);
+        }
+      }
+
+      // 段階的借用
+      let bestCombo: string[] | null = null;
+      let borrowed = 0;
+
+      for (let expand = 0; expand <= adjacentCandidates.length; expand++) {
+        const candidates = [...homeGroup];
+        if (expand > 0) {
+          candidates.push(...adjacentCandidates.slice(0, expand));
+        }
+        candidates.sort((a, b) => a.gamesPlayed - b.gamesPlayed);
+        if (candidates.length < 4) continue;
+
+        let localBest: string[] | null = null;
+        let localBestScore = Infinity;
+
+        for (const combo of combinations4(candidates.map(c => c.id))) {
+          if (hasSimilarRecentMatch(combo, matchHistory)) continue;
+          let score = 0;
+          for (const pid of combo) {
+            score += gamesPlayed.get(pid) ?? 0;
+            if (getGroup(pid) !== courtGroup) score += 3;
+          }
+          if (score < localBestScore) {
+            localBestScore = score;
+            localBest = combo;
+          }
+        }
+
+        if (localBest) {
+          bestCombo = localBest;
+          borrowed = expand;
+          break;
+        }
+      }
+
+      if (!bestCombo) {
+        deadlockCount++;
+        const allAvailable = order
+          .filter(id => !usedPlayers.has(id))
+          .sort((a, b) => (gamesPlayed.get(a) ?? 0) - (gamesPlayed.get(b) ?? 0));
+        bestCombo = allAvailable.slice(0, 4);
+      }
+
+      if (borrowed > 0) borrowCount++;
+
+      for (const pid of bestCombo) {
+        if (getGroup(pid) !== courtGroup) crossGroupCount++;
+        usedPlayers.add(pid);
+        gamesPlayed.set(pid, (gamesPlayed.get(pid) ?? 0) + 1);
+        const stat = playerStats.get(pid)!;
+        stat.games++;
+        stat.courts.set(courtId, (stat.courts.get(courtId) ?? 0) + 1);
+        // 対戦相手を記録
+        for (const opp of bestCombo) {
+          if (opp !== pid) uniqueOpponents.get(pid)!.add(opp);
+        }
+      }
+
+      matchHistory.unshift({ courtId, players: bestCombo, round: round + 1 });
+      roundMatches.push({ courtId, players: bestCombo, round: round + 1 });
+    }
+    results.push(roundMatches);
+
+    // ---- 試合結果をシミュレート（50%ランダム勝敗） ----
+    for (const match of roundMatches) {
+      // 2vs2: 前半2人 vs 後半2人、ランダムでどちらが勝つか
+      const winners = Math.random() < 0.5
+        ? [match.players[0], match.players[1]]
+        : [match.players[2], match.players[3]];
+      const losers = match.players.filter(id => !winners.includes(id));
+
+      // 勝者の序列変動
+      for (const id of winners) {
+        const prev = streaks.get(id) ?? 0;
+        const newStreak = prev > 0 ? prev + 1 : 1;
+        streaks.set(id, newStreak);
+
+        const idx = order.indexOf(id);
+        const currentGroupSize = Math.max(1, Math.floor(order.length / 3));
+        if (newStreak >= 2 && newStreak % 2 === 0) {
+          const newIdx = Math.max(0, idx - currentGroupSize);
+          if (newIdx < idx) {
+            order.splice(idx, 1);
+            order.splice(newIdx, 0, id);
+          }
+        } else {
+          if (idx > 0) {
+            order.splice(idx, 1);
+            order.splice(idx - 1, 0, id);
+          }
+        }
+      }
+
+      // 敗者の序列変動
+      const currentGroupSize = Math.max(1, Math.floor(order.length / 3));
+      let dropAmount = 0;
+      if (dropMode === 'ceil2') {
+        dropAmount = Math.max(1, Math.ceil(currentGroupSize / 2));
+      } else if (dropMode === 'ceil3') {
+        dropAmount = Math.max(1, Math.ceil(currentGroupSize / 3));
+      }
+
+      for (const id of losers) {
+        streaks.set(id, 0);
+        if (dropAmount > 0) {
+          const idx = order.indexOf(id);
+          const newIdx = Math.min(order.length - 1, idx + dropAmount);
+          if (newIdx > idx) {
+            order.splice(idx, 1);
+            order.splice(newIdx, 0, id);
+          }
+        }
+      }
+    }
+
+    // グループ変更カウント
+    for (const id of order) {
+      const prevGroup = prevGroups.get(id);
+      const newGroup = getGroup(id);
+      if (prevGroup !== newGroup) groupChanges++;
+    }
+  }
+
+  return { crossGroupCount, deadlockCount, borrowCount, playerStats, groupChanges, uniqueOpponents };
+}
+
+// dropMode比較
+const dropModes: { mode: 'none' | 'ceil2' | 'ceil3'; label: string }[] = [
+  { mode: 'none', label: '敗北移動なし(現行)' },
+  { mode: 'ceil3', label: '敗北ceil(gs/3)下がる' },
+  { mode: 'ceil2', label: '敗北ceil(gs/2)下がる' },
+];
+
+console.log('  人数  グループ   方式                  cross  dead  borrow  grpChange  対戦相手数(avg)  公平性');
+console.log('  ' + '-'.repeat(95));
+
+for (const n of [14, 16, 18, 21]) {
+  const gs = Math.floor(n / 3);
+  const rem = n % 3;
+  const groupLabel = `${gs}/${gs + rem}/${gs}`;
+
+  for (const dm of dropModes) {
+    let totalCross = 0, totalDead = 0, totalBorrow = 0, totalGrpChange = 0;
+    let totalOpponents = 0, totalStddev = 0;
+    const trials = 100;
+
+    for (let t = 0; t < trials; t++) {
+      const r = simulate3CourtsWithStreaks(n, 20, dm.mode);
+      totalCross += r.crossGroupCount;
+      totalDead += r.deadlockCount;
+      totalBorrow += r.borrowCount;
+      totalGrpChange += r.groupChanges;
+
+      // 平均対戦相手数
+      let oppSum = 0;
+      for (const [, opps] of r.uniqueOpponents) {
+        oppSum += opps.size;
+      }
+      totalOpponents += oppSum / n;
+
+      // 公平性
+      const games = Array.from(r.playerStats.values()).map(s => s.games);
+      const avg = games.reduce((a, b) => a + b, 0) / games.length;
+      totalStddev += Math.sqrt(games.reduce((s, g) => s + (g - avg) ** 2, 0) / games.length);
+    }
+
+    console.log(
+      `  ${String(n).padStart(2)}人  ${groupLabel.padEnd(9)} ` +
+      `${dm.label.padEnd(22)} ` +
+      `${(totalCross / trials).toFixed(1).padStart(5)} ` +
+      `${(totalDead / trials).toFixed(1).padStart(5)} ` +
+      `${(totalBorrow / trials).toFixed(1).padStart(7)} ` +
+      `${(totalGrpChange / trials).toFixed(1).padStart(10)} ` +
+      `${(totalOpponents / trials).toFixed(1).padStart(15)} ` +
+      `${(totalStddev / trials).toFixed(2).padStart(7)}`
+    );
+  }
+  console.log('');
+}
+
+// 21人の詳細: drop量の参考
+console.log('  --- drop量の参考 ---');
+for (const n of [14, 16, 18, 21]) {
+  const gs = Math.floor(n / 3);
+  const ceil2 = Math.max(1, Math.ceil(gs / 2));
+  const ceil3 = Math.max(1, Math.ceil(gs / 3));
+  console.log(`  ${n}人: groupSize=${gs}, ceil(gs/2)=${ceil2}(${Math.ceil(gs / ceil2)}敗で越え), ceil(gs/3)=${ceil3}(${Math.ceil(gs / ceil3)}敗で越え)`);
+}
+
 console.log('\n' + '='.repeat(70));
 console.log('シミュレーション完了');
 console.log('='.repeat(70));
