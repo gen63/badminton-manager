@@ -405,10 +405,10 @@ export function MainPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setContinuousMatchMode(!continuousMatchMode)}
-              className={`rounded-full text-sm flex items-center gap-1.5 px-3 py-1.5 transition-all duration-200 ${
+              className={`btn-secondary rounded-full text-sm flex items-center gap-1.5 border transition-all duration-200 ${
                 continuousMatchMode
-                  ? 'bg-green-500 text-white shadow-sm border border-green-500'
-                  : 'btn-secondary border border-gray-200'
+                  ? 'bg-green-500 !text-white border-green-500 shadow-sm'
+                  : 'border-gray-200'
               }`}
             >
               <Repeat size={18} />
