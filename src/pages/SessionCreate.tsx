@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -28,6 +28,11 @@ export function SessionCreate() {
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
   const setGasWebAppUrl = useSettingsStore((state) => state.setGasWebAppUrl);
   const [gasUrlInput, setGasUrlInput] = useState(gasWebAppUrl);
+
+  // 画面表示時にSWの更新をチェック
+  useEffect(() => {
+    navigator.serviceWorker?.getRegistration().then((r) => r?.update());
+  }, []);
 
   const [courtCount, setCourtCount] = useState(3);
   const [targetScore, setTargetScore] = useState(15);
