@@ -128,7 +128,7 @@ export function membersToText(members: MemberFromSheet[]): string {
         const isMale = g === 'M' || g === 'm' || g === '男';
         parts.push(isMale ? '男' : '女');
       }
-      if (m.rating != null) parts.push(String(m.rating));
+      parts.push(String(m.rating ?? 0));
       return parts.join('  ');
     })
     .join('\n');
