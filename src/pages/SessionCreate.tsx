@@ -42,6 +42,7 @@ export function SessionCreate() {
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [loadingText, setLoadingText] = useState('読み込み中...');
   const [loadError, setLoadError] = useState('');
+  const [allRated, setAllRated] = useState(false);
 
 
   const handleLoadFromSheets = async () => {
@@ -61,6 +62,9 @@ export function SessionCreate() {
     });
     if (result.success) {
       setPlayerNames(membersToText(result.members));
+      const hasAllRatings = result.members.length > 0 &&
+        result.members.every(m => m.rating != null && m.rating >= 1);
+      setAllRated(hasAllRatings);
     } else {
       setLoadError(result.message);
     }
@@ -214,23 +218,30 @@ export function SessionCreate() {
                   GAS Web App URLを入力
                 </p>
               </div>
-              <button
-                onClick={handleLoadFromSheets}
-                disabled={isLoadingMembers}
-                className="btn-outline text-sm flex items-center justify-center gap-2"
-              >
-                {isLoadingMembers ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    {loadingText}
-                  </>
-                ) : (
-                  <>
-                    <Download size={16} />
-                    Sheetsから読み込み
-                  </>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleLoadFromSheets}
+                  disabled={isLoadingMembers}
+                  className="btn-outline text-sm flex items-center justify-center gap-2"
+                >
+                  {isLoadingMembers ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      {loadingText}
+                    </>
+                  ) : (
+                    <>
+                      <Download size={16} />
+                      Sheetsから読み込み
+                    </>
+                  )}
+                </button>
+                {allRated && (
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold">
+                    R
+                  </span>
                 )}
-              </button>
+              </div>
               {loadError && (
                 <p className="text-xs text-red-500 mt-1">{loadError}</p>
               )}
@@ -239,7 +250,7 @@ export function SessionCreate() {
               <textarea
                 value={playerNames}
                 onChange={(e) => setPlayerNames(e.target.value)}
-                placeholder="星野真吾&#10;山口裕史&#10;佐野朋美"
+                placeholder="星野真吾  男&#10;山口裕史  男&#10;佐野朋美  女"
                 rows={5}
                 className="textarea-field"
                 style={{ WebkitAppearance: 'none' }}
