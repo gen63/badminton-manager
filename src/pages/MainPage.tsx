@@ -125,7 +125,7 @@ export function MainPage() {
       courts: structuredClone(useGameStore.getState().courts),
       players: structuredClone(usePlayerStore.getState().players),
       matchHistory: structuredClone(useGameStore.getState().matchHistory),
-      timestamp: Date.now(),
+      timestamp: Date.now(), // eslint-disable-line react-hooks/purity -- イベントハンドラ内の副作用
     });
 
     finishGame(courtId, court.scoreA, court.scoreB);
