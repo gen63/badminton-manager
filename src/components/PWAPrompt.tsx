@@ -8,6 +8,12 @@ export function PWAPrompt() {
   } = useRegisterSW({
     onRegistered(r) {
       console.log('SW Registered:', r);
+      if (r) {
+        // 10分ごとにSWの更新をチェック
+        setInterval(() => {
+          r.update();
+        }, 10 * 60 * 1000);
+      }
     },
     onRegisterError(error) {
       console.log('SW registration error', error);
