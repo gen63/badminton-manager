@@ -31,7 +31,7 @@ export function SessionCreate() {
 
   // 画面表示時にSWの更新をチェック
   useEffect(() => {
-    navigator.serviceWorker?.getRegistration().then((r) => r?.update());
+    navigator.serviceWorker?.getRegistration().then((r) => r?.update()).catch(() => {});
   }, []);
 
   const [courtCount, setCourtCount] = useState(3);

@@ -11,7 +11,7 @@ export function PWAPrompt() {
       if (r) {
         // 10分ごとにSWの更新をチェック
         setInterval(() => {
-          r.update();
+          r.update().catch(() => {});
         }, 10 * 60 * 1000);
       }
     },
