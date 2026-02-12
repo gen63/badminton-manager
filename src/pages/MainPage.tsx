@@ -125,7 +125,6 @@ export function MainPage() {
       courts: structuredClone(useGameStore.getState().courts),
       players: structuredClone(usePlayerStore.getState().players),
       matchHistory: structuredClone(useGameStore.getState().matchHistory),
-      timestamp: Date.now(),
     });
 
     finishGame(courtId, court.scoreA, court.scoreB);

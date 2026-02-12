@@ -6,10 +6,12 @@ import { usePlayerStore } from './playerStore';
 
 const MAX_UNDO = 50;
 
+type UndoEntryInput = Omit<UndoEntry, 'timestamp'>;
+
 interface UndoState {
   undoStack: UndoEntry[];
   redoStack: UndoEntry[];
-  pushUndo: (entry: UndoEntry) => void;
+  pushUndo: (entry: UndoEntryInput) => void;
   undo: () => boolean;
   redo: () => boolean;
   clearAll: () => void;
@@ -42,7 +44,7 @@ export const useUndoStore = create<UndoState>()(
 
       pushUndo: (entry) =>
         set(() => ({
-          undoStack: [...get().undoStack.slice(-(MAX_UNDO - 1)), entry],
+          undoStack: [...get().undoStack.slice(-(MAX_UNDO - 1)), { ...entry, timestamp: Date.now() }],
           redoStack: [],
         })),
 
