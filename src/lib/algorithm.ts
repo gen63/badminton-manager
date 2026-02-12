@@ -543,12 +543,14 @@ function selectBestFour(
 }
 
 /**
- * 自動配置アルゴリズム v2
+ * 自動配置アルゴリズム
  * - レーティングベースのグルーピング（3等分/2等分）
- * - 確率ベースのコート配置（3コート）/ ホリスティック配置（2コート同時）
+ * - 固定コート配置（3コート: upper→C1, middle→C2, lower→C3）+ 借用フォールバック
+ * - ホリスティック配置（2コート同時）
  * - 各個人の直近2試合で3人以上の重複を回避
  * - 上位/下位の孤立を回避（3コート）
  * - プレイ回数少ない人を優先
+ * - 敗北時に序列降下（ceil(groupSize/2)）
  */
 export function assignCourts(
   players: Player[],
@@ -593,38 +595,38 @@ export function assignCourts(
   const groupCount = totalCourtCount >= 3 ? 3 : 2;
   const playerOrder = applyStreakSwaps(buildInitialOrder(groupingPlayers), matchHistory, groupCount);
 
+  // コート適性ペナルティを計算するヘルパー
+  const buildCourtPenalties = (candidates: Player[], courtId: number): Map<string, number> => {
+    const now = Date.now();
+    const penalties = new Map<string, number>();
+    for (const p of candidates) {
+      if (p.gamesPlayed === 0) continue;
+      let prob = 0.5;
+      if (totalCourtCount >= 3 && groups3) {
+        const group = getPlayerGroup(p.id, groups3) as RatingGroup;
+        prob = COURT_PROBABILITIES_3[group]?.[courtId - 1] ?? 0.5;
+      } else if (totalCourtCount === 2 && groups2) {
+        const group = getPlayerGroup(p.id, groups2) as 'upper' | 'lower';
+        prob = COURT_PROBABILITIES_2[group]?.[courtId - 1] ?? 0.5;
+      }
+      if (useStayDuration) {
+        const stayStart = Math.max(practiceStartTime, p.activatedAt ?? now);
+        const stayMinutes = Math.max((now - stayStart) / (1000 * 60), 5);
+        const oneGameDelta = 1 / stayMinutes;
+        penalties.set(p.id, Math.random() * (1 - prob) * oneGameDelta);
+      } else {
+        penalties.set(p.id, Math.random() * 0.8);
+      }
+    }
+    return penalties;
+  };
+
   const assignments: CourtAssignment[] = [];
   const usedPlayers = new Set<string>();
 
   // 各コートに割り当て
   for (let i = 0; i < courtCount; i++) {
     const courtId = targetCourtIds[i];
-
-    // コート適性ペナルティを計算するヘルパー
-    const now = Date.now();
-    const buildCourtPenalties = (players: Player[]): Map<string, number> => {
-      const penalties = new Map<string, number>();
-      for (const p of players) {
-        if (p.gamesPlayed === 0) continue;
-        let prob = 0.5;
-        if (totalCourtCount >= 3 && groups3) {
-          const group = getPlayerGroup(p.id, groups3) as RatingGroup;
-          prob = COURT_PROBABILITIES_3[group]?.[courtId - 1] ?? 0.5;
-        } else if (totalCourtCount === 2 && groups2) {
-          const group = getPlayerGroup(p.id, groups2) as 'upper' | 'lower';
-          prob = COURT_PROBABILITIES_2[group]?.[courtId - 1] ?? 0.5;
-        }
-        if (useStayDuration) {
-          const stayStart = Math.max(practiceStartTime, p.activatedAt ?? now);
-          const stayMinutes = Math.max((now - stayStart) / (1000 * 60), 5);
-          const oneGameDelta = 1 / stayMinutes;
-          penalties.set(p.id, Math.random() * (1 - prob) * oneGameDelta);
-        } else {
-          penalties.set(p.id, Math.random() * 0.8);
-        }
-      }
-      return penalties;
-    };
 
     // homeグループ: このコートに配置可能なプレイヤー（prob>0）
     const homeGroup = activePlayers.filter(p => {
@@ -685,7 +687,7 @@ export function assignCourts(
         calculatePriorityScore(b, practiceStartTime, useStayDuration)
       );
 
-      const courtPenalties = buildCourtPenalties(candidates);
+      const courtPenalties = buildCourtPenalties(candidates, courtId);
 
       const result = selectBestFour(
         candidates, matchHistory, groups3, totalCourtCount,
@@ -694,7 +696,8 @@ export function assignCourts(
 
       // selectBestFourが制約を満たす組を見つけたか確認
       const resultIds = result.map(p => p.id);
-      const isValidResult = !hasSimilarRecentMatch(resultIds, matchHistory);
+      const isValidResult = !hasSimilarRecentMatch(resultIds, matchHistory)
+        && !(totalCourtCount >= 3 && groups3 && hasIsolatedExtreme(resultIds, groups3));
 
       if (isValidResult) {
         selected = result;
