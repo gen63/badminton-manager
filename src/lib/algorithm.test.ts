@@ -288,8 +288,8 @@ describe('applyStreakSwaps', () => {
     expect(order).toEqual(['D', 'A', 'B', 'C', 'E', 'F']);
   });
 
-  it('二連敗では移動しない', () => {
-    // D が二連敗
+  it('二連敗でceil(gs/2)ずつ下に移動', () => {
+    // D が二連敗 (stepSize=2, dropAmount=ceil(2/2)=1)
     const matches = [
       createMatch(['Y', 'Z'], ['D', 'X'], 21, 15), // 2試合目（最新）
       createMatch(['W', 'V'], ['D', 'X'], 21, 15), // 1試合目
@@ -298,8 +298,9 @@ describe('applyStreakSwaps', () => {
       ['A', 'B', 'C', 'D', 'E', 'F'],
       matches
     );
-    // 敗北は移動なし（勝者の昇格により自然に繰り下がる）
-    expect(order).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
+    // 1敗目: D(3)→4 → A,B,C,E,D,F
+    // 2敗目: D(4)→5 → A,B,C,E,F,D
+    expect(order).toEqual(['A', 'B', 'C', 'E', 'F', 'D']);
   });
 
   it('三連勝で1勝+2連勝+1勝の移動', () => {
@@ -346,7 +347,7 @@ describe('applyStreakSwaps', () => {
     expect(order).toEqual(['A', 'B', 'C']);
   });
 
-  it('敗北では移動しない（最下位でも同じ）', () => {
+  it('最下位での敗北はそれ以上下がらない', () => {
     const matches = [
       createMatch(['Y', 'Z'], ['C', 'X'], 21, 15),
       createMatch(['W', 'V'], ['C', 'X'], 21, 15),
@@ -355,11 +356,11 @@ describe('applyStreakSwaps', () => {
       ['A', 'B', 'C'],
       matches
     );
-    // 敗北は移動なし
+    // C は既に最下位なのでこれ以上下がらない
     expect(order).toEqual(['A', 'B', 'C']);
   });
 
-  it('勝ち→負けで連勝リセット、1勝分の移動は残る', () => {
+  it('勝ち→負けで上昇分を降下が相殺', () => {
     const matches = [
       createMatch(['Y', 'Z'], ['D', 'X'], 21, 15), // 2試合目: D負け（最新）
       createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 1試合目: D勝ち
@@ -369,8 +370,8 @@ describe('applyStreakSwaps', () => {
       matches
     );
     // 1勝目: D(3)→1つ上 → A,B,D,C,E,F
-    // 2試合目: D負け → 移動なし、ストリークリセット
-    expect(order).toEqual(['A', 'B', 'D', 'C', 'E', 'F']);
+    // 2試合目: D負け → 1つ下 → A,B,C,D,E,F（元に戻る）
+    expect(order).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
   });
 });
 
