@@ -6,7 +6,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Settings, History, Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2 } from 'lucide-react';
+import { Settings, History, Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
@@ -452,7 +452,7 @@ export function MainPage() {
             >
               <span className="flex items-center gap-2">
                 <Repeat size={18} />
-                <span>Auto Mode</span>
+                <span>連続試合</span>
               </span>
               {continuousMatchMode && <span className="text-xs bg-green-200 px-2 py-0.5 rounded-full font-bold">ON</span>}
             </button>
@@ -462,7 +462,7 @@ export function MainPage() {
               className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Users size={18} />
-              <span>Bulk Arrange</span>
+              <span>一括配置</span>
             </button>
           </div>
         </div>
@@ -648,13 +648,19 @@ export function MainPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
                 <h3 className="text-sm font-bold">スコア未入力</h3>
+                {unfinishedMatches.length > 0 && (
+                  <span className="text-xs bg-orange-200/50 px-1.5 py-0.5 rounded font-semibold">
+                    {unfinishedMatches.length}
+                  </span>
+                )}
               </div>
-              {unfinishedMatches.length > 0 && (
+              {unfinishedMatches.length > 1 && (
                 <button 
                   onClick={() => setShowAllUnfinished(!showAllUnfinished)}
-                  className="text-xs font-semibold text-orange-700 bg-white/50 px-2 py-1 rounded"
+                  className="text-xs font-semibold text-orange-700 bg-white/50 px-2 py-1 rounded flex items-center gap-1 hover:bg-white/80 transition-colors"
                 >
-                  {unfinishedMatches.length} 試合
+                  <span>{showAllUnfinished ? '閉じる' : `他${unfinishedMatches.length - 1}件`}</span>
+                  <ChevronDown size={14} className={`transition-transform ${showAllUnfinished ? 'rotate-180' : ''}`} />
                 </button>
               )}
             </div>
