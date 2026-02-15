@@ -6,7 +6,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Settings, History, Coffee, Users, ArrowUp, Plus, X, ChevronDown, Repeat, Undo2, Redo2, Play, StopCircle, Trash2 } from 'lucide-react';
+import { Settings, History, Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2 } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
@@ -30,11 +30,19 @@ export function MainPage() {
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
   const playerCardRef = useRef<HTMLDivElement>(null);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   useEffect(() => {
     return () => {
       if (heightLockTimer.current) clearTimeout(heightLockTimer.current);
     };
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   if (!session) {
@@ -385,7 +393,7 @@ export function MainPage() {
   };
 
   const formatElapsedTime = (startedAt: number) => {
-    const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+    const elapsed = Math.floor((currentTime - startedAt) / 1000);
     const minutes = Math.floor(elapsed / 60);
     const seconds = elapsed % 60;
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
