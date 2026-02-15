@@ -647,7 +647,7 @@ export function MainPage() {
                   </span>
                 )}
               </div>
-              <div className="min-w-[120px] flex justify-end">
+              <div className="min-w-[120px] flex justify-end items-center min-h-[28px]">
                 {unfinishedMatches.length === 0 ? (
                   <span className="text-xs text-orange-600/60">スコア未入力の試合がありません</span>
                 ) : unfinishedMatches.length > 1 ? (
@@ -658,7 +658,9 @@ export function MainPage() {
                     <span>{showAllUnfinished ? '閉じる' : `他${unfinishedMatches.length - 1}件`}</span>
                     <ChevronDown size={14} className={`transition-transform ${showAllUnfinished ? 'rotate-180' : ''}`} />
                   </button>
-                ) : null}
+                ) : (
+                  <div className="h-[28px]"></div>
+                )}
               </div>
             </div>
             {unfinishedMatches.length > 0 && (
