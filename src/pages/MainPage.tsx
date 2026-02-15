@@ -493,58 +493,58 @@ export function MainPage() {
                   
                   {hasPlayers ? (
                     <div className="p-2 flex flex-col gap-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex-1 flex flex-col gap-1">
-                          {court.teamA.map((playerId, idx) => {
-                            const playerGender = getPlayerGender(playerId);
-                            const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
-                            return (
-                              <button
-                                key={idx}
-                                onClick={() => handlePlayerTap(playerId, court.id, idx)}
-                                className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors ${
-                                  selectedPlayer?.id === playerId
-                                    ? 'border-primary bg-accent'
-                                    : 'border-transparent hover:border-border'
-                                }`}
-                              >
-                                <span className={`font-medium truncate text-xs ${textColor}`}>
-                                  {getPlayerName(playerId)}
-                                </span>
-                                <span className="text-[9px] bg-background border px-1 rounded text-muted-foreground">
-                                  {getPlayerGamesPlayed(playerId)}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <div className="flex flex-col items-center justify-center px-0.5">
-                          <span className="text-[10px] font-black text-muted-foreground/50">VS</span>
-                        </div>
-                        <div className="flex-1 flex flex-col gap-1">
-                          {court.teamB.map((playerId, idx) => {
-                            const playerGender = getPlayerGender(playerId);
-                            const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
-                            return (
-                              <button
-                                key={idx}
-                                onClick={() => handlePlayerTap(playerId, court.id, idx + 2)}
-                                className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors ${
-                                  selectedPlayer?.id === playerId
-                                    ? 'border-primary bg-accent'
-                                    : 'border-transparent hover:border-border'
-                                }`}
-                              >
-                                <span className={`font-medium truncate text-xs ${textColor}`}>
-                                  {getPlayerName(playerId)}
-                                </span>
-                                <span className="text-[9px] bg-background border px-1 rounded text-muted-foreground">
-                                  {getPlayerGamesPlayed(playerId)}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
+                      <div className="flex flex-col gap-1">
+                        {court.teamA.map((playerId, idx) => {
+                          const playerGender = getPlayerGender(playerId);
+                          const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => handlePlayerTap(playerId, court.id, idx)}
+                              className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors ${
+                                selectedPlayer?.id === playerId
+                                  ? 'border-primary bg-accent'
+                                  : 'border-transparent hover:border-border'
+                              }`}
+                            >
+                              <span className={`font-medium truncate text-xs ${textColor}`}>
+                                {getPlayerName(playerId)}
+                              </span>
+                              <span className="text-[9px] bg-background border px-1 rounded text-muted-foreground">
+                                {getPlayerGamesPlayed(playerId)}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      
+                      <div className="flex items-center justify-center py-0.5">
+                        <span className="text-[10px] font-black text-muted-foreground/50">VS</span>
+                      </div>
+                      
+                      <div className="flex flex-col gap-1">
+                        {court.teamB.map((playerId, idx) => {
+                          const playerGender = getPlayerGender(playerId);
+                          const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => handlePlayerTap(playerId, court.id, idx + 2)}
+                              className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors ${
+                                selectedPlayer?.id === playerId
+                                  ? 'border-primary bg-accent'
+                                  : 'border-transparent hover:border-border'
+                              }`}
+                            >
+                              <span className={`font-medium truncate text-xs ${textColor}`}>
+                                {getPlayerName(playerId)}
+                              </span>
+                              <span className="text-[9px] bg-background border px-1 rounded text-muted-foreground">
+                                {getPlayerGamesPlayed(playerId)}
+                              </span>
+                            </button>
+                          );
+                        })}
                       </div>
                       
                       {court.isPlaying ? (
