@@ -700,7 +700,7 @@ export function MainPage() {
         </section>
 
         {/* Waiting Players */}
-        <section className="px-4 flex flex-col gap-6" ref={playerCardRef}>
+        <section className="px-4 flex flex-col gap-6 transition-all duration-300" ref={playerCardRef}>
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">待機中 ({activePlayers.length})</h3>
@@ -762,7 +762,7 @@ export function MainPage() {
                   <button
                     key={player.id}
                     onClick={() => handlePlayerTap(player.id)}
-                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm transition-all text-left ${
+                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm transition-all text-left h-[72px] ${
                       isSelected
                         ? 'ring-2 ring-primary ring-offset-1 border-primary'
                         : 'border-border'
@@ -822,13 +822,13 @@ export function MainPage() {
               <div className="grid grid-cols-3 gap-2 opacity-75">
                 {restingAndPlaceholderPlayers.map((player) => {
                   if (recentlyRestoredIds.has(player.id)) {
-                    return <div key={player.id} className="relative bg-muted/50 border border-border rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm" style={{ visibility: 'hidden' }} />;
+                    return <div key={player.id} className="relative bg-muted/50 border border-border rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm h-[72px]" style={{ visibility: 'hidden' }} />;
                   }
                   return (
                     <button
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
-                      className="relative bg-muted/50 border border-border rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors"
+                      className="relative bg-muted/50 border border-border rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors h-[72px]"
                     >
                       <div className="absolute top-1 right-1">
                         <button
