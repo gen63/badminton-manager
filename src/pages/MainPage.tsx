@@ -695,7 +695,7 @@ export function MainPage() {
                   <button
                     key={player.id}
                     onClick={() => handlePlayerTap(player.id)}
-                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl px-2 py-1 flex flex-col items-center justify-center gap-0.5 shadow-sm transition-all text-left h-[64px] ${
+                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm transition-all text-left h-[58px] ${
                       isSelected
                         ? 'ring-2 ring-primary ring-offset-1 border-primary'
                         : 'border-border'
@@ -728,9 +728,9 @@ export function MainPage() {
                         </button>
                       </div>
                     )}
-                    <div className="w-full text-center space-y-0.5">
+                    <div className="w-full text-center">
                       <div className="text-sm font-semibold truncate text-foreground leading-tight">{player.name}</div>
-                      <div className="text-xs flex items-center justify-center gap-1">
+                      <div className="text-xs flex items-center justify-center gap-1 leading-tight">
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold leading-tight ${
                           player.gender === 'M' 
                             ? 'bg-blue-100 text-blue-700' 
@@ -756,13 +756,13 @@ export function MainPage() {
               <div className="grid grid-cols-3 gap-2 opacity-75">
                 {restingAndPlaceholderPlayers.map((player) => {
                   if (recentlyRestoredIds.has(player.id)) {
-                    return <div key={player.id} className="relative bg-muted/50 border border-border rounded-xl px-2 py-1 flex flex-col items-center justify-center gap-0.5 shadow-sm h-[64px]" style={{ visibility: 'hidden' }} />;
+                    return <div key={player.id} className="relative bg-muted/50 border border-border rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm h-[58px]" style={{ visibility: 'hidden' }} />;
                   }
                   return (
                     <button
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
-                      className="relative bg-muted/50 border border-border rounded-xl px-2 py-1 flex flex-col items-center justify-center gap-0.5 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors h-[64px]"
+                      className="relative bg-muted/50 border border-border rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors h-[58px]"
                     >
                       <div className="absolute top-0.5 right-0.5">
                         <button
@@ -775,7 +775,7 @@ export function MainPage() {
                           <ArrowUp className="w-3 h-3" />
                         </button>
                       </div>
-                      <div className="w-full text-center space-y-0.5">
+                      <div className="w-full text-center">
                         <div className="text-sm font-semibold truncate text-muted-foreground leading-tight">{player.name}</div>
                         <div className="text-xs text-muted-foreground leading-tight">{player.gamesPlayed}試合</div>
                       </div>
