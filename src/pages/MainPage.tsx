@@ -767,10 +767,9 @@ export function MainPage() {
                 }
               }}
               disabled={!newPlayerName.trim()}
-              className="h-10 px-4 bg-secondary text-secondary-foreground rounded-xl font-semibold text-sm flex items-center gap-1 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary/80 transition-colors"
+              className="h-10 w-10 bg-secondary text-secondary-foreground rounded-xl font-semibold text-sm flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary/80 transition-colors"
             >
-              <Plus size={16} />
-              追加
+              <Plus size={18} />
             </button>
           </div>
 
