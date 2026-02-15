@@ -779,9 +779,17 @@ export function MainPage() {
                     )}
                     <div className="w-full text-center">
                       <div className="text-xs font-semibold truncate text-foreground">{player.name}</div>
-                      <div className="text-[10px] text-muted-foreground flex items-center justify-center gap-1">
-                        <span className="bg-muted px-1 rounded">{player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : player.gender}</span>
-                        <span>{player.gamesPlayed} 試合</span>
+                      <div className="text-[10px] flex items-center justify-center gap-1">
+                        <span className={`px-1.5 py-0.5 rounded font-semibold ${
+                          player.gender === 'M' 
+                            ? 'bg-blue-100 text-blue-700' 
+                            : player.gender === 'F' 
+                            ? 'bg-pink-100 text-pink-700' 
+                            : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : player.gender}
+                        </span>
+                        <span className="text-muted-foreground">{player.gamesPlayed} 試合</span>
                       </div>
                     </div>
                   </button>
