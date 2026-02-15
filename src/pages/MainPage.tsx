@@ -695,14 +695,14 @@ export function MainPage() {
                   <button
                     key={player.id}
                     onClick={() => handlePlayerTap(player.id)}
-                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 shadow-sm transition-all text-left h-[70px] ${
+                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl px-2 py-1 flex flex-col items-center justify-center gap-0.5 shadow-sm transition-all text-left h-[64px] ${
                       isSelected
                         ? 'ring-2 ring-primary ring-offset-1 border-primary'
                         : 'border-border'
                     }`}
                   >
                     {!isSelected && (
-                      <div className="absolute top-1 right-1">
+                      <div className="absolute top-0.5 right-0.5">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -756,15 +756,15 @@ export function MainPage() {
               <div className="grid grid-cols-3 gap-2 opacity-75">
                 {restingAndPlaceholderPlayers.map((player) => {
                   if (recentlyRestoredIds.has(player.id)) {
-                    return <div key={player.id} className="relative bg-muted/50 border border-border rounded-xl px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 shadow-sm h-[70px]" style={{ visibility: 'hidden' }} />;
+                    return <div key={player.id} className="relative bg-muted/50 border border-border rounded-xl px-2 py-1 flex flex-col items-center justify-center gap-0.5 shadow-sm h-[64px]" style={{ visibility: 'hidden' }} />;
                   }
                   return (
                     <button
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
-                      className="relative bg-muted/50 border border-border rounded-xl px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors h-[70px]"
+                      className="relative bg-muted/50 border border-border rounded-xl px-2 py-1 flex flex-col items-center justify-center gap-0.5 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors h-[64px]"
                     >
-                      <div className="absolute top-1 right-1">
+                      <div className="absolute top-0.5 right-0.5">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
