@@ -401,8 +401,8 @@ export function MainPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-hidden text-foreground">
-      <header className="sticky top-0 flex-none bg-background border-b border-border px-4 py-2.5 shadow-sm z-10">
+    <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-y-auto scrollbar-hide text-foreground">
+      <header className="sticky top-0 flex-none bg-background border-b border-border px-4 py-2.5 shadow-sm z-20">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <button
@@ -457,7 +457,7 @@ export function MainPage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
+      <main className="flex-1 pb-24">
         {/* Courts Section */}
         <section className="pt-4 pb-2 px-4">
           <div className="grid grid-cols-3 gap-2">
