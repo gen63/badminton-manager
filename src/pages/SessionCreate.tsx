@@ -250,7 +250,7 @@ export function SessionCreate() {
               <textarea
                 value={playerNames}
                 onChange={(e) => setPlayerNames(e.target.value)}
-                placeholder="こば 男&#10;やま 女"
+                placeholder="星野真吾  男&#10;山口裕史  男&#10;佐野朋美  女"
                 rows={5}
                 className="textarea-field"
                 style={{ WebkitAppearance: 'none' }}
