@@ -647,17 +647,19 @@ export function MainPage() {
                   </span>
                 )}
               </div>
-              {unfinishedMatches.length === 0 ? (
-                <span className="text-xs text-orange-600/60">スコア未入力の試合がありません</span>
-              ) : unfinishedMatches.length > 1 ? (
-                <button 
-                  onClick={() => setShowAllUnfinished(!showAllUnfinished)}
-                  className="text-xs font-semibold text-orange-700 bg-white/50 px-2 py-1 rounded flex items-center gap-1 hover:bg-white/80 transition-colors"
-                >
-                  <span>{showAllUnfinished ? '閉じる' : `他${unfinishedMatches.length - 1}件`}</span>
-                  <ChevronDown size={14} className={`transition-transform ${showAllUnfinished ? 'rotate-180' : ''}`} />
-                </button>
-              ) : null}
+              <div className="min-w-[120px] flex justify-end">
+                {unfinishedMatches.length === 0 ? (
+                  <span className="text-xs text-orange-600/60">スコア未入力の試合がありません</span>
+                ) : unfinishedMatches.length > 1 ? (
+                  <button 
+                    onClick={() => setShowAllUnfinished(!showAllUnfinished)}
+                    className="text-xs font-semibold text-orange-700 bg-white/50 px-2 py-1 rounded flex items-center gap-1 hover:bg-white/80 transition-colors"
+                  >
+                    <span>{showAllUnfinished ? '閉じる' : `他${unfinishedMatches.length - 1}件`}</span>
+                    <ChevronDown size={14} className={`transition-transform ${showAllUnfinished ? 'rotate-180' : ''}`} />
+                  </button>
+                ) : null}
+              </div>
             </div>
             {unfinishedMatches.length > 0 && (
               <div className="divide-y divide-orange-100">
