@@ -459,8 +459,8 @@ export function MainPage() {
 
       <main className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
         {/* Courts Section */}
-        <section className="pt-4 pb-2">
-          <div className="flex overflow-x-auto gap-4 px-4 pb-4 scrollbar-hide">
+        <section className="pt-4 pb-2 px-4">
+          <div className="flex flex-col gap-3">
             {courts.map((court) => {
               const hasPlayers = court.teamA[0] && court.teamA[0] !== '';
               const matchNumber = court.isPlaying && court.startedAt
@@ -468,7 +468,7 @@ export function MainPage() {
                 : null;
 
               return (
-                <div key={court.id} className="flex-none w-[85vw] max-w-sm bg-card border border-border rounded-2xl shadow-sm snap-center flex flex-col overflow-hidden">
+                <div key={court.id} className="w-full bg-card border border-border rounded-2xl shadow-sm flex flex-col overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/20">
                     <div className="flex items-center gap-2">
                       <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
