@@ -600,14 +600,9 @@ export function MainPage() {
         {selectedPlayer && (
           <div className="px-4 mb-4">
             <div className="bg-foreground text-background p-3 rounded-xl shadow-xl flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
-                  {players.find(p => p.id === selectedPlayer.id)?.name[0].toUpperCase()}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-bold">{players.find(p => p.id === selectedPlayer.id)?.name} と交換</span>
-                  <span className="text-xs text-background/70">他のプレイヤーをタップ</span>
-                </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-bold">{players.find(p => p.id === selectedPlayer.id)?.name} と交換</span>
+                <span className="text-xs text-background/70">他のプレイヤーをタップ</span>
               </div>
               <button
                 onClick={() => setSelectedPlayer(null)}
@@ -700,8 +695,6 @@ export function MainPage() {
             <div className="grid grid-cols-3 gap-2">
               {activePlayers.map((player) => {
                 const isSelected = selectedPlayer?.id === player.id;
-                const avatarBgClass = player.gender === 'M' ? 'bg-blue-100' : player.gender === 'F' ? 'bg-pink-100' : 'bg-slate-100';
-                const avatarTextClass = player.gender === 'M' ? 'text-blue-600' : player.gender === 'F' ? 'text-pink-600' : 'text-slate-600';
                 
                 return (
                   <button
@@ -739,11 +732,6 @@ export function MainPage() {
                         </button>
                       </div>
                     )}
-                    <div className="w-full flex justify-center">
-                      <div className={`w-8 h-8 rounded-full ${avatarBgClass} ${avatarTextClass} flex items-center justify-center text-xs font-bold`}>
-                        {player.name[0].toUpperCase()}
-                      </div>
-                    </div>
                     <div className="w-full text-center">
                       <div className="text-xs font-semibold truncate text-foreground">{player.name}</div>
                       <div className="text-[10px] text-muted-foreground flex items-center justify-center gap-1">
