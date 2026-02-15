@@ -403,43 +403,33 @@ export function MainPage() {
     <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-hidden text-foreground">
       <header className="flex-none bg-background border-b border-border px-4 py-3 shadow-sm z-10">
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C10.9 2 10 2.9 10 4s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-2 16c0 1.1.9 2 2 2s2-.9 2-2-.9-2-2-2-2 .9-2 2zm8-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM4 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
-                </svg>
-              </div>
-              <h1 className="font-heading font-bold text-lg tracking-tight">BadmintonMgr</h1>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleUndo}
-                disabled={undoStack.length === 0}
-                className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <Undo2 size={20} />
-              </button>
-              <button
-                onClick={handleRedo}
-                disabled={redoStack.length === 0}
-                className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <Redo2 size={20} />
-              </button>
-              <button
-                onClick={() => navigate('/history')}
-                className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors"
-              >
-                <History size={20} />
-              </button>
-              <button
-                onClick={() => navigate('/settings')}
-                className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors"
-              >
-                <Settings size={20} />
-              </button>
-            </div>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              onClick={handleUndo}
+              disabled={undoStack.length === 0}
+              className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Undo2 size={20} />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={redoStack.length === 0}
+              className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Redo2 size={20} />
+            </button>
+            <button
+              onClick={() => navigate('/history')}
+              className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+            >
+              <History size={20} />
+            </button>
+            <button
+              onClick={() => navigate('/settings')}
+              className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+            >
+              <Settings size={20} />
+            </button>
           </div>
           <div className="flex items-center gap-3">
             <button
