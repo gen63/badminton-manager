@@ -492,7 +492,7 @@ export function MainPage() {
                   </div>
                   
                   {hasPlayers ? (
-                    <div className="p-2 flex flex-col gap-2">
+                    <div className="p-2 flex flex-col gap-2 min-h-[220px]">
                       <div className="flex flex-col gap-1">
                         {court.teamA.map((playerId, idx) => {
                           const playerGender = getPlayerGender(playerId);
@@ -574,7 +574,7 @@ export function MainPage() {
                       )}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-4 gap-2">
+                    <div className="flex flex-col items-center justify-center py-4 gap-2 min-h-[220px]">
                       <div className="flex flex-col items-center gap-0.5">
                         <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center text-muted-foreground">
                           <span className="font-bold text-xs">{court.id}</span>
