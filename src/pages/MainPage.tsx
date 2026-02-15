@@ -324,6 +324,23 @@ export function MainPage() {
     courtId?: number,
     position?: number
   ) => {
+    const player = players.find(p => p.id === playerId);
+    
+    // 休憩中メンバーをタップした場合
+    if (player?.isResting) {
+      // コート上のメンバーが選択されている場合のみ交換
+      if (selectedPlayer?.courtId !== undefined && selectedPlayer?.position !== undefined) {
+        handleSwapPlayer(selectedPlayer.courtId, selectedPlayer.position, playerId);
+        setSelectedPlayer(null);
+      } else {
+        // それ以外（選択なし or 待機中メンバー選択）は復帰のみ
+        toggleRest(playerId);
+        setSelectedPlayer(null);
+      }
+      return;
+    }
+    
+    // 以下は待機中・コート上メンバーの処理（従来通り）
     if (!selectedPlayer) {
       setSelectedPlayer({ id: playerId, courtId, position });
     } else if (selectedPlayer.id === playerId) {
@@ -807,43 +824,23 @@ export function MainPage() {
                   if (recentlyRestoredIds.has(player.id)) {
                     return <div key={player.id} className="relative bg-muted/50 border border-border rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm" style={{ visibility: 'hidden' }} />;
                   }
-                  const isSelected = selectedPlayer?.id === player.id;
                   return (
                     <button
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
-                      className={`relative bg-muted/50 border rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm ${
-                        isSelected
-                          ? 'ring-2 ring-primary ring-offset-1 border-primary'
-                          : 'border-border'
-                      }`}
+                      className="relative bg-muted/50 border border-border rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors"
                     >
-                      {!isSelected && (
-                        <div className="absolute top-1 right-1">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleRestWithLock(player.id);
-                            }}
-                            className="w-5 h-5 rounded-full bg-green-100 text-green-600 flex items-center justify-center"
-                          >
-                            <ArrowUp className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
-                      {isSelected && (
-                        <div className="absolute -top-1 -right-1 z-10">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedPlayer(null);
-                            }}
-                            className="w-4 h-4 rounded-full bg-primary text-white flex items-center justify-center border border-white"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
+                      <div className="absolute top-1 right-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleRestWithLock(player.id);
+                          }}
+                          className="w-5 h-5 rounded-full bg-green-100 text-green-600 flex items-center justify-center hover:bg-green-200"
+                        >
+                          <ArrowUp className="w-3 h-3" />
+                        </button>
+                      </div>
                       <div className="w-full text-center">
                         <div className="text-xs font-semibold truncate text-muted-foreground">{player.name}</div>
                         <div className="text-[10px] text-muted-foreground">{player.gamesPlayed} 試合</div>
