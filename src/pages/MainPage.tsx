@@ -324,6 +324,23 @@ export function MainPage() {
     courtId?: number,
     position?: number
   ) => {
+    const player = players.find(p => p.id === playerId);
+    
+    // 休憩中メンバーをタップした場合
+    if (player?.isResting) {
+      // コート上のメンバーが選択されている場合のみ交換
+      if (selectedPlayer?.courtId !== undefined && selectedPlayer?.position !== undefined) {
+        handleSwapPlayer(selectedPlayer.courtId, selectedPlayer.position, playerId);
+        setSelectedPlayer(null);
+      } else {
+        // それ以外（選択なし or 待機中メンバー選択）は復帰のみ
+        toggleRest(playerId);
+        setSelectedPlayer(null);
+      }
+      return;
+    }
+    
+    // 以下は待機中・コート上メンバーの処理（従来通り）
     if (!selectedPlayer) {
       setSelectedPlayer({ id: playerId, courtId, position });
     } else if (selectedPlayer.id === playerId) {
@@ -401,8 +418,8 @@ export function MainPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-hidden text-foreground">
-      <header className="sticky top-0 flex-none bg-background border-b border-border px-4 py-2.5 shadow-sm z-10">
+    <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-y-auto scrollbar-hide text-foreground">
+      <header className="sticky top-0 flex-none bg-background border-b border-border px-4 py-2.5 shadow-sm z-20">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <button
@@ -457,7 +474,7 @@ export function MainPage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
+      <main className="flex-1 pb-24">
         {/* Courts Section */}
         <section className="pt-4 pb-2 px-4">
           <div className="grid grid-cols-3 gap-2">
@@ -683,7 +700,7 @@ export function MainPage() {
         </section>
 
         {/* Waiting Players */}
-        <section className="px-4 flex flex-col gap-6" ref={playerCardRef}>
+        <section className="px-4 flex flex-col gap-6 transition-all duration-300" ref={playerCardRef}>
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">待機中 ({activePlayers.length})</h3>
@@ -745,7 +762,7 @@ export function MainPage() {
                   <button
                     key={player.id}
                     onClick={() => handlePlayerTap(player.id)}
-                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm transition-all text-left ${
+                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm transition-all text-left h-[72px] ${
                       isSelected
                         ? 'ring-2 ring-primary ring-offset-1 border-primary'
                         : 'border-border'
@@ -805,45 +822,25 @@ export function MainPage() {
               <div className="grid grid-cols-3 gap-2 opacity-75">
                 {restingAndPlaceholderPlayers.map((player) => {
                   if (recentlyRestoredIds.has(player.id)) {
-                    return <div key={player.id} className="relative bg-muted/50 border border-border rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm" style={{ visibility: 'hidden' }} />;
+                    return <div key={player.id} className="relative bg-muted/50 border border-border rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm h-[72px]" style={{ visibility: 'hidden' }} />;
                   }
-                  const isSelected = selectedPlayer?.id === player.id;
                   return (
                     <button
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
-                      className={`relative bg-muted/50 border rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm ${
-                        isSelected
-                          ? 'ring-2 ring-primary ring-offset-1 border-primary'
-                          : 'border-border'
-                      }`}
+                      className="relative bg-muted/50 border border-border rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors h-[72px]"
                     >
-                      {!isSelected && (
-                        <div className="absolute top-1 right-1">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleRestWithLock(player.id);
-                            }}
-                            className="w-5 h-5 rounded-full bg-green-100 text-green-600 flex items-center justify-center"
-                          >
-                            <ArrowUp className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
-                      {isSelected && (
-                        <div className="absolute -top-1 -right-1 z-10">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedPlayer(null);
-                            }}
-                            className="w-4 h-4 rounded-full bg-primary text-white flex items-center justify-center border border-white"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
+                      <div className="absolute top-1 right-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleRestWithLock(player.id);
+                          }}
+                          className="w-5 h-5 rounded-full bg-green-100 text-green-600 flex items-center justify-center hover:bg-green-200"
+                        >
+                          <ArrowUp className="w-3 h-3" />
+                        </button>
+                      </div>
                       <div className="w-full text-center">
                         <div className="text-xs font-semibold truncate text-muted-foreground">{player.name}</div>
                         <div className="text-[10px] text-muted-foreground">{player.gamesPlayed} 試合</div>
