@@ -6,10 +6,9 @@ import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Settings, History, Coffee, Users, ArrowUp, Plus, X, ChevronDown, Repeat, Undo2, Redo2 } from 'lucide-react';
+import { Settings, History, Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
-import { CourtCard } from '../components/CourtCard';
 import { useUndoStore } from '../stores/undoStore';
 
 export function MainPage() {
@@ -31,11 +30,19 @@ export function MainPage() {
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
   const playerCardRef = useRef<HTMLDivElement>(null);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   useEffect(() => {
     return () => {
       if (heightLockTimer.current) clearTimeout(heightLockTimer.current);
     };
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   if (!session) {
@@ -57,23 +64,19 @@ export function MainPage() {
 
   const handleAutoAssign = (courtId?: number) => {
     try {
-      // 空のコートのみを対象にする
       let courtsToAssign: number[];
       if (courtId) {
         courtsToAssign = [courtId];
       } else {
-        // 全コートから未配置のコートのみを抽出
         courtsToAssign = courts
           .filter(c => !c.teamA[0] || c.teamA[0] === '')
           .map(c => c.id);
       }
 
-      // 待機中のプレイヤーのみを使用（コート内のプレイヤーを除外）
       const waitingPlayers = players.filter(
         (p) => !p.isResting && !playersInCourts.has(p.id)
       );
 
-      // 全アクティブプレイヤー（コートでプレイ中含む）をグループ分け用に渡す
       const allActivePlayers = players.filter(p => !p.isResting);
 
       const assignments = assignCourts(
@@ -120,7 +123,6 @@ export function MainPage() {
     const court = courts.find((c) => c.id === courtId);
     if (!court) return;
 
-    // Undo用スナップショットを取得（試合終了処理の前に）
     pushUndo({
       courts: structuredClone(useGameStore.getState().courts),
       players: structuredClone(usePlayerStore.getState().players),
@@ -129,7 +131,6 @@ export function MainPage() {
 
     finishGame(courtId, court.scoreA, court.scoreB);
 
-    // プレイヤーの統計を更新
     [...court.teamA, ...court.teamB].forEach((playerId) => {
       const player = players.find((p) => p.id === playerId);
       if (player) {
@@ -140,14 +141,12 @@ export function MainPage() {
       }
     });
 
-    // 元々休憩中だったプレイヤーを休憩に戻す
     if (court.restingPlayerIds && court.restingPlayerIds.length > 0) {
       court.restingPlayerIds.forEach((playerId) => {
         updatePlayer(playerId, { isResting: true });
       });
     }
 
-    // コートをクリア（プレイヤーを待機に戻す）
     updateCourt(courtId, {
       teamA: ['', ''],
       teamB: ['', ''],
@@ -159,7 +158,6 @@ export function MainPage() {
       restingPlayerIds: [],
     });
 
-    // 連続試合モード: 自動で次の試合を配置・開始
     if (continuousMatchMode) {
       handleContinuousNext(courtId);
     }
@@ -167,7 +165,6 @@ export function MainPage() {
 
   const handleContinuousNext = (courtId: number) => {
     try {
-      // Zustandストアから最新状態を直接読み取る（React再レンダリング前でも正確）
       const { courts: currentCourts, matchHistory: currentHistory, updateCourt: storeUpdateCourt, startGame: storeStartGame } = useGameStore.getState();
       const { players: currentPlayers } = usePlayerStore.getState();
       const { useStayDurationPriority: currentPriority } = useSettingsStore.getState();
@@ -221,18 +218,6 @@ export function MainPage() {
     }
   };
 
-  const handleUndo = () => {
-    if (undo()) {
-      toast.success('試合終了を取り消しました');
-    }
-  };
-
-  const handleRedo = () => {
-    if (redo()) {
-      toast.success('試合終了をやり直しました');
-    }
-  };
-
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '未設定';
   };
@@ -245,16 +230,13 @@ export function MainPage() {
     return players.find((p) => p.id === playerId)?.gamesPlayed || 0;
   };
 
-  // コート内のプレイヤーIDを取得（空文字列を除外）
   const playersInCourts = new Set(
     courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
   );
 
-  // 待機中のプレイヤー（コート外 & 休憩中でない）
   const waitingPlayersUnsorted = players
     .filter((p) => !p.isResting && !playersInCourts.has(p.id));
 
-  // 空きコートとグループを考慮した配置優先度順ソート
   const activePlayers = sortWaitingPlayers(waitingPlayersUnsorted, {
     emptyCourtIds: courts
       .filter(c => !c.teamA[0] || c.teamA[0] === '')
@@ -270,14 +252,12 @@ export function MainPage() {
     p => p.isResting || recentlyRestoredIds.has(p.id)
   );
 
-  // スコア未入力の試合（0-0の試合）を最大4件
   const unfinishedMatches = [...matchHistory]
     .reverse()
     .filter((m) => m.scoreA === 0 && m.scoreB === 0)
     .slice(0, 4);
   const visibleUnfinished = showAllUnfinished ? unfinishedMatches : unfinishedMatches.slice(0, 1);
 
-  // 空のコート数
   const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
   const canAutoAssign = emptyCourts.length > 0 && activePlayers.length >= 4;
 
@@ -285,7 +265,6 @@ export function MainPage() {
     const court = courts.find((c) => c.id === courtId);
     if (!court) return;
 
-    // 新しい配置を作成
     const newTeamA = [...court.teamA];
     const newTeamB = [...court.teamB];
 
@@ -295,7 +274,6 @@ export function MainPage() {
       newTeamB[position - 2] = newPlayerId;
     }
 
-    // コートに入るプレイヤーが休憩中だった場合、記録しておく
     const newPlayer = players.find((p) => p.id === newPlayerId);
     const restingPlayerIds = [...(court.restingPlayerIds || [])];
     if (newPlayer?.isResting && !restingPlayerIds.includes(newPlayerId)) {
@@ -308,7 +286,6 @@ export function MainPage() {
       restingPlayerIds,
     });
 
-    // コートに入るプレイヤーの休憩フラグを解除
     if (newPlayer?.isResting) {
       updatePlayer(newPlayerId, { isResting: false });
     }
@@ -318,7 +295,6 @@ export function MainPage() {
     const player = players.find(p => p.id === playerId);
 
     if (player?.isResting) {
-      // 復帰時：プレースホルダーを残してグリッド内リフローを防止
       setRecentlyRestoredIds(prev => new Set(prev).add(playerId));
       setTimeout(() => {
         setRecentlyRestoredIds(prev => {
@@ -329,7 +305,6 @@ export function MainPage() {
       }, 300);
     }
 
-    // カード全体の高さをロックしてセクション間ジャンプを防止
     if (playerCardRef.current) {
       playerCardRef.current.style.minHeight = `${playerCardRef.current.offsetHeight}px`;
       if (heightLockTimer.current) clearTimeout(heightLockTimer.current);
@@ -349,26 +324,20 @@ export function MainPage() {
     position?: number
   ) => {
     if (!selectedPlayer) {
-      // 1回目のタップ：プレイヤーを選択
       setSelectedPlayer({ id: playerId, courtId, position });
     } else if (selectedPlayer.id === playerId) {
-      // 同じプレイヤーをタップ：選択解除（念のため残す）
       setSelectedPlayer(null);
     } else {
-      // 2回目のタップ：交換実行
       if (
         selectedPlayer.courtId !== undefined &&
         selectedPlayer.position !== undefined &&
         courtId !== undefined &&
         position !== undefined
       ) {
-        // コート内 ↔ コート内
         if (selectedPlayer.courtId === courtId) {
-          // 同じコート内での交換
           const court = courts.find((c) => c.id === courtId);
           if (court) {
             const allPlayers = [...court.teamA, ...court.teamB];
-            // 交換
             const temp = allPlayers[selectedPlayer.position];
             allPlayers[selectedPlayer.position] = allPlayers[position];
             allPlayers[position] = temp;
@@ -379,7 +348,6 @@ export function MainPage() {
             });
           }
         } else {
-          // 異なるコート間での交換
           const court1 = courts.find((c) => c.id === selectedPlayer.courtId);
           const court2 = courts.find((c) => c.id === courtId);
           if (court1 && court2) {
@@ -404,235 +372,414 @@ export function MainPage() {
         selectedPlayer.courtId !== undefined &&
         selectedPlayer.position !== undefined
       ) {
-        // コート内 ↔ 待機者
         handleSwapPlayer(
           selectedPlayer.courtId,
           selectedPlayer.position,
           playerId
         );
       } else if (courtId !== undefined && position !== undefined) {
-        // 待機者 ↔ コート内
         handleSwapPlayer(courtId, position, selectedPlayer.id);
       }
       setSelectedPlayer(null);
     }
   };
 
+  const handleUndo = () => {
+    undo();
+  };
+
+  const handleRedo = () => {
+    redo();
+  };
+
+  const formatElapsedTime = (startedAt: number) => {
+    const elapsed = Math.floor((currentTime - startedAt) / 1000);
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = elapsed % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
   return (
-    <div className="bg-app pb-20">
-      {/* ヘッダー */}
-      <div className="header-gradient text-gray-800 p-3">
-        <div className="max-w-6xl mx-auto flex items-center justify-end">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleUndo}
-              disabled={undoStack.length === 0}
-              aria-label="元に戻す"
-              className="icon-btn disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <Undo2 size={20} />
-            </button>
-            <button
-              onClick={handleRedo}
-              disabled={redoStack.length === 0}
-              aria-label="やり直す"
-              className="icon-btn disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <Redo2 size={20} />
-            </button>
+    <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-hidden text-foreground">
+      <header className="flex-none bg-background border-b border-border px-4 py-3 shadow-sm z-10">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C10.9 2 10 2.9 10 4s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-2 16c0 1.1.9 2 2 2s2-.9 2-2-.9-2-2-2-2 .9-2 2zm8-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM4 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                </svg>
+              </div>
+              <h1 className="font-heading font-bold text-lg tracking-tight">BadmintonMgr</h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleUndo}
+                disabled={undoStack.length === 0}
+                className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <Undo2 size={20} />
+              </button>
+              <button
+                onClick={handleRedo}
+                disabled={redoStack.length === 0}
+                className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <Redo2 size={20} />
+              </button>
+              <button
+                onClick={() => navigate('/history')}
+                className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+              >
+                <History size={20} />
+              </button>
+              <button
+                onClick={() => navigate('/settings')}
+                className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+              >
+                <Settings size={20} />
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setContinuousMatchMode(!continuousMatchMode)}
-              className={`btn-secondary rounded-full text-sm flex items-center gap-1.5 border transition-all duration-200 ${
+              className={`flex-1 flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-95 ${
                 continuousMatchMode
-                  ? 'bg-green-500 !text-white border-green-500 shadow-sm'
-                  : 'border-gray-200'
+                  ? 'bg-green-50 text-green-700 border border-green-200'
+                  : 'bg-muted text-muted-foreground border border-border'
               }`}
             >
-              <Repeat size={18} />
-              {continuousMatchMode && <span>✓</span>}
-              連続
+              <span className="flex items-center gap-2">
+                <Repeat size={18} />
+                <span>連続試合</span>
+              </span>
+              {continuousMatchMode && <span className="text-xs bg-green-200 px-2 py-0.5 rounded-full font-bold">ON</span>}
             </button>
             <button
               onClick={() => handleAutoAssign()}
               disabled={!canAutoAssign}
-              className="btn-secondary rounded-full text-sm flex items-center gap-1.5 border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Users size={18} />
-              一括配置
-            </button>
-            <button
-              onClick={() => navigate('/history')}
-              aria-label="履歴"
-              className="icon-btn"
-            >
-              <History size={20} />
-            </button>
-            <button
-              onClick={() => navigate('/settings')}
-              aria-label="設定"
-              className="icon-btn"
-            >
-              <Settings size={20} />
+              <span>一括配置</span>
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-6xl mx-auto p-4 space-y-6">
-        {/* コート一覧 */}
-        <div className="flex pb-2 justify-center items-stretch" style={{ gap: '8px', padding: '0 8px' }}>
-          {courts.map((court) => (
-            <div key={court.id} className="flex flex-1" style={{ minWidth: 0 }}>
-              <CourtCard
-                court={court}
-                getPlayerName={getPlayerName}
-                getPlayerGamesPlayed={getPlayerGamesPlayed}
-                getPlayerGender={getPlayerGender}
-                onStartGame={() => handleStartGame(court.id)}
-                onFinishGame={() => handleFinishGame(court.id)}
-                onAutoAssign={() => handleAutoAssign(court.id)}
-                onClear={() => handleClearCourt(court.id)}
-                onPlayerTap={(playerId, position) =>
-                  handlePlayerTap(playerId, court.id, position)
-                }
-                selectedPlayerId={selectedPlayer?.id}
-                onClearSelection={() => setSelectedPlayer(null)}
-                canAutoAssign={canAutoAssign}
-              />
-            </div>
-          ))}
-        </div>
-
-        {/* メンバー交換の説明 */}
-        {selectedPlayer && (
-          <div className="bg-gradient-to-r from-blue-50 to-blue-50 border-2 border-blue-200 rounded-xl p-4 text-sm text-blue-700 flex items-center justify-between shadow-sm">
-            <span>
-              <strong className="font-semibold">{players.find(p => p.id === selectedPlayer.id)?.name}</strong> と交換したいプレイヤーをタップ
+      <main className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
+        {/* Courts Section */}
+        <section className="py-4">
+          <div className="px-4 mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">
+              コート
+            </h2>
+            <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded-full">
+              {courts.filter(c => c.isPlaying).length} 稼働中
             </span>
-            <button
-              onClick={() => setSelectedPlayer(null)}
-              className="p-2 hover:bg-blue-100 rounded-full transition-colors"
-            >
-              <X size={18} />
-            </button>
+          </div>
+          <div className="flex overflow-x-auto gap-4 px-4 pb-4 scrollbar-hide">
+            {courts.map((court) => {
+              const hasPlayers = court.teamA[0] && court.teamA[0] !== '';
+              const matchNumber = court.isPlaying && court.startedAt
+                ? matchHistory.filter(m => m.finishedAt && m.finishedAt <= court.startedAt!).length + courts.filter(c => c.isPlaying && c.id < court.id).length + 1
+                : null;
+
+              return (
+                <div key={court.id} className="flex-none w-[85vw] max-w-sm bg-card border border-border rounded-2xl shadow-sm snap-center flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/20">
+                    <div className="flex items-center gap-2">
+                      <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
+                        court.isPlaying ? 'bg-foreground text-background' : 'bg-muted-foreground text-white'
+                      }`}>
+                        {court.id}
+                      </span>
+                      <span className={`text-sm font-semibold ${!court.isPlaying && !hasPlayers ? 'text-muted-foreground' : ''}`}>
+                        {court.isPlaying && matchNumber ? `試合 #${matchNumber}` : hasPlayers ? '準備中' : '空き'}
+                      </span>
+                    </div>
+                    {court.isPlaying && court.startedAt && (
+                      <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2 py-1 rounded-md text-xs font-mono font-medium">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <circle cx="12" cy="12" r="10" strokeWidth="2"/>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
+                        </svg>
+                        <span>{formatElapsedTime(court.startedAt)}</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {hasPlayers ? (
+                    <div className="p-4 flex flex-col gap-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex-1 flex flex-col gap-2">
+                          {court.teamA.map((playerId, idx) => {
+                            const playerGender = getPlayerGender(playerId);
+                            const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
+                            return (
+                              <button
+                                key={idx}
+                                onClick={() => handlePlayerTap(playerId, court.id, idx)}
+                                className={`flex items-center justify-between bg-muted/30 p-2 rounded-lg border transition-colors ${
+                                  selectedPlayer?.id === playerId
+                                    ? 'border-primary bg-accent'
+                                    : 'border-transparent hover:border-border'
+                                }`}
+                              >
+                                <span className={`font-medium truncate text-sm ${textColor}`}>
+                                  {getPlayerName(playerId)}
+                                </span>
+                                <span className="text-[10px] bg-background border px-1.5 rounded text-muted-foreground">
+                                  {getPlayerGamesPlayed(playerId)}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="flex flex-col items-center justify-center px-1">
+                          <span className="text-xs font-black text-muted-foreground/50">VS</span>
+                        </div>
+                        <div className="flex-1 flex flex-col gap-2">
+                          {court.teamB.map((playerId, idx) => {
+                            const playerGender = getPlayerGender(playerId);
+                            const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
+                            return (
+                              <button
+                                key={idx}
+                                onClick={() => handlePlayerTap(playerId, court.id, idx + 2)}
+                                className={`flex items-center justify-between bg-muted/30 p-2 rounded-lg border transition-colors ${
+                                  selectedPlayer?.id === playerId
+                                    ? 'border-primary bg-accent'
+                                    : 'border-transparent hover:border-border'
+                                }`}
+                              >
+                                <span className={`font-medium truncate text-sm ${textColor}`}>
+                                  {getPlayerName(playerId)}
+                                </span>
+                                <span className="text-[10px] bg-background border px-1.5 rounded text-muted-foreground">
+                                  {getPlayerGamesPlayed(playerId)}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      
+                      {court.isPlaying ? (
+                        <button
+                          onClick={() => handleFinishGame(court.id)}
+                          className="w-full py-2.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+                        >
+                          <StopCircle size={18} />
+                          終了
+                        </button>
+                      ) : (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleStartGame(court.id)}
+                            className="flex-1 py-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Play size={18} />
+                            開始
+                          </button>
+                          <button
+                            onClick={() => handleClearCourt(court.id)}
+                            className="w-10 h-10 flex items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 gap-4">
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center text-muted-foreground mb-1">
+                          <span className="font-bold">{court.id}</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground font-medium">利用可能</p>
+                      </div>
+                      <button
+                        onClick={() => handleAutoAssign(court.id)}
+                        disabled={!canAutoAssign}
+                        className="px-6 py-2 bg-white border border-border shadow-sm rounded-full text-sm font-medium text-primary flex items-center gap-2 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Plus size={16} />
+                        配置
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Swap Player Modal */}
+        {selectedPlayer && (
+          <div className="px-4 mb-4">
+            <div className="bg-foreground text-background p-3 rounded-xl shadow-xl flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
+                  {players.find(p => p.id === selectedPlayer.id)?.name[0].toUpperCase()}
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-bold">{players.find(p => p.id === selectedPlayer.id)?.name} と交換</span>
+                  <span className="text-xs text-background/70">他のプレイヤーをタップ</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedPlayer(null)}
+                className="w-8 h-8 rounded-full bg-background/20 hover:bg-background/30 flex items-center justify-center text-background"
+              >
+                <X size={18} />
+              </button>
+            </div>
           </div>
         )}
 
-        {/* スコア未入力の試合 */}
-        <div className="card p-4" data-testid="unfinished-matches">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="section-title flex items-center gap-2 text-sm">
-              <span className={`w-2 h-2 rounded-full ${unfinishedMatches.length > 0 ? 'bg-amber-400 animate-pulse' : 'bg-gray-300'}`} />
-              スコア未入力の試合
-            </h3>
-            {unfinishedMatches.length > 1 && (
-              <button
-                onClick={() => setShowAllUnfinished(!showAllUnfinished)}
-                className="flex items-center gap-1 text-xs text-gray-500 px-2 py-1 hover:bg-gray-100 rounded"
-              >
-                <ChevronDown size={14} className={`transition-transform ${showAllUnfinished ? 'rotate-180' : ''}`} />
-                {showAllUnfinished ? '閉じる' : `他${unfinishedMatches.length - 1}件`}
-              </button>
+        {/* Pending Scores */}
+        <section className="px-4 mb-6">
+          <div className="bg-orange-50 border border-orange-100 rounded-2xl overflow-hidden">
+            <div className="px-4 py-3 flex items-center justify-between bg-orange-100/50">
+              <div className="flex items-center gap-2 text-orange-800">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                <h3 className="text-sm font-bold">スコア未入力</h3>
+                {unfinishedMatches.length > 0 && (
+                  <span className="text-xs bg-orange-200/50 px-1.5 py-0.5 rounded font-semibold">
+                    {unfinishedMatches.length}
+                  </span>
+                )}
+              </div>
+              {unfinishedMatches.length > 1 && (
+                <button 
+                  onClick={() => setShowAllUnfinished(!showAllUnfinished)}
+                  className="text-xs font-semibold text-orange-700 bg-white/50 px-2 py-1 rounded flex items-center gap-1 hover:bg-white/80 transition-colors"
+                >
+                  <span>{showAllUnfinished ? '閉じる' : `他${unfinishedMatches.length - 1}件`}</span>
+                  <ChevronDown size={14} className={`transition-transform ${showAllUnfinished ? 'rotate-180' : ''}`} />
+                </button>
+              )}
+            </div>
+            {unfinishedMatches.length > 0 ? (
+              <div className="divide-y divide-orange-100">
+                {visibleUnfinished.map((match) => {
+                  const teamANames = match.teamA.map(getPlayerName).join(' & ');
+                  const teamBNames = match.teamB.map(getPlayerName).join(' & ');
+                  const matchNumber = matchHistory.findIndex((m) => m.id === match.id) + 1;
+                  const courtId = courts.find(c => 
+                    c.teamA.includes(match.teamA[0]) || c.teamB.includes(match.teamA[0])
+                  )?.id;
+                  
+                  return (
+                    <div key={match.id} className="p-3 flex items-center justify-between gap-3">
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <div className="flex items-center gap-2 text-xs text-orange-800/70">
+                          <span className="font-mono">#{matchNumber}</span>
+                          {courtId && (
+                            <>
+                              <span>•</span>
+                              <span>コート {courtId}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="text-sm font-medium text-orange-950 truncate">
+                          {teamANames} vs. {teamBNames}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
+                        className="shrink-0 px-3 py-1.5 bg-white border border-orange-200 text-orange-700 text-xs font-bold rounded-lg shadow-sm hover:bg-orange-50 transition-colors"
+                      >
+                        入力
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-4 text-sm text-orange-600/60 text-center">スコア未入力の試合がありません</div>
             )}
           </div>
-          {unfinishedMatches.length > 0 ? (
-            <div className="space-y-2">
-              {visibleUnfinished.map((match) => {
-                const teamANames = match.teamA.map(getPlayerName).join(' ');
-                const teamBNames = match.teamB.map(getPlayerName).join(' ');
-                const matchNumber = matchHistory.findIndex((m) => m.id === match.id) + 1;
-                return (
-                  <div
-                    key={match.id}
-                    className="flex items-center gap-2 p-2 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg text-sm border border-amber-100"
-                  >
-                    <span className="font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full text-xs flex-shrink-0">
-                      #{matchNumber}
-                    </span>
-                    <div className="flex-1 min-w-0 truncate text-gray-700 text-xs">
-                      {teamANames} vs {teamBNames}
-                    </div>
-                    <button
-                      onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
-                      className="btn-outline text-xs py-1.5 px-3 flex-shrink-0"
-                    >
-                      入力
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400">スコア未入力の試合がありません</p>
-          )}
-        </div>
+        </section>
 
-        {/* プレイヤーリスト */}
-        <div className="card p-4" ref={playerCardRef}>
-          <div className="flex items-baseline justify-between mb-2">
-            <h3 className="section-title">
-              参加者一覧
-              <span className="ml-2 text-sm font-normal text-gray-500">
-                ({players.length}人)
-              </span>
-            </h3>
-            <span className="badge badge-waiting">
-              待機中 {activePlayers.length}人
-            </span>
-          </div>
-          <div className="space-y-3">
-            <div>
-              <div className="grid grid-cols-3 gap-2" style={{ maxWidth: '616px' }}>
-                {activePlayers.map((player) => {
-                  const isSelected = selectedPlayer?.id === player.id;
-                  return (
-                    <div
-                      key={player.id}
-                      onClick={() => handlePlayerTap(player.id)}
-                      className={`player-pill cursor-pointer max-w-[200px] ${
-                        isSelected ? 'player-pill-selected'
-                        : player.gender === 'M' ? 'player-pill-male'
-                        : player.gender === 'F' ? 'player-pill-female'
-                        : ''
-                      }`}
-                    >
-                      <span className="text-gray-800 font-medium min-w-0 overflow-hidden flex-1 player-name-court">
-                        {player.name}
-                      </span>
-                      <span className="text-[13px] text-gray-400 mx-1.5 flex-shrink-0 tabular-nums">
-                        {player.gamesPlayed}
-                      </span>
-                      {isSelected ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedPlayer(null);
-                          }}
-                          aria-label="選択解除"
-                          className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
-                        >
-                          <X size={16} />
-                        </button>
-                      ) : (
+        {/* Waiting Players */}
+        <section className="px-4 flex flex-col gap-6" ref={playerCardRef}>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-foreground">待機中 ({activePlayers.length})</h3>
+              <div className="flex gap-2">
+                <button className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded hover:bg-muted/80">
+                  並び替え: 時間
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {activePlayers.map((player) => {
+                const isSelected = selectedPlayer?.id === player.id;
+                const avatarBgClass = player.gender === 'M' ? 'bg-blue-100' : player.gender === 'F' ? 'bg-pink-100' : 'bg-slate-100';
+                const avatarTextClass = player.gender === 'M' ? 'text-blue-600' : player.gender === 'F' ? 'text-pink-600' : 'text-slate-600';
+                
+                return (
+                  <button
+                    key={player.id}
+                    onClick={() => handlePlayerTap(player.id)}
+                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm transition-all text-left ${
+                      isSelected
+                        ? 'ring-2 ring-primary ring-offset-1 border-primary'
+                        : 'border-border'
+                    }`}
+                  >
+                    {!isSelected && (
+                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleToggleRestWithLock(player.id);
                           }}
-                          aria-label="休憩"
-                          className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-gray-400 hover:text-orange-500 hover:bg-orange-50 active:bg-orange-100 rounded-full flex-shrink-0 transition-all duration-150"
+                          className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center"
                         >
-                          <Coffee size={16} />
+                          <Coffee className="w-3 h-3" />
                         </button>
-                      )}
+                      </div>
+                    )}
+                    {isSelected && (
+                      <div className="absolute -top-1 -right-1 z-10">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPlayer(null);
+                          }}
+                          className="w-4 h-4 rounded-full bg-primary text-white flex items-center justify-center border border-white"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                    <div className="w-full flex justify-center">
+                      <div className={`w-8 h-8 rounded-full ${avatarBgClass} ${avatarTextClass} flex items-center justify-center text-xs font-bold`}>
+                        {player.name[0].toUpperCase()}
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="w-full text-center">
+                      <div className="text-xs font-semibold truncate text-foreground">{player.name}</div>
+                      <div className="text-[10px] text-muted-foreground flex items-center justify-center gap-1">
+                        <span className="bg-muted px-1 rounded">{player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : player.gender}</span>
+                        <span>{player.gamesPlayed} 試合</span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            {/* メンバー追加 */}
-            <div className="flex gap-2">
+          {/* Add Member */}
+          <div className="bg-card p-3 rounded-2xl border border-border flex gap-2 shadow-sm">
+            <div className="flex-1 relative">
               <input
                 type="text"
                 value={newPlayerName}
@@ -644,90 +791,91 @@ export function MainPage() {
                     setNewPlayerName('');
                   }
                 }}
-                placeholder="名前 男/女"
-                className="input-field flex-1"
+                className="w-full h-10 pl-3 pr-3 bg-input border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                placeholder="名前 性別 (例: 田中 男)"
               />
-              <button
-                onClick={() => {
-                  if (newPlayerName.trim()) {
-                    const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
-                    if (parsed) addPlayers([parsed]);
-                    setNewPlayerName('');
-                  }
-                }}
-                disabled={!newPlayerName.trim()}
-                aria-label="追加"
-                className="btn-accent p-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-              >
-                <Plus size={20} />
-              </button>
             </div>
+            <button
+              onClick={() => {
+                if (newPlayerName.trim()) {
+                  const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
+                  if (parsed) addPlayers([parsed]);
+                  setNewPlayerName('');
+                }
+              }}
+              disabled={!newPlayerName.trim()}
+              className="h-10 px-4 bg-secondary text-secondary-foreground rounded-xl font-semibold text-sm flex items-center gap-1 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary/80 transition-colors"
+            >
+              <Plus size={16} />
+              追加
+            </button>
+          </div>
 
-            {/* 休憩中 */}
-            <div className="pt-2">
-              <h4 className="text-sm font-semibold text-orange-500 mb-2 flex items-center gap-1.5">
-                <Coffee size={14} />
-                休憩中 ({restingPlayers.length}人)
-              </h4>
-              {restingAndPlaceholderPlayers.length > 0 ? (
-                <div className="grid grid-cols-3 gap-2" style={{ maxWidth: '616px' }}>
-                  {restingAndPlaceholderPlayers.map((player) => {
-                    if (recentlyRestoredIds.has(player.id)) {
-                      return <div key={player.id} className="player-pill max-w-[200px]" style={{ visibility: 'hidden' }} />;
-                    }
-                    const isSelected = selectedPlayer?.id === player.id;
-                    return (
-                      <div
-                        key={player.id}
-                        onClick={() => handlePlayerTap(player.id)}
-                        className={`player-pill cursor-pointer max-w-[200px] ${
-                          isSelected
-                            ? 'player-pill-selected'
-                            : player.gender === 'M' ? 'player-pill-male'
-                            : player.gender === 'F' ? 'player-pill-female'
-                            : 'bg-orange-50 border-orange-200'
-                        }`}
-                      >
-                        <span className="text-gray-700 font-medium min-w-0 overflow-hidden flex-1 player-name-court">
-                          {player.name}
-                        </span>
-                        <span className="text-[13px] text-gray-400 mx-1.5 flex-shrink-0 tabular-nums">
-                          {player.gamesPlayed}
-                        </span>
-                        {isSelected ? (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedPlayer(null);
-                            }}
-                            aria-label="選択解除"
-                            className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-full flex-shrink-0 transition-all duration-150"
-                          >
-                            <X size={16} />
-                          </button>
-                        ) : (
+          {/* On Break */}
+          <div className="flex flex-col gap-3 pb-8">
+            <h3 className="text-sm font-bold text-muted-foreground">休憩中 ({restingPlayers.length})</h3>
+            {restingAndPlaceholderPlayers.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2 opacity-75">
+                {restingAndPlaceholderPlayers.map((player) => {
+                  if (recentlyRestoredIds.has(player.id)) {
+                    return <div key={player.id} className="relative bg-muted/50 border border-border rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm" style={{ visibility: 'hidden' }} />;
+                  }
+                  const isSelected = selectedPlayer?.id === player.id;
+                  return (
+                    <button
+                      key={player.id}
+                      onClick={() => handlePlayerTap(player.id)}
+                      className={`relative bg-muted/50 border rounded-xl p-2 flex flex-col items-center gap-1.5 shadow-sm ${
+                        isSelected
+                          ? 'ring-2 ring-primary ring-offset-1 border-primary'
+                          : 'border-border'
+                      }`}
+                    >
+                      {!isSelected && (
+                        <div className="absolute top-1 right-1">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleToggleRestWithLock(player.id);
                             }}
-                            aria-label="復帰"
-                            className="min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 active:bg-blue-100 rounded-full flex-shrink-0 transition-all duration-150"
+                            className="w-5 h-5 rounded-full bg-green-100 text-green-600 flex items-center justify-center"
                           >
-                            <ArrowUp size={16} />
+                            <ArrowUp className="w-3 h-3" />
                           </button>
-                        )}
+                        </div>
+                      )}
+                      {isSelected && (
+                        <div className="absolute -top-1 -right-1 z-10">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedPlayer(null);
+                            }}
+                            className="w-4 h-4 rounded-full bg-primary text-white flex items-center justify-center border border-white"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                      <div className="w-full flex justify-center">
+                        <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-xs font-bold">
+                          {player.name[0].toUpperCase()}
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-400 pb-12">休憩メンバー無し</p>
-              )}
-            </div>
+                      <div className="w-full text-center">
+                        <div className="text-xs font-semibold truncate text-muted-foreground">{player.name}</div>
+                        <div className="text-[10px] text-muted-foreground">{player.gamesPlayed} 試合</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground/60 pb-12">休憩メンバー無し</p>
+            )}
           </div>
-        </div>
-      </div>
+        </section>
+      </main>
 
       {/* Toast notifications */}
       {toast.toasts.map((t) => (
