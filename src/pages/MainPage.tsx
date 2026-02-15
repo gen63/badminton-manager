@@ -689,10 +689,11 @@ export function MainPage() {
               <h3 className="text-sm font-bold text-foreground">待機中 ({activePlayers.length})</h3>
               <button
                 onClick={() => setShowAddPlayer(!showAddPlayer)}
-                className="text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded-lg hover:bg-primary/20 transition-colors flex items-center gap-1"
+                className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1.5 rounded-lg hover:bg-primary/20 transition-colors flex items-center gap-1.5"
               >
                 <Plus size={14} />
-                <span>メンバー追加</span>
+                <span>{showAddPlayer ? '閉じる' : 'メンバー追加'}</span>
+                <ChevronDown size={14} className={`transition-transform ${showAddPlayer ? 'rotate-180' : ''}`} />
               </button>
             </div>
             
