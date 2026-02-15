@@ -459,7 +459,7 @@ export function MainPage() {
 
       <main className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
         {/* Courts Section */}
-        <section className="py-4">
+        <section className="pt-4 pb-2">
           <div className="flex overflow-x-auto gap-4 px-4 pb-4 scrollbar-hide">
             {courts.map((court) => {
               const hasPlayers = court.teamA[0] && court.teamA[0] !== '';
@@ -616,7 +616,7 @@ export function MainPage() {
         )}
 
         {/* Pending Scores */}
-        <section className="px-4 mb-6">
+        <section className="px-4 mb-4">
           <div className="bg-orange-50 border border-orange-100 rounded-2xl overflow-hidden">
             <div className="px-4 py-3 flex items-center justify-between bg-orange-100/50">
               <div className="flex items-center gap-2 text-orange-800">
