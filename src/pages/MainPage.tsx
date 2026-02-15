@@ -686,11 +686,6 @@ export function MainPage() {
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">待機中 ({activePlayers.length})</h3>
-              <div className="flex gap-2">
-                <button className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded hover:bg-muted/80">
-                  並び替え: 時間
-                </button>
-              </div>
             </div>
             <div className="grid grid-cols-3 gap-2">
               {activePlayers.map((player) => {
