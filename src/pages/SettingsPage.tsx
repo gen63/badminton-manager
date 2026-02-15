@@ -154,28 +154,28 @@ export function SettingsPage() {
 
             <div>
               <label className="label">配置モード</label>
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <button
                   onClick={() => setUseStayDurationPriority(true)}
-                  className={`select-button ${
+                  className={`flex-1 select-button text-xs px-2 ${
                     useStayDurationPriority
                       ? 'select-button-active'
                       : 'select-button-inactive'
                   }`}
                 >
                   {useStayDurationPriority && <span className="mr-1">✓</span>}
-                  待機時間モード
+                  待機時間
                 </button>
                 <button
                   onClick={() => setUseStayDurationPriority(false)}
-                  className={`select-button ${
+                  className={`flex-1 select-button text-xs px-2 ${
                     !useStayDurationPriority
                       ? 'select-button-active'
                       : 'select-button-inactive'
                   }`}
                 >
                   {!useStayDurationPriority && <span className="mr-1">✓</span>}
-                  試合回数モード
+                  試合回数
                 </button>
               </div>
               <p className="text-xs text-gray-600 mt-2">

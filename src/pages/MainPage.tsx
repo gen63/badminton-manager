@@ -28,6 +28,7 @@ export function MainPage() {
   const [newPlayerName, setNewPlayerName] = useState('');
   const [showAllUnfinished, setShowAllUnfinished] = useState(false);
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
+  const [showAddPlayer, setShowAddPlayer] = useState(false);
   const playerCardRef = useRef<HTMLDivElement>(null);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
@@ -401,68 +402,56 @@ export function MainPage() {
 
   return (
     <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-hidden text-foreground">
-      <header className="flex-none bg-background border-b border-border px-4 py-3 shadow-sm z-10">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C10.9 2 10 2.9 10 4s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-2 16c0 1.1.9 2 2 2s2-.9 2-2-.9-2-2-2-2 .9-2 2zm8-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM4 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
-                </svg>
-              </div>
-              <h1 className="font-heading font-bold text-lg tracking-tight">BadmintonMgr</h1>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleUndo}
-                disabled={undoStack.length === 0}
-                className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <Undo2 size={20} />
-              </button>
-              <button
-                onClick={handleRedo}
-                disabled={redoStack.length === 0}
-                className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <Redo2 size={20} />
-              </button>
-              <button
-                onClick={() => navigate('/history')}
-                className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors"
-              >
-                <History size={20} />
-              </button>
-              <button
-                onClick={() => navigate('/settings')}
-                className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors"
-              >
-                <Settings size={20} />
-              </button>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
+      <header className="sticky top-0 flex-none bg-background border-b border-border px-4 py-2.5 shadow-sm z-10">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setContinuousMatchMode(!continuousMatchMode)}
-              className={`flex-1 flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-95 ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${
                 continuousMatchMode
                   ? 'bg-green-50 text-green-700 border border-green-200'
                   : 'bg-muted text-muted-foreground border border-border'
               }`}
             >
-              <span className="flex items-center gap-2">
-                <Repeat size={18} />
-                <span>連続試合</span>
-              </span>
-              {continuousMatchMode && <span className="text-xs bg-green-200 px-2 py-0.5 rounded-full font-bold">ON</span>}
+              <Repeat size={16} />
+              <span>連続</span>
+              {continuousMatchMode && <span className="text-[10px] bg-green-200 px-1.5 py-0.5 rounded-full font-bold">ON</span>}
             </button>
             <button
               onClick={() => handleAutoAssign()}
               disabled={!canAutoAssign}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Users size={18} />
-              <span>一括配置</span>
+              <Users size={16} />
+              <span>一括</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleUndo}
+              disabled={undoStack.length === 0}
+              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Undo2 size={18} />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={redoStack.length === 0}
+              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Redo2 size={18} />
+            </button>
+            <button
+              onClick={() => navigate('/history')}
+              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+            >
+              <History size={18} />
+            </button>
+            <button
+              onClick={() => navigate('/settings')}
+              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+            >
+              <Settings size={18} />
             </button>
           </div>
         </div>
@@ -470,16 +459,8 @@ export function MainPage() {
 
       <main className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
         {/* Courts Section */}
-        <section className="py-4">
-          <div className="px-4 mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">
-              コート
-            </h2>
-            <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded-full">
-              {courts.filter(c => c.isPlaying).length} 稼働中
-            </span>
-          </div>
-          <div className="flex overflow-x-auto gap-4 px-4 pb-4 scrollbar-hide">
+        <section className="pt-4 pb-2 px-4">
+          <div className="grid grid-cols-3 gap-2">
             {courts.map((court) => {
               const hasPlayers = court.teamA[0] && court.teamA[0] !== '';
               const matchNumber = court.isPlaying && court.startedAt
@@ -487,21 +468,21 @@ export function MainPage() {
                 : null;
 
               return (
-                <div key={court.id} className="flex-none w-[85vw] max-w-sm bg-card border border-border rounded-2xl shadow-sm snap-center flex flex-col overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/20">
-                    <div className="flex items-center gap-2">
-                      <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
+                <div key={court.id} className="w-full bg-card border border-border rounded-xl shadow-sm flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between px-2 py-2 border-b border-border bg-muted/20">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
                         court.isPlaying ? 'bg-foreground text-background' : 'bg-muted-foreground text-white'
                       }`}>
                         {court.id}
                       </span>
-                      <span className={`text-sm font-semibold ${!court.isPlaying && !hasPlayers ? 'text-muted-foreground' : ''}`}>
-                        {court.isPlaying && matchNumber ? `試合 #${matchNumber}` : hasPlayers ? '準備中' : '空き'}
+                      <span className={`text-xs font-semibold ${!court.isPlaying && !hasPlayers ? 'text-muted-foreground' : ''}`}>
+                        {court.isPlaying && matchNumber ? `#${matchNumber}` : hasPlayers ? '準備中' : '空き'}
                       </span>
                     </div>
                     {court.isPlaying && court.startedAt && (
-                      <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2 py-1 rounded-md text-xs font-mono font-medium">
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <circle cx="12" cy="12" r="10" strokeWidth="2"/>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
                         </svg>
@@ -511,101 +492,101 @@ export function MainPage() {
                   </div>
                   
                   {hasPlayers ? (
-                    <div className="p-4 flex flex-col gap-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex-1 flex flex-col gap-2">
-                          {court.teamA.map((playerId, idx) => {
-                            const playerGender = getPlayerGender(playerId);
-                            const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
-                            return (
-                              <button
-                                key={idx}
-                                onClick={() => handlePlayerTap(playerId, court.id, idx)}
-                                className={`flex items-center justify-between bg-muted/30 p-2 rounded-lg border transition-colors ${
-                                  selectedPlayer?.id === playerId
-                                    ? 'border-primary bg-accent'
-                                    : 'border-transparent hover:border-border'
-                                }`}
-                              >
-                                <span className={`font-medium truncate text-sm ${textColor}`}>
-                                  {getPlayerName(playerId)}
-                                </span>
-                                <span className="text-[10px] bg-background border px-1.5 rounded text-muted-foreground">
-                                  {getPlayerGamesPlayed(playerId)}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <div className="flex flex-col items-center justify-center px-1">
-                          <span className="text-xs font-black text-muted-foreground/50">VS</span>
-                        </div>
-                        <div className="flex-1 flex flex-col gap-2">
-                          {court.teamB.map((playerId, idx) => {
-                            const playerGender = getPlayerGender(playerId);
-                            const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
-                            return (
-                              <button
-                                key={idx}
-                                onClick={() => handlePlayerTap(playerId, court.id, idx + 2)}
-                                className={`flex items-center justify-between bg-muted/30 p-2 rounded-lg border transition-colors ${
-                                  selectedPlayer?.id === playerId
-                                    ? 'border-primary bg-accent'
-                                    : 'border-transparent hover:border-border'
-                                }`}
-                              >
-                                <span className={`font-medium truncate text-sm ${textColor}`}>
-                                  {getPlayerName(playerId)}
-                                </span>
-                                <span className="text-[10px] bg-background border px-1.5 rounded text-muted-foreground">
-                                  {getPlayerGamesPlayed(playerId)}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
+                    <div className="p-2 flex flex-col gap-2 min-h-[220px]">
+                      <div className="flex flex-col gap-1">
+                        {court.teamA.map((playerId, idx) => {
+                          const playerGender = getPlayerGender(playerId);
+                          const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => handlePlayerTap(playerId, court.id, idx)}
+                              className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors ${
+                                selectedPlayer?.id === playerId
+                                  ? 'border-primary bg-accent'
+                                  : 'border-transparent hover:border-border'
+                              }`}
+                            >
+                              <span className={`font-medium truncate text-xs ${textColor}`}>
+                                {getPlayerName(playerId)}
+                              </span>
+                              <span className="text-[9px] bg-background border px-1 rounded text-muted-foreground">
+                                {getPlayerGamesPlayed(playerId)}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      
+                      <div className="flex items-center justify-center py-0.5">
+                        <span className="text-[10px] font-black text-muted-foreground/50">VS</span>
+                      </div>
+                      
+                      <div className="flex flex-col gap-1">
+                        {court.teamB.map((playerId, idx) => {
+                          const playerGender = getPlayerGender(playerId);
+                          const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => handlePlayerTap(playerId, court.id, idx + 2)}
+                              className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors ${
+                                selectedPlayer?.id === playerId
+                                  ? 'border-primary bg-accent'
+                                  : 'border-transparent hover:border-border'
+                              }`}
+                            >
+                              <span className={`font-medium truncate text-xs ${textColor}`}>
+                                {getPlayerName(playerId)}
+                              </span>
+                              <span className="text-[9px] bg-background border px-1 rounded text-muted-foreground">
+                                {getPlayerGamesPlayed(playerId)}
+                              </span>
+                            </button>
+                          );
+                        })}
                       </div>
                       
                       {court.isPlaying ? (
                         <button
                           onClick={() => handleFinishGame(court.id)}
-                          className="w-full py-2.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+                          className="w-full py-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
                         >
-                          <StopCircle size={18} />
+                          <StopCircle size={14} />
                           終了
                         </button>
                       ) : (
-                        <div className="flex gap-2">
+                        <div className="flex gap-1.5">
                           <button
                             onClick={() => handleStartGame(court.id)}
-                            className="flex-1 py-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+                            className="flex-1 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
                           >
-                            <Play size={18} />
+                            <Play size={14} />
                             開始
                           </button>
                           <button
                             onClick={() => handleClearCourt(court.id)}
-                            className="w-10 h-10 flex items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            className="w-8 h-8 flex items-center justify-center rounded-lg border border-border bg-background text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                           >
-                            <Trash2 size={18} />
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-8 gap-4">
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center text-muted-foreground mb-1">
-                          <span className="font-bold">{court.id}</span>
+                    <div className="flex flex-col items-center justify-center py-4 gap-2 min-h-[220px]">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center text-muted-foreground">
+                          <span className="font-bold text-xs">{court.id}</span>
                         </div>
-                        <p className="text-sm text-muted-foreground font-medium">利用可能</p>
+                        <p className="text-xs text-muted-foreground font-medium">空き</p>
                       </div>
                       <button
                         onClick={() => handleAutoAssign(court.id)}
                         disabled={!canAutoAssign}
-                        className="px-6 py-2 bg-white border border-border shadow-sm rounded-full text-sm font-medium text-primary flex items-center gap-2 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1.5 bg-white border border-border shadow-sm rounded-lg text-xs font-medium text-primary flex items-center gap-1.5 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <Plus size={16} />
+                        <Plus size={12} />
                         配置
                       </button>
                     </div>
@@ -620,14 +601,9 @@ export function MainPage() {
         {selectedPlayer && (
           <div className="px-4 mb-4">
             <div className="bg-foreground text-background p-3 rounded-xl shadow-xl flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
-                  {players.find(p => p.id === selectedPlayer.id)?.name[0].toUpperCase()}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-bold">{players.find(p => p.id === selectedPlayer.id)?.name} と交換</span>
-                  <span className="text-xs text-background/70">他のプレイヤーをタップ</span>
-                </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-bold">{players.find(p => p.id === selectedPlayer.id)?.name} と交換</span>
+                <span className="text-xs text-background/70">他のプレイヤーをタップ</span>
               </div>
               <button
                 onClick={() => setSelectedPlayer(null)}
@@ -640,7 +616,7 @@ export function MainPage() {
         )}
 
         {/* Pending Scores */}
-        <section className="px-4 mb-6">
+        <section className="px-4 mb-4">
           <div className="bg-orange-50 border border-orange-100 rounded-2xl overflow-hidden">
             <div className="px-4 py-3 flex items-center justify-between bg-orange-100/50">
               <div className="flex items-center gap-2 text-orange-800">
@@ -711,17 +687,59 @@ export function MainPage() {
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">待機中 ({activePlayers.length})</h3>
-              <div className="flex gap-2">
-                <button className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded hover:bg-muted/80">
-                  並び替え: 時間
+              <button
+                onClick={() => setShowAddPlayer(!showAddPlayer)}
+                className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1.5 rounded-lg hover:bg-primary/20 transition-colors flex items-center gap-1.5"
+              >
+                <Plus size={14} />
+                <span>{showAddPlayer ? '閉じる' : 'メンバー追加'}</span>
+                <ChevronDown size={14} className={`transition-transform ${showAddPlayer ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+            
+            {/* Add Member - Collapsible */}
+            {showAddPlayer && (
+              <div className="bg-card p-3 rounded-2xl border border-border flex gap-2 shadow-sm">
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={newPlayerName}
+                    onChange={(e) => setNewPlayerName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newPlayerName.trim()) {
+                        const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
+                        if (parsed) {
+                          addPlayers([parsed]);
+                          setNewPlayerName('');
+                        }
+                      }
+                    }}
+                    className="w-full h-10 pl-3 pr-3 bg-input border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    placeholder="こば 男"
+                    autoFocus
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    if (newPlayerName.trim()) {
+                      const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
+                      if (parsed) {
+                        addPlayers([parsed]);
+                        setNewPlayerName('');
+                      }
+                    }
+                  }}
+                  disabled={!newPlayerName.trim()}
+                  className="h-10 w-10 bg-secondary text-secondary-foreground rounded-xl font-semibold text-sm flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary/80 transition-colors"
+                >
+                  <Plus size={18} />
                 </button>
               </div>
-            </div>
+            )}
+
             <div className="grid grid-cols-3 gap-2">
               {activePlayers.map((player) => {
                 const isSelected = selectedPlayer?.id === player.id;
-                const avatarBgClass = player.gender === 'M' ? 'bg-blue-100' : player.gender === 'F' ? 'bg-pink-100' : 'bg-slate-100';
-                const avatarTextClass = player.gender === 'M' ? 'text-blue-600' : player.gender === 'F' ? 'text-pink-600' : 'text-slate-600';
                 
                 return (
                   <button
@@ -759,56 +777,25 @@ export function MainPage() {
                         </button>
                       </div>
                     )}
-                    <div className="w-full flex justify-center">
-                      <div className={`w-8 h-8 rounded-full ${avatarBgClass} ${avatarTextClass} flex items-center justify-center text-xs font-bold`}>
-                        {player.name[0].toUpperCase()}
-                      </div>
-                    </div>
                     <div className="w-full text-center">
                       <div className="text-xs font-semibold truncate text-foreground">{player.name}</div>
-                      <div className="text-[10px] text-muted-foreground flex items-center justify-center gap-1">
-                        <span className="bg-muted px-1 rounded">{player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : player.gender}</span>
-                        <span>{player.gamesPlayed} 試合</span>
+                      <div className="text-[10px] flex items-center justify-center gap-1">
+                        <span className={`px-1.5 py-0.5 rounded font-semibold ${
+                          player.gender === 'M' 
+                            ? 'bg-blue-100 text-blue-700' 
+                            : player.gender === 'F' 
+                            ? 'bg-pink-100 text-pink-700' 
+                            : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : player.gender}
+                        </span>
+                        <span className="text-muted-foreground">{player.gamesPlayed} 試合</span>
                       </div>
                     </div>
                   </button>
                 );
               })}
             </div>
-          </div>
-
-          {/* Add Member */}
-          <div className="bg-card p-3 rounded-2xl border border-border flex gap-2 shadow-sm">
-            <div className="flex-1 relative">
-              <input
-                type="text"
-                value={newPlayerName}
-                onChange={(e) => setNewPlayerName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newPlayerName.trim()) {
-                    const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
-                    if (parsed) addPlayers([parsed]);
-                    setNewPlayerName('');
-                  }
-                }}
-                className="w-full h-10 pl-3 pr-3 bg-input border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                placeholder="名前 性別 (例: 田中 男)"
-              />
-            </div>
-            <button
-              onClick={() => {
-                if (newPlayerName.trim()) {
-                  const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
-                  if (parsed) addPlayers([parsed]);
-                  setNewPlayerName('');
-                }
-              }}
-              disabled={!newPlayerName.trim()}
-              className="h-10 px-4 bg-secondary text-secondary-foreground rounded-xl font-semibold text-sm flex items-center gap-1 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary/80 transition-colors"
-            >
-              <Plus size={16} />
-              追加
-            </button>
           </div>
 
           {/* On Break */}
@@ -857,11 +844,6 @@ export function MainPage() {
                           </button>
                         </div>
                       )}
-                      <div className="w-full flex justify-center">
-                        <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-xs font-bold">
-                          {player.name[0].toUpperCase()}
-                        </div>
-                      </div>
                       <div className="w-full text-center">
                         <div className="text-xs font-semibold truncate text-muted-foreground">{player.name}</div>
                         <div className="text-[10px] text-muted-foreground">{player.gamesPlayed} 試合</div>
