@@ -695,14 +695,14 @@ export function MainPage() {
                   <button
                     key={player.id}
                     onClick={() => handlePlayerTap(player.id)}
-                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl p-1.5 flex flex-col items-center justify-center gap-1 shadow-sm transition-all text-left h-[68px] ${
+                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl p-2 flex flex-col items-center justify-center gap-1 shadow-sm transition-all text-left h-[76px] ${
                       isSelected
                         ? 'ring-2 ring-primary ring-offset-1 border-primary'
                         : 'border-border'
                     }`}
                   >
                     {!isSelected && (
-                      <div className="absolute top-0.5 right-0.5">
+                      <div className="absolute top-1 right-1">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -728,10 +728,10 @@ export function MainPage() {
                         </button>
                       </div>
                     )}
-                    <div className="w-full text-center space-y-0.5">
-                      <div className="text-xs font-semibold truncate text-foreground leading-tight">{player.name}</div>
-                      <div className="text-[10px] flex items-center justify-center gap-0.5">
-                        <span className={`px-1 py-[1px] rounded text-[9px] font-semibold leading-tight ${
+                    <div className="w-full text-center space-y-1">
+                      <div className="text-sm font-semibold truncate text-foreground leading-tight">{player.name}</div>
+                      <div className="text-xs flex items-center justify-center gap-1">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold leading-tight ${
                           player.gender === 'M' 
                             ? 'bg-blue-100 text-blue-700' 
                             : player.gender === 'F' 
@@ -756,15 +756,15 @@ export function MainPage() {
               <div className="grid grid-cols-3 gap-2 opacity-75">
                 {restingAndPlaceholderPlayers.map((player) => {
                   if (recentlyRestoredIds.has(player.id)) {
-                    return <div key={player.id} className="relative bg-muted/50 border border-border rounded-xl p-1.5 flex flex-col items-center justify-center gap-1 shadow-sm h-[68px]" style={{ visibility: 'hidden' }} />;
+                    return <div key={player.id} className="relative bg-muted/50 border border-border rounded-xl p-2 flex flex-col items-center justify-center gap-1 shadow-sm h-[76px]" style={{ visibility: 'hidden' }} />;
                   }
                   return (
                     <button
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
-                      className="relative bg-muted/50 border border-border rounded-xl p-1.5 flex flex-col items-center justify-center gap-1 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors h-[68px]"
+                      className="relative bg-muted/50 border border-border rounded-xl p-2 flex flex-col items-center justify-center gap-1 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors h-[76px]"
                     >
-                      <div className="absolute top-0.5 right-0.5">
+                      <div className="absolute top-1 right-1">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -775,9 +775,9 @@ export function MainPage() {
                           <ArrowUp className="w-3 h-3" />
                         </button>
                       </div>
-                      <div className="w-full text-center space-y-0.5">
-                        <div className="text-xs font-semibold truncate text-muted-foreground leading-tight">{player.name}</div>
-                        <div className="text-[10px] text-muted-foreground leading-tight">{player.gamesPlayed}試合</div>
+                      <div className="w-full text-center space-y-1">
+                        <div className="text-sm font-semibold truncate text-muted-foreground leading-tight">{player.name}</div>
+                        <div className="text-xs text-muted-foreground leading-tight">{player.gamesPlayed}試合</div>
                       </div>
                     </button>
                   );
