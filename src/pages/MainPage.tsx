@@ -755,7 +755,7 @@ export function MainPage() {
                   }
                 }}
                 className="w-full h-10 pl-3 pr-3 bg-input border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                placeholder="名前 性別 (例: 田中 男)"
+                placeholder="こば 男"
               />
             </div>
             <button
