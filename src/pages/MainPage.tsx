@@ -402,7 +402,7 @@ export function MainPage() {
 
   return (
     <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-hidden text-foreground">
-      <header className="flex-none bg-background border-b border-border px-4 py-2.5 shadow-sm z-10">
+      <header className="sticky top-0 flex-none bg-background border-b border-border px-4 py-2.5 shadow-sm z-10">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <button
