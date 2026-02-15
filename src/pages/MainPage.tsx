@@ -460,7 +460,7 @@ export function MainPage() {
       <main className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
         {/* Courts Section */}
         <section className="pt-4 pb-2 px-4">
-          <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-3 gap-2">
             {courts.map((court) => {
               const hasPlayers = court.teamA[0] && court.teamA[0] !== '';
               const matchNumber = court.isPlaying && court.startedAt
@@ -468,21 +468,21 @@ export function MainPage() {
                 : null;
 
               return (
-                <div key={court.id} className="w-full bg-card border border-border rounded-2xl shadow-sm flex flex-col overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/20">
-                    <div className="flex items-center gap-2">
-                      <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
+                <div key={court.id} className="w-full bg-card border border-border rounded-xl shadow-sm flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between px-2 py-2 border-b border-border bg-muted/20">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
                         court.isPlaying ? 'bg-foreground text-background' : 'bg-muted-foreground text-white'
                       }`}>
                         {court.id}
                       </span>
-                      <span className={`text-sm font-semibold ${!court.isPlaying && !hasPlayers ? 'text-muted-foreground' : ''}`}>
-                        {court.isPlaying && matchNumber ? `試合 #${matchNumber}` : hasPlayers ? '準備中' : '空き'}
+                      <span className={`text-xs font-semibold ${!court.isPlaying && !hasPlayers ? 'text-muted-foreground' : ''}`}>
+                        {court.isPlaying && matchNumber ? `#${matchNumber}` : hasPlayers ? '準備中' : '空き'}
                       </span>
                     </div>
                     {court.isPlaying && court.startedAt && (
-                      <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2 py-1 rounded-md text-xs font-mono font-medium">
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <circle cx="12" cy="12" r="10" strokeWidth="2"/>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
                         </svg>
@@ -492,9 +492,9 @@ export function MainPage() {
                   </div>
                   
                   {hasPlayers ? (
-                    <div className="p-4 flex flex-col gap-4">
+                    <div className="p-2 flex flex-col gap-2">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex-1 flex flex-col gap-2">
+                        <div className="flex-1 flex flex-col gap-1">
                           {court.teamA.map((playerId, idx) => {
                             const playerGender = getPlayerGender(playerId);
                             const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
@@ -502,26 +502,26 @@ export function MainPage() {
                               <button
                                 key={idx}
                                 onClick={() => handlePlayerTap(playerId, court.id, idx)}
-                                className={`flex items-center justify-between bg-muted/30 p-2 rounded-lg border transition-colors ${
+                                className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors ${
                                   selectedPlayer?.id === playerId
                                     ? 'border-primary bg-accent'
                                     : 'border-transparent hover:border-border'
                                 }`}
                               >
-                                <span className={`font-medium truncate text-sm ${textColor}`}>
+                                <span className={`font-medium truncate text-xs ${textColor}`}>
                                   {getPlayerName(playerId)}
                                 </span>
-                                <span className="text-[10px] bg-background border px-1.5 rounded text-muted-foreground">
+                                <span className="text-[9px] bg-background border px-1 rounded text-muted-foreground">
                                   {getPlayerGamesPlayed(playerId)}
                                 </span>
                               </button>
                             );
                           })}
                         </div>
-                        <div className="flex flex-col items-center justify-center px-1">
-                          <span className="text-xs font-black text-muted-foreground/50">VS</span>
+                        <div className="flex flex-col items-center justify-center px-0.5">
+                          <span className="text-[10px] font-black text-muted-foreground/50">VS</span>
                         </div>
-                        <div className="flex-1 flex flex-col gap-2">
+                        <div className="flex-1 flex flex-col gap-1">
                           {court.teamB.map((playerId, idx) => {
                             const playerGender = getPlayerGender(playerId);
                             const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
@@ -529,16 +529,16 @@ export function MainPage() {
                               <button
                                 key={idx}
                                 onClick={() => handlePlayerTap(playerId, court.id, idx + 2)}
-                                className={`flex items-center justify-between bg-muted/30 p-2 rounded-lg border transition-colors ${
+                                className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors ${
                                   selectedPlayer?.id === playerId
                                     ? 'border-primary bg-accent'
                                     : 'border-transparent hover:border-border'
                                 }`}
                               >
-                                <span className={`font-medium truncate text-sm ${textColor}`}>
+                                <span className={`font-medium truncate text-xs ${textColor}`}>
                                   {getPlayerName(playerId)}
                                 </span>
-                                <span className="text-[10px] bg-background border px-1.5 rounded text-muted-foreground">
+                                <span className="text-[9px] bg-background border px-1 rounded text-muted-foreground">
                                   {getPlayerGamesPlayed(playerId)}
                                 </span>
                               </button>
@@ -550,43 +550,43 @@ export function MainPage() {
                       {court.isPlaying ? (
                         <button
                           onClick={() => handleFinishGame(court.id)}
-                          className="w-full py-2.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+                          className="w-full py-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
                         >
-                          <StopCircle size={18} />
+                          <StopCircle size={14} />
                           終了
                         </button>
                       ) : (
-                        <div className="flex gap-2">
+                        <div className="flex gap-1.5">
                           <button
                             onClick={() => handleStartGame(court.id)}
-                            className="flex-1 py-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+                            className="flex-1 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
                           >
-                            <Play size={18} />
+                            <Play size={14} />
                             開始
                           </button>
                           <button
                             onClick={() => handleClearCourt(court.id)}
-                            className="w-10 h-10 flex items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            className="w-8 h-8 flex items-center justify-center rounded-lg border border-border bg-background text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                           >
-                            <Trash2 size={18} />
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-8 gap-4">
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center text-muted-foreground mb-1">
-                          <span className="font-bold">{court.id}</span>
+                    <div className="flex flex-col items-center justify-center py-4 gap-2">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center text-muted-foreground">
+                          <span className="font-bold text-xs">{court.id}</span>
                         </div>
-                        <p className="text-sm text-muted-foreground font-medium">利用可能</p>
+                        <p className="text-xs text-muted-foreground font-medium">空き</p>
                       </div>
                       <button
                         onClick={() => handleAutoAssign(court.id)}
                         disabled={!canAutoAssign}
-                        className="px-6 py-2 bg-white border border-border shadow-sm rounded-full text-sm font-medium text-primary flex items-center gap-2 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1.5 bg-white border border-border shadow-sm rounded-lg text-xs font-medium text-primary flex items-center gap-1.5 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <Plus size={16} />
+                        <Plus size={12} />
                         配置
                       </button>
                     </div>
