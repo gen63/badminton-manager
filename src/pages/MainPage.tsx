@@ -28,6 +28,7 @@ export function MainPage() {
   const [newPlayerName, setNewPlayerName] = useState('');
   const [showAllUnfinished, setShowAllUnfinished] = useState(false);
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
+  const [showAddPlayer, setShowAddPlayer] = useState(false);
   const playerCardRef = useRef<HTMLDivElement>(null);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
@@ -686,7 +687,55 @@ export function MainPage() {
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">待機中 ({activePlayers.length})</h3>
+              <button
+                onClick={() => setShowAddPlayer(!showAddPlayer)}
+                className="text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded-lg hover:bg-primary/20 transition-colors flex items-center gap-1"
+              >
+                <Plus size={14} />
+                <span>メンバー追加</span>
+              </button>
             </div>
+            
+            {/* Add Member - Collapsible */}
+            {showAddPlayer && (
+              <div className="bg-card p-3 rounded-2xl border border-border flex gap-2 shadow-sm">
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={newPlayerName}
+                    onChange={(e) => setNewPlayerName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newPlayerName.trim()) {
+                        const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
+                        if (parsed) {
+                          addPlayers([parsed]);
+                          setNewPlayerName('');
+                        }
+                      }
+                    }}
+                    className="w-full h-10 pl-3 pr-3 bg-input border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    placeholder="こば 男"
+                    autoFocus
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    if (newPlayerName.trim()) {
+                      const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
+                      if (parsed) {
+                        addPlayers([parsed]);
+                        setNewPlayerName('');
+                      }
+                    }
+                  }}
+                  disabled={!newPlayerName.trim()}
+                  className="h-10 w-10 bg-secondary text-secondary-foreground rounded-xl font-semibold text-sm flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary/80 transition-colors"
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+            )}
+
             <div className="grid grid-cols-3 gap-2">
               {activePlayers.map((player) => {
                 const isSelected = selectedPlayer?.id === player.id;
@@ -738,39 +787,6 @@ export function MainPage() {
                 );
               })}
             </div>
-          </div>
-
-          {/* Add Member */}
-          <div className="bg-card p-3 rounded-2xl border border-border flex gap-2 shadow-sm">
-            <div className="flex-1 relative">
-              <input
-                type="text"
-                value={newPlayerName}
-                onChange={(e) => setNewPlayerName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newPlayerName.trim()) {
-                    const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
-                    if (parsed) addPlayers([parsed]);
-                    setNewPlayerName('');
-                  }
-                }}
-                className="w-full h-10 pl-3 pr-3 bg-input border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                placeholder="こば 男"
-              />
-            </div>
-            <button
-              onClick={() => {
-                if (newPlayerName.trim()) {
-                  const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
-                  if (parsed) addPlayers([parsed]);
-                  setNewPlayerName('');
-                }
-              }}
-              disabled={!newPlayerName.trim()}
-              className="h-10 w-10 bg-secondary text-secondary-foreground rounded-xl font-semibold text-sm flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary/80 transition-colors"
-            >
-              <Plus size={18} />
-            </button>
           </div>
 
           {/* On Break */}
