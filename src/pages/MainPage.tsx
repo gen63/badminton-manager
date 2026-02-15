@@ -773,13 +773,14 @@ export function MainPage() {
                     }`}
                   >
                     {!isSelected && (
-                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="absolute top-1 right-1">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleToggleRestWithLock(player.id);
                           }}
-                          className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center"
+                          className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center hover:bg-orange-200 transition-colors"
+                          aria-label="休憩"
                         >
                           <Coffee className="w-3 h-3" />
                         </button>
