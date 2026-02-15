@@ -401,58 +401,56 @@ export function MainPage() {
 
   return (
     <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-hidden text-foreground">
-      <header className="flex-none bg-background border-b border-border px-4 py-3 shadow-sm z-10">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-3">
+      <header className="flex-none bg-background border-b border-border px-4 py-2.5 shadow-sm z-10">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setContinuousMatchMode(!continuousMatchMode)}
-              className={`flex-1 flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-95 ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${
                 continuousMatchMode
                   ? 'bg-green-50 text-green-700 border border-green-200'
                   : 'bg-muted text-muted-foreground border border-border'
               }`}
             >
-              <span className="flex items-center gap-2">
-                <Repeat size={18} />
-                <span>連続試合</span>
-              </span>
-              {continuousMatchMode && <span className="text-xs bg-green-200 px-2 py-0.5 rounded-full font-bold">ON</span>}
+              <Repeat size={16} />
+              <span>連続</span>
+              {continuousMatchMode && <span className="text-[10px] bg-green-200 px-1.5 py-0.5 rounded-full font-bold">ON</span>}
             </button>
             <button
               onClick={() => handleAutoAssign()}
               disabled={!canAutoAssign}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Users size={18} />
-              <span>一括配置</span>
+              <Users size={16} />
+              <span>一括</span>
             </button>
           </div>
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={handleUndo}
               disabled={undoStack.length === 0}
-              className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              <Undo2 size={20} />
+              <Undo2 size={18} />
             </button>
             <button
               onClick={handleRedo}
               disabled={redoStack.length === 0}
-              className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              <Redo2 size={20} />
+              <Redo2 size={18} />
             </button>
             <button
               onClick={() => navigate('/history')}
-              className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors"
             >
-              <History size={20} />
+              <History size={18} />
             </button>
             <button
               onClick={() => navigate('/settings')}
-              className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors"
             >
-              <Settings size={20} />
+              <Settings size={18} />
             </button>
           </div>
         </div>
