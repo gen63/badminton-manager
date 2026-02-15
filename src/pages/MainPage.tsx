@@ -648,7 +648,7 @@ export function MainPage() {
                 )}
               </div>
               {unfinishedMatches.length === 0 ? (
-                <span className="text-xs text-orange-600/60">試合がありません</span>
+                <span className="text-xs text-orange-600/60">スコア未入力の試合がありません</span>
               ) : unfinishedMatches.length > 1 ? (
                 <button 
                   onClick={() => setShowAllUnfinished(!showAllUnfinished)}
