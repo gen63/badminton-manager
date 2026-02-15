@@ -825,11 +825,6 @@ export function MainPage() {
                           </button>
                         </div>
                       )}
-                      <div className="w-full flex justify-center">
-                        <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-xs font-bold">
-                          {player.name[0].toUpperCase()}
-                        </div>
-                      </div>
                       <div className="w-full text-center">
                         <div className="text-xs font-semibold truncate text-muted-foreground">{player.name}</div>
                         <div className="text-[10px] text-muted-foreground">{player.gamesPlayed} 試合</div>
