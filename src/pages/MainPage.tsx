@@ -459,14 +459,6 @@ export function MainPage() {
       <main className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
         {/* Courts Section */}
         <section className="py-4">
-          <div className="px-4 mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">
-              コート
-            </h2>
-            <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded-full">
-              {courts.filter(c => c.isPlaying).length} 稼働中
-            </span>
-          </div>
           <div className="flex overflow-x-auto gap-4 px-4 pb-4 scrollbar-hide">
             {courts.map((court) => {
               const hasPlayers = court.teamA[0] && court.teamA[0] !== '';
