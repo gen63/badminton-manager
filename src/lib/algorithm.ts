@@ -359,8 +359,32 @@ function assign2CourtsHolistic(
   );
 
   // 2. 必要人数を選出（コート数 × 4人）
+  // 性別バランスを考慮: 女性が奇数人の場合、優先度最低の女性を男性と入替
   const requiredCount = targetCourtIds.length * 4;
-  const selected = prioritySorted.slice(0, requiredCount);
+  let selected = prioritySorted.slice(0, requiredCount);
+
+  const femalesInSelected = selected.filter(p => p.gender === 'F');
+  if (femalesInSelected.length > 0 && femalesInSelected.length % 2 === 1) {
+    // 奇数人の女性がいる → 優先度が最も低い（=配列末尾に近い）女性を除外候補に
+    // ただし gamesPlayed === 0 の女性は初回保証のため除外しない
+    const excludable = femalesInSelected
+      .filter(f => f.gamesPlayed > 0)
+      .sort((a, b) =>
+        calculatePriorityScore(b, practiceStartTime, useStayDuration) -
+        calculatePriorityScore(a, practiceStartTime, useStayDuration)
+      );
+    if (excludable.length > 0) {
+      const toExclude = excludable[0];
+      // 選出リストから除外し、次順位の男性を追加
+      const nextMale = prioritySorted
+        .slice(requiredCount)
+        .find(p => p.gender !== 'F');
+      if (nextMale) {
+        selected = selected.filter(p => p.id !== toExclude.id);
+        selected.push(nextMale);
+      }
+    }
+  }
 
   // 3. 全アクティブプレイヤーでグループ分け（グローバル序列）
   const groups = groupPlayers2Court(groupingPlayers, matchHistory);
@@ -373,7 +397,40 @@ function assign2CourtsHolistic(
     .filter(id => selected.some(p => p.id === id))
     .map(id => selected.find(p => p.id === id)!);
 
-  // 5. 確率ベースのコート振り分け
+  // 5. 確率ベースのコート振り分け（性別考慮あり）
+  // 女性を同じコートにまとめてMIX配置を目指す
+  const femalesInFinal = orderedSelected.filter(p => p.gender === 'F');
+
+  // 女性が2人以上いる場合、同じコートにまとめる
+  if (femalesInFinal.length >= 2) {
+    const femaleIds = new Set(femalesInFinal.map(p => p.id));
+    const males = orderedSelected.filter(p => !femaleIds.has(p.id));
+    // 女性2人 + 男性上位2人 をupperコートに配置
+    const femalesForCourt = femalesInFinal.slice(0, 2);
+    const malesForMixCourt = males.slice(0, 2);
+    const remainingMales = males.slice(2);
+    const remainingFemales = femalesInFinal.slice(2);
+
+    const upperCourt = [...femalesForCourt, ...malesForMixCourt];
+    const lowerCourt = [...remainingFemales, ...remainingMales];
+
+    // 6. 直近試合制約のチェック・修正
+    tryFixRecentMatch(upperCourt, lowerCourt, matchHistory);
+
+    // 7. コートID割り当て（小さいID = upperコート）
+    const sortedCourtIds = [...targetCourtIds].sort((a, b) => a - b);
+
+    // 8. チーム編成（序列ベースの最強+最弱ペアリング）
+    const upperTeams = formTeams(upperCourt, order);
+    const lowerTeams = formTeams(lowerCourt, order);
+
+    return [
+      { courtId: sortedCourtIds[0], teamA: upperTeams.teamA, teamB: upperTeams.teamB },
+      { courtId: sortedCourtIds[1], teamA: lowerTeams.teamA, teamB: lowerTeams.teamB },
+    ];
+  }
+
+  // 女性が0-1人の場合: 従来通りの確率ベース振り分け
   // グループ確率 + ランダムノイズでスコアを付与し、上位4人をC1に配置
   // upper(70%) / lower(30%) の確率に基づきつつ、ランダム性で行き来が発生
   const courtScores = orderedSelected.map(player => {
@@ -453,9 +510,10 @@ function getGenderPenalty(
 
   const maleCount = genders.filter(g => g === 'M').length;
   // 4-0, 0-4 (同性対決) or 2-2 (MIX) → ペナルティなし
-  // 3-1, 1-3 → MIXにも同性にもならない → 小ペナルティ
+  // 3-1, 1-3 → MIXにも同性にもならない → 強ペナルティ
+  // 女性が少数の場合、4M(ペナルティ0)を優先させて女性をMIX用に温存する
   if (maleCount === 1 || maleCount === 3) {
-    return oneGameDelta * 0.5;
+    return oneGameDelta * 3.0;
   }
   return 0;
 }
