@@ -359,29 +359,48 @@ function assign2CourtsHolistic(
   );
 
   // 2. 必要人数を選出（コート数 × 4人）
-  // 性別バランスを考慮: 女性が奇数人の場合、優先度最低の女性を男性と入替
+  // 性別バランスを考慮: 少数派性別が奇数人の場合、優先度最低の1人を多数派と入替
   const requiredCount = targetCourtIds.length * 4;
   let selected = prioritySorted.slice(0, requiredCount);
 
-  const femalesInSelected = selected.filter(p => p.gender === 'F');
-  if (femalesInSelected.length > 0 && femalesInSelected.length % 2 === 1) {
-    // 奇数人の女性がいる → 優先度が最も低い（=配列末尾に近い）女性を除外候補に
-    // ただし gamesPlayed === 0 の女性は初回保証のため除外しない
-    const excludable = femalesInSelected
-      .filter(f => f.gamesPlayed > 0)
-      .sort((a, b) =>
-        calculatePriorityScore(b, practiceStartTime, useStayDuration) -
-        calculatePriorityScore(a, practiceStartTime, useStayDuration)
-      );
-    if (excludable.length > 0) {
-      const toExclude = excludable[0];
-      // 選出リストから除外し、次順位の男性を追加
-      const nextMale = prioritySorted
-        .slice(requiredCount)
-        .find(p => p.gender !== 'F');
-      if (nextMale) {
-        selected = selected.filter(p => p.id !== toExclude.id);
-        selected.push(nextMale);
+  // 全員に性別が設定されている場合のみ性別バランスを適用
+  const allGendered = selected.every(p => p.gender === 'M' || p.gender === 'F');
+  if (allGendered) {
+    const femaleCount = selected.filter(p => p.gender === 'F').length;
+    const maleCount = selected.filter(p => p.gender === 'M').length;
+    // 少数派の性別を特定（同数の場合はバランス不要）
+    const minorityGender: 'M' | 'F' | null =
+      femaleCount < maleCount ? 'F' : maleCount < femaleCount ? 'M' : null;
+    const minorityCount = minorityGender === 'F' ? femaleCount : minorityGender === 'M' ? maleCount : 0;
+
+    if (minorityGender && minorityCount > 0 && minorityCount % 2 === 1) {
+      // 奇数人の少数派がいる → 優先度が最も低い1人を除外候補に
+      // ただし gamesPlayed === 0 は初回保証のため除外しない
+      const minorities = selected.filter(p => p.gender === minorityGender);
+      const excludable = minorities
+        .filter(p => p.gamesPlayed > 0)
+        .sort((a, b) =>
+          calculatePriorityScore(b, practiceStartTime, useStayDuration) -
+          calculatePriorityScore(a, practiceStartTime, useStayDuration)
+        );
+      if (excludable.length > 0) {
+        const toExclude = excludable[0];
+        const majorityGender = minorityGender === 'F' ? 'M' : 'F';
+        const nextMajority = prioritySorted
+          .slice(requiredCount)
+          .find(p => p.gender === majorityGender);
+        if (nextMajority) {
+          // フェアネスチェック: 除外候補が入替先より2試合分以上待っていたら除外しない
+          const excludePriority = calculatePriorityScore(toExclude, practiceStartTime, useStayDuration);
+          const replacePriority = calculatePriorityScore(nextMajority, practiceStartTime, useStayDuration);
+          const oneGameDelta = useStayDuration
+            ? 1 / Math.max((Date.now() - practiceStartTime) / (1000 * 60), 5)
+            : 1.0;
+          if (replacePriority - excludePriority < oneGameDelta * 2) {
+            selected = selected.filter(p => p.id !== toExclude.id);
+            selected.push(nextMajority);
+          }
+        }
       }
     }
   }
@@ -398,21 +417,28 @@ function assign2CourtsHolistic(
     .map(id => selected.find(p => p.id === id)!);
 
   // 5. 確率ベースのコート振り分け（性別考慮あり）
-  // 女性を同じコートにまとめてMIX配置を目指す
-  const femalesInFinal = orderedSelected.filter(p => p.gender === 'F');
+  // 少数派の性別を同じコートにまとめてMIX配置を目指す
+  const finalFemaleCount = orderedSelected.filter(p => p.gender === 'F').length;
+  const finalMaleCount = orderedSelected.filter(p => p.gender === 'M').length;
+  const finalAllGendered = orderedSelected.every(p => p.gender === 'M' || p.gender === 'F');
+  // 少数派を特定（同数=4:4の場合はどちらでもMIXになるのでFを基準にグルーピング）
+  const finalMinorityGender: 'M' | 'F' | null = !finalAllGendered ? null
+    : finalFemaleCount <= finalMaleCount ? 'F' : 'M';
+  const finalMinorities = finalMinorityGender
+    ? orderedSelected.filter(p => p.gender === finalMinorityGender) : [];
+  const finalMajorities = finalMinorityGender
+    ? orderedSelected.filter(p => p.gender !== finalMinorityGender) : [];
 
-  // 女性が2人以上いる場合、同じコートにまとめる
-  if (femalesInFinal.length >= 2) {
-    const femaleIds = new Set(femalesInFinal.map(p => p.id));
-    const males = orderedSelected.filter(p => !femaleIds.has(p.id));
-    // 女性2人 + 男性上位2人 をupperコートに配置
-    const femalesForCourt = femalesInFinal.slice(0, 2);
-    const malesForMixCourt = males.slice(0, 2);
-    const remainingMales = males.slice(2);
-    const remainingFemales = femalesInFinal.slice(2);
+  // 少数派が2人以上いる場合、同じコートにまとめる
+  if (finalMinorityGender && finalMinorities.length >= 2) {
+    // 少数派2人 + 多数派上位2人 をupperコートに配置
+    const minoritiesForCourt = finalMinorities.slice(0, 2);
+    const majoritiesForMixCourt = finalMajorities.slice(0, 2);
+    const remainingMajorities = finalMajorities.slice(2);
+    const remainingMinorities = finalMinorities.slice(2);
 
-    const upperCourt = [...femalesForCourt, ...malesForMixCourt];
-    const lowerCourt = [...remainingFemales, ...remainingMales];
+    const upperCourt = [...minoritiesForCourt, ...majoritiesForMixCourt];
+    const lowerCourt = [...remainingMinorities, ...remainingMajorities];
 
     // 6. 直近試合制約のチェック・修正
     tryFixRecentMatch(upperCourt, lowerCourt, matchHistory);
@@ -430,7 +456,7 @@ function assign2CourtsHolistic(
     ];
   }
 
-  // 女性が0-1人の場合: 従来通りの確率ベース振り分け
+  // 少数派が0-1人の場合: 従来通りの確率ベース振り分け
   // グループ確率 + ランダムノイズでスコアを付与し、上位4人をC1に配置
   // upper(70%) / lower(30%) の確率に基づきつつ、ランダム性で行き来が発生
   const courtScores = orderedSelected.map(player => {
