@@ -280,16 +280,19 @@ function hasUnbalancedGender(
 /**
  * 性別構成の偏りを許容すべきかを判定
  * 少数派性別が全体の30%未満の場合は3-1構成を許容する
+ * 
+ * @param allPlayers セッション全体のアクティブプレイヤー（判定基準、待機中でもプレイ中でも）
+ * @param courtCount 今回配置するコート数
  */
 function shouldAllowUnbalancedGender(
-  activePlayers: Player[],
+  allPlayers: Player[],
   courtCount: number
 ): boolean {
-  const totalPlayers = activePlayers.length;
+  const totalPlayers = allPlayers.length;
   const playersNeeded = courtCount * 4;
   
   // 性別が設定されているプレイヤーのみカウント
-  const genderedPlayers = activePlayers.filter(p => p.gender === 'M' || p.gender === 'F');
+  const genderedPlayers = allPlayers.filter(p => p.gender === 'M' || p.gender === 'F');
   if (genderedPlayers.length < playersNeeded) {
     return true;  // 性別未設定が多い場合は許容
   }
@@ -731,8 +734,8 @@ export function assignCourts(
   const groups3 = totalCourtCount >= 3 ? groupPlayers3Court(groupingPlayers, matchHistory) : null;
   const groups2 = totalCourtCount === 2 ? groupPlayers2Court(groupingPlayers, matchHistory) : null;
 
-  // 性別構成の偏りを許容するか判定
-  const allowUnbalanced = shouldAllowUnbalancedGender(activePlayers, courtCount);
+  // 性別構成の偏りを許容するか判定（セッション全体で判定）
+  const allowUnbalanced = shouldAllowUnbalancedGender(groupingPlayers, courtCount);
 
   // 序列を計算（formTeamsのペアリングに使用）
   const groupCount = totalCourtCount >= 3 ? 3 : 2;
