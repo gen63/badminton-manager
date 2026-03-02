@@ -1,4 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <circle cx="50" cy="50" r="48" fill="#3B82F6"/>
-  <text x="50" y="70" font-size="60" text-anchor="middle" fill="white">🏸</text>
+  <!-- シャトルコック（羽根） -->
+  <ellipse cx="50" cy="32" rx="10" ry="14" fill="white" opacity="0.95"/>
+  <ellipse cx="42" cy="36" rx="6" ry="12" fill="white" opacity="0.8" transform="rotate(-15 42 36)"/>
+  <ellipse cx="58" cy="36" rx="6" ry="12" fill="white" opacity="0.8" transform="rotate(15 58 36)"/>
+  <ellipse cx="36" cy="42" rx="5" ry="10" fill="white" opacity="0.65" transform="rotate(-30 36 42)"/>
+  <ellipse cx="64" cy="42" rx="5" ry="10" fill="white" opacity="0.65" transform="rotate(30 64 42)"/>
+  <!-- コルク部分 -->
+  <circle cx="50" cy="46" r="8" fill="#FDE68A"/>
+  <circle cx="50" cy="46" r="8" fill="none" stroke="#D97706" stroke-width="1"/>
+  <!-- ラケット -->
+  <ellipse cx="50" cy="68" rx="12" ry="9" fill="none" stroke="white" stroke-width="2.5"/>
+  <!-- ラケットのガット（網） -->
+  <line x1="50" y1="59" x2="50" y2="77" stroke="white" stroke-width="0.7" opacity="0.6"/>
+  <line x1="38" y1="68" x2="62" y2="68" stroke="white" stroke-width="0.7" opacity="0.6"/>
+  <!-- グリップ -->
+  <line x1="50" y1="77" x2="50" y2="90" stroke="white" stroke-width="3" stroke-linecap="round"/>
 </svg>
