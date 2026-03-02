@@ -133,22 +133,22 @@ export function HistoryPage() {
                           {matchNumber}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <div className="grid grid-cols-[1fr_auto_1fr] items-center text-sm mb-2 gap-2">
-                            <span className={`truncate text-right ${isTeamAWinner ? 'font-bold text-gray-800' : 'text-gray-600'}`}>
+                          <div className="flex items-center text-sm mb-2 gap-2 justify-center flex-wrap">
+                            <span className={`${isTeamAWinner ? 'font-bold text-gray-800' : 'text-gray-600'}`}>
                               {teamANames}
                             </span>
-                            <span className="text-gray-400 font-bold text-xs px-2 bg-white rounded-full py-0.5">VS</span>
-                            <span className={`truncate ${isTeamBWinner ? 'font-bold text-gray-800' : 'text-gray-600'}`}>
+                            <span className="text-gray-400 font-bold text-xs px-2 bg-white rounded-full py-0.5 flex-shrink-0">VS</span>
+                            <span className={`${isTeamBWinner ? 'font-bold text-gray-800' : 'text-gray-600'}`}>
                               {teamBNames}
                             </span>
                           </div>
-                          <div className="flex items-center justify-center gap-3 text-xs text-gray-500">
-                            <span className="flex items-center gap-1">
+                          <div className="flex items-center justify-center gap-2 text-xs text-gray-500 flex-wrap">
+                            <span className="flex items-center gap-1 whitespace-nowrap">
                               <Clock size={12} />
                               {formatTime(match.finishedAt)}
                             </span>
-                            <span>({duration}分)</span>
-                            <span className="text-base font-bold text-gray-800 bg-white px-3 py-0.5 rounded-full shadow-sm">
+                            <span className="whitespace-nowrap">({duration}分)</span>
+                            <span className="text-base font-bold text-gray-800 bg-white px-3 py-0.5 rounded-full shadow-sm whitespace-nowrap">
                               {match.scoreA} - {match.scoreB}
                             </span>
                           </div>
