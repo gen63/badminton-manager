@@ -113,7 +113,7 @@ export function HistoryPage() {
               description="メイン画面でゲームを開始すると、ここに履歴が表示されます。"
             />
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {[...matchHistory].reverse().map((match, reverseIndex) => {
                 const matchNumber = matchHistory.length - reverseIndex;
                 const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
@@ -131,35 +131,35 @@ export function HistoryPage() {
                 return (
                   <div
                     key={match.id}
-                    className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-xl p-3 border border-gray-100"
+                    className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg p-2 border border-gray-100"
                   >
                     <div className="flex items-start gap-2">
                       {/* 試合番号 */}
-                      <span className="text-sm font-bold text-indigo-600 bg-indigo-100 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-xs font-bold text-indigo-600 bg-indigo-100 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">
                         {matchNumber}
                       </span>
 
                       {/* メイン情報 */}
-                      <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex-1 min-w-0 space-y-0.5">
                         {/* 名前（横一列・改行なし） */}
-                        <div className="flex items-center text-sm gap-2">
+                        <div className="flex items-center text-sm gap-1.5 leading-tight">
                           <span className="font-bold text-gray-800 whitespace-nowrap flex-shrink-0">
                             {leftNames}
                           </span>
-                          <span className="text-gray-400 font-bold text-xs px-2 bg-white rounded-full py-0.5 flex-shrink-0">VS</span>
+                          <span className="text-gray-400 font-bold text-[10px] px-1.5 bg-white rounded-full py-0.5 flex-shrink-0">VS</span>
                           <span className="text-gray-600 truncate">
                             {rightNames}
                           </span>
                         </div>
                         
                         {/* 時間・スコア（横一列・改行なし） */}
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                          <span className="flex items-center gap-1 whitespace-nowrap">
-                            <Clock size={12} />
+                        <div className="flex items-center gap-1.5 text-[11px] text-gray-500 leading-tight">
+                          <span className="flex items-center gap-0.5 whitespace-nowrap">
+                            <Clock size={11} />
                             {formatTime(match.finishedAt)}
                           </span>
                           <span className="whitespace-nowrap">({duration}分)</span>
-                          <span className="text-sm font-bold text-gray-800 bg-white px-2.5 py-0.5 rounded-full shadow-sm whitespace-nowrap">
+                          <span className="text-xs font-bold text-gray-800 bg-white px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
                             {leftScore} - {rightScore}
                           </span>
                         </div>
@@ -170,16 +170,16 @@ export function HistoryPage() {
                         <button
                           onClick={() => handleEdit(match.id)}
                           aria-label="編集"
-                          className="p-2 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-9 h-9 flex items-center justify-center"
+                          className="p-1.5 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
                         >
-                          <Edit3 size={15} />
+                          <Edit3 size={13} />
                         </button>
                         <button
                           onClick={() => handleDelete(match.id)}
                           aria-label="削除"
-                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 w-9 h-9 flex items-center justify-center"
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
                         >
-                          <Trash2 size={15} />
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </div>
