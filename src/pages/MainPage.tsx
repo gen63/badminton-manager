@@ -18,7 +18,7 @@ export function MainPage() {
   const { players, toggleRest, updatePlayer, addPlayers } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame } =
     useGameStore();
-  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode } = useSettingsStore();
+  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, recordScores, setRecordScores } = useSettingsStore();
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
   const toast = useToast();
   const [selectedPlayer, setSelectedPlayer] = useState<{
@@ -125,6 +125,12 @@ export function MainPage() {
   const handleShowWinnerModal = (courtId: number) => {
     const court = courts.find((c) => c.id === courtId);
     if (!court) return;
+    
+    // 勝敗記録がOFFの場合は直接終了処理
+    if (!recordScores) {
+      handleWinnerConfirm(courtId, 'unknown');
+      return;
+    }
     
     setShowWinnerModal({
       courtId,
@@ -472,6 +478,20 @@ export function MainPage() {
               <Repeat size={16} />
               <span>連続</span>
               {continuousMatchMode && <span className="text-[10px] bg-green-200 px-1.5 py-0.5 rounded-full font-bold">ON</span>}
+            </button>
+            <button
+              onClick={() => setRecordScores(!recordScores)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${
+                recordScores
+                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                  : 'bg-muted text-muted-foreground border border-border'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              <span>勝敗</span>
+              {recordScores && <span className="text-[10px] bg-blue-200 px-1.5 py-0.5 rounded-full font-bold">ON</span>}
             </button>
             <button
               onClick={() => handleAutoAssign()}
@@ -830,75 +850,77 @@ export function MainPage() {
       </main>
 
       {/* Pending Scores - Fixed Bottom */}
-      <section className="fixed bottom-0 left-0 right-0 z-10 px-4 pb-4 pt-2 bg-gradient-to-t from-muted/95 to-transparent pointer-events-none">
-        <div className="pointer-events-auto bg-orange-50 border border-orange-100 rounded-2xl overflow-hidden shadow-lg">
-          <div className="px-4 py-3 flex items-center justify-between bg-orange-100/50">
-            <div className="flex items-center gap-2 text-orange-800">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              <h3 className="text-sm font-bold">スコア未入力</h3>
-              {unfinishedMatches.length > 0 && (
-                <span className="text-xs bg-orange-200/50 px-1.5 py-0.5 rounded font-semibold">
-                  {unfinishedMatches.length}
-                </span>
-              )}
+      {recordScores && (
+        <section className="fixed bottom-0 left-0 right-0 z-10 px-4 pb-4 pt-2 bg-gradient-to-t from-muted/95 to-transparent pointer-events-none">
+          <div className="pointer-events-auto bg-orange-50 border border-orange-100 rounded-2xl overflow-hidden shadow-lg">
+            <div className="px-4 py-3 flex items-center justify-between bg-orange-100/50">
+              <div className="flex items-center gap-2 text-orange-800">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                <h3 className="text-sm font-bold">スコア未入力</h3>
+                {unfinishedMatches.length > 0 && (
+                  <span className="text-xs bg-orange-200/50 px-1.5 py-0.5 rounded font-semibold">
+                    {unfinishedMatches.length}
+                  </span>
+                )}
+              </div>
+              <div className="min-w-[120px] flex justify-end items-center min-h-[28px]">
+                {unfinishedMatches.length === 0 ? (
+                  <span className="text-xs text-orange-600/60">スコア未入力の試合がありません</span>
+                ) : unfinishedMatches.length > 1 ? (
+                  <button 
+                    onClick={() => setShowAllUnfinished(!showAllUnfinished)}
+                    className="text-xs font-semibold text-orange-700 bg-white/50 px-2 py-1 rounded flex items-center gap-1 hover:bg-white/80 transition-colors"
+                  >
+                    <span>{showAllUnfinished ? '閉じる' : `他${unfinishedMatches.length - 1}件`}</span>
+                    <ChevronDown size={14} className={`transition-transform ${showAllUnfinished ? 'rotate-180' : ''}`} />
+                  </button>
+                ) : (
+                  <div className="h-[28px]"></div>
+                )}
+              </div>
             </div>
-            <div className="min-w-[120px] flex justify-end items-center min-h-[28px]">
-              {unfinishedMatches.length === 0 ? (
-                <span className="text-xs text-orange-600/60">スコア未入力の試合がありません</span>
-              ) : unfinishedMatches.length > 1 ? (
-                <button 
-                  onClick={() => setShowAllUnfinished(!showAllUnfinished)}
-                  className="text-xs font-semibold text-orange-700 bg-white/50 px-2 py-1 rounded flex items-center gap-1 hover:bg-white/80 transition-colors"
-                >
-                  <span>{showAllUnfinished ? '閉じる' : `他${unfinishedMatches.length - 1}件`}</span>
-                  <ChevronDown size={14} className={`transition-transform ${showAllUnfinished ? 'rotate-180' : ''}`} />
-                </button>
-              ) : (
-                <div className="h-[28px]"></div>
-              )}
-            </div>
-          </div>
-          {unfinishedMatches.length > 0 && (
-            <div className="divide-y divide-orange-100 max-h-[200px] overflow-y-auto">
-              {visibleUnfinished.map((match) => {
-                const teamANames = match.teamA.map(getPlayerName).join(' & ');
-                const teamBNames = match.teamB.map(getPlayerName).join(' & ');
-                const matchNumber = matchHistory.findIndex((m) => m.id === match.id) + 1;
-                const courtId = courts.find(c => 
-                  c.teamA.includes(match.teamA[0]) || c.teamB.includes(match.teamA[0])
-                )?.id;
-                
-                return (
-                  <div key={match.id} className="p-3 flex items-center justify-between gap-3 bg-orange-50">
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      <div className="flex items-center gap-2 text-xs text-orange-800/70">
-                        <span className="font-mono">#{matchNumber}</span>
-                        {courtId && (
-                          <>
-                            <span>•</span>
-                            <span>コート {courtId}</span>
-                          </>
-                        )}
+            {unfinishedMatches.length > 0 && (
+              <div className="divide-y divide-orange-100 max-h-[200px] overflow-y-auto">
+                {visibleUnfinished.map((match) => {
+                  const teamANames = match.teamA.map(getPlayerName).join(' & ');
+                  const teamBNames = match.teamB.map(getPlayerName).join(' & ');
+                  const matchNumber = matchHistory.findIndex((m) => m.id === match.id) + 1;
+                  const courtId = courts.find(c => 
+                    c.teamA.includes(match.teamA[0]) || c.teamB.includes(match.teamA[0])
+                  )?.id;
+                  
+                  return (
+                    <div key={match.id} className="p-3 flex items-center justify-between gap-3 bg-orange-50">
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <div className="flex items-center gap-2 text-xs text-orange-800/70">
+                          <span className="font-mono">#{matchNumber}</span>
+                          {courtId && (
+                            <>
+                              <span>•</span>
+                              <span>コート {courtId}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="text-sm font-medium text-orange-950 truncate">
+                          {teamANames} vs. {teamBNames}
+                        </div>
                       </div>
-                      <div className="text-sm font-medium text-orange-950 truncate">
-                        {teamANames} vs. {teamBNames}
-                      </div>
+                      <button
+                        onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
+                        className="shrink-0 px-3 py-1.5 bg-white border border-orange-200 text-orange-700 text-xs font-bold rounded-lg shadow-sm hover:bg-orange-50 transition-colors"
+                      >
+                        入力
+                      </button>
                     </div>
-                    <button
-                      onClick={() => navigate(`/score/${match.id}`, { state: { from: '/main' } })}
-                      className="shrink-0 px-3 py-1.5 bg-white border border-orange-200 text-orange-700 text-xs font-bold rounded-lg shadow-sm hover:bg-orange-50 transition-colors"
-                    >
-                      入力
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Winner Select Modal */}
       {showWinnerModal && (

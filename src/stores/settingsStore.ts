@@ -8,6 +8,8 @@ interface SettingsState {
   setUseStayDurationPriority: (value: boolean) => void;
   continuousMatchMode: boolean;
   setContinuousMatchMode: (value: boolean) => void;
+  recordScores: boolean;
+  setRecordScores: (value: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -19,6 +21,8 @@ export const useSettingsStore = create<SettingsState>()(
       setUseStayDurationPriority: (value) => set({ useStayDurationPriority: value }),
       continuousMatchMode: true,
       setContinuousMatchMode: (value) => set({ continuousMatchMode: value }),
+      recordScores: true,
+      setRecordScores: (value) => set({ recordScores: value }),
     }),
     {
       name: 'badminton-settings',
