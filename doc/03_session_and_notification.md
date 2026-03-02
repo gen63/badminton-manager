@@ -336,4 +336,4 @@ function copyHistoryToClipboard(matches) {
 ---
 
 **作成日**: 2026/01/29  
-**最終更新**: 2026/01/29
+**最終更新**: 2026/03/03
