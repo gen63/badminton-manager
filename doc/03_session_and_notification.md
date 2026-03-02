@@ -74,9 +74,86 @@
 <button>ゲーム開始</button>
 ```
 
-### 5.2 Phase 2: 3段階権限（細かい管理）
+### 2.2 Phase 1.5: LINE認証（管理者のみ）
 
-**実装時期**: Phase 1 の実運用後、必要に応じて実装
+**実装時期**: Phase 1 の動作確認後
+
+#### 目的
+- 管理者の本人確認
+- なりすまし防止
+- セキュリティ向上
+
+#### 認証フロー
+
+**管理者（セッション作成時）**
+```javascript
+// 1. LINEログイン
+const lineUser = await signInWithLINE();
+// LINE SDK で認証、Firebase Auth に連携
+
+// 2. セッション作成
+const session = {
+  id: generateSessionId(),
+  createdBy: lineUser.displayName,
+  createdByUID: lineUser.uid,        // LINE UID（認証用）
+  createdByIcon: lineUser.photoURL,  // プロフィール画像
+  ...
+};
+
+// 3. URL生成・共有
+const url = `/session/${session.id}`;
+```
+
+**参加者（入室時）**
+```javascript
+// 認証不要（Phase 1と同じ）
+// 名前を選択して入室
+```
+
+#### 管理者判定
+
+**Before（Phase 1）: 名前ベース**
+```javascript
+const isCreator = (userName === session.createdBy);
+// 問題: 同じ名前なら誰でも管理者になれる
+```
+
+**After（Phase 1.5）: LINE UIDベース**
+```javascript
+const isCreator = (currentUser?.uid === session.createdByUID);
+// 改善: LINE UIDで確実に本人確認
+```
+
+#### Firestore データ構造
+```typescript
+// sessions/{sessionId}
+{
+  createdBy: "太郎",           // 表示名
+  createdByUID: "U1234...",    // LINE UID（認証用）
+  createdByIcon: "https://...", // LINEアイコン
+  participants: ["太郎", "花子", ...]  // 参加者は認証不要
+}
+```
+
+#### 実装工数
+- LINE Developers 登録: 30分
+- Firebase Auth 設定: 30分
+- LINE Login SDK 統合: 2-3時間
+- 管理者判定ロジック更新: 1時間
+
+**合計: 半日〜1日**
+
+#### メリット・デメリット
+
+| 項目 | 詳細 |
+|------|------|
+| **✅ メリット** | なりすまし防止、LINE UIDで確実な本人確認、複数セッション管理可能 |
+| **❌ デメリット** | 管理者は初回LINEログイン必要（2回目以降は自動） |
+| **🔧 参加者への影響** | なし（UX変化なし） |
+
+### 2.3 Phase 2: 3段階権限（細かい管理）
+
+**実装時期**: Phase 1/1.5 の実運用後、必要に応じて実装
 
 #### 管理者
 - セッション作成者
@@ -125,12 +202,12 @@ function getRole(userName, session) {
 
 **実装時期**: Phase 1 オプション（後回し）
 
-### 5.1 実装方式
+### 3.1 実装方式
 - **FCM（Firebase Cloud Messaging）**: プッシュ通知
 - **Web Audio API**: アプリ内音声再生
 - **併用**: スマホロック中はFCM、アプリ開いている時はFCM + 音声
 
-### 5.2 試合開始通知
+### 3.2 試合開始通知
 
 #### トリガー
 ゲーム開始ボタン押下時
@@ -157,7 +234,7 @@ if (document.hasFocus()) {
 }
 ```
 
-### 5.3 スコア未入力リマインダー
+### 3.3 スコア未入力リマインダー
 
 #### トリガー
 10分間隔で自動チェック（Cloud Functions または クライアント側タイマー）
