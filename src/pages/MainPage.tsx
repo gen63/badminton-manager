@@ -48,6 +48,10 @@ export function MainPage() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    console.log('showWinnerModal state changed:', showWinnerModal);
+  }, [showWinnerModal]);
+
   if (!session) {
     navigate('/');
     return null;
@@ -124,7 +128,12 @@ export function MainPage() {
 
   const handleShowWinnerModal = (courtId: number) => {
     const court = courts.find((c) => c.id === courtId);
-    if (!court) return;
+    if (!court) {
+      console.error('Court not found:', courtId);
+      return;
+    }
+    
+    console.log('Opening winner modal for court:', courtId, 'teamA:', court.teamA, 'teamB:', court.teamB);
     
     setShowWinnerModal({
       courtId,
