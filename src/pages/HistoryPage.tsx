@@ -103,9 +103,9 @@ export function HistoryPage() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto p-4">
+      <div className="max-w-6xl mx-auto px-4 pt-2 pb-4">
         {/* 試合履歴 */}
-        <div className="card p-6">
+        <div className="card p-4">
           {matchHistory.length === 0 ? (
             <EmptyState
               icon="🏸"
@@ -133,7 +133,7 @@ export function HistoryPage() {
                     key={match.id}
                     className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg p-2 border border-gray-100"
                   >
-                    <div className="flex items-start gap-2">
+                    <div className="flex items-center gap-2">
                       {/* 試合番号 */}
                       <span className="text-xs font-bold text-indigo-600 bg-indigo-100 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">
                         {matchNumber}
@@ -165,8 +165,8 @@ export function HistoryPage() {
                         </div>
                       </div>
 
-                      {/* 編集・削除ボタン（縦並び） */}
-                      <div className="flex flex-col gap-0.5 flex-shrink-0">
+                      {/* 編集・削除ボタン（横並び） */}
+                      <div className="flex gap-0.5 flex-shrink-0">
                         <button
                           onClick={() => handleEdit(match.id)}
                           aria-label="編集"
