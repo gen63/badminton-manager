@@ -10,6 +10,7 @@ import { Settings, History, Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
+import { WinnerSelectModal } from '../components/WinnerSelectModal';
 
 export function MainPage() {
   const navigate = useNavigate();
@@ -29,6 +30,7 @@ export function MainPage() {
   const [showAllUnfinished, setShowAllUnfinished] = useState(false);
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
   const [showAddPlayer, setShowAddPlayer] = useState(false);
+  const [showWinnerModal, setShowWinnerModal] = useState<{ courtId: number; teamA: string[]; teamB: string[] } | null>(null);
   const playerCardRef = useRef<HTMLDivElement>(null);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
@@ -120,7 +122,18 @@ export function MainPage() {
     startGame(courtId);
   };
 
-  const handleFinishGame = (courtId: number) => {
+  const handleShowWinnerModal = (courtId: number) => {
+    const court = courts.find((c) => c.id === courtId);
+    if (!court) return;
+    
+    setShowWinnerModal({
+      courtId,
+      teamA: court.teamA,
+      teamB: court.teamB,
+    });
+  };
+
+  const handleWinnerConfirm = (courtId: number, winnerTeam: 'A' | 'B' | 'unknown') => {
     const court = courts.find((c) => c.id === courtId);
     if (!court) return;
 
@@ -130,7 +143,19 @@ export function MainPage() {
       matchHistory: structuredClone(useGameStore.getState().matchHistory),
     });
 
-    finishGame(courtId, court.scoreA, court.scoreB);
+    // スコアを設定
+    let scoreA = 0;
+    let scoreB = 0;
+    if (winnerTeam === 'A') {
+      scoreA = 100;
+      scoreB = 99;
+    } else if (winnerTeam === 'B') {
+      scoreA = 99;
+      scoreB = 100;
+    }
+    // winnerTeam === 'unknown' の場合は 0-0 のまま
+
+    finishGame(courtId, scoreA, scoreB);
 
     [...court.teamA, ...court.teamB].forEach((playerId) => {
       const player = players.find((p) => p.id === playerId);
@@ -159,9 +184,10 @@ export function MainPage() {
       restingPlayerIds: [],
     });
 
-    if (continuousMatchMode) {
-      handleContinuousNext(courtId);
-    }
+    setShowWinnerModal(null);
+
+    // 自動配置を実行（連続モードと同じ動作）
+    handleContinuousNext(courtId);
   };
 
   const handleContinuousNext = (courtId: number) => {
@@ -566,7 +592,7 @@ export function MainPage() {
                       
                       {court.isPlaying ? (
                         <button
-                          onClick={() => handleFinishGame(court.id)}
+                          onClick={() => handleShowWinnerModal(court.id)}
                           className="w-full py-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
                         >
                           <StopCircle size={14} />
@@ -860,6 +886,19 @@ export function MainPage() {
           )}
         </div>
       </section>
+
+      {/* Winner Select Modal */}
+      {showWinnerModal && (
+        <WinnerSelectModal
+          courtId={showWinnerModal.courtId}
+          teamA={showWinnerModal.teamA}
+          teamB={showWinnerModal.teamB}
+          getPlayerName={getPlayerName}
+          getPlayerGender={getPlayerGender}
+          onConfirm={(winnerTeam) => handleWinnerConfirm(showWinnerModal.courtId, winnerTeam)}
+          onCancel={() => setShowWinnerModal(null)}
+        />
+      )}
 
       {/* Toast notifications */}
       {toast.toasts.map((t) => (
