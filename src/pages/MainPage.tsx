@@ -18,7 +18,7 @@ export function MainPage() {
   const { players, toggleRest, updatePlayer, addPlayers } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame } =
     useGameStore();
-  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, recordScores, setRecordScores } = useSettingsStore();
+  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, recordScores } = useSettingsStore();
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
   const toast = useToast();
   const [selectedPlayer, setSelectedPlayer] = useState<{
@@ -478,20 +478,6 @@ export function MainPage() {
               <Repeat size={16} />
               <span>連続</span>
               {continuousMatchMode && <span className="text-[10px] bg-green-200 px-1.5 py-0.5 rounded-full font-bold">ON</span>}
-            </button>
-            <button
-              onClick={() => setRecordScores(!recordScores)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${
-                recordScores
-                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                  : 'bg-muted text-muted-foreground border border-border'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              <span>勝敗</span>
-              {recordScores && <span className="text-[10px] bg-blue-200 px-1.5 py-0.5 rounded-full font-bold">ON</span>}
             </button>
             <button
               onClick={() => handleAutoAssign()}

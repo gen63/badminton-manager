@@ -17,7 +17,7 @@ export function SettingsPage() {
   const { players } = usePlayerStore();
   const { clearPlayers } = usePlayerStore();
   const { matchHistory, clearHistory, initializeCourts } = useGameStore();
-  const { gasWebAppUrl, setGasWebAppUrl, useStayDurationPriority, setUseStayDurationPriority } = useSettingsStore();
+  const { gasWebAppUrl, setGasWebAppUrl, useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const toast = useToast();
   const [isUploading, setIsUploading] = useState(false);
@@ -182,6 +182,39 @@ export function SettingsPage() {
                 {useStayDurationPriority
                   ? '滞在時間が長い人を優先します'
                   : '試合回数が少ない人を優先します（待機時間を考慮しない）'}
+              </p>
+            </div>
+
+            <div>
+              <label className="label">勝敗記録</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setRecordScores(true)}
+                  className={`flex-1 select-button text-xs px-2 ${
+                    recordScores
+                      ? 'select-button-active'
+                      : 'select-button-inactive'
+                  }`}
+                >
+                  {recordScores && <span className="mr-1">✓</span>}
+                  ON
+                </button>
+                <button
+                  onClick={() => setRecordScores(false)}
+                  className={`flex-1 select-button text-xs px-2 ${
+                    !recordScores
+                      ? 'select-button-active'
+                      : 'select-button-inactive'
+                  }`}
+                >
+                  {!recordScores && <span className="mr-1">✓</span>}
+                  OFF
+                </button>
+              </div>
+              <p className="text-xs text-gray-600 mt-2">
+                {recordScores
+                  ? '終了時に勝敗を記録します'
+                  : '勝敗記録なし（推奨しません）'}
               </p>
             </div>
           </div>
