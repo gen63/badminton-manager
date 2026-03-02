@@ -60,11 +60,52 @@ export function SessionCreate() {
     const result = await fetchMembersFromSheets(url, () => {
       setLoadingText('再試行中...');
     });
+    
     if (result.success) {
       setPlayerNames(membersToText(result.members));
       const hasAllRatings = result.members.length > 0 &&
         result.members.every(m => m.rating != null && m.rating >= 1);
       setAllRated(hasAllRatings);
+      
+      // 読み込み成功時、自動的にセッションを開始
+      if (result.members.length > 0) {
+        setLoadingText('セッション開始中...');
+        
+        const inputs = result.members.map((member) => ({
+          name: member.name,
+          rating: member.rating,
+          gender: member.gender,
+        }));
+        addPlayers(inputs);
+
+        const sessionId = generateSessionId();
+        const now = Date.now();
+        const practiceTime = new Date(practiceDateTime).getTime();
+        const session = {
+          id: sessionId,
+          config: {
+            courtCount,
+            targetScore,
+            practiceDate: practiceDateTime.split('T')[0],
+            practiceStartTime: practiceTime,
+            gym: selectedGym || undefined,
+          },
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        setSession(session);
+        initializeCourts(courtCount);
+        
+        // ローディング状態を解除してから遷移
+        setIsLoadingMembers(false);
+        
+        // 少し待ってから遷移（状態更新の完了を待つ）
+        setTimeout(() => {
+          navigate('/main');
+        }, 100);
+        return;
+      }
     } else {
       setLoadError(result.message);
     }
