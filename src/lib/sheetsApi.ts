@@ -3,7 +3,7 @@ import type { Player } from '../types/player';
 import type { Session } from '../types/session';
 
 interface SheetMatch {
-  date: string;
+  datetime: string;
   gym: string;
   teamA: [string, string];
   teamB: [string, string];
@@ -28,9 +28,18 @@ function formatMatchesForSheets(
   players: Player[],
   session: Session
 ): SheetsPayload {
+  // 練習開始日時をフォーマット (YYYY/MM/DD HH:MM)
+  const practiceDate = new Date(session.config.practiceStartTime);
+  const year = practiceDate.getFullYear();
+  const month = String(practiceDate.getMonth() + 1).padStart(2, '0');
+  const day = String(practiceDate.getDate()).padStart(2, '0');
+  const hour = String(practiceDate.getHours()).padStart(2, '0');
+  const minute = String(practiceDate.getMinutes()).padStart(2, '0');
+  const datetime = `${year}/${month}/${day} ${hour}:${minute}`;
+
   return {
     matches: matches.map((match) => ({
-      date: session.config.practiceDate,
+      datetime: datetime,
       gym: session.config.gym || '',
       teamA: [
         resolvePlayerName(match.teamA[0], players),
