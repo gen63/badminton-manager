@@ -116,58 +116,70 @@ export function HistoryPage() {
             <div className="space-y-3">
               {[...matchHistory].reverse().map((match, reverseIndex) => {
                 const matchNumber = matchHistory.length - reverseIndex;
-                const teamANames = match.teamA.map(getPlayerName).join(' ');
-                const teamBNames = match.teamB.map(getPlayerName).join(' ');
                 const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
+                
+                // 勝ちペアを左に、スコアの高い方を左に
                 const isTeamAWinner = match.winner === 'A';
-                const isTeamBWinner = match.winner === 'B';
+                const leftTeam = isTeamAWinner ? match.teamA : match.teamB;
+                const rightTeam = isTeamAWinner ? match.teamB : match.teamA;
+                const leftScore = isTeamAWinner ? match.scoreA : match.scoreB;
+                const rightScore = isTeamAWinner ? match.scoreB : match.scoreA;
+                
+                const leftNames = leftTeam.map(getPlayerName).join(' ');
+                const rightNames = rightTeam.map(getPlayerName).join(' ');
 
                 return (
                   <div
                     key={match.id}
                     className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-xl p-4 border border-gray-100"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-start gap-3 flex-1 min-w-0">
-                        <span className="text-sm font-bold text-indigo-600 bg-indigo-100 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0">
-                          {matchNumber}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center text-sm mb-2 gap-2 justify-center flex-wrap">
-                            <span className={`${isTeamAWinner ? 'font-bold text-gray-800' : 'text-gray-600'}`}>
-                              {teamANames}
-                            </span>
-                            <span className="text-gray-400 font-bold text-xs px-2 bg-white rounded-full py-0.5 flex-shrink-0">VS</span>
-                            <span className={`${isTeamBWinner ? 'font-bold text-gray-800' : 'text-gray-600'}`}>
-                              {teamBNames}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-center gap-2 text-xs text-gray-500 flex-wrap">
-                            <span className="flex items-center gap-1 whitespace-nowrap">
-                              <Clock size={12} />
-                              {formatTime(match.finishedAt)}
-                            </span>
-                            <span className="whitespace-nowrap">({duration}分)</span>
-                            <span className="text-base font-bold text-gray-800 bg-white px-3 py-0.5 rounded-full shadow-sm whitespace-nowrap">
-                              {match.scoreA} - {match.scoreB}
-                            </span>
-                          </div>
+                    <div className="flex items-center gap-3">
+                      {/* 試合番号 */}
+                      <span className="text-sm font-bold text-indigo-600 bg-indigo-100 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0">
+                        {matchNumber}
+                      </span>
+
+                      {/* メイン情報 */}
+                      <div className="flex-1 min-w-0">
+                        {/* 名前（横一列・改行なし） */}
+                        <div className="flex items-center text-sm mb-1.5 gap-2 overflow-x-auto scrollbar-hide">
+                          <span className="font-bold text-gray-800 whitespace-nowrap">
+                            {leftNames}
+                          </span>
+                          <span className="text-gray-400 font-bold text-xs px-2 bg-white rounded-full py-0.5 flex-shrink-0">VS</span>
+                          <span className="text-gray-600 whitespace-nowrap">
+                            {rightNames}
+                          </span>
+                        </div>
+                        
+                        {/* 時間・スコア（横一列・改行なし） */}
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <span className="flex items-center gap-1 whitespace-nowrap">
+                            <Clock size={12} />
+                            {formatTime(match.finishedAt)}
+                          </span>
+                          <span className="whitespace-nowrap">({duration}分)</span>
+                          <span className="text-base font-bold text-gray-800 bg-white px-3 py-0.5 rounded-full shadow-sm whitespace-nowrap">
+                            {leftScore} - {rightScore}
+                          </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 flex-shrink-0 ml-3">
+
+                      {/* 編集・削除ボタン（縦並び） */}
+                      <div className="flex flex-col gap-1 flex-shrink-0">
                         <button
                           onClick={() => handleEdit(match.id)}
                           aria-label="編集"
-                          className="p-2.5 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                          className="p-2 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[40px] min-h-[40px] flex items-center justify-center"
                         >
-                          <Edit3 size={18} />
+                          <Edit3 size={16} />
                         </button>
                         <button
                           onClick={() => handleDelete(match.id)}
                           aria-label="削除"
-                          className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[40px] min-h-[40px] flex items-center justify-center"
                         >
-                          <Trash2 size={18} />
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </div>
