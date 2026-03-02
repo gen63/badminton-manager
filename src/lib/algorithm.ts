@@ -402,14 +402,27 @@ function assign2CourtsHolistic(
   groupingPlayers: Player[],
   useStayDuration: boolean = true
 ): CourtAssignment[] {
+  // 最大偏差制限: 平均より3試合以上多い人は除外
+  const allGamesPlayed = activePlayers.map(p => p.gamesPlayed);
+  const avgGames = allGamesPlayed.reduce((sum, g) => sum + g, 0) / allGamesPlayed.length;
+  
+  let eligiblePlayers = activePlayers.filter(
+    p => p.gamesPlayed <= avgGames + 3
+  );
+  
+  // 除外しすぎた場合はフォールバック（必要人数を確保できない）
+  const requiredCount = targetCourtIds.length * 4;
+  if (eligiblePlayers.length < requiredCount) {
+    eligiblePlayers = activePlayers;
+  }
+  
   // 1. 優先度順にソート
-  const prioritySorted = [...activePlayers].sort((a, b) =>
+  const prioritySorted = [...eligiblePlayers].sort((a, b) =>
     calculatePriorityScore(a, practiceStartTime, useStayDuration) - calculatePriorityScore(b, practiceStartTime, useStayDuration)
   );
 
   // 2. 必要人数を選出（コート数 × 4人）
   // 性別バランスを考慮: 少数派性別が奇数人の場合、優先度最低の1人を多数派と入替
-  const requiredCount = targetCourtIds.length * 4;
   let selected = prioritySorted.slice(0, requiredCount);
 
   // 全員に性別が設定されている場合のみ性別バランスを適用
