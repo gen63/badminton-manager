@@ -229,7 +229,7 @@ function hasSimilarRecentMatch(
   for (const playerId of fourPlayerIds) {
     let found = 0;
     for (const match of matchHistory) {
-      if (found >= 2) break;
+      if (found >= 3) break;  // 直近3試合をチェック（変更: 2→3）
       const matchMembers = [...match.teamA, ...match.teamB];
       if (!matchMembers.includes(playerId)) continue;
       found++;
@@ -257,6 +257,52 @@ function hasIsolatedExtreme(
     }
   }
   return false;
+}
+
+/**
+ * 性別構成が不均衡（3-1構成）かどうかをチェック
+ * 4人全員に性別が設定されている場合のみ判定
+ */
+function hasUnbalancedGender(
+  playerIds: string[],
+  players: Player[]
+): boolean {
+  const genders = playerIds
+    .map(id => players.find(p => p.id === id)?.gender)
+    .filter(g => g === 'M' || g === 'F');
+  
+  if (genders.length < 4) return false;  // 性別未設定がいる場合はOK
+  
+  const maleCount = genders.filter(g => g === 'M').length;
+  return maleCount === 1 || maleCount === 3;  // 3-1構成ならNG
+}
+
+/**
+ * 性別構成の偏りを許容すべきかを判定
+ * 少数派性別が全体の30%未満の場合は3-1構成を許容する
+ */
+function shouldAllowUnbalancedGender(
+  activePlayers: Player[],
+  courtCount: number
+): boolean {
+  const totalPlayers = activePlayers.length;
+  const playersNeeded = courtCount * 4;
+  
+  // 性別が設定されているプレイヤーのみカウント
+  const genderedPlayers = activePlayers.filter(p => p.gender === 'M' || p.gender === 'F');
+  if (genderedPlayers.length < playersNeeded) {
+    return true;  // 性別未設定が多い場合は許容
+  }
+  
+  const maleCount = genderedPlayers.filter(p => p.gender === 'M').length;
+  const femaleCount = genderedPlayers.filter(p => p.gender === 'F').length;
+  
+  // 少数派を特定
+  const minorityCount = Math.min(maleCount, femaleCount);
+  
+  // 少数派が全体の30%未満なら3-1を許容
+  const minorityRatio = minorityCount / totalPlayers;
+  return minorityRatio < 0.30;
 }
 
 
@@ -535,12 +581,20 @@ function getGenderPenalty(
   if (genders.length < 4) return 0; // 性別未設定がいる場合は影響なし
 
   const maleCount = genders.filter(g => g === 'M').length;
-  // 4-0, 0-4 (同性対決) or 2-2 (MIX) → ペナルティなし
-  // 3-1, 1-3 → MIXにも同性にもならない → 強ペナルティ
-  // 女性が少数の場合、4M(ペナルティ0)を優先させて女性をMIX用に温存する
+  
+  // 優先順位: 同性（4-0） > MIX（2-2） > 3-1
+  
+  // 3-1構成 → 強ペナルティ（制約でも弾かれる）
   if (maleCount === 1 || maleCount === 3) {
     return oneGameDelta * 3.0;
   }
+  
+  // MIX（2-2）→ 軽いペナルティ（同性より優先度低め）
+  if (maleCount === 2) {
+    return oneGameDelta * 0.5;
+  }
+  
+  // 同性（4-0 or 0-4）→ ペナルティなし（最優先）
   return 0;
 }
 
@@ -576,6 +630,7 @@ function selectBestFour(
   practiceStartTime: number,
   useStayDuration: boolean,
   courtPenalties?: Map<string, number>,
+  allowUnbalanced?: boolean,
 ): Player[] {
   if (candidates.length <= 4) return candidates;
 
@@ -583,6 +638,7 @@ function selectBestFour(
   const isValid = (ids: string[]): boolean => {
     if (hasSimilarRecentMatch(ids, matchHistory)) return false;
     if (totalCourtCount >= 3 && groups3 && hasIsolatedExtreme(ids, groups3)) return false;
+    if (!allowUnbalanced && hasUnbalancedGender(ids, candidates)) return false;  // 性別構成チェック（条件付き）
     return true;
   };
 
@@ -674,6 +730,9 @@ export function assignCourts(
   // グループ分け（グローバル）
   const groups3 = totalCourtCount >= 3 ? groupPlayers3Court(groupingPlayers, matchHistory) : null;
   const groups2 = totalCourtCount === 2 ? groupPlayers2Court(groupingPlayers, matchHistory) : null;
+
+  // 性別構成の偏りを許容するか判定
+  const allowUnbalanced = shouldAllowUnbalancedGender(activePlayers, courtCount);
 
   // 序列を計算（formTeamsのペアリングに使用）
   const groupCount = totalCourtCount >= 3 ? 3 : 2;
@@ -775,13 +834,14 @@ export function assignCourts(
 
       const result = selectBestFour(
         candidates, matchHistory, groups3, totalCourtCount,
-        practiceStartTime, useStayDuration, courtPenalties
+        practiceStartTime, useStayDuration, courtPenalties, allowUnbalanced
       );
 
       // selectBestFourが制約を満たす組を見つけたか確認
       const resultIds = result.map(p => p.id);
       const isValidResult = !hasSimilarRecentMatch(resultIds, matchHistory)
-        && !(totalCourtCount >= 3 && groups3 && hasIsolatedExtreme(resultIds, groups3));
+        && !(totalCourtCount >= 3 && groups3 && hasIsolatedExtreme(resultIds, groups3))
+        && (allowUnbalanced || !hasUnbalancedGender(resultIds, candidates));  // 性別構成チェック（条件付き）
 
       if (isValidResult) {
         selected = result;
@@ -805,7 +865,7 @@ export function assignCourts(
         );
       selected = selectBestFour(
         allAvailable, matchHistory, groups3, totalCourtCount,
-        practiceStartTime, useStayDuration
+        practiceStartTime, useStayDuration, undefined, allowUnbalanced
       );
     }
 
