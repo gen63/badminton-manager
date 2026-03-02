@@ -133,7 +133,7 @@ export function MainPage() {
     });
   };
 
-  const handleWinnerConfirm = (courtId: number, winnerTeam: 'A' | 'B' | 'unknown') => {
+  const handleWinnerConfirm = (courtId: number, winnerIds: string[] | 'unknown') => {
     const court = courts.find((c) => c.id === courtId);
     if (!court) return;
 
@@ -146,14 +146,27 @@ export function MainPage() {
     // スコアを設定
     let scoreA = 0;
     let scoreB = 0;
-    if (winnerTeam === 'A') {
-      scoreA = 100;
-      scoreB = 99;
-    } else if (winnerTeam === 'B') {
-      scoreA = 99;
-      scoreB = 100;
+    
+    if (winnerIds !== 'unknown') {
+      // 勝者2人がどちらのチームか判定
+      const winnersInTeamA = winnerIds.filter(id => court.teamA.includes(id)).length;
+      
+      if (winnersInTeamA === 2) {
+        // teamA が勝ち
+        scoreA = 100;
+        scoreB = 99;
+      } else if (winnersInTeamA === 0) {
+        // teamB が勝ち
+        scoreA = 99;
+        scoreB = 100;
+      } else {
+        // 混合ペア（teamA から1人、teamB から1人）
+        // この場合は勝者2人を teamA として扱う
+        scoreA = 100;
+        scoreB = 99;
+      }
     }
-    // winnerTeam === 'unknown' の場合は 0-0 のまま
+    // winnerIds === 'unknown' の場合は 0-0 のまま
 
     finishGame(courtId, scoreA, scoreB);
 
@@ -895,7 +908,7 @@ export function MainPage() {
           teamB={showWinnerModal.teamB}
           getPlayerName={getPlayerName}
           getPlayerGender={getPlayerGender}
-          onConfirm={(winnerTeam) => handleWinnerConfirm(showWinnerModal.courtId, winnerTeam)}
+          onConfirm={(winnerIds) => handleWinnerConfirm(showWinnerModal.courtId, winnerIds)}
           onCancel={() => setShowWinnerModal(null)}
         />
       )}

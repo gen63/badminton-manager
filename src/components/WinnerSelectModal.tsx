@@ -7,7 +7,7 @@ interface WinnerSelectModalProps {
   teamB: string[];
   getPlayerName: (id: string) => string;
   getPlayerGender: (id: string) => 'M' | 'F' | undefined;
-  onConfirm: (winnerTeam: 'A' | 'B' | 'unknown') => void;
+  onConfirm: (winnerIds: string[] | 'unknown') => void;
   onCancel: () => void;
 }
 
@@ -20,11 +20,24 @@ export function WinnerSelectModal({
   onConfirm,
   onCancel,
 }: WinnerSelectModalProps) {
-  const [selectedTeam, setSelectedTeam] = useState<'A' | 'B' | null>(null);
+  const allPlayers = [...teamA, ...teamB];
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
+
+  const handlePlayerToggle = (playerId: string) => {
+    const newSelected = new Set(selectedPlayerIds);
+    if (newSelected.has(playerId)) {
+      newSelected.delete(playerId);
+    } else {
+      if (newSelected.size < 2) {
+        newSelected.add(playerId);
+      }
+    }
+    setSelectedPlayerIds(newSelected);
+  };
 
   const handleConfirm = () => {
-    if (selectedTeam) {
-      onConfirm(selectedTeam);
+    if (selectedPlayerIds.size === 2) {
+      onConfirm(Array.from(selectedPlayerIds));
     }
   };
 
@@ -32,7 +45,8 @@ export function WinnerSelectModal({
     onConfirm('unknown');
   };
 
-  const renderPlayerCard = (playerId: string, isSelected: boolean, onClick: () => void) => {
+  const renderPlayerCard = (playerId: string) => {
+    const isSelected = selectedPlayerIds.has(playerId);
     const playerGender = getPlayerGender(playerId);
     const bgColor = isSelected
       ? 'bg-green-100 border-green-500'
@@ -45,7 +59,8 @@ export function WinnerSelectModal({
 
     return (
       <button
-        onClick={onClick}
+        key={playerId}
+        onClick={() => handlePlayerToggle(playerId)}
         className={`relative flex items-center justify-between ${bgColor} border-2 p-3 rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95`}
       >
         <span className={`font-semibold text-sm ${textColor}`}>
@@ -66,9 +81,9 @@ export function WinnerSelectModal({
         {/* Header */}
         <div className="sticky top-0 bg-background border-b border-border px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-foreground">勝ちペアを選択</h2>
+            <h2 className="text-lg font-bold text-foreground">勝ちペア2人を選択</h2>
             <p className="text-xs text-muted-foreground mt-1">
-              コート {courtId} の試合
+              コート {courtId} の試合 ({selectedPlayerIds.size}/2人選択中)
             </p>
           </div>
           <button
@@ -80,46 +95,8 @@ export function WinnerSelectModal({
         </div>
 
         {/* Content */}
-        <div className="p-6 flex flex-col gap-6">
-          {/* Team A */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-muted-foreground">チーム A</h3>
-              {selectedTeam === 'A' && (
-                <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-semibold">
-                  勝ち
-                </span>
-              )}
-            </div>
-            <div
-              onClick={() => setSelectedTeam('A')}
-              className="flex flex-col gap-2 p-3 bg-muted/20 rounded-xl border-2 border-transparent hover:border-primary/30 transition-colors cursor-pointer"
-            >
-              {teamA.map((playerId) => renderPlayerCard(playerId, selectedTeam === 'A', () => setSelectedTeam('A')))}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-center">
-            <span className="text-xs font-black text-muted-foreground/50">VS</span>
-          </div>
-
-          {/* Team B */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-muted-foreground">チーム B</h3>
-              {selectedTeam === 'B' && (
-                <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-semibold">
-                  勝ち
-                </span>
-              )}
-            </div>
-            <div
-              onClick={() => setSelectedTeam('B')}
-              className="flex flex-col gap-2 p-3 bg-muted/20 rounded-xl border-2 border-transparent hover:border-primary/30 transition-colors cursor-pointer"
-            >
-              {teamB.map((playerId) => renderPlayerCard(playerId, selectedTeam === 'B', () => setSelectedTeam('B')))}
-            </div>
-          </div>
+        <div className="p-6 flex flex-col gap-3">
+          {allPlayers.map((playerId) => renderPlayerCard(playerId))}
         </div>
 
         {/* Footer */}
@@ -132,7 +109,7 @@ export function WinnerSelectModal({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={!selectedTeam}
+            disabled={selectedPlayerIds.size !== 2}
             className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl font-semibold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             確定
