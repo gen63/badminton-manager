@@ -131,23 +131,23 @@ export function HistoryPage() {
                 return (
                   <div
                     key={match.id}
-                    className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-xl p-4 border border-gray-100"
+                    className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-xl p-3 border border-gray-100"
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-start gap-2">
                       {/* 試合番号 */}
-                      <span className="text-sm font-bold text-indigo-600 bg-indigo-100 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-sm font-bold text-indigo-600 bg-indigo-100 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                         {matchNumber}
                       </span>
 
                       {/* メイン情報 */}
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 space-y-1">
                         {/* 名前（横一列・改行なし） */}
-                        <div className="flex items-center text-sm mb-1.5 gap-2 overflow-x-auto scrollbar-hide">
-                          <span className="font-bold text-gray-800 whitespace-nowrap">
+                        <div className="flex items-center text-sm gap-2">
+                          <span className="font-bold text-gray-800 whitespace-nowrap flex-shrink-0">
                             {leftNames}
                           </span>
                           <span className="text-gray-400 font-bold text-xs px-2 bg-white rounded-full py-0.5 flex-shrink-0">VS</span>
-                          <span className="text-gray-600 whitespace-nowrap">
+                          <span className="text-gray-600 truncate">
                             {rightNames}
                           </span>
                         </div>
@@ -159,27 +159,27 @@ export function HistoryPage() {
                             {formatTime(match.finishedAt)}
                           </span>
                           <span className="whitespace-nowrap">({duration}分)</span>
-                          <span className="text-base font-bold text-gray-800 bg-white px-3 py-0.5 rounded-full shadow-sm whitespace-nowrap">
+                          <span className="text-sm font-bold text-gray-800 bg-white px-2.5 py-0.5 rounded-full shadow-sm whitespace-nowrap">
                             {leftScore} - {rightScore}
                           </span>
                         </div>
                       </div>
 
                       {/* 編集・削除ボタン（縦並び） */}
-                      <div className="flex flex-col gap-1 flex-shrink-0">
+                      <div className="flex flex-col gap-0.5 flex-shrink-0">
                         <button
                           onClick={() => handleEdit(match.id)}
                           aria-label="編集"
-                          className="p-2 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[40px] min-h-[40px] flex items-center justify-center"
+                          className="p-2 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-9 h-9 flex items-center justify-center"
                         >
-                          <Edit3 size={16} />
+                          <Edit3 size={15} />
                         </button>
                         <button
                           onClick={() => handleDelete(match.id)}
                           aria-label="削除"
-                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[40px] min-h-[40px] flex items-center justify-center"
+                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 w-9 h-9 flex items-center justify-center"
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={15} />
                         </button>
                       </div>
                     </div>
