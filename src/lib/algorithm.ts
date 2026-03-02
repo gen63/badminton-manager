@@ -621,6 +621,86 @@ function getComboRepeatPenalty(
 }
 
 /**
+ * グループごとの平均優先度スコアを計算し、最も待っているグループを特定する
+ */
+function calculateGroupPriorities(
+  groups: Map<RatingGroup, Set<string>>,
+  players: Player[],
+  usedPlayerIds: Set<string>,
+  practiceStartTime: number,
+  useStayDuration: boolean
+): Map<RatingGroup, number> {
+  const priorities = new Map<RatingGroup, number>();
+  
+  for (const [groupName, memberIds] of groups) {
+    const availableMembers = players.filter(
+      p => memberIds.has(p.id) && !usedPlayerIds.has(p.id)
+    );
+    
+    if (availableMembers.length === 0) {
+      priorities.set(groupName, Infinity); // 空グループは除外
+      continue;
+    }
+    
+    // グループの平均優先度スコアを計算（低いほど待っている）
+    const avgScore = availableMembers.reduce(
+      (sum, p) => sum + calculatePriorityScore(p, practiceStartTime, useStayDuration),
+      0
+    ) / availableMembers.length;
+    
+    priorities.set(groupName, avgScore);
+  }
+  
+  return priorities;
+}
+
+/**
+ * 最も待っているグループを選択する
+ * 最大偏差制限も考慮：あるグループが他より3試合以上多い場合は除外
+ */
+function selectMostUrgentGroup(
+  groups: Map<RatingGroup, Set<string>>,
+  players: Player[],
+  usedPlayerIds: Set<string>,
+  practiceStartTime: number,
+  useStayDuration: boolean
+): RatingGroup | null {
+  const priorities = calculateGroupPriorities(
+    groups, players, usedPlayerIds, practiceStartTime, useStayDuration
+  );
+  
+  // 全員のgamesPlayedから平均を計算
+  const allGamesPlayed = players.map(p => p.gamesPlayed);
+  const avgGames = allGamesPlayed.reduce((sum, g) => sum + g, 0) / allGamesPlayed.length;
+  
+  // 最も優先度の高い（スコアが低い）グループを選択
+  let bestGroup: RatingGroup | null = null;
+  let bestScore = Infinity;
+  
+  for (const [groupName, score] of priorities) {
+    if (score === Infinity) continue; // 空グループはスキップ
+    
+    // このグループの平均試合回数を計算
+    const groupMembers = players.filter(
+      p => groups.get(groupName)!.has(p.id) && !usedPlayerIds.has(p.id)
+    );
+    const groupAvgGames = groupMembers.reduce((sum, p) => sum + p.gamesPlayed, 0) / groupMembers.length;
+    
+    // 最大偏差制限：平均より3試合以上多いグループは除外
+    if (groupAvgGames > avgGames + 3) {
+      continue;
+    }
+    
+    if (score < bestScore) {
+      bestScore = score;
+      bestGroup = groupName;
+    }
+  }
+  
+  return bestGroup;
+}
+
+/**
  * 候補から制約を満たす最適な4人の組み合わせを探索
  * グリーディではなく全組み合わせを探索し、優先スコア合計が最小の有効な組を返す
  * 有効な組が見つからない場合は制約を緩和して上位4人を返す
@@ -770,7 +850,128 @@ export function assignCourts(
   const assignments: CourtAssignment[] = [];
   const usedPlayers = new Set<string>();
 
-  // 各コートに割り当て
+  // 3コート以上の場合、動的グループ選択を使用
+  if (totalCourtCount >= 3 && courtCount >= 1 && groups3) {
+    for (let i = 0; i < courtCount; i++) {
+      const courtId = targetCourtIds[i];
+      
+      // 最も待っているグループを選択
+      const targetGroup = selectMostUrgentGroup(
+        groups3, activePlayers, usedPlayers, practiceStartTime, useStayDuration
+      );
+      
+      if (!targetGroup) {
+        // 全グループが使い切られた or 偏差制限にかかった
+        // フォールバック: 残りの全員から選ぶ
+        const remaining = activePlayers.filter(p => !usedPlayers.has(p.id));
+        if (remaining.length < 4) break;
+        
+        remaining.sort((a, b) =>
+          calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+          calculatePriorityScore(b, practiceStartTime, useStayDuration)
+        );
+        
+        const selected = selectBestFour(
+          remaining, matchHistory, groups3, totalCourtCount,
+          practiceStartTime, useStayDuration, undefined, allowUnbalanced
+        );
+        
+        selected.forEach(p => usedPlayers.add(p.id));
+        const teams = formTeams(selected, playerOrder);
+        assignments.push({ courtId, teamA: teams.teamA, teamB: teams.teamB });
+        continue;
+      }
+      
+      // ターゲットグループのメンバーを取得
+      const groupMembers = activePlayers.filter(
+        p => groups3.get(targetGroup)!.has(p.id) && !usedPlayers.has(p.id)
+      );
+      
+      // 隣接グループの借用候補を準備（制約を満たすため）
+      const adjacentCandidates: Player[] = [];
+      const available = activePlayers.filter(p => !usedPlayers.has(p.id) && !groupMembers.includes(p));
+      
+      if (targetGroup === 'upper') {
+        const middlePlayers = available.filter(p => groups3.get('middle')!.has(p.id));
+        middlePlayers.sort((a, b) => playerOrder.indexOf(a.id) - playerOrder.indexOf(b.id));
+        adjacentCandidates.push(...middlePlayers);
+      } else if (targetGroup === 'lower') {
+        const middlePlayers = available.filter(p => groups3.get('middle')!.has(p.id));
+        middlePlayers.sort((a, b) => playerOrder.indexOf(b.id) - playerOrder.indexOf(a.id));
+        adjacentCandidates.push(...middlePlayers);
+      } else {
+        const upperPlayers = available.filter(p => groups3.get('upper')!.has(p.id));
+        upperPlayers.sort((a, b) => playerOrder.indexOf(b.id) - playerOrder.indexOf(a.id));
+        const lowerPlayers = available.filter(p => groups3.get('lower')!.has(p.id));
+        lowerPlayers.sort((a, b) => playerOrder.indexOf(a.id) - playerOrder.indexOf(b.id));
+        const maxLen = Math.max(upperPlayers.length, lowerPlayers.length);
+        for (let j = 0; j < maxLen; j++) {
+          if (j < upperPlayers.length) adjacentCandidates.push(upperPlayers[j]);
+          if (j < lowerPlayers.length) adjacentCandidates.push(lowerPlayers[j]);
+        }
+      }
+      
+      // 段階的に候補を拡大して探索
+      let selected: Player[] | null = null;
+      
+      for (let expand = 0; expand <= adjacentCandidates.length; expand++) {
+        const candidates = [...groupMembers];
+        if (expand > 0) {
+          candidates.push(...adjacentCandidates.slice(0, expand));
+        }
+        
+        if (candidates.length < 4) continue;
+        
+        candidates.sort((a, b) =>
+          calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+          calculatePriorityScore(b, practiceStartTime, useStayDuration)
+        );
+        
+        const result = selectBestFour(
+          candidates, matchHistory, groups3, totalCourtCount,
+          practiceStartTime, useStayDuration, undefined, allowUnbalanced
+        );
+        
+        const resultIds = result.map(p => p.id);
+        const isValidResult = !hasSimilarRecentMatch(resultIds, matchHistory)
+          && !hasIsolatedExtreme(resultIds, groups3)
+          && (allowUnbalanced || !hasUnbalancedGender(resultIds, candidates));
+        
+        if (isValidResult) {
+          selected = result;
+          break;
+        }
+        
+        if (expand === adjacentCandidates.length) {
+          selected = result;
+        }
+      }
+      
+      if (!selected) {
+        const allAvailable = activePlayers.filter(p => !usedPlayers.has(p.id));
+        allAvailable.sort((a, b) =>
+          calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+          calculatePriorityScore(b, practiceStartTime, useStayDuration)
+        );
+        selected = selectBestFour(
+          allAvailable, matchHistory, groups3, totalCourtCount,
+          practiceStartTime, useStayDuration, undefined, allowUnbalanced
+        );
+      }
+      
+      if (selected.length < 4) {
+        throw new Error('プレイヤーの割り当てに失敗しました');
+      }
+      
+      selected.forEach(p => usedPlayers.add(p.id));
+      const teams = formTeams(selected, playerOrder);
+      assignments.push({ courtId, teamA: teams.teamA, teamB: teams.teamB });
+    }
+    
+    return assignments;
+  }
+
+  // 2コート以下、または従来の固定コート配置
   for (let i = 0; i < courtCount; i++) {
     const courtId = targetCourtIds[i];
 
