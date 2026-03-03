@@ -51,7 +51,7 @@ export function SessionCreate() {
     needRefresh: [needRefresh],
     updateServiceWorker,
   } = useRegisterSW({
-    onRegisteredSW(swUrl, r) {
+    onRegisteredSW(_swUrl, r) {
       // 画面表示時 & フォーカス時に更新チェック
       const checkForUpdates = () => {
         r?.update().catch(() => {});
