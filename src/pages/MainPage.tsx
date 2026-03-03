@@ -11,6 +11,7 @@ import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
 import { WinnerSelectModal } from '../components/WinnerSelectModal';
+import { useRealtimeSession } from '../hooks/useRealtimeSession';
 
 export function MainPage() {
   const navigate = useNavigate();
@@ -21,6 +22,10 @@ export function MainPage() {
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, recordScores } = useSettingsStore();
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
   const toast = useToast();
+  
+  // Phase 1: リアルタイムセッション同期
+  // Firebase登録後に有効化（現在はモック実装でポーリング）
+  const { isConnected } = useRealtimeSession(session?.id || null);
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;
     courtId?: number;
