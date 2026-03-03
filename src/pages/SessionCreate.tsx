@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
@@ -45,28 +46,35 @@ export function SessionCreate() {
   const setGasWebAppUrl = useSettingsStore((state) => state.setGasWebAppUrl);
   const [gasUrlInput, setGasUrlInput] = useState(gasWebAppUrl);
 
-  // 画面表示時 & フォーカス時にSWの更新をチェック
+  // PWA更新検知 & 自動リロード
+  const {
+    needRefresh: [needRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegisteredSW(swUrl, r) {
+      // 画面表示時 & フォーカス時に更新チェック
+      const checkForUpdates = () => {
+        r?.update().catch(() => {});
+      };
+
+      checkForUpdates();
+
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          checkForUpdates();
+        }
+      };
+
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    },
+  });
+
+  // 更新検知時に自動リロード
   useEffect(() => {
-    const checkForUpdates = () => {
-      navigator.serviceWorker?.getRegistration().then((r) => r?.update()).catch(() => {});
-    };
-
-    // 初回チェック
-    checkForUpdates();
-
-    // タブがアクティブになった時にチェック
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        checkForUpdates();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, []);
+    if (needRefresh) {
+      updateServiceWorker(true); // true = skipWaitingで即座に適用してリロード
+    }
+  }, [needRefresh, updateServiceWorker]);
 
   const [courtCount, setCourtCount] = useState(3);
   const [targetScore, setTargetScore] = useState(15);
