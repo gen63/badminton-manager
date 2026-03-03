@@ -76,5 +76,6 @@ badminton-manager/
 
 ## ⚠️ 注意事項
 
+- **commit前に必ずlintを実行**: `npm run lint`
 - PRを作成する前にローカルでビルド確認: `npm run build`
 - コミットメッセージは日本語OK
