@@ -9,14 +9,30 @@ import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { GYM_OPTIONS } from '../types/session';
 import { Sparkles, Download, Loader2 } from 'lucide-react';
 
-// 現在日時を取得（時刻は12:00固定）
+// 現在日時を取得（曜日に応じて時刻を設定）
 const getInitialDateTime = () => {
   const now = new Date();
-  now.setHours(12, 0, 0, 0);
+  const dayOfWeek = now.getDay(); // 0:日曜, 1:月曜, ..., 6:土曜
+  
+  // 曜日に応じて時刻を設定
+  let hour: number;
+  if (dayOfWeek === 0) {
+    // 日曜: 17:00
+    hour = 17;
+  } else if (dayOfWeek === 6) {
+    // 土曜: 12:00
+    hour = 12;
+  } else {
+    // 平日（月〜金）: 19:00
+    hour = 19;
+  }
+  
+  now.setHours(hour, 0, 0, 0);
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}T12:00`;
+  const hourStr = String(hour).padStart(2, '0');
+  return `${year}-${month}-${day}T${hourStr}:00`;
 };
 
 export function SessionCreate() {
