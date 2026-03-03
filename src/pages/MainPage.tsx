@@ -678,7 +678,7 @@ export function MainPage() {
         )}
 
         {/* Waiting Players */}
-        <section className="px-4 flex flex-col gap-6 transition-all duration-300" ref={playerCardRef}>
+        <section className="px-4 flex flex-col gap-4 transition-all duration-300" ref={playerCardRef}>
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground">待機中 ({activePlayers.length})</h3>
@@ -795,7 +795,7 @@ export function MainPage() {
           </div>
 
           {/* On Break */}
-          <div className="flex flex-col gap-3 pb-8">
+          <div className="flex flex-col gap-3">
             <h3 className="text-sm font-bold text-muted-foreground">休憩中 ({restingPlayers.length})</h3>
             {restingAndPlaceholderPlayers.length > 0 ? (
               <div className="grid grid-cols-3 gap-2 opacity-75">
@@ -829,7 +829,7 @@ export function MainPage() {
                 })}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground/60 pb-12">休憩メンバー無し</p>
+              <p className="text-sm text-muted-foreground/60">休憩メンバー無し</p>
             )}
           </div>
         </section>
