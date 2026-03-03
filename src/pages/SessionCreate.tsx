@@ -45,9 +45,27 @@ export function SessionCreate() {
   const setGasWebAppUrl = useSettingsStore((state) => state.setGasWebAppUrl);
   const [gasUrlInput, setGasUrlInput] = useState(gasWebAppUrl);
 
-  // 画面表示時にSWの更新をチェック
+  // 画面表示時 & フォーカス時にSWの更新をチェック
   useEffect(() => {
-    navigator.serviceWorker?.getRegistration().then((r) => r?.update()).catch(() => {});
+    const checkForUpdates = () => {
+      navigator.serviceWorker?.getRegistration().then((r) => r?.update()).catch(() => {});
+    };
+
+    // 初回チェック
+    checkForUpdates();
+
+    // タブがアクティブになった時にチェック
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkForUpdates();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const [courtCount, setCourtCount] = useState(3);
