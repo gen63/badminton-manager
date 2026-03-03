@@ -4,13 +4,6 @@ import type { Match } from '../types/match';
 
 type RatingGroup = 'upper' | 'middle' | 'lower';
 
-// 配置確率（3コート）- upper→C1, middle→C2, lower→C3 固定
-const COURT_PROBABILITIES_3: Record<RatingGroup, number[]> = {
-  upper:  [1.00, 0.00, 0.00], // C1 固定
-  middle: [0.00, 1.00, 0.00], // C2 固定
-  lower:  [0.00, 0.00, 1.00], // C3 固定
-};
-
 // 配置確率（2コート）
 const COURT_PROBABILITIES_2: Record<'upper' | 'lower', number[]> = {
   upper: [0.70, 0.30], // C1, C2
@@ -206,20 +199,7 @@ function groupPlayers2Court(
 }
 
 /**
- * プレイヤーのグループを取得
- */
-function getPlayerGroup(
-  playerId: string,
-  groups: Map<string, Set<string>>
-): string {
-  for (const [group, members] of groups) {
-    if (members.has(playerId)) return group;
-  }
-  return 'middle';
-}
-
-/**
- * 候補4人それぞれの直近2試合と、4人中3人以上が重複するかチェック
+ * 候補4人それぞれの直近3試合と、4人中3人以上が重複するかチェック
  * グローバル直近N試合ではなく、各個人の視点で判定する
  */
 function hasSimilarRecentMatch(
@@ -725,7 +705,6 @@ function selectBestFour(
   totalCourtCount: number,
   practiceStartTime: number,
   useStayDuration: boolean,
-  courtPenalties?: Map<string, number>,
   allowUnbalanced?: boolean,
 ): Player[] {
   if (candidates.length <= 4) return candidates;
@@ -741,7 +720,7 @@ function selectBestFour(
   const playerScore = (p: Player): number => {
     const base = calculatePriorityScore(p, practiceStartTime, useStayDuration);
     if (base === -Infinity) return -1e9; // 有限値にして複数の未プレイ者を含む組の比較を可能にする
-    return base + (courtPenalties?.get(p.id) ?? 0);
+    return base;
   };
 
   // 性別ペナルティ用の基準値（1試合分のスコア差）
@@ -825,7 +804,6 @@ export function assignCourts(
 
   // グループ分け（グローバル）
   const groups3 = totalCourtCount >= 3 ? groupPlayers3Court(groupingPlayers, matchHistory) : null;
-  const groups2 = totalCourtCount === 2 ? groupPlayers2Court(groupingPlayers, matchHistory) : null;
 
   // 性別構成の偏りを許容するか判定（セッション全体で判定）
   const allowUnbalanced = shouldAllowUnbalancedGender(groupingPlayers, courtCount);
@@ -833,32 +811,6 @@ export function assignCourts(
   // 序列を計算（formTeamsのペアリングに使用）
   const groupCount = totalCourtCount >= 3 ? 3 : 2;
   const playerOrder = applyStreakSwaps(buildInitialOrder(groupingPlayers), matchHistory, groupCount);
-
-  // コート適性ペナルティを計算するヘルパー
-  const buildCourtPenalties = (candidates: Player[], courtId: number): Map<string, number> => {
-    const now = Date.now();
-    const penalties = new Map<string, number>();
-    for (const p of candidates) {
-      if (p.gamesPlayed === 0) continue;
-      let prob = 0.5;
-      if (totalCourtCount >= 3 && groups3) {
-        const group = getPlayerGroup(p.id, groups3) as RatingGroup;
-        prob = COURT_PROBABILITIES_3[group]?.[courtId - 1] ?? 0.5;
-      } else if (totalCourtCount === 2 && groups2) {
-        const group = getPlayerGroup(p.id, groups2) as 'upper' | 'lower';
-        prob = COURT_PROBABILITIES_2[group]?.[courtId - 1] ?? 0.5;
-      }
-      if (useStayDuration) {
-        const stayStart = Math.max(practiceStartTime, p.activatedAt ?? now);
-        const stayMinutes = Math.max((now - stayStart) / (1000 * 60), 5);
-        const oneGameDelta = 1 / stayMinutes;
-        penalties.set(p.id, Math.random() * (1 - prob) * oneGameDelta);
-      } else {
-        penalties.set(p.id, Math.random() * 0.8);
-      }
-    }
-    return penalties;
-  };
 
   const assignments: CourtAssignment[] = [];
   const usedPlayers = new Set<string>();
@@ -886,7 +838,7 @@ export function assignCourts(
         
         const selected = selectBestFour(
           remaining, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, undefined, allowUnbalanced
+          practiceStartTime, useStayDuration, allowUnbalanced
         );
         
         selected.forEach(p => usedPlayers.add(p.id));
@@ -942,7 +894,7 @@ export function assignCourts(
         
         const result = selectBestFour(
           candidates, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, undefined, allowUnbalanced
+          practiceStartTime, useStayDuration, allowUnbalanced
         );
         
         const resultIds = result.map(p => p.id);
@@ -968,7 +920,7 @@ export function assignCourts(
         );
         selected = selectBestFour(
           allAvailable, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, undefined, allowUnbalanced
+          practiceStartTime, useStayDuration, allowUnbalanced
         );
       }
       
@@ -984,120 +936,32 @@ export function assignCourts(
     return assignments;
   }
 
-  // 2コート以下、または従来の固定コート配置
+  // 1コート または 2コートの1コートずつ配置
+  // （シンプルな優先度ベース配置）
   for (let i = 0; i < courtCount; i++) {
     const courtId = targetCourtIds[i];
 
     // 1コート配置時の最大偏差制限
-    let availablePlayers = activePlayers;
-    if (totalCourtCount === 1 && courtCount === 1) {
-      const candidatePool = activePlayers.filter(p => !usedPlayers.has(p.id));
-      if (candidatePool.length >= 4) {
-        const avgGames = candidatePool.reduce((sum, p) => sum + p.gamesPlayed, 0) / candidatePool.length;
-        const eligible = candidatePool.filter(p => p.gamesPlayed <= avgGames + 3);
-        if (eligible.length >= 4) {
-          availablePlayers = [...eligible, ...activePlayers.filter(p => usedPlayers.has(p.id))];
-        }
+    let candidatePool = activePlayers.filter(p => !usedPlayers.has(p.id));
+    if (totalCourtCount === 1 && candidatePool.length >= 4) {
+      const avgGames = candidatePool.reduce((sum, p) => sum + p.gamesPlayed, 0) / candidatePool.length;
+      const eligible = candidatePool.filter(p => p.gamesPlayed <= avgGames + 3);
+      if (eligible.length >= 4) {
+        candidatePool = eligible;
       }
     }
 
-    // homeグループ: このコートに配置可能なプレイヤー（prob>0）
-    const homeGroup = availablePlayers.filter(p => {
-      if (usedPlayers.has(p.id)) return false;
-      if (totalCourtCount >= 3 && groups3) {
-        const group = getPlayerGroup(p.id, groups3);
-        const prob = COURT_PROBABILITIES_3[group as RatingGroup]?.[courtId - 1] ?? 0;
-        if (prob === 0) return false;
-      }
-      return true;
-    });
+    // 優先度順にソート
+    candidatePool.sort((a, b) =>
+      calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+      calculatePriorityScore(b, practiceStartTime, useStayDuration)
+    );
 
-    // 隣接グループの借用候補を序列境界順で構築（3コート固定時）
-    const adjacentCandidates: Player[] = [];
-    if (totalCourtCount >= 3 && groups3) {
-      const courtGroup = courtId === 1 ? 'upper' : courtId === 2 ? 'middle' : 'lower';
-      const available = availablePlayers.filter(p => !usedPlayers.has(p.id) && !homeGroup.includes(p));
-
-      if (courtGroup === 'upper') {
-        // middle上位（序列でupperに近い順）
-        const middlePlayers = available.filter(p => groups3.get('middle')!.has(p.id));
-        // playerOrder内の位置で序列順にソート
-        middlePlayers.sort((a, b) => playerOrder.indexOf(a.id) - playerOrder.indexOf(b.id));
-        adjacentCandidates.push(...middlePlayers);
-      } else if (courtGroup === 'lower') {
-        // middle下位（序列でlowerに近い順 = 序列逆順）
-        const middlePlayers = available.filter(p => groups3.get('middle')!.has(p.id));
-        middlePlayers.sort((a, b) => playerOrder.indexOf(b.id) - playerOrder.indexOf(a.id));
-        adjacentCandidates.push(...middlePlayers);
-      } else {
-        // middle: upper下位 + lower上位 交互
-        const upperPlayers = available.filter(p => groups3.get('upper')!.has(p.id));
-        upperPlayers.sort((a, b) => playerOrder.indexOf(b.id) - playerOrder.indexOf(a.id)); // 下位から
-        const lowerPlayers = available.filter(p => groups3.get('lower')!.has(p.id));
-        lowerPlayers.sort((a, b) => playerOrder.indexOf(a.id) - playerOrder.indexOf(b.id)); // 上位から
-        const maxLen = Math.max(upperPlayers.length, lowerPlayers.length);
-        for (let j = 0; j < maxLen; j++) {
-          if (j < upperPlayers.length) adjacentCandidates.push(upperPlayers[j]);
-          if (j < lowerPlayers.length) adjacentCandidates.push(lowerPlayers[j]);
-        }
-      }
-    }
-
-    // 段階的に候補を拡大して探索
-    let selected: Player[] | null = null;
-
-    for (let expand = 0; expand <= adjacentCandidates.length; expand++) {
-      const candidates = [...homeGroup];
-      if (expand > 0) {
-        candidates.push(...adjacentCandidates.slice(0, expand));
-      }
-
-      if (candidates.length < 4) continue;
-
-      // 優先度でソート
-      candidates.sort((a, b) =>
-        calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-        calculatePriorityScore(b, practiceStartTime, useStayDuration)
-      );
-
-      const courtPenalties = buildCourtPenalties(candidates, courtId);
-
-      const result = selectBestFour(
-        candidates, matchHistory, groups3, totalCourtCount,
-        practiceStartTime, useStayDuration, courtPenalties, allowUnbalanced
-      );
-
-      // selectBestFourが制約を満たす組を見つけたか確認
-      const resultIds = result.map(p => p.id);
-      const isValidResult = !hasSimilarRecentMatch(resultIds, matchHistory)
-        && !(totalCourtCount >= 3 && groups3 && hasIsolatedExtreme(resultIds, groups3))
-        && (allowUnbalanced || !hasUnbalancedGender(resultIds, candidates));  // 性別構成チェック（条件付き）
-
-      if (isValidResult) {
-        selected = result;
-        break;
-      }
-
-      // expand=0 で制約緩和結果が返ってきた場合、借用で改善を試みる
-      if (expand === adjacentCandidates.length) {
-        // 最終フォールバック: 制約緩和結果をそのまま使用
-        selected = result;
-      }
-    }
-
-    if (!selected) {
-      // 全候補でも4人見つからない場合
-      const allAvailable = availablePlayers
-        .filter(p => !usedPlayers.has(p.id))
-        .sort((a, b) =>
-          calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-          calculatePriorityScore(b, practiceStartTime, useStayDuration)
-        );
-      selected = selectBestFour(
-        allAvailable, matchHistory, groups3, totalCourtCount,
-        practiceStartTime, useStayDuration, undefined, allowUnbalanced
-      );
-    }
+    // 制約を満たす4人を選択
+    const selected = selectBestFour(
+      candidatePool, matchHistory, groups3, totalCourtCount,
+      practiceStartTime, useStayDuration, allowUnbalanced
+    );
 
     if (selected.length < 4) {
       throw new Error('プレイヤーの割り当てに失敗しました');
@@ -1115,7 +979,6 @@ export function assignCourts(
 
 /**
  * 待機メンバーを配置優先度順にソート
- * 空きコートに対してeligible（確率>0）な人を上位に、その中で優先スコア昇順
  */
 export function sortWaitingPlayers(
   waitingPlayers: Player[],
@@ -1128,40 +991,13 @@ export function sortWaitingPlayers(
     useStayDuration: boolean;
   }
 ): Player[] {
-  const { emptyCourtIds, totalCourtCount, matchHistory, allActivePlayers, practiceStartTime, useStayDuration } = options;
+  const { practiceStartTime, useStayDuration } = options;
 
-  // 空きコートがない or 3コート未満 → 優先スコア順のみ
-  if (emptyCourtIds.length === 0 || totalCourtCount < 3) {
-    return [...waitingPlayers].sort((a, b) =>
-      calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-      calculatePriorityScore(b, practiceStartTime, useStayDuration)
-    );
-  }
-
-  // 3コート: グループ分けしてeligibility判定
-  const groups = groupPlayers3Court(allActivePlayers, matchHistory);
-  const eligibility = new Map<string, boolean>();
-
-  for (const player of waitingPlayers) {
-    const group = getPlayerGroup(player.id, groups) as RatingGroup;
-    const eligible = emptyCourtIds.some(courtId => {
-      const prob = COURT_PROBABILITIES_3[group]?.[courtId - 1] ?? 0;
-      return prob >= 0.5;
-    });
-    eligibility.set(player.id, eligible);
-  }
-
-  return [...waitingPlayers].sort((a, b) => {
-    const aEligible = eligibility.get(a.id) ?? true;
-    const bEligible = eligibility.get(b.id) ?? true;
-
-    if (aEligible !== bEligible) {
-      return aEligible ? -1 : 1;
-    }
-
-    return calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-           calculatePriorityScore(b, practiceStartTime, useStayDuration);
-  });
+  // 優先度スコア順にソート（低いほど優先）
+  return [...waitingPlayers].sort((a, b) =>
+    calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+    calculatePriorityScore(b, practiceStartTime, useStayDuration)
+  );
 }
 
 /**
