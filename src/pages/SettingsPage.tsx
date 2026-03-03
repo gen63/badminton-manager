@@ -209,36 +209,21 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* 参加者管理 */}
-        <div className="card p-4">
-          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
-            <span className="w-6 h-6 rounded-lg bg-green-100 flex items-center justify-center">
-              <Users size={14} className="text-green-600" />
-            </span>
-            参加者管理
-          </h2>
+        {/* アクション */}
+        <div className="space-y-3">
           <button
             onClick={() => navigate('/players')}
-            className="btn-primary flex items-center gap-2 text-sm py-2.5"
+            className="btn-primary w-full flex items-center justify-center gap-2 py-3"
           >
-            <Users size={16} />
+            <Users size={18} />
             参加者を管理
           </button>
-        </div>
 
-        {/* データ管理 */}
-        <div className="card p-4">
-          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
-            <span className="w-6 h-6 rounded-lg bg-red-100 flex items-center justify-center">
-              <Trash2 size={14} className="text-red-500" />
-            </span>
-            データ管理
-          </h2>
           <button
             onClick={handleReset}
-            className="btn-danger py-2.5 flex items-center gap-2 text-sm"
+            className="btn-danger w-full flex items-center justify-center gap-2 py-3"
           >
-            <Trash2 size={16} />
+            <Trash2 size={18} />
             リセット
           </button>
         </div>
