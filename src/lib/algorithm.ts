@@ -988,8 +988,21 @@ export function assignCourts(
   for (let i = 0; i < courtCount; i++) {
     const courtId = targetCourtIds[i];
 
+    // 1コート配置時の最大偏差制限
+    let availablePlayers = activePlayers;
+    if (totalCourtCount === 1 && courtCount === 1) {
+      const candidatePool = activePlayers.filter(p => !usedPlayers.has(p.id));
+      if (candidatePool.length >= 4) {
+        const avgGames = candidatePool.reduce((sum, p) => sum + p.gamesPlayed, 0) / candidatePool.length;
+        const eligible = candidatePool.filter(p => p.gamesPlayed <= avgGames + 3);
+        if (eligible.length >= 4) {
+          availablePlayers = [...eligible, ...activePlayers.filter(p => usedPlayers.has(p.id))];
+        }
+      }
+    }
+
     // homeグループ: このコートに配置可能なプレイヤー（prob>0）
-    const homeGroup = activePlayers.filter(p => {
+    const homeGroup = availablePlayers.filter(p => {
       if (usedPlayers.has(p.id)) return false;
       if (totalCourtCount >= 3 && groups3) {
         const group = getPlayerGroup(p.id, groups3);
@@ -1003,7 +1016,7 @@ export function assignCourts(
     const adjacentCandidates: Player[] = [];
     if (totalCourtCount >= 3 && groups3) {
       const courtGroup = courtId === 1 ? 'upper' : courtId === 2 ? 'middle' : 'lower';
-      const available = activePlayers.filter(p => !usedPlayers.has(p.id) && !homeGroup.includes(p));
+      const available = availablePlayers.filter(p => !usedPlayers.has(p.id) && !homeGroup.includes(p));
 
       if (courtGroup === 'upper') {
         // middle上位（序列でupperに近い順）
@@ -1074,7 +1087,7 @@ export function assignCourts(
 
     if (!selected) {
       // 全候補でも4人見つからない場合
-      const allAvailable = activePlayers
+      const allAvailable = availablePlayers
         .filter(p => !usedPlayers.has(p.id))
         .sort((a, b) =>
           calculatePriorityScore(a, practiceStartTime, useStayDuration) -
