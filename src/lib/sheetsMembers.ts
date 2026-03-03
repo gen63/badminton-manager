@@ -4,6 +4,12 @@ interface MemberFromSheet {
   gender?: 'M' | 'F';
 }
 
+interface RawMemberFromSheet {
+  name: string;
+  rating?: number;
+  gender?: string;
+}
+
 interface FetchMembersResult {
   success: boolean;
   message: string;
@@ -60,12 +66,12 @@ async function attemptFetch(url: string): Promise<AttemptResult> {
       };
     }
 
-    const rawMembers = (obj.members as any[]) || [];
+    const rawMembers = (obj.members as RawMemberFromSheet[]) || [];
     
     // 性別を正規化（'男' → 'M', '女' → 'F'）
     const members: MemberFromSheet[] = rawMembers
-      .filter((m: any) => m.name)
-      .map((m: any) => {
+      .filter((m: RawMemberFromSheet) => m.name)
+      .map((m: RawMemberFromSheet) => {
         let gender: 'M' | 'F' | undefined;
         if (m.gender) {
           const g = String(m.gender).toUpperCase();
