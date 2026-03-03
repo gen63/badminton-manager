@@ -5,9 +5,12 @@
  */
 
 export class SessionError extends Error {
-  constructor(message: string, public code?: string) {
+  public code?: string;
+  
+  constructor(message: string, code?: string) {
     super(message);
     this.name = 'SessionError';
+    this.code = code;
   }
 }
 

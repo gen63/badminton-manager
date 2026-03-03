@@ -8,7 +8,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
-import { usePlayerStore } from '../stores/playerStore';
 import { getSession, joinSession } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
 import type { Session } from '../types/session';
@@ -23,7 +22,6 @@ export function SessionJoinPage() {
   const [error, setError] = useState<string>('');
   
   const initializeSession = useSessionStore((state) => state.initialize);
-  const setPlayers = usePlayerStore((state) => state.setPlayers);
   
   // セッション情報を取得
   useEffect(() => {
@@ -130,9 +128,6 @@ export function SessionJoinPage() {
       </div>
     );
   }
-  
-  // プレイヤーリストを生成（セッション作成時の参加者リスト）
-  const players = session.config.practiceDate ? [] : []; // TODO: 実装
   
   return (
     <div className="min-h-screen bg-gray-100 p-4">

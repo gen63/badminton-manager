@@ -37,7 +37,7 @@ export function SessionURLDisplay({ sessionId, onClose }: SessionURLDisplayProps
   
   // Web Share API で共有（モバイル対応）
   const handleShare = async () => {
-    if (!navigator.share) {
+    if (!('share' in navigator)) {
       // 非対応ブラウザではコピー
       handleCopy();
       return;
@@ -115,7 +115,7 @@ export function SessionURLDisplay({ sessionId, onClose }: SessionURLDisplayProps
       {/* アクションボタン */}
       <div className="space-y-3">
         {/* 共有ボタン（モバイル対応） */}
-        {navigator.share && (
+        {'share' in navigator && (
           <button
             onClick={handleShare}
             className="w-full bg-blue-500 text-white rounded-full font-medium py-3 px-6
@@ -128,7 +128,7 @@ export function SessionURLDisplay({ sessionId, onClose }: SessionURLDisplayProps
         )}
         
         {/* コピーボタン（デスクトップ） */}
-        {!navigator.share && (
+        {!('share' in navigator) && (
           <button
             onClick={handleCopy}
             className="w-full bg-blue-500 text-white rounded-full font-medium py-3 px-6

@@ -5,8 +5,8 @@
  * Firebase Console で作成した設定情報をここに記述します
  */
 
-import { initializeApp, FirebaseApp } from 'firebase/app';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import { initializeApp, type FirebaseApp } from 'firebase/app';
+import { getFirestore, type Firestore } from 'firebase/firestore';
 
 // Firebase 設定
 // TODO: Firebase Console から取得した設定情報を入れる

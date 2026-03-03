@@ -85,24 +85,25 @@ export function SettingsPage() {
     let text = `${dateStr}\n\n`;
     text += `連番\tペアA\tペアB\tスコア\t時刻\t試合時間\n`;
     
-    // スコア入力済みの試合のみ
-    const scoredMatches = matchHistory.filter(m => m.score);
+    // 完了した試合のみ（finishedAtが存在する）
+    const finishedMatches = matchHistory.filter(m => m.finishedAt > 0);
     
-    scoredMatches.forEach((match, idx) => {
-      const pairA = `${match.team1[0]}・${match.team1[1]}`;
-      const pairB = `${match.team2[0]}・${match.team2[1]}`;
-      const time = new Date(match.startTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-      const duration = match.endTime 
-        ? `${Math.floor((match.endTime - match.startTime) / 60000)}分`
+    finishedMatches.forEach((match, idx) => {
+      const pairA = `${match.teamA[0]}・${match.teamA[1]}`;
+      const pairB = `${match.teamB[0]}・${match.teamB[1]}`;
+      const scoreStr = `${match.scoreA}-${match.scoreB}`;
+      const time = new Date(match.startedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+      const duration = match.finishedAt 
+        ? `${Math.floor((match.finishedAt - match.startedAt) / 60000)}分`
         : '-';
       
-      text += `${idx + 1}\t${pairA}\t${pairB}\t${match.score}\t${time}\t${duration}\n`;
+      text += `${idx + 1}\t${pairA}\t${pairB}\t${scoreStr}\t${time}\t${duration}\n`;
     });
     
     // クリップボードにコピー
     navigator.clipboard.writeText(text)
       .then(() => {
-        toast.success(`履歴をコピーしました（${scoredMatches.length}件）`);
+        toast.success(`履歴をコピーしました（${finishedMatches.length}件）`);
       })
       .catch((err) => {
         console.error('Failed to copy:', err);
@@ -387,7 +388,7 @@ export function SettingsPage() {
                          disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Copy size={18} />
-                履歴をコピー（{matchHistory.filter(m => m.score).length}件）
+                履歴をコピー（{matchHistory.filter(m => m.finishedAt > 0).length}件）
               </button>
               
               {/* 練習リセット */}

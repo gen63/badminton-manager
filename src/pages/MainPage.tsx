@@ -12,10 +12,12 @@ import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
 import { WinnerSelectModal } from '../components/WinnerSelectModal';
 import { useRealtimeSession } from '../hooks/useRealtimeSession';
+import { SessionInfo } from '../components/SessionInfo';
+import { OnlineStatus } from '../components/OnlineStatus';
 
 export function MainPage() {
   const navigate = useNavigate();
-  const { session } = useSessionStore();
+  const { session, isCreator } = useSessionStore();
   const { players, toggleRest, updatePlayer, addPlayers } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame } =
     useGameStore();
@@ -26,6 +28,7 @@ export function MainPage() {
   // Phase 1: リアルタイムセッション同期
   // Firebase登録後に有効化（現在はモック実装でポーリング）
   const { isConnected } = useRealtimeSession(session?.id || null);
+  const isAdmin = isCreator();
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;
     courtId?: number;
@@ -525,6 +528,14 @@ export function MainPage() {
       </header>
 
       <main className="flex-1 pb-[280px]">
+        {/* Phase 1: Session Info & Online Status */}
+        {session?.createdBy && (
+          <div className="px-4 pt-4 space-y-3">
+            <SessionInfo session={session} isAdmin={isAdmin} />
+            <OnlineStatus isConnected={isConnected} />
+          </div>
+        )}
+        
         {/* Courts Section */}
         <section className="pt-4 pb-2 px-4">
           <div className="grid grid-cols-3 gap-2">

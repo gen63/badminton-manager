@@ -8,8 +8,6 @@
 import { useEffect, useRef } from 'react';
 import { subscribeToSession } from '../services/sessionService';
 import { useSessionStore } from '../stores/sessionStore';
-import { logError } from '../lib/errorHandler';
-import type { Session } from '../types/session';
 
 /**
  * セッションをリアルタイム監視
