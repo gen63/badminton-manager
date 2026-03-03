@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -6,21 +5,15 @@ import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useUndoStore } from '../stores/undoStore';
 import { GYM_OPTIONS } from '../types/session';
-import { sendMatchesToSheets } from '../lib/sheetsApi';
-import { ArrowLeft, Trash2, Users, Settings as SettingsIcon, Clock, MapPin, Upload, Loader2 } from 'lucide-react';
-import { useToast } from '../hooks/useToast';
-import { Toast } from '../components/Toast';
+import { ArrowLeft, Trash2, Users, Settings as SettingsIcon, Clock, MapPin } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
   const { session, updateConfig, clearSession } = useSessionStore();
-  const { players } = usePlayerStore();
   const { clearPlayers } = usePlayerStore();
-  const { matchHistory, clearHistory, initializeCourts } = useGameStore();
-  const { gasWebAppUrl, setGasWebAppUrl, useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores } = useSettingsStore();
+  const { clearHistory, initializeCourts } = useGameStore();
+  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
-  const toast = useToast();
-  const [isUploading, setIsUploading] = useState(false);
 
   if (!session) {
     navigate('/');
@@ -34,26 +27,6 @@ export function SettingsPage() {
 
   const handleTargetScoreChange = (score: number) => {
     updateConfig({ targetScore: score });
-  };
-
-  const handleUpload = async () => {
-    if (!session || !gasWebAppUrl || isUploading) return;
-    setIsUploading(true);
-    try {
-      const result = await sendMatchesToSheets(
-        gasWebAppUrl,
-        matchHistory,
-        players,
-        session
-      );
-      if (result.success) {
-        toast.success(result.message);
-      } else {
-        toast.error(result.message);
-      }
-    } finally {
-      setIsUploading(false);
-    }
   };
 
   const handleReset = () => {
@@ -253,42 +226,6 @@ export function SettingsPage() {
           </button>
         </div>
 
-        {/* Google Sheets連携 */}
-        <div className="card p-4">
-          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
-            <span className="w-6 h-6 rounded-lg bg-emerald-100 flex items-center justify-center">
-              <Upload size={14} className="text-emerald-600" />
-            </span>
-            Google Sheets連携
-          </h2>
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">GAS Web App URL</label>
-              <input
-                type="url"
-                value={gasWebAppUrl}
-                onChange={(e) => setGasWebAppUrl(e.target.value)}
-                placeholder="https://script.google.com/macros/s/..."
-                className="input-field min-h-[44px] text-sm"
-              />
-            </div>
-            <button
-              onClick={handleUpload}
-              disabled={!gasWebAppUrl || matchHistory.length === 0 || isUploading}
-              className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm py-2.5"
-            >
-              {isUploading ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Upload size={16} />
-              )}
-              {isUploading
-                ? '送信中...'
-                : `Sheetsにアップロード（${matchHistory.length}件）`}
-            </button>
-          </div>
-        </div>
-
         {/* データ管理 */}
         <div className="card p-4">
           <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
@@ -306,16 +243,6 @@ export function SettingsPage() {
           </button>
         </div>
       </div>
-
-      {/* Toast notifications */}
-      {toast.toasts.map((t) => (
-        <Toast
-          key={t.id}
-          message={t.message}
-          type={t.type}
-          onClose={() => toast.hideToast(t.id)}
-        />
-      ))}
     </div>
   );
 }
