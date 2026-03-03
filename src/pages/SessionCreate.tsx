@@ -7,6 +7,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { generateSessionId, parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { createSession } from '../services/sessionService';
+import { getErrorMessage } from '../lib/errorHandler';
 import { GYM_OPTIONS } from '../types/session';
 import { Sparkles, Download, Loader2 } from 'lucide-react';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
@@ -146,9 +147,11 @@ export function SessionCreate() {
     // Phase 1: Firebase にセッション作成
     if (isPhase1Mode) {
       try {
+        const creatorName = 'Admin'; // TODO: LINE認証後は実名を入れる
+        
         const sessionId = await createSession({
           config: sessionConfig,
-          createdBy: 'Admin', // TODO: LINE認証後は実名を入れる
+          createdBy: creatorName,
           status: 'active'
         });
         
@@ -158,17 +161,20 @@ export function SessionCreate() {
           config: sessionConfig,
           createdAt: now,
           updatedAt: now,
-          createdBy: 'Admin',
+          createdBy: creatorName,
           status: 'active' as const
         };
-        setSession(session);
+        
+        // initialize メソッドを使用（currentUserも設定）
+        const initializeSession = useSessionStore.getState().initialize;
+        initializeSession(session);
         initializeCourts(courtCount);
         
         // URL表示
         setCreatedSessionId(sessionId);
       } catch (err) {
-        console.error('Failed to create session:', err);
-        setLoadError('セッション作成に失敗しました');
+        const message = getErrorMessage(err);
+        setLoadError(message);
       }
       return;
     }

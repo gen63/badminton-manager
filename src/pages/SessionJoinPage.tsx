@@ -10,6 +10,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { getSession, joinSession } from '../services/sessionService';
+import { getErrorMessage } from '../lib/errorHandler';
 import type { Session } from '../types/session';
 
 export function SessionJoinPage() {
@@ -45,8 +46,8 @@ export function SessionJoinPage() {
         setSession(data);
         setLoading(false);
       } catch (err) {
-        console.error('Failed to load session:', err);
-        setError('セッション読み込みエラー');
+        const message = getErrorMessage(err);
+        setError(message);
         setLoading(false);
       }
     }
@@ -59,8 +60,14 @@ export function SessionJoinPage() {
     if (!selectedPlayer || !sessionId || !session) return;
     
     try {
+      // バリデーション
+      if (selectedPlayer.trim() === '') {
+        setError('名前を入力してください');
+        return;
+      }
+      
       // Firestore に参加者登録
-      await joinSession(sessionId, selectedPlayer);
+      await joinSession(sessionId, selectedPlayer.trim());
       
       // ローカル状態を初期化
       initializeSession({
@@ -75,14 +82,17 @@ export function SessionJoinPage() {
         status: session.status
       });
       
+      // 現在のユーザーを設定
+      useSessionStore.getState().setCurrentUser(selectedPlayer.trim());
+      
       // プレイヤーリストを設定（Phase 0のデータ構造を流用）
       // TODO: Firestoreから最新の状態を取得
       
       // メイン画面へ遷移
       navigate('/main');
     } catch (err) {
-      console.error('Failed to join session:', err);
-      setError('入室に失敗しました');
+      const message = getErrorMessage(err);
+      setError(message);
     }
   };
   

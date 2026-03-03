@@ -7,13 +7,13 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useUndoStore } from '../stores/undoStore';
 import { GYM_OPTIONS } from '../types/session';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
-import { ArrowLeft, Trash2, Users, Settings as SettingsIcon, Clock, MapPin, Upload, Loader2 } from 'lucide-react';
+import { ArrowLeft, Trash2, Users, Settings as SettingsIcon, Clock, MapPin, Upload, Loader2, Copy, Shield } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 
 export function SettingsPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, clearSession } = useSessionStore();
+  const { session, updateConfig, clearSession, isCreator } = useSessionStore();
   const { players } = usePlayerStore();
   const { clearPlayers } = usePlayerStore();
   const { matchHistory, clearHistory, initializeCourts } = useGameStore();
@@ -21,6 +21,9 @@ export function SettingsPage() {
   const { clearAll: clearUndo } = useUndoStore();
   const toast = useToast();
   const [isUploading, setIsUploading] = useState(false);
+  
+  // Phase 1: 権限判定
+  const isAdmin = isCreator();
 
   if (!session) {
     navigate('/');
@@ -57,11 +60,54 @@ export function SettingsPage() {
   };
 
   const handleReset = () => {
+    if (!confirm('すべてのデータをリセットしますか？\n\n※ この操作は取り消せません')) {
+      return;
+    }
+    
     clearHistory();
     clearPlayers();
     clearUndo();
     clearSession();
     navigate('/');
+  };
+  
+  // Phase 1: 履歴コピー機能
+  const handleCopyHistory = () => {
+    if (matchHistory.length === 0) {
+      toast.error('コピーする履歴がありません');
+      return;
+    }
+    
+    // フォーマット: 日付 + ヘッダー + データ行（タブ区切り）
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    
+    let text = `${dateStr}\n\n`;
+    text += `連番\tペアA\tペアB\tスコア\t時刻\t試合時間\n`;
+    
+    // スコア入力済みの試合のみ
+    const scoredMatches = matchHistory.filter(m => m.score);
+    
+    scoredMatches.forEach((match, idx) => {
+      const pairA = `${match.team1[0]}・${match.team1[1]}`;
+      const pairB = `${match.team2[0]}・${match.team2[1]}`;
+      const time = new Date(match.startTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+      const duration = match.endTime 
+        ? `${Math.floor((match.endTime - match.startTime) / 60000)}分`
+        : '-';
+      
+      text += `${idx + 1}\t${pairA}\t${pairB}\t${match.score}\t${time}\t${duration}\n`;
+    });
+    
+    // クリップボードにコピー
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        toast.success(`履歴をコピーしました（${scoredMatches.length}件）`);
+      })
+      .catch((err) => {
+        console.error('Failed to copy:', err);
+        toast.error('コピーに失敗しました');
+      });
   };
 
   return (
@@ -294,22 +340,84 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* データ管理 */}
-        <div className="card p-6">
-          <h2 className="section-title mb-5 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
-              <Trash2 size={18} className="text-red-500" />
-            </span>
-            データ管理
-          </h2>
-          <button
-            onClick={handleReset}
-            className="btn-danger min-h-[48px] py-3 flex items-center gap-2"
-          >
-            <Trash2 size={18} />
-            リセット
-          </button>
-        </div>
+        {/* セッション管理（管理者のみ）*/}
+        {isAdmin && (
+          <div className="card p-6">
+            <h2 className="section-title mb-5 flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
+                <Shield size={18} className="text-purple-600" />
+              </span>
+              セッション管理
+              <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                管理者
+              </span>
+            </h2>
+            
+            {/* セッション情報 */}
+            {session.createdBy && (
+              <div className="bg-gray-50 rounded-xl p-4 mb-4">
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">管理者</span>
+                    <span className="font-medium text-gray-800">{session.createdBy}</span>
+                  </div>
+                  {session.id && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">セッションID</span>
+                      <span className="font-mono text-gray-800">{session.id}</span>
+                    </div>
+                  )}
+                  {session.participants && session.participants.length > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">参加者</span>
+                      <span className="font-medium text-gray-800">{session.participants.length}人</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* 管理者専用アクション */}
+            <div className="space-y-3">
+              {/* 履歴コピー */}
+              <button
+                onClick={handleCopyHistory}
+                disabled={matchHistory.length === 0}
+                className="w-full btn-secondary min-h-[48px] py-3 flex items-center justify-center gap-2
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Copy size={18} />
+                履歴をコピー（{matchHistory.filter(m => m.score).length}件）
+              </button>
+              
+              {/* 練習リセット */}
+              <button
+                onClick={handleReset}
+                className="w-full btn-danger min-h-[48px] py-3 flex items-center justify-center gap-2"
+              >
+                <Trash2 size={18} />
+                練習をリセット
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {/* 一般ユーザー向け注意事項 */}
+        {!isAdmin && session.createdBy && (
+          <div className="card p-6 bg-blue-50 border border-blue-200">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">ℹ️</span>
+              <div>
+                <h3 className="font-semibold text-blue-900 mb-1">
+                  参加者モード
+                </h3>
+                <p className="text-sm text-blue-800">
+                  セッション管理・リセット・履歴コピーは管理者（{session.createdBy}）のみが実行できます。
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Toast notifications */}
