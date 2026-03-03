@@ -60,9 +60,27 @@ async function attemptFetch(url: string): Promise<AttemptResult> {
       };
     }
 
-    const members: MemberFromSheet[] = (
-      (obj.members as MemberFromSheet[]) || []
-    ).filter((m: MemberFromSheet) => m.name);
+    const rawMembers = (obj.members as any[]) || [];
+    
+    // 性別を正規化（'男' → 'M', '女' → 'F'）
+    const members: MemberFromSheet[] = rawMembers
+      .filter((m: any) => m.name)
+      .map((m: any) => {
+        let gender: 'M' | 'F' | undefined;
+        if (m.gender) {
+          const g = String(m.gender).toUpperCase();
+          if (g === 'M' || m.gender === '男') {
+            gender = 'M';
+          } else if (g === 'F' || m.gender === '女') {
+            gender = 'F';
+          }
+        }
+        return {
+          name: m.name,
+          rating: m.rating,
+          gender,
+        };
+      });
 
     if (members.length === 0) {
       return { success: false, message: '当日参加者が見つかりません', members: [], retryable: false };
