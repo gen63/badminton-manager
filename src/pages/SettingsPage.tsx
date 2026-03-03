@@ -210,10 +210,10 @@ export function SettingsPage() {
         </div>
 
         {/* アクション */}
-        <div className="space-y-3">
+        <div className="flex gap-3 justify-center">
           <button
             onClick={() => navigate('/players')}
-            className="btn-primary w-full flex items-center justify-center gap-2 py-3"
+            className="btn-primary flex items-center justify-center gap-2 py-3 px-6"
           >
             <Users size={18} />
             参加者を管理
@@ -221,7 +221,7 @@ export function SettingsPage() {
 
           <button
             onClick={handleReset}
-            className="btn-danger w-full flex items-center justify-center gap-2 py-3"
+            className="btn-danger flex items-center justify-center gap-2 py-3 px-6"
           >
             <Trash2 size={18} />
             リセット
