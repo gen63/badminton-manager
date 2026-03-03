@@ -11,6 +11,7 @@
 2. **セッション管理サービス（抽象化）**
    - `src/services/sessionService.ts`
    - モック実装（LocalStorage）→ Firebase実装に段階的移行可能
+   - エラーハンドリング統合
    - 主な関数:
      - `createSession()`: セッション作成
      - `getSession()`: セッション取得
@@ -35,6 +36,7 @@
    - URL経由で入室
    - セッション情報表示
    - 参加者リスト表示
+   - エラーハンドリング
 
 6. **URL生成・共有機能**
    - `src/components/SessionURLDisplay.tsx`
@@ -46,6 +48,45 @@
    - `src/pages/SessionCreate.tsx`: Phase 1モード対応
    - `/session/create` からのアクセス時はFirebaseにセッション作成
    - Phase 0モード（LocalStorage）も維持
+   - エラーハンドリング
+
+### ✅ 権限管理・エラーハンドリング
+
+8. **権限管理ロジック**
+   - `src/stores/sessionStore.ts`
+     - `currentUser`: 現在のユーザー（Phase 1: 名前、Phase 1.5: LINE UID）
+     - `initialize()`: セッション初期化 + currentUser設定
+     - `isCreator()`: 管理者判定
+     - `updateSession()`: 部分更新
+
+9. **管理者専用UI**
+   - `src/pages/SettingsPage.tsx`
+     - セッション管理セクション（管理者のみ表示）
+     - 履歴コピー機能（タブ区切りフォーマット）
+     - 練習リセット（確認ダイアログ付き）
+     - 一般ユーザー向け注意事項表示
+
+10. **エラーハンドリング**
+    - `src/lib/errorHandler.ts`
+      - `SessionError` クラス
+      - `getErrorMessage()`: Firebaseエラー変換
+      - `withRetry()`: リトライ機能
+      - オフライン検出
+    - 全サービス関数にエラーハンドリング統合
+
+### ✅ リアルタイム同期の準備
+
+11. **リアルタイム同期フック**
+    - `src/hooks/useRealtimeSession.ts`
+      - `subscribeToSession()` との連携
+      - Zustand `updateSession()` 呼び出し
+      - クリーンアップ処理
+      - `useRealtimeSessionControl()`: コントロール用
+
+12. **メイン画面統合**
+    - `src/pages/MainPage.tsx`
+      - `useRealtimeSession()` フック使用
+      - Firebase登録後に自動的にリアルタイム同期開始
 
 ---
 
@@ -71,11 +112,17 @@ const firebaseConfig = {
 各関数のTODOコメントを削除し、Firestore APIを有効化:
 
 ```typescript
+// 必要なインポート追加
+import { db } from '../lib/firebase';
+import { doc, setDoc, getDoc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+
 // createSession()
 const docRef = doc(db, 'sessions', sessionId);
 await setDoc(docRef, {
   ...session,
-  createdAt: serverTimestamp()
+  id: sessionId,
+  createdAt: serverTimestamp(),
+  status: 'active'
 });
 
 // getSession()
@@ -88,27 +135,26 @@ const docRef = doc(db, 'sessions', sessionId);
 return onSnapshot(docRef, (doc) => {
   callback(doc.exists() ? doc.data() as Session : null);
 });
+
+// updateSession()
+const docRef = doc(db, 'sessions', sessionId);
+await updateDoc(docRef, updates);
+
+// joinSession()
+const participantRef = doc(db, `sessions/${sessionId}/participants`, playerName);
+await setDoc(participantRef, {
+  name: playerName,
+  joinedAt: serverTimestamp()
+});
 ```
 
-### 3. リアルタイム同期の実装
+### 3. リアルタイム同期の有効化
 
-Zustand storeをFirestoreリスナーと連携:
+**すでに実装済み！**
 
-```typescript
-// src/stores/sessionStore.ts
-useEffect(() => {
-  if (!sessionId) return;
-  
-  const unsubscribe = subscribeToSession(sessionId, (session) => {
-    if (session) {
-      // 状態を更新
-      updateLocalState(session);
-    }
-  });
-  
-  return unsubscribe;
-}, [sessionId]);
-```
+- `src/hooks/useRealtimeSession.ts` が自動的に動作
+- `src/pages/MainPage.tsx` で既に使用中
+- sessionService.ts のFirestore実装に切り替えるだけで自動的にリアルタイム同期開始
 
 ### 4. npm install 実行
 
@@ -209,9 +255,12 @@ service cloud.firestore {
 - ✅ URL生成・共有機能実装
 - ✅ 参加者選択画面実装
 - ✅ ルーティング追加
+- ✅ 権限管理ロジック実装
+- ✅ 管理者専用UI実装
+- ✅ エラーハンドリング実装
+- ✅ リアルタイム同期の準備完了
 - ⏸️ Firebase 設定待ち
-- ⏸️ Firebase実装への切り替え待ち
-- ⏸️ リアルタイム同期実装待ち
+- ⏸️ Firebase実装への切り替え待ち（sessionService.ts のコメント解除）
 
 ---
 
