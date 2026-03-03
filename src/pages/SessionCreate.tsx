@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { generateSessionId, parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
+import { createSession } from '../services/sessionService';
 import { GYM_OPTIONS } from '../types/session';
 import { Sparkles, Download, Loader2 } from 'lucide-react';
+import { SessionURLDisplay } from '../components/SessionURLDisplay';
 
 // 現在日時を取得（時刻は12:00固定）
 const getInitialDateTime = () => {
@@ -21,6 +23,7 @@ const getInitialDateTime = () => {
 
 export function SessionCreate() {
   const navigate = useNavigate();
+  const location = useLocation();
   const setSession = useSessionStore((state) => state.setSession);
   const { addPlayers } = usePlayerStore();
   const initializeCourts = useGameStore((state) => state.initializeCourts);
@@ -28,6 +31,12 @@ export function SessionCreate() {
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
   const setGasWebAppUrl = useSettingsStore((state) => state.setGasWebAppUrl);
   const [gasUrlInput, setGasUrlInput] = useState(gasWebAppUrl);
+
+  // Phase 1 モード判定（/session/create からのアクセス）
+  const isPhase1Mode = location.pathname === '/session/create';
+  
+  // Phase 1: セッションURL表示用
+  const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
 
   // 画面表示時にSWの更新をチェック
   useEffect(() => {
@@ -112,7 +121,8 @@ export function SessionCreate() {
     setIsLoadingMembers(false);
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
+    // プレイヤー登録
     if (playerNames.trim()) {
       const inputs = playerNames
         .split('\n')
@@ -123,18 +133,51 @@ export function SessionCreate() {
       }
     }
 
-    const sessionId = generateSessionId();
     const now = Date.now();
     const practiceTime = new Date(practiceDateTime).getTime();
+    const sessionConfig = {
+      courtCount,
+      targetScore,
+      practiceDate: practiceDateTime.split('T')[0],
+      practiceStartTime: practiceTime,
+      gym: selectedGym || undefined,
+    };
+
+    // Phase 1: Firebase にセッション作成
+    if (isPhase1Mode) {
+      try {
+        const sessionId = await createSession({
+          config: sessionConfig,
+          createdBy: 'Admin', // TODO: LINE認証後は実名を入れる
+          status: 'active'
+        });
+        
+        // ローカル状態にも保存
+        const session = {
+          id: sessionId,
+          config: sessionConfig,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: 'Admin',
+          status: 'active' as const
+        };
+        setSession(session);
+        initializeCourts(courtCount);
+        
+        // URL表示
+        setCreatedSessionId(sessionId);
+      } catch (err) {
+        console.error('Failed to create session:', err);
+        setLoadError('セッション作成に失敗しました');
+      }
+      return;
+    }
+    
+    // Phase 0: LocalStorage のみ
+    const sessionId = generateSessionId();
     const session = {
       id: sessionId,
-      config: {
-        courtCount,
-        targetScore,
-        practiceDate: practiceDateTime.split('T')[0],
-        practiceStartTime: practiceTime,
-        gym: selectedGym || undefined,
-      },
+      config: sessionConfig,
       createdAt: now,
       updatedAt: now,
     };
@@ -143,6 +186,20 @@ export function SessionCreate() {
     initializeCourts(courtCount);
     navigate('/main');
   };
+
+  // Phase 1: URL表示モーダル
+  if (createdSessionId) {
+    return (
+      <div className="bg-app overflow-x-hidden min-h-screen flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <SessionURLDisplay 
+            sessionId={createdSessionId}
+            onClose={() => navigate('/main')}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-app overflow-x-hidden">
