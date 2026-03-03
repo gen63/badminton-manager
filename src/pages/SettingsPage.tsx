@@ -83,16 +83,14 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div className="max-w-md mx-auto p-4 space-y-4">
+      <div className="max-w-md mx-auto p-3 space-y-3">
         {/* コート設定 */}
-        <div className="card p-6">
-          <h2 className="section-title mb-5 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
-              <span className="text-lg">🏸</span>
-            </span>
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+            <span className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center text-sm">🏸</span>
             コート設定
           </h2>
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div>
               <label className="label">コート数</label>
               <div className="flex gap-3">
@@ -134,14 +132,14 @@ export function SettingsPage() {
             </div>
 
             <div>
-              <label className="label flex items-center gap-1.5">
-                <MapPin size={14} />
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block flex items-center gap-1.5">
+                <MapPin size={12} />
                 体育館
               </label>
               <select
                 value={session.config.gym || ''}
                 onChange={(e) => updateConfig({ gym: e.target.value || undefined })}
-                className="select-field min-h-[52px] w-auto"
+                className="select-field min-h-[44px] w-auto"
               >
                 <option value="">選択してください</option>
                 {GYM_OPTIONS.map((gym) => (
@@ -153,7 +151,25 @@ export function SettingsPage() {
             </div>
 
             <div>
-              <label className="label">配置モード</label>
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block flex items-center gap-1.5">
+                <Clock size={12} />
+                練習開始日時
+              </label>
+              <input
+                type="datetime-local"
+                value={new Date(session.config.practiceStartTime - new Date(session.config.practiceStartTime).getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                onChange={(e) => {
+                  const newTime = new Date(e.target.value).getTime();
+                  if (!isNaN(newTime)) {
+                    updateConfig({ practiceStartTime: newTime });
+                  }
+                }}
+                className="input-field min-h-[44px] w-auto"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">配置モード</label>
               <div className="flex gap-2">
                 <button
                   onClick={() => setUseStayDurationPriority(true)}
@@ -178,15 +194,15 @@ export function SettingsPage() {
                   試合回数
                 </button>
               </div>
-              <p className="text-xs text-gray-600 mt-2">
+              <p className="text-[10px] text-gray-500 mt-1">
                 {useStayDurationPriority
-                  ? '滞在時間が長い人を優先します'
-                  : '試合回数が少ない人を優先します（待機時間を考慮しない）'}
+                  ? '滞在時間が長い人を優先'
+                  : '試合回数が少ない人を優先'}
               </p>
             </div>
 
             <div>
-              <label className="label">勝敗記録</label>
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">勝敗記録</label>
               <div className="flex gap-2">
                 <button
                   onClick={() => setRecordScores(true)}
@@ -211,81 +227,60 @@ export function SettingsPage() {
                   OFF
                 </button>
               </div>
-              <p className="text-xs text-gray-600 mt-2">
+              <p className="text-[10px] text-gray-500 mt-1">
                 {recordScores
-                  ? '終了時に勝敗を記録します'
-                  : '勝敗記録なし（推奨しません）'}
+                  ? '終了時に勝敗を記録'
+                  : '勝敗記録なし'}
               </p>
             </div>
           </div>
         </div>
 
-        {/* 練習開始日時 */}
-        <div className="card p-6">
-          <h2 className="section-title mb-5 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
-              <Clock size={18} className="text-amber-600" />
-            </span>
-            練習開始日時
-          </h2>
-          <input
-            type="datetime-local"
-            value={new Date(session.config.practiceStartTime - new Date(session.config.practiceStartTime).getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
-            onChange={(e) => {
-              const newTime = new Date(e.target.value).getTime();
-              if (!isNaN(newTime)) {
-                updateConfig({ practiceStartTime: newTime });
-              }
-            }}
-            className="input-field min-h-[52px] w-auto"
-          />
-        </div>
-
         {/* 参加者管理 */}
-        <div className="card p-6">
-          <h2 className="section-title mb-5 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
-              <Users size={18} className="text-green-600" />
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+            <span className="w-6 h-6 rounded-lg bg-green-100 flex items-center justify-center">
+              <Users size={14} className="text-green-600" />
             </span>
             参加者管理
           </h2>
           <button
             onClick={() => navigate('/players')}
-            className="btn-primary flex items-center gap-2"
+            className="btn-primary flex items-center gap-2 text-sm py-2.5"
           >
-            <Users size={18} />
+            <Users size={16} />
             参加者を管理
           </button>
         </div>
 
         {/* Google Sheets連携 */}
-        <div className="card p-6">
-          <h2 className="section-title mb-5 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-              <Upload size={18} className="text-emerald-600" />
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+            <span className="w-6 h-6 rounded-lg bg-emerald-100 flex items-center justify-center">
+              <Upload size={14} className="text-emerald-600" />
             </span>
             Google Sheets連携
           </h2>
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div>
-              <label className="label">GAS Web App URL</label>
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">GAS Web App URL</label>
               <input
                 type="url"
                 value={gasWebAppUrl}
                 onChange={(e) => setGasWebAppUrl(e.target.value)}
                 placeholder="https://script.google.com/macros/s/..."
-                className="input-field min-h-[52px]"
+                className="input-field min-h-[44px] text-sm"
               />
             </div>
             <button
               onClick={handleUpload}
               disabled={!gasWebAppUrl || matchHistory.length === 0 || isUploading}
-              className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm py-2.5"
             >
               {isUploading ? (
-                <Loader2 size={18} className="animate-spin" />
+                <Loader2 size={16} className="animate-spin" />
               ) : (
-                <Upload size={18} />
+                <Upload size={16} />
               )}
               {isUploading
                 ? '送信中...'
@@ -295,18 +290,18 @@ export function SettingsPage() {
         </div>
 
         {/* データ管理 */}
-        <div className="card p-6">
-          <h2 className="section-title mb-5 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
-              <Trash2 size={18} className="text-red-500" />
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+            <span className="w-6 h-6 rounded-lg bg-red-100 flex items-center justify-center">
+              <Trash2 size={14} className="text-red-500" />
             </span>
             データ管理
           </h2>
           <button
             onClick={handleReset}
-            className="btn-danger min-h-[48px] py-3 flex items-center gap-2"
+            className="btn-danger py-2.5 flex items-center gap-2 text-sm"
           >
-            <Trash2 size={18} />
+            <Trash2 size={16} />
             リセット
           </button>
         </div>
