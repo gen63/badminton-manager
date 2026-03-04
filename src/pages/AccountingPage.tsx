@@ -183,6 +183,39 @@ export function AccountingPage() {
   const shuttleTotal = shuttleCount * shuttlePrice;
   const finalTotal = maleTotal + femaleTotal - gymCost - shuttleTotal;
 
+  // 適正会費の計算（最小黒字 + 100円）
+  const calculateAppropriateFee = () => {
+    const totalExpense = gymCost + shuttleTotal;
+    if (participantCount === 0) return { male: 0, female: 0 };
+
+    let minProfitMale = 0;
+    let minProfitFemale = 0;
+    let minProfit = Infinity;
+
+    // 100円刻みで全組み合わせを試す（0円〜1500円の範囲）
+    for (let female = 0; female <= 1500; female += 100) {
+      for (let male = female; male <= 1500; male += 100) {
+        const income = male * maleCount + female * femaleCount;
+        const profit = income - totalExpense;
+
+        // 赤字にならず、最も黒字が少ないものを選ぶ
+        if (profit >= 0 && profit < minProfit) {
+          minProfit = profit;
+          minProfitMale = male;
+          minProfitFemale = female;
+        }
+      }
+    }
+
+    // 適正会費 = 最小黒字会費 + 100円
+    return {
+      male: minProfitMale + 100,
+      female: minProfitFemale + 100,
+    };
+  };
+
+  const appropriateFee = calculateAppropriateFee();
+
   // コピー用テキスト生成
   const generateCopyText = () => {
     const lines = [
@@ -194,11 +227,16 @@ export function AccountingPage() {
       '',
       `体育館 -${gymCost.toLocaleString()}`,
       `シャトル使用数 -${shuttlePrice}×${shuttleCount} = -${shuttleTotal.toLocaleString()}`,
+      '',
+      '合計',
+      `${maleTotal.toLocaleString()}+${femaleTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()} = ${finalTotal.toLocaleString()}`,
     ];
+
+    // 参考セクション
+    const referenceLines: string[] = [];
 
     // 試合数の情報（試合履歴がある場合のみ）
     if (matchHistory.length > 0) {
-      // 試合に参加したプレイヤーのID一覧
       const participantIds = new Set<string>();
       matchHistory.forEach((match) => {
         match.teamA.forEach((id) => participantIds.add(id));
@@ -212,17 +250,19 @@ export function AccountingPage() {
       // シャトル効率の計算
       if (shuttleCount > 0) {
         const matchesPerShuttle = (totalMatches / shuttleCount).toFixed(1);
-        lines.push(`試合数 ${totalMatches}試合 (平均${avgMatches}試合/人, 1個で${matchesPerShuttle}試合)`);
+        referenceLines.push(`試合数 ${totalMatches}試合 (平均${avgMatches}試合/人, 1個で${matchesPerShuttle}試合)`);
       } else {
-        lines.push(`試合数 ${totalMatches}試合 (平均${avgMatches}試合/人)`);
+        referenceLines.push(`試合数 ${totalMatches}試合 (平均${avgMatches}試合/人)`);
       }
     }
 
-    lines.push(
-      '',
-      '合計',
-      `${maleTotal.toLocaleString()}+${femaleTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()} = ${finalTotal.toLocaleString()}`
-    );
+    // 適正会費
+    referenceLines.push(`適正会費: 男${appropriateFee.male}円 女${appropriateFee.female}円`);
+
+    // 参考セクションがあれば追加
+    if (referenceLines.length > 0) {
+      lines.push('', '参考', ...referenceLines);
+    }
 
     return lines.join('\n');
   };
