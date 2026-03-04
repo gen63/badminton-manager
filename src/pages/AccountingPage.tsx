@@ -28,7 +28,7 @@ export function AccountingPage() {
   const [gymCost, setGymCost] = useState<number>(900);
   const [shuttlePrice, setShuttlePrice] = useState<number>(480);
   const [shuttleCount, setShuttleCount] = useState<number>(0);
-  const [practiceType, setPracticeType] = useState<string>('ダブルス');
+  const [practiceType, setPracticeType] = useState<string>('複');
   const [isUploading, setIsUploading] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -77,7 +77,12 @@ export function AccountingPage() {
       setShuttlePrice(lastInput.shuttlePrice);
       setShuttleCount(lastInput.shuttleCount);
       // 古いデータとの互換性のため、practiceTypeがなければデフォルト値
-      setPracticeType(lastInput.practiceType || 'ダブルス');
+      // 旧形式（ダブルス/シングルス/初級）を新形式（複/単/楽）に変換
+      let type = lastInput.practiceType || '複';
+      if (type === 'ダブルス') type = '複';
+      if (type === 'シングルス') type = '単';
+      if (type === '初級') type = '楽';
+      setPracticeType(type);
     } else if (matchHistory.length > 0) {
       // 試合履歴から参加者・シャトル数を推定
       const participantIds = new Set<string>();
@@ -291,21 +296,31 @@ export function AccountingPage() {
         <div className="card p-4">
           <h2 className="text-sm font-bold mb-3 text-gray-700">練習種別</h2>
           <div className="flex gap-2">
-            {['ダブルス', 'シングルス', '初級'].map((type) => (
+            {[
+              { value: '複', maleFee: 800, femaleFee: 600 },
+              { value: '単', maleFee: 1200, femaleFee: 800 },
+              { value: '楽', maleFee: 600, femaleFee: 400 },
+            ].map((type) => (
               <button
-                key={type}
+                key={type.value}
                 onClick={() => {
-                  setPracticeType(type);
-                  saveAllInputs({ practiceType: type });
+                  setPracticeType(type.value);
+                  setMaleFee(type.maleFee);
+                  setFemaleFee(type.femaleFee);
+                  saveAllInputs({ 
+                    practiceType: type.value,
+                    maleFee: type.maleFee,
+                    femaleFee: type.femaleFee,
+                  });
                 }}
                 className={`flex-1 select-button text-sm px-3 py-2 ${
-                  practiceType === type
+                  practiceType === type.value
                     ? 'select-button-active'
                     : 'select-button-inactive'
                 }`}
               >
-                {practiceType === type && <span className="mr-1">✓</span>}
-                {type}
+                {practiceType === type.value && <span className="mr-1">✓</span>}
+                {type.value}
               </button>
             ))}
           </div>
