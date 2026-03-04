@@ -17,7 +17,6 @@ export function AccountingPage() {
   const { matchHistory } = useGameStore();
   const { records, addRecord, lastInput, saveLastInput } = useAccountingStore();
   const { accountingWebAppUrl } = useSettingsStore();
-  const { players } = usePlayerStore();
   const toast = useToast();
 
   // 入力状態
