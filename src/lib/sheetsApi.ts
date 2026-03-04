@@ -1,6 +1,7 @@
 import type { Match } from '../types/match';
 import type { Player } from '../types/player';
 import type { Session } from '../types/session';
+import type { AccountingRecord } from '../types/accounting';
 
 interface SheetMatch {
   datetime: string;
@@ -95,6 +96,89 @@ export async function sendMatchesToSheets(
     }
 
     return { success: true, message: `${matches.length}件の試合を送信しました` };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return { success: false, message: '送信がタイムアウトしました' };
+    }
+    return {
+      success: false,
+      message: '送信に失敗しました。Wi-Fi接続を確認してください',
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// 会計データをSheetsに送信
+interface AccountingPayload {
+  accounting: {
+    date: string;
+    gym: string;
+    participantCount: number;
+    exemptCount: number;
+    maleCount: number;
+    femaleCount: number;
+    maleFee: number;
+    femaleFee: number;
+    maleTotal: number;
+    femaleTotal: number;
+    gymCost: number;
+    shuttlePrice: number;
+    shuttleCount: number;
+    shuttleTotal: number;
+    finalTotal: number;
+  };
+}
+
+export async function sendAccountingToSheets(
+  url: string,
+  record: AccountingRecord
+): Promise<{ success: boolean; message: string }> {
+  if (!url) {
+    return { success: false, message: 'GAS URLが設定されていません' };
+  }
+
+  const payload: AccountingPayload = {
+    accounting: {
+      date: record.date,
+      gym: record.gym,
+      participantCount: record.participantCount,
+      exemptCount: record.exemptCount,
+      maleCount: record.maleCount,
+      femaleCount: record.femaleCount,
+      maleFee: record.maleFee,
+      femaleFee: record.femaleFee,
+      maleTotal: record.maleTotal,
+      femaleTotal: record.femaleTotal,
+      gymCost: record.gymCost,
+      shuttlePrice: record.shuttlePrice,
+      shuttleCount: record.shuttleCount,
+      shuttleTotal: record.shuttleTotal,
+      finalTotal: record.finalTotal,
+    },
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+      mode: 'no-cors',
+    });
+
+    if (response.type === 'opaque') {
+      return { success: true, message: '会計データを送信しました' };
+    }
+
+    if (!response.ok) {
+      return { success: false, message: `送信エラー (${response.status})` };
+    }
+
+    return { success: true, message: '会計データを送信しました' };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       return { success: false, message: '送信がタイムアウトしました' };
