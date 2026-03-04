@@ -31,6 +31,7 @@ export function AccountingPage() {
   const [practiceType, setPracticeType] = useState<string>('複');
   const [otherDescription, setOtherDescription] = useState<string>('');
   const [otherAmount, setOtherAmount] = useState<number>(0);
+  const [isOtherExpanded, setIsOtherExpanded] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -724,44 +725,57 @@ export function AccountingPage() {
           </div>
         </div>
 
-        {/* その他 */}
-        <div className="card p-4">
-          <h2 className="text-sm font-bold mb-3 text-gray-700">その他</h2>
-          <div className="bg-gray-50 rounded-lg px-3 py-2">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600 w-16">説明</span>
-                <input
-                  type="text"
-                  value={otherDescription}
-                  onChange={(e) => {
-                    setOtherDescription(e.target.value);
-                    saveAllInputs({ otherDescription: e.target.value });
-                  }}
-                  placeholder="例：立替払い戻し、備品購入"
-                  className="flex-1 text-sm bg-white rounded px-2 py-1"
-                />
+        {/* その他（アコーディオン） */}
+        <div className="card overflow-hidden">
+          <button
+            onClick={() => setIsOtherExpanded(!isOtherExpanded)}
+            className="w-full p-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors"
+          >
+            <h2 className="text-sm font-bold text-gray-700">その他</h2>
+            <span className="text-gray-600 text-sm">
+              {isOtherExpanded ? '▲' : '▼'}
+            </span>
+          </button>
+          
+          {isOtherExpanded && (
+            <div className="px-4 pb-4">
+              <div className="bg-gray-50 rounded-lg px-3 py-2">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600 w-16">説明</span>
+                    <input
+                      type="text"
+                      value={otherDescription}
+                      onChange={(e) => {
+                        setOtherDescription(e.target.value);
+                        saveAllInputs({ otherDescription: e.target.value });
+                      }}
+                      placeholder="例：立替払い戻し、備品購入"
+                      className="flex-1 text-sm bg-white rounded px-2 py-1"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600 w-16">金額</span>
+                    <input
+                      type="number"
+                      value={otherAmount || ''}
+                      onChange={(e) => {
+                        const newValue = parseInt(e.target.value) || 0;
+                        setOtherAmount(newValue);
+                        saveAllInputs({ otherAmount: newValue });
+                      }}
+                      placeholder="0"
+                      className="flex-1 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    ※ プラスは正の数、マイナスは負の数で入力
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600 w-16">金額</span>
-                <input
-                  type="number"
-                  value={otherAmount || ''}
-                  onChange={(e) => {
-                    const newValue = parseInt(e.target.value) || 0;
-                    setOtherAmount(newValue);
-                    saveAllInputs({ otherAmount: newValue });
-                  }}
-                  placeholder="0"
-                  className="flex-1 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
-                  inputMode="numeric"
-                />
-              </div>
-              <p className="text-xs text-gray-500">
-                ※ プラスは正の数、マイナスは負の数で入力
-              </p>
             </div>
-          </div>
+          )}
         </div>
 
         {/* 適正会費との差額警告（体育館代900円超は除外） */}
