@@ -189,6 +189,25 @@ export function AccountingPage() {
       `${formattedDate} ${gymShortName} ${practiceType}`,
       `参加合計 ${participantCount}人`,
       `内訳 免除${exemptCount} 男${maleCount} 女${femaleCount}`,
+    ];
+
+    // 試合数の情報（試合履歴がある場合のみ）
+    if (matchHistory.length > 0) {
+      // 試合に参加したプレイヤーのID一覧
+      const participantIds = new Set<string>();
+      matchHistory.forEach((match) => {
+        match.teamA.forEach((id) => participantIds.add(id));
+        match.teamB.forEach((id) => participantIds.add(id));
+      });
+
+      const totalMatches = matchHistory.length;
+      const activePlayerCount = participantIds.size;
+      const avgMatches = activePlayerCount > 0 ? (totalMatches * 4 / activePlayerCount).toFixed(1) : '0.0';
+
+      lines.push(`試合数 ${totalMatches}試合 (平均${avgMatches}試合/人)`);
+    }
+
+    lines.push(
       `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
       `女 ${femaleFee}×${femaleCount} = ${femaleTotal.toLocaleString()}`,
       `免除 ${exemptCount}×0 = 0`,
@@ -196,8 +215,9 @@ export function AccountingPage() {
       `シャトル使用数 -${shuttlePrice}×${shuttleCount} = -${shuttleTotal.toLocaleString()}`,
       '',
       '合計',
-      `${maleTotal.toLocaleString()}+${femaleTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()} = ${finalTotal.toLocaleString()}`,
-    ];
+      `${maleTotal.toLocaleString()}+${femaleTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()} = ${finalTotal.toLocaleString()}`
+    );
+
     return lines.join('\n');
   };
 
