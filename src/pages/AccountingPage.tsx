@@ -329,11 +329,19 @@ export function AccountingPage() {
   const handleUpload = async () => {
     if (!accountingWebAppUrl || isUploading) return;
     
-    // メンバー情報をJSON形式で生成
+    // 試合履歴に出たプレイヤーのIDを収集
+    const participantIds = new Set<string>();
+    matchHistory.forEach((match) => {
+      match.teamA.forEach((id) => participantIds.add(id));
+      match.teamB.forEach((id) => participantIds.add(id));
+    });
+    
+    // 試合に参加したプレイヤーのみをメンバー情報として生成
+    const participatingPlayers = players.filter(p => participantIds.has(p.id));
     const membersJson = JSON.stringify(
-      players.map(p => ({
+      participatingPlayers.map(p => ({
         name: p.name,
-        gender: p.gender || null
+        gender: p.gender || '不明'
       }))
     );
     
