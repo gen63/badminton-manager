@@ -194,7 +194,7 @@ export function AccountingPage() {
 
   // 適正会費の計算（最小黒字 + 100円）
   const calculateAppropriateFee = () => {
-    const totalExpense = gymCost + shuttleTotal;
+    const totalExpense = gymCost + shuttleTotal - otherAmount; // その他を含める
     if (participantCount === 0) return { male: 0, female: 0 };
 
     // 練習種別に応じた男女差額
