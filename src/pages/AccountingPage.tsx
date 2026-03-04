@@ -139,7 +139,7 @@ export function AccountingPage() {
   // コピー用テキスト生成
   const generateCopyText = () => {
     const lines = [
-      `${formattedDate}${gymShortName}複`,
+      `${formattedDate} ${gymShortName} 複`,
       `参加${participantCount}`,
       `免除${exemptCount} 男${maleCount} 女${femaleCount}`,
       `男${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
@@ -268,7 +268,7 @@ export function AccountingPage() {
         {/* 日付・体育館 */}
         <div className="card p-4 bg-blue-50 border-blue-200">
           <div className="text-2xl font-bold text-center text-gray-800">
-            {formattedDate}{gymShortName}複
+            {formattedDate} {gymShortName} 複
           </div>
         </div>
 
@@ -456,7 +456,7 @@ export function AccountingPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-sm text-gray-800 mb-1">
-                        {record.date}{record.gym}複
+                        {record.date} {record.gym} 複
                       </div>
                       <div className="text-xs text-gray-600 space-y-0.5">
                         <div>参加{record.participantCount} (免除{record.exemptCount} 男{record.maleCount} 女{record.femaleCount})</div>
