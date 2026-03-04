@@ -235,10 +235,13 @@ export function AccountingPage() {
     const lines = [
       `${formattedDate} ${gymShortName} ${practiceType}`,
       `参加合計 ${participantCount}人(免除${exemptCount} 男${maleCount} 女${femaleCount})`,
+      '',
+      '【収入】',
       `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
       `女 ${femaleFee}×${femaleCount} = ${femaleTotal.toLocaleString()}`,
       `免除 ${exemptCount}×0 = 0`,
       '',
+      '【支出】',
       `体育館 -${gymCost.toLocaleString()}`,
       `シャトル使用数 -${shuttlePrice}×${shuttleCount} = -${shuttleTotal.toLocaleString()}`,
     ];
@@ -258,7 +261,7 @@ export function AccountingPage() {
     
     lines.push(
       '',
-      '合計',
+      '【合計】',
       `${totalFormula} = ${finalTotal.toLocaleString()}`,
     );
 
@@ -296,7 +299,7 @@ export function AccountingPage() {
 
     // 参考セクションがあれば追加
     if (referenceLines.length > 0) {
-      lines.push('', '参考', ...referenceLines);
+      lines.push('', '【参考】', ...referenceLines);
     }
 
     return lines.join('\n');
