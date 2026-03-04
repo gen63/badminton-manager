@@ -110,26 +110,6 @@ export async function sendMatchesToSheets(
 }
 
 // 会計データをSheetsに送信
-interface AccountingPayload {
-  accounting: {
-    date: string;
-    gym: string;
-    participantCount: number;
-    exemptCount: number;
-    maleCount: number;
-    femaleCount: number;
-    maleFee: number;
-    femaleFee: number;
-    maleTotal: number;
-    femaleTotal: number;
-    gymCost: number;
-    shuttlePrice: number;
-    shuttleCount: number;
-    shuttleTotal: number;
-    finalTotal: number;
-  };
-}
-
 export async function sendAccountingToSheets(
   url: string,
   record: AccountingRecord
@@ -138,24 +118,27 @@ export async function sendAccountingToSheets(
     return { success: false, message: 'GAS URLが設定されていません' };
   }
 
-  const payload: AccountingPayload = {
-    accounting: {
-      date: record.date,
-      gym: record.gym,
-      participantCount: record.participantCount,
-      exemptCount: record.exemptCount,
-      maleCount: record.maleCount,
-      femaleCount: record.femaleCount,
-      maleFee: record.maleFee,
-      femaleFee: record.femaleFee,
-      maleTotal: record.maleTotal,
-      femaleTotal: record.femaleTotal,
-      gymCost: record.gymCost,
-      shuttlePrice: record.shuttlePrice,
-      shuttleCount: record.shuttleCount,
-      shuttleTotal: record.shuttleTotal,
-      finalTotal: record.finalTotal,
-    },
+  // recordをそのまま送信（timestamp, id以外のすべてのフィールド）
+  const payload = {
+    timestamp: record.timestamp,
+    date: record.date,
+    gym: record.gym,
+    practiceType: record.practiceType,
+    maleCount: record.maleCount,
+    maleFee: record.maleFee,
+    femaleCount: record.femaleCount,
+    femaleFee: record.femaleFee,
+    exemptCount: record.exemptCount,
+    participantCount: record.participantCount,
+    members: record.members,
+    incomeTotal: record.incomeTotal,
+    gymCost: record.gymCost,
+    shuttlePrice: record.shuttlePrice,
+    shuttleCount: record.shuttleCount,
+    expenseTotal: record.expenseTotal,
+    otherDescription: record.otherDescription,
+    otherAmount: record.otherAmount,
+    finalTotal: record.finalTotal,
   };
 
   const controller = new AbortController();
