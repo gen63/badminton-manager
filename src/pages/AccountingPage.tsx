@@ -17,6 +17,7 @@ export function AccountingPage() {
   const { matchHistory } = useGameStore();
   const { records, addRecord, lastInput, saveLastInput } = useAccountingStore();
   const { accountingWebAppUrl } = useSettingsStore();
+  const { players } = usePlayerStore();
   const toast = useToast();
 
   // 入力状態
@@ -328,25 +329,38 @@ export function AccountingPage() {
   const handleUpload = async () => {
     if (!accountingWebAppUrl || isUploading) return;
     
+    // メンバー情報をJSON形式で生成
+    const membersJson = JSON.stringify(
+      players.map(p => ({
+        name: p.name,
+        gender: p.gender || null
+      }))
+    );
+    
+    // 収入合計と支出合計を計算
+    const incomeTotal = maleTotal + femaleTotal;
+    const expenseTotal = gymCost + shuttleTotal - (otherAmount < 0 ? otherAmount : 0);
+    
     const record = {
       id: crypto.randomUUID(),
       timestamp: Date.now(),
       date: formattedDate,
       gym: gymShortName,
-      participantCount,
-      exemptCount,
+      practiceType,
       maleCount,
-      femaleCount,
       maleFee,
+      femaleCount,
       femaleFee,
+      exemptCount,
+      participantCount,
+      members: membersJson,
+      incomeTotal,
       gymCost,
       shuttlePrice,
       shuttleCount,
+      expenseTotal,
       otherDescription: otherDescription || undefined,
       otherAmount: otherAmount || undefined,
-      maleTotal,
-      femaleTotal,
-      shuttleTotal,
       finalTotal,
     };
 
@@ -358,20 +372,21 @@ export function AccountingPage() {
         addRecord({
           date: formattedDate,
           gym: gymShortName,
-          participantCount,
-          exemptCount,
+          practiceType,
           maleCount,
-          femaleCount,
           maleFee,
+          femaleCount,
           femaleFee,
+          exemptCount,
+          participantCount,
+          members: membersJson,
+          incomeTotal,
           gymCost,
           shuttlePrice,
           shuttleCount,
+          expenseTotal,
           otherDescription: otherDescription || undefined,
           otherAmount: otherAmount || undefined,
-          maleTotal,
-          femaleTotal,
-          shuttleTotal,
           finalTotal,
         });
         toast.success(result.message);
