@@ -4,6 +4,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useUndoStore } from '../stores/undoStore';
+import { useAccountingStore } from '../stores/accountingStore';
 import { GYM_OPTIONS } from '../types/session';
 import { ArrowLeft, Trash2, Users, Settings as SettingsIcon, Clock, MapPin, DollarSign } from 'lucide-react';
 
@@ -14,6 +15,7 @@ export function SettingsPage() {
   const { clearHistory, initializeCourts } = useGameStore();
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
+  const { clearRecords } = useAccountingStore();
 
   if (!session) {
     navigate('/');
@@ -33,6 +35,7 @@ export function SettingsPage() {
     clearHistory();
     clearPlayers();
     clearUndo();
+    clearRecords();
     clearSession();
     navigate('/');
   };

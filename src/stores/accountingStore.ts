@@ -46,7 +46,7 @@ export const useAccountingStore = create<AccountingState>()(
           records: state.records.filter((r) => r.id !== id),
         })),
 
-      clearRecords: () => set({ records: [] }),
+      clearRecords: () => set({ records: [], lastInput: null }),
 
       saveLastInput: (input) =>
         set({ lastInput: input }),
