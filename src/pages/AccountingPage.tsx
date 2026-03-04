@@ -16,7 +16,7 @@ export function AccountingPage() {
   const { players } = usePlayerStore();
   const { matchHistory } = useGameStore();
   const { records, addRecord, lastInput, saveLastInput } = useAccountingStore();
-  const { gasWebAppUrl } = useSettingsStore();
+  const { accountingWebAppUrl } = useSettingsStore();
   const toast = useToast();
 
   // 入力状態
@@ -326,7 +326,7 @@ export function AccountingPage() {
   };
 
   const handleUpload = async () => {
-    if (!gasWebAppUrl || isUploading) return;
+    if (!accountingWebAppUrl || isUploading) return;
     
     const record = {
       id: crypto.randomUUID(),
@@ -352,7 +352,7 @@ export function AccountingPage() {
 
     setIsUploading(true);
     try {
-      const result = await sendAccountingToSheets(gasWebAppUrl, record);
+      const result = await sendAccountingToSheets(accountingWebAppUrl, record);
       if (result.success) {
         // アップロード成功時にローカルにも保存（次回の自動入力用）
         addRecord({
@@ -819,7 +819,7 @@ export function AccountingPage() {
             <Copy size={18} />
             コピー
           </button>
-          {gasWebAppUrl && (
+          {accountingWebAppUrl && (
             <button
               onClick={handleUpload}
               disabled={isUploading}
