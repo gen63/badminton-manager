@@ -28,7 +28,7 @@ export function AccountingPage() {
   const [gymCost, setGymCost] = useState<number>(900);
   const [shuttlePrice, setShuttlePrice] = useState<number>(480);
   const [shuttleCount, setShuttleCount] = useState<number>(0);
-  const [practiceType, setPracticeType] = useState<string>('複');
+  const [practiceType, setPracticeType] = useState<string>('ダブルス');
   const [isUploading, setIsUploading] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -290,7 +290,7 @@ export function AccountingPage() {
         <div className="card p-4">
           <h2 className="text-sm font-bold mb-3 text-gray-700">練習種別</h2>
           <div className="flex gap-2">
-            {['複', 'シングルス', '初級'].map((type) => (
+            {['ダブルス', 'シングルス', '初級'].map((type) => (
               <button
                 key={type}
                 onClick={() => {
