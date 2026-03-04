@@ -240,17 +240,23 @@ export function AccountingPage() {
       `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
       `女 ${femaleFee}×${femaleCount} = ${femaleTotal.toLocaleString()}`,
       `免除 ${exemptCount}×0 = 0`,
+    ];
+
+    // その他欄（プラスの場合は収入に追加）
+    if ((otherDescription || otherAmount !== 0) && otherAmount > 0) {
+      lines.push(`${otherDescription || 'その他'} ${otherAmount.toLocaleString()}`);
+    }
+
+    lines.push(
       '',
       '【支出】',
       `体育館 -${gymCost.toLocaleString()}`,
       `シャトル使用数 -${shuttlePrice}×${shuttleCount} = -${shuttleTotal.toLocaleString()}`,
-    ];
+    );
 
-    // その他欄（入力がある場合のみ追加）
-    if (otherDescription || otherAmount !== 0) {
-      const prefix = otherAmount >= 0 ? '' : '-';
-      const absAmount = Math.abs(otherAmount);
-      lines.push(`${otherDescription || 'その他'} ${prefix}${absAmount.toLocaleString()}`);
+    // その他欄（マイナスの場合は支出に追加）
+    if ((otherDescription || otherAmount !== 0) && otherAmount < 0) {
+      lines.push(`${otherDescription || 'その他'} ${otherAmount.toLocaleString()}`);
     }
 
     // 合計の計算式を生成
