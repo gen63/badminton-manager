@@ -12,6 +12,8 @@ interface LastInput {
   shuttlePrice: number;
   shuttleCount: number;
   practiceType: string;
+  otherDescription?: string;
+  otherAmount?: number;
 }
 
 interface AccountingState {

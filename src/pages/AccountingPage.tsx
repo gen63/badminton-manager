@@ -29,6 +29,8 @@ export function AccountingPage() {
   const [shuttlePrice, setShuttlePrice] = useState<number>(480);
   const [shuttleCount, setShuttleCount] = useState<number>(0);
   const [practiceType, setPracticeType] = useState<string>('複');
+  const [otherDescription, setOtherDescription] = useState<string>('');
+  const [otherAmount, setOtherAmount] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -84,6 +86,9 @@ export function AccountingPage() {
       if (type === 'シングルス') type = '単';
       if (type === '初級') type = '楽';
       setPracticeType(type);
+      // その他欄の復元（後方互換性のため存在チェック）
+      if (lastInput.otherDescription !== undefined) setOtherDescription(lastInput.otherDescription);
+      if (lastInput.otherAmount !== undefined) setOtherAmount(lastInput.otherAmount);
     } else if (matchHistory.length > 0) {
       // 試合履歴から参加者・シャトル数を推定
       const participantIds = new Set<string>();
@@ -158,6 +163,8 @@ export function AccountingPage() {
     shuttlePrice: number;
     shuttleCount: number;
     practiceType: string;
+    otherDescription: string;
+    otherAmount: number;
   }> = {}) => {
     saveLastInput({
       exemptCount: overrides.exemptCount ?? exemptCount,
@@ -169,6 +176,8 @@ export function AccountingPage() {
       shuttlePrice: overrides.shuttlePrice ?? shuttlePrice,
       shuttleCount: overrides.shuttleCount ?? shuttleCount,
       practiceType: overrides.practiceType ?? practiceType,
+      otherDescription: overrides.otherDescription ?? otherDescription,
+      otherAmount: overrides.otherAmount ?? otherAmount,
     });
   };
 
@@ -181,7 +190,7 @@ export function AccountingPage() {
   const maleTotal = maleCount * maleFee;
   const femaleTotal = femaleCount * femaleFee;
   const shuttleTotal = shuttleCount * shuttlePrice;
-  const finalTotal = maleTotal + femaleTotal - gymCost - shuttleTotal;
+  const finalTotal = maleTotal + femaleTotal - gymCost - shuttleTotal + otherAmount;
 
   // 適正会費の計算（最小黒字 + 100円）
   const calculateAppropriateFee = () => {
@@ -232,10 +241,26 @@ export function AccountingPage() {
       '',
       `体育館 -${gymCost.toLocaleString()}`,
       `シャトル使用数 -${shuttlePrice}×${shuttleCount} = -${shuttleTotal.toLocaleString()}`,
+    ];
+
+    // その他欄（入力がある場合のみ追加）
+    if (otherDescription || otherAmount !== 0) {
+      const prefix = otherAmount >= 0 ? '' : '-';
+      const absAmount = Math.abs(otherAmount);
+      lines.push(`${otherDescription || 'その他'} ${prefix}${absAmount.toLocaleString()}`);
+    }
+
+    // 合計の計算式を生成
+    let totalFormula = `${maleTotal.toLocaleString()}+${femaleTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
+    if (otherAmount !== 0) {
+      totalFormula += otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`;
+    }
+    
+    lines.push(
       '',
       '合計',
-      `${maleTotal.toLocaleString()}+${femaleTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()} = ${finalTotal.toLocaleString()}`,
-    ];
+      `${totalFormula} = ${finalTotal.toLocaleString()}`,
+    );
 
     // 参考セクション
     const referenceLines: string[] = [];
@@ -685,6 +710,43 @@ export function AccountingPage() {
                     +
                   </button>
                 </div>
+              </div>
+            </div>
+
+            {/* その他欄 */}
+            <div className="bg-gray-50 rounded-lg px-3 py-2">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600 w-16">その他</span>
+                  <input
+                    type="text"
+                    value={otherDescription}
+                    onChange={(e) => {
+                      setOtherDescription(e.target.value);
+                      saveAllInputs({ otherDescription: e.target.value });
+                    }}
+                    placeholder="説明（任意）"
+                    className="flex-1 text-sm bg-white rounded px-2 py-1"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600 w-16">金額</span>
+                  <input
+                    type="number"
+                    value={otherAmount || ''}
+                    onChange={(e) => {
+                      const newValue = parseInt(e.target.value) || 0;
+                      setOtherAmount(newValue);
+                      saveAllInputs({ otherAmount: newValue });
+                    }}
+                    placeholder="0"
+                    className="flex-1 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
+                    inputMode="numeric"
+                  />
+                </div>
+                <p className="text-xs text-gray-500">
+                  ※ プラスは正の数、マイナスは負の数で入力
+                </p>
               </div>
             </div>
           </div>
