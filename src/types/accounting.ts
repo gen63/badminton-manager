@@ -12,6 +12,8 @@ export interface AccountingRecord {
   gymCost: number;
   shuttlePrice: number;
   shuttleCount: number;
+  otherDescription?: string;
+  otherAmount?: number;
   maleTotal: number;
   femaleTotal: number;
   shuttleTotal: number;
