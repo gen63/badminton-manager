@@ -31,33 +31,30 @@ export function AccountingPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
-  if (!session) {
-    navigate('/');
-    return null;
-  }
-
   // 日付フォーマット（YYYY/MM/DD）
   const formattedDate = useMemo(() => {
+    if (!session) return '';
     const date = new Date(session.config.practiceStartTime);
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}/${month}/${day}`;
-  }, [session.config.practiceStartTime]);
+  }, [session]);
 
   // 体育館名（略称に変換）
   const gymShortName = useMemo(() => {
+    if (!session) return '';
     const gym = session.config.gym || '';
     if (gym.includes('目白')) return '目白';
     if (gym.includes('千早')) return '千早';
     if (gym.includes('南長崎')) return '南長崎';
     if (gym.includes('巣鴨')) return '巣鴨';
     return gym;
-  }, [session.config.gym]);
+  }, [session]);
 
   // 試合履歴・過去の会計データから初期値を自動設定
   useEffect(() => {
-    if (initialized) return;
+    if (initialized || !session) return;
 
     // 体育館別の固定料金設定
     const gymCostMap: Record<string, number> = {
@@ -124,10 +121,15 @@ export function AccountingPage() {
     }
 
     setInitialized(true);
-  }, [matchHistory, players, records, gymShortName, initialized]);
+  }, [matchHistory, players, records, gymShortName, initialized, session]);
 
   // 参加人数の合計（免除+男+女）
   const participantCount = exemptCount + maleCount + femaleCount;
+
+  if (!session) {
+    navigate('/');
+    return null;
+  }
 
   // 計算
   const maleTotal = maleCount * maleFee;
