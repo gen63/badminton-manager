@@ -430,13 +430,27 @@ export function AccountingPage() {
               <span className="text-sm text-gray-600">体育館</span>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">-</span>
-                <input
-                  type="number"
-                  value={gymCost || ''}
-                  onChange={(e) => setGymCost(parseInt(e.target.value) || 0)}
-                  className="w-20 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
-                  inputMode="numeric"
-                />
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setGymCost(Math.max(0, gymCost - 100))}
+                    className="w-6 h-6 rounded-full bg-white text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-xs"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    value={gymCost || ''}
+                    onChange={(e) => setGymCost(parseInt(e.target.value) || 0)}
+                    className="w-20 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
+                    inputMode="numeric"
+                  />
+                  <button
+                    onClick={() => setGymCost(gymCost + 100)}
+                    className="w-6 h-6 rounded-full bg-white text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-xs"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             </div>
 
