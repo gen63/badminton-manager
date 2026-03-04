@@ -126,9 +126,8 @@ export function AccountingPage() {
     setInitialized(true);
   }, [matchHistory, players, records, gymShortName, initialized]);
 
-  // 現在の参加者数（休憩中でない人）
-  const presentPlayers = players.filter(p => !p.isResting);
-  const participantCount = presentPlayers.length;
+  // 参加人数の合計（免除+男+女）
+  const participantCount = exemptCount + maleCount + femaleCount;
 
   // 計算
   const maleTotal = maleCount * maleFee;
@@ -262,20 +261,6 @@ export function AccountingPage() {
             {formattedDate} {gymShortName} 複
           </div>
         </div>
-
-        {/* 自動入力ヒント */}
-        {(matchHistory.length > 0 || records.length > 0) && (
-          <div className="card p-3 bg-indigo-50 border-indigo-200">
-            <div className="text-xs text-indigo-700 space-y-1">
-              {matchHistory.length > 0 && (
-                <div>💡 試合履歴から: 男女内訳・シャトル数</div>
-              )}
-              {records.length > 0 && (
-                <div>💡 過去の会計から: 料金設定・体育館代</div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* 参加人数 */}
         <div className="card p-4">
