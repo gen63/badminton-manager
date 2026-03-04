@@ -204,7 +204,13 @@ export function AccountingPage() {
       const activePlayerCount = participantIds.size;
       const avgMatches = activePlayerCount > 0 ? (totalMatches * 4 / activePlayerCount).toFixed(1) : '0.0';
 
-      lines.push(`試合数 ${totalMatches}試合 (平均${avgMatches}試合/人)`);
+      // シャトル効率の計算
+      if (shuttleCount > 0) {
+        const matchesPerShuttle = (totalMatches / shuttleCount).toFixed(1);
+        lines.push(`試合数 ${totalMatches}試合 (平均${avgMatches}試合/人, 1個で${matchesPerShuttle}試合)`);
+      } else {
+        lines.push(`試合数 ${totalMatches}試合 (平均${avgMatches}試合/人)`);
+      }
     }
 
     lines.push(
