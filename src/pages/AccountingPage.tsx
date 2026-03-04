@@ -5,7 +5,7 @@ import { useAccountingStore } from '../stores/accountingStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useGameStore } from '../stores/gameStore';
 import { sendAccountingToSheets } from '../lib/sheetsApi';
-import { ArrowLeft, DollarSign, Save, Copy, Upload, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, DollarSign, Copy, Upload, Loader2 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
@@ -15,7 +15,7 @@ export function AccountingPage() {
   const { session } = useSessionStore();
   const { players } = usePlayerStore();
   const { matchHistory } = useGameStore();
-  const { records, addRecord, deleteRecord } = useAccountingStore();
+  const { records, addRecord } = useAccountingStore();
   const { gasWebAppUrl } = useSettingsStore();
   const toast = useToast();
 
@@ -165,28 +165,6 @@ export function AccountingPage() {
     }
   };
 
-  const handleSave = () => {
-    const record = {
-      date: formattedDate,
-      gym: gymShortName,
-      participantCount,
-      exemptCount,
-      maleCount,
-      femaleCount,
-      maleFee,
-      femaleFee,
-      gymCost,
-      shuttlePrice,
-      shuttleCount,
-      maleTotal,
-      femaleTotal,
-      shuttleTotal,
-      finalTotal,
-    };
-    addRecord(record);
-    toast.success('保存しました');
-  };
-
   const handleUpload = async () => {
     if (!gasWebAppUrl || isUploading) return;
     
@@ -214,6 +192,24 @@ export function AccountingPage() {
     try {
       const result = await sendAccountingToSheets(gasWebAppUrl, record);
       if (result.success) {
+        // アップロード成功時にローカルにも保存（次回の自動入力用）
+        addRecord({
+          date: formattedDate,
+          gym: gymShortName,
+          participantCount,
+          exemptCount,
+          maleCount,
+          femaleCount,
+          maleFee,
+          femaleFee,
+          gymCost,
+          shuttlePrice,
+          shuttleCount,
+          maleTotal,
+          femaleTotal,
+          shuttleTotal,
+          finalTotal,
+        });
         toast.success(result.message);
       } else {
         toast.error(result.message);
@@ -221,11 +217,6 @@ export function AccountingPage() {
     } finally {
       setIsUploading(false);
     }
-  };
-
-  const handleDelete = (id: string) => {
-    deleteRecord(id);
-    toast.success('削除しました');
   };
 
   return (
@@ -457,55 +448,6 @@ export function AccountingPage() {
             {finalTotal >= 0 ? '+' : ''}{finalTotal.toLocaleString()}円
           </div>
         </div>
-
-        {/* アクション */}
-        <div className="flex gap-3">
-          <button
-            onClick={handleSave}
-            className="flex-1 btn-primary flex items-center justify-center gap-2 py-3 px-6"
-          >
-            <Save size={18} />
-            保存
-          </button>
-        </div>
-
-        {/* 保存済み履歴 */}
-        {records.length > 0 && (
-          <div className="card p-4">
-            <h2 className="text-sm font-bold mb-3 text-gray-700">保存済み履歴</h2>
-            <div className="space-y-2">
-              {[...records].reverse().map((record) => (
-                <div
-                  key={record.id}
-                  className="bg-gray-50 rounded-lg p-3 border border-gray-200"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-sm text-gray-800 mb-1">
-                        {record.date} {record.gym} 複
-                      </div>
-                      <div className="text-xs text-gray-600 space-y-0.5">
-                        <div>参加{record.participantCount} (免除{record.exemptCount} 男{record.maleCount} 女{record.femaleCount})</div>
-                        <div>収入: 男{record.maleTotal.toLocaleString()} + 女{record.femaleTotal.toLocaleString()}</div>
-                        <div>支出: 体育館{record.gymCost.toLocaleString()} + シャトル{record.shuttleTotal.toLocaleString()}</div>
-                      </div>
-                      <div className={`text-lg font-bold mt-1 ${record.finalTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {record.finalTotal >= 0 ? '+' : ''}{record.finalTotal.toLocaleString()}円
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleDelete(record.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all flex-shrink-0"
-                      aria-label="削除"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* プレビュー */}
         <div className="card p-4 bg-gray-50">
