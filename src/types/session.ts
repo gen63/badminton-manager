@@ -6,7 +6,7 @@ export interface SessionConfig {
   gym?: string; // 体育館名
 }
 
-export const GYM_OPTIONS = ['ぴいす', '目白', '高松', '富士見台'] as const;
+export const GYM_OPTIONS = ['ぴいす', '目白', '高松', '富士見台', '千川館'] as const;
 
 export interface Session {
   id: string;
