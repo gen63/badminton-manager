@@ -76,7 +76,8 @@ export function AccountingPage() {
       setGymCost(lastInput.gymCost);
       setShuttlePrice(lastInput.shuttlePrice);
       setShuttleCount(lastInput.shuttleCount);
-      setPracticeType(lastInput.practiceType);
+      // 古いデータとの互換性のため、practiceTypeがなければデフォルト値
+      setPracticeType(lastInput.practiceType || 'ダブルス');
     } else if (matchHistory.length > 0) {
       // 試合履歴から参加者・シャトル数を推定
       const participantIds = new Set<string>();
