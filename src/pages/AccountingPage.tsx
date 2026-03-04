@@ -296,12 +296,14 @@ export function AccountingPage() {
       }
     }
 
-    // 適正会費
-    referenceLines.push(`適正会費: 男${appropriateFee.male}円 女${appropriateFee.female}円`);
+    // 適正会費（千川館以外）
+    if (gymShortName !== '千川館') {
+      referenceLines.push(`適正会費: 男${appropriateFee.male}円 女${appropriateFee.female}円`);
 
-    // 適正会費との差額警告（体育館代900円以下かつ差額200円以上）
-    if (gymCost <= 900 && (Math.abs(maleFee - appropriateFee.male) >= 200 || Math.abs(femaleFee - appropriateFee.female) >= 200)) {
-      referenceLines.push('⚠️ 適正会費と会費の差が200円以上あります、調整を検討してください。');
+      // 適正会費との差額警告（体育館代900円以下かつ差額200円以上）
+      if (gymCost <= 900 && (Math.abs(maleFee - appropriateFee.male) >= 200 || Math.abs(femaleFee - appropriateFee.female) >= 200)) {
+        referenceLines.push('⚠️ 適正会費と会費の差が200円以上あります、調整を検討してください。');
+      }
     }
 
     // 参考セクションがあれば追加
@@ -769,17 +771,14 @@ export function AccountingPage() {
                       inputMode="numeric"
                     />
                   </div>
-                  <p className="text-xs text-gray-500">
-                    ※ プラスは正の数、マイナスは負の数で入力
-                  </p>
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* 適正会費との差額警告（体育館代900円超は除外） */}
-        {gymCost <= 900 && (Math.abs(maleFee - appropriateFee.male) >= 200 || Math.abs(femaleFee - appropriateFee.female) >= 200) && (
+        {/* 適正会費との差額警告（千川館・体育館代900円超は除外） */}
+        {gymShortName !== '千川館' && gymCost <= 900 && (Math.abs(maleFee - appropriateFee.male) >= 200 || Math.abs(femaleFee - appropriateFee.female) >= 200) && (
           <div className="card p-4 bg-yellow-50 border-2 border-yellow-300">
             <p className="text-sm text-yellow-800 font-semibold text-center">
               ⚠️ 適正会費と会費の差が200円以上あります、調整を検討してください。
