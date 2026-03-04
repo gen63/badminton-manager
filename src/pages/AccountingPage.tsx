@@ -349,13 +349,27 @@ export function AccountingPage() {
             <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">男</span>
-                <input
-                  type="number"
-                  value={maleFee || ''}
-                  onChange={(e) => setMaleFee(parseInt(e.target.value) || 0)}
-                  className="w-16 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
-                  inputMode="numeric"
-                />
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setMaleFee(Math.max(0, maleFee - 100))}
+                    className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-100 active:scale-95 flex items-center justify-center font-bold text-xs"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    value={maleFee || ''}
+                    onChange={(e) => setMaleFee(parseInt(e.target.value) || 0)}
+                    className="w-16 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
+                    inputMode="numeric"
+                  />
+                  <button
+                    onClick={() => setMaleFee(maleFee + 100)}
+                    className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-100 active:scale-95 flex items-center justify-center font-bold text-xs"
+                  >
+                    +
+                  </button>
+                </div>
                 <span className="text-sm text-gray-600">×</span>
                 <span className="text-sm font-semibold">{maleCount}</span>
               </div>
@@ -367,13 +381,27 @@ export function AccountingPage() {
             <div className="flex items-center justify-between bg-pink-50 rounded-lg px-3 py-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">女</span>
-                <input
-                  type="number"
-                  value={femaleFee || ''}
-                  onChange={(e) => setFemaleFee(parseInt(e.target.value) || 0)}
-                  className="w-16 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
-                  inputMode="numeric"
-                />
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setFemaleFee(Math.max(0, femaleFee - 100))}
+                    className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-100 active:scale-95 flex items-center justify-center font-bold text-xs"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    value={femaleFee || ''}
+                    onChange={(e) => setFemaleFee(parseInt(e.target.value) || 0)}
+                    className="w-16 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
+                    inputMode="numeric"
+                  />
+                  <button
+                    onClick={() => setFemaleFee(femaleFee + 100)}
+                    className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-100 active:scale-95 flex items-center justify-center font-bold text-xs"
+                  >
+                    +
+                  </button>
+                </div>
                 <span className="text-sm text-gray-600">×</span>
                 <span className="text-sm font-semibold">{femaleCount}</span>
               </div>
