@@ -15,7 +15,7 @@ export function AccountingPage() {
   const { session } = useSessionStore();
   const { players } = usePlayerStore();
   const { matchHistory } = useGameStore();
-  const { records, addRecord } = useAccountingStore();
+  const { records, addRecord, lastInput, saveLastInput } = useAccountingStore();
   const { gasWebAppUrl } = useSettingsStore();
   const toast = useToast();
 
@@ -84,9 +84,15 @@ export function AccountingPage() {
       setGymCost(gymCostMap[gymShortName] || 900);
     }
 
-    // 試合履歴から参加者・シャトル数を推定
-    if (matchHistory.length > 0) {
-      // 試合に参加した全プレイヤーIDを抽出
+    // 保存された入力値があればそれを優先、なければ試合履歴から推定
+    if (lastInput) {
+      // 保存された値を使用
+      setExemptCount(lastInput.exemptCount);
+      setMaleCount(lastInput.maleCount);
+      setFemaleCount(lastInput.femaleCount);
+      setShuttleCount(lastInput.shuttleCount);
+    } else if (matchHistory.length > 0) {
+      // 試合履歴から参加者・シャトル数を推定
       const participantIds = new Set<string>();
       matchHistory.forEach((match) => {
         match.teamA.forEach((id) => participantIds.add(id));
@@ -121,7 +127,7 @@ export function AccountingPage() {
     }
 
     setInitialized(true);
-  }, [matchHistory, players, records, gymShortName, initialized, session]);
+  }, [matchHistory, players, records, gymShortName, initialized, session, lastInput]);
 
   // 参加人数の合計（免除+男+女）
   const participantCount = exemptCount + maleCount + femaleCount;
@@ -259,14 +265,22 @@ export function AccountingPage() {
               <div className="text-xs text-gray-600 mb-1 text-center">免除</div>
               <div className="flex items-center justify-between gap-1">
                 <button
-                  onClick={() => setExemptCount(Math.max(0, exemptCount - 1))}
+                  onClick={() => {
+                    const newValue = Math.max(0, exemptCount - 1);
+                    setExemptCount(newValue);
+                    saveLastInput({ exemptCount: newValue, maleCount, femaleCount, shuttleCount });
+                  }}
                   className="w-6 h-6 rounded-full bg-white text-gray-600 hover:bg-gray-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
                   −
                 </button>
                 <span className="text-xl font-bold text-gray-800">{exemptCount}</span>
                 <button
-                  onClick={() => setExemptCount(exemptCount + 1)}
+                  onClick={() => {
+                    const newValue = exemptCount + 1;
+                    setExemptCount(newValue);
+                    saveLastInput({ exemptCount: newValue, maleCount, femaleCount, shuttleCount });
+                  }}
                   className="w-6 h-6 rounded-full bg-white text-gray-600 hover:bg-gray-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
                   +
@@ -277,14 +291,22 @@ export function AccountingPage() {
               <div className="text-xs text-gray-600 mb-1 text-center">男</div>
               <div className="flex items-center justify-between gap-1">
                 <button
-                  onClick={() => setMaleCount(Math.max(0, maleCount - 1))}
+                  onClick={() => {
+                    const newValue = Math.max(0, maleCount - 1);
+                    setMaleCount(newValue);
+                    saveLastInput({ exemptCount, maleCount: newValue, femaleCount, shuttleCount });
+                  }}
                   className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
                   −
                 </button>
                 <span className="text-xl font-bold text-blue-800">{maleCount}</span>
                 <button
-                  onClick={() => setMaleCount(maleCount + 1)}
+                  onClick={() => {
+                    const newValue = maleCount + 1;
+                    setMaleCount(newValue);
+                    saveLastInput({ exemptCount, maleCount: newValue, femaleCount, shuttleCount });
+                  }}
                   className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
                   +
@@ -295,14 +317,22 @@ export function AccountingPage() {
               <div className="text-xs text-gray-600 mb-1 text-center">女</div>
               <div className="flex items-center justify-between gap-1">
                 <button
-                  onClick={() => setFemaleCount(Math.max(0, femaleCount - 1))}
+                  onClick={() => {
+                    const newValue = Math.max(0, femaleCount - 1);
+                    setFemaleCount(newValue);
+                    saveLastInput({ exemptCount, maleCount, femaleCount: newValue, shuttleCount });
+                  }}
                   className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
                   −
                 </button>
                 <span className="text-xl font-bold text-pink-800">{femaleCount}</span>
                 <button
-                  onClick={() => setFemaleCount(femaleCount + 1)}
+                  onClick={() => {
+                    const newValue = femaleCount + 1;
+                    setFemaleCount(newValue);
+                    saveLastInput({ exemptCount, maleCount, femaleCount: newValue, shuttleCount });
+                  }}
                   className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
                   +
@@ -396,7 +426,11 @@ export function AccountingPage() {
                 <input
                   type="number"
                   value={shuttleCount || ''}
-                  onChange={(e) => setShuttleCount(parseInt(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const newValue = parseInt(e.target.value) || 0;
+                    setShuttleCount(newValue);
+                    saveLastInput({ exemptCount, maleCount, femaleCount, shuttleCount: newValue });
+                  }}
                   className="w-12 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
                   inputMode="numeric"
                 />

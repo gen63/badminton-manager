@@ -2,17 +2,27 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AccountingRecord } from '../types/accounting';
 
+interface LastInput {
+  exemptCount: number;
+  maleCount: number;
+  femaleCount: number;
+  shuttleCount: number;
+}
+
 interface AccountingState {
   records: AccountingRecord[];
+  lastInput: LastInput | null;
   addRecord: (record: Omit<AccountingRecord, 'id' | 'timestamp'>) => void;
   deleteRecord: (id: string) => void;
   clearRecords: () => void;
+  saveLastInput: (input: LastInput) => void;
 }
 
 export const useAccountingStore = create<AccountingState>()(
   persist(
     (set) => ({
       records: [],
+      lastInput: null,
 
       addRecord: (record) =>
         set((state) => ({
@@ -32,6 +42,9 @@ export const useAccountingStore = create<AccountingState>()(
         })),
 
       clearRecords: () => set({ records: [] }),
+
+      saveLastInput: (input) =>
+        set({ lastInput: input }),
     }),
     {
       name: 'accounting-storage',
