@@ -11,6 +11,7 @@ interface LastInput {
   gymCost: number;
   shuttlePrice: number;
   shuttleCount: number;
+  practiceType: string;
 }
 
 interface AccountingState {

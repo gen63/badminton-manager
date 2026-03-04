@@ -28,6 +28,7 @@ export function AccountingPage() {
   const [gymCost, setGymCost] = useState<number>(900);
   const [shuttlePrice, setShuttlePrice] = useState<number>(480);
   const [shuttleCount, setShuttleCount] = useState<number>(0);
+  const [practiceType, setPracticeType] = useState<string>('複');
   const [isUploading, setIsUploading] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -75,6 +76,7 @@ export function AccountingPage() {
       setGymCost(lastInput.gymCost);
       setShuttlePrice(lastInput.shuttlePrice);
       setShuttleCount(lastInput.shuttleCount);
+      setPracticeType(lastInput.practiceType);
     } else if (matchHistory.length > 0) {
       // 試合履歴から参加者・シャトル数を推定
       const participantIds = new Set<string>();
@@ -148,6 +150,7 @@ export function AccountingPage() {
     gymCost: number;
     shuttlePrice: number;
     shuttleCount: number;
+    practiceType: string;
   }> = {}) => {
     saveLastInput({
       exemptCount: overrides.exemptCount ?? exemptCount,
@@ -158,6 +161,7 @@ export function AccountingPage() {
       gymCost: overrides.gymCost ?? gymCost,
       shuttlePrice: overrides.shuttlePrice ?? shuttlePrice,
       shuttleCount: overrides.shuttleCount ?? shuttleCount,
+      practiceType: overrides.practiceType ?? practiceType,
     });
   };
 
@@ -175,7 +179,7 @@ export function AccountingPage() {
   // コピー用テキスト生成
   const generateCopyText = () => {
     const lines = [
-      `${formattedDate} ${gymShortName} 複`,
+      `${formattedDate} ${gymShortName} ${practiceType}`,
       `参加${participantCount}`,
       `免除${exemptCount} 男${maleCount} 女${femaleCount}`,
       `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
@@ -278,7 +282,31 @@ export function AccountingPage() {
         {/* 日付・体育館 */}
         <div className="card p-4 bg-blue-50 border-blue-200">
           <div className="text-2xl font-bold text-center text-gray-800">
-            {formattedDate} {gymShortName} 複
+            {formattedDate} {gymShortName} {practiceType}
+          </div>
+        </div>
+
+        {/* 練習種別 */}
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 text-gray-700">練習種別</h2>
+          <div className="flex gap-2">
+            {['複', 'シングルス', '初級'].map((type) => (
+              <button
+                key={type}
+                onClick={() => {
+                  setPracticeType(type);
+                  saveAllInputs({ practiceType: type });
+                }}
+                className={`flex-1 select-button text-sm px-3 py-2 ${
+                  practiceType === type
+                    ? 'select-button-active'
+                    : 'select-button-inactive'
+                }`}
+              >
+                {practiceType === type && <span className="mr-1">✓</span>}
+                {type}
+              </button>
+            ))}
           </div>
         </div>
 
