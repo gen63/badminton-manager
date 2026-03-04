@@ -294,35 +294,59 @@ export function AccountingPage() {
               <div className="text-xs text-gray-600 mb-1">合計</div>
               <div className="text-2xl font-bold text-blue-600">{participantCount}</div>
             </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-xs text-gray-600 mb-1">免除</div>
-              <input
-                type="number"
-                value={exemptCount || ''}
-                onChange={(e) => setExemptCount(parseInt(e.target.value) || 0)}
-                className="w-full text-xl font-bold text-gray-800 bg-transparent border-none p-0 text-center"
-                inputMode="numeric"
-              />
+            <div className="bg-gray-50 rounded-lg p-2">
+              <div className="text-xs text-gray-600 mb-1 text-center">免除</div>
+              <div className="flex items-center justify-between gap-1">
+                <button
+                  onClick={() => setExemptCount(Math.max(0, exemptCount - 1))}
+                  className="w-6 h-6 rounded-full bg-white text-gray-600 hover:bg-gray-200 active:scale-95 flex items-center justify-center font-bold text-sm"
+                >
+                  −
+                </button>
+                <span className="text-xl font-bold text-gray-800">{exemptCount}</span>
+                <button
+                  onClick={() => setExemptCount(exemptCount + 1)}
+                  className="w-6 h-6 rounded-full bg-white text-gray-600 hover:bg-gray-200 active:scale-95 flex items-center justify-center font-bold text-sm"
+                >
+                  +
+                </button>
+              </div>
             </div>
-            <div className="bg-blue-100 rounded-lg p-3">
-              <div className="text-xs text-gray-600 mb-1">男</div>
-              <input
-                type="number"
-                value={maleCount || ''}
-                onChange={(e) => setMaleCount(parseInt(e.target.value) || 0)}
-                className="w-full text-xl font-bold text-blue-800 bg-transparent border-none p-0 text-center"
-                inputMode="numeric"
-              />
+            <div className="bg-blue-100 rounded-lg p-2">
+              <div className="text-xs text-gray-600 mb-1 text-center">男</div>
+              <div className="flex items-center justify-between gap-1">
+                <button
+                  onClick={() => setMaleCount(Math.max(0, maleCount - 1))}
+                  className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-200 active:scale-95 flex items-center justify-center font-bold text-sm"
+                >
+                  −
+                </button>
+                <span className="text-xl font-bold text-blue-800">{maleCount}</span>
+                <button
+                  onClick={() => setMaleCount(maleCount + 1)}
+                  className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-200 active:scale-95 flex items-center justify-center font-bold text-sm"
+                >
+                  +
+                </button>
+              </div>
             </div>
-            <div className="bg-pink-100 rounded-lg p-3">
-              <div className="text-xs text-gray-600 mb-1">女</div>
-              <input
-                type="number"
-                value={femaleCount || ''}
-                onChange={(e) => setFemaleCount(parseInt(e.target.value) || 0)}
-                className="w-full text-xl font-bold text-pink-800 bg-transparent border-none p-0 text-center"
-                inputMode="numeric"
-              />
+            <div className="bg-pink-100 rounded-lg p-2">
+              <div className="text-xs text-gray-600 mb-1 text-center">女</div>
+              <div className="flex items-center justify-between gap-1">
+                <button
+                  onClick={() => setFemaleCount(Math.max(0, femaleCount - 1))}
+                  className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-200 active:scale-95 flex items-center justify-center font-bold text-sm"
+                >
+                  −
+                </button>
+                <span className="text-xl font-bold text-pink-800">{femaleCount}</span>
+                <button
+                  onClick={() => setFemaleCount(femaleCount + 1)}
+                  className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-200 active:scale-95 flex items-center justify-center font-bold text-sm"
+                >
+                  +
+                </button>
+              </div>
             </div>
           </div>
         </div>
