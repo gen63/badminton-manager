@@ -138,14 +138,14 @@ export function AccountingPage() {
   // コピー用テキスト生成
   const generateCopyText = () => {
     const lines = [
-      `${formattedDate} ${gymShortName} 複`,
+      `${formattedDate} 複`,
       `参加${participantCount}`,
       `免除${exemptCount} 男${maleCount} 女${femaleCount}`,
-      `男${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
-      `女${femaleFee}×${femaleCount} = ${femaleTotal.toLocaleString()}`,
+      `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
+      `女 ${femaleFee}×${femaleCount} = ${femaleTotal.toLocaleString()}`,
       `免除 ${exemptCount}×0 = 0`,
       `体育館-${gymCost.toLocaleString()}`,
-      `シャトル使用数${shuttlePrice}×${shuttleCount} = ${shuttleTotal.toLocaleString()}`,
+      `シャトル使用数 -${shuttlePrice}×${shuttleCount} = -${shuttleTotal.toLocaleString()}`,
       '',
       '合計',
       `${maleTotal.toLocaleString()}+${femaleTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()} = ${finalTotal.toLocaleString()}`,
