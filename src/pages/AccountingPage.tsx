@@ -792,6 +792,7 @@ export function AccountingPage() {
           <h2 className="text-sm font-bold mb-3 text-gray-700">合計</h2>
           <div className="text-xs text-gray-600 mb-2 font-mono">
             {maleTotal.toLocaleString()}+{femaleTotal.toLocaleString()}-{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
+            {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
           </div>
           <div className={`text-4xl font-bold text-center ${finalTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {finalTotal >= 0 ? '+' : ''}{finalTotal.toLocaleString()}円
