@@ -28,7 +28,6 @@ export function AccountingPage() {
   const [gymCost, setGymCost] = useState<number>(900);
   const [shuttlePrice, setShuttlePrice] = useState<number>(480);
   const [shuttleCount, setShuttleCount] = useState<number>(0);
-  const [copied, setCopied] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -36,6 +35,25 @@ export function AccountingPage() {
     navigate('/');
     return null;
   }
+
+  // 日付フォーマット（YYYY/MM/DD）
+  const formattedDate = useMemo(() => {
+    const date = new Date(session.config.practiceStartTime);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}/${month}/${day}`;
+  }, [session.config.practiceStartTime]);
+
+  // 体育館名（略称に変換）
+  const gymShortName = useMemo(() => {
+    const gym = session.config.gym || '';
+    if (gym.includes('目白')) return '目白';
+    if (gym.includes('千早')) return '千早';
+    if (gym.includes('南長崎')) return '南長崎';
+    if (gym.includes('巣鴨')) return '巣鴨';
+    return gym;
+  }, [session.config.gym]);
 
   // 試合履歴・過去の会計データから初期値を自動設定
   useEffect(() => {
@@ -108,37 +126,15 @@ export function AccountingPage() {
     setInitialized(true);
   }, [matchHistory, players, records, gymShortName, initialized]);
 
-  // 現在の参加者数と内訳（休憩中でない人）
+  // 現在の参加者数（休憩中でない人）
   const presentPlayers = players.filter(p => !p.isResting);
   const participantCount = presentPlayers.length;
-  const currentMaleCount = presentPlayers.filter(p => p.gender === 'M').length;
-  const currentFemaleCount = presentPlayers.filter(p => p.gender === 'F').length;
-  const currentUnknownCount = presentPlayers.filter(p => !p.gender).length;
 
   // 計算
   const maleTotal = maleCount * maleFee;
   const femaleTotal = femaleCount * femaleFee;
   const shuttleTotal = shuttleCount * shuttlePrice;
   const finalTotal = maleTotal + femaleTotal - gymCost - shuttleTotal;
-
-  // 日付フォーマット（YYYY/MM/DD）
-  const formattedDate = useMemo(() => {
-    const date = new Date(session.config.practiceStartTime);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}/${month}/${day}`;
-  }, [session.config.practiceStartTime]);
-
-  // 体育館名（略称に変換）
-  const gymShortName = useMemo(() => {
-    const gym = session.config.gym || '';
-    if (gym.includes('目白')) return '目白';
-    if (gym.includes('千早')) return '千早';
-    if (gym.includes('南長崎')) return '南長崎';
-    if (gym.includes('巣鴨')) return '巣鴨';
-    return gym;
-  }, [session.config.gym]);
 
   // コピー用テキスト生成
   const generateCopyText = () => {
@@ -162,8 +158,6 @@ export function AccountingPage() {
     const text = generateCopyText();
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
       toast.success('コピーしました');
     } catch (err) {
       console.error('Failed to copy:', err);
