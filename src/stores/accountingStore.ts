@@ -6,6 +6,10 @@ interface LastInput {
   exemptCount: number;
   maleCount: number;
   femaleCount: number;
+  maleFee: number;
+  femaleFee: number;
+  gymCost: number;
+  shuttlePrice: number;
   shuttleCount: number;
 }
 

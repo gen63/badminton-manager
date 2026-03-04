@@ -64,32 +64,16 @@ export function AccountingPage() {
       '巣鴨': 900,
     };
 
-    // 過去の会計履歴から直近の料金設定を取得
-    if (records.length > 0) {
-      const latestRecord = records[records.length - 1];
-      setMaleFee(latestRecord.maleFee);
-      setFemaleFee(latestRecord.femaleFee);
-      setShuttlePrice(latestRecord.shuttlePrice);
-      
-      // 同じ体育館の直近データがあればその体育館代を使う
-      const sameGymRecord = [...records].reverse().find(r => r.gym === gymShortName);
-      if (sameGymRecord) {
-        setGymCost(sameGymRecord.gymCost);
-      } else {
-        // なければ体育館別の固定値
-        setGymCost(gymCostMap[gymShortName] || 900);
-      }
-    } else {
-      // 過去データがない場合は体育館別の固定値
-      setGymCost(gymCostMap[gymShortName] || 900);
-    }
-
-    // 保存された入力値があればそれを優先、なければ試合履歴から推定
+    // 保存された入力値があればそれを優先
     if (lastInput) {
-      // 保存された値を使用
+      // すべての保存された値を復元
       setExemptCount(lastInput.exemptCount);
       setMaleCount(lastInput.maleCount);
       setFemaleCount(lastInput.femaleCount);
+      setMaleFee(lastInput.maleFee);
+      setFemaleFee(lastInput.femaleFee);
+      setGymCost(lastInput.gymCost);
+      setShuttlePrice(lastInput.shuttlePrice);
       setShuttleCount(lastInput.shuttleCount);
     } else if (matchHistory.length > 0) {
       // 試合履歴から参加者・シャトル数を推定
@@ -126,11 +110,56 @@ export function AccountingPage() {
       setShuttleCount(estimatedShuttles);
     }
 
+    // 保存された値がない場合のみ、料金設定を過去データ・固定値から取得
+    if (!lastInput) {
+      if (records.length > 0) {
+        const latestRecord = records[records.length - 1];
+        setMaleFee(latestRecord.maleFee);
+        setFemaleFee(latestRecord.femaleFee);
+        setShuttlePrice(latestRecord.shuttlePrice);
+        
+        // 同じ体育館の直近データがあればその体育館代を使う
+        const sameGymRecord = [...records].reverse().find(r => r.gym === gymShortName);
+        if (sameGymRecord) {
+          setGymCost(sameGymRecord.gymCost);
+        } else {
+          // なければ体育館別の固定値
+          setGymCost(gymCostMap[gymShortName] || 900);
+        }
+      } else {
+        // 過去データがない場合は体育館別の固定値
+        setGymCost(gymCostMap[gymShortName] || 900);
+      }
+    }
+
     setInitialized(true);
   }, [matchHistory, players, records, gymShortName, initialized, session, lastInput]);
 
   // 参加人数の合計（免除+男+女）
   const participantCount = exemptCount + maleCount + femaleCount;
+
+  // すべての入力値を保存するヘルパー関数
+  const saveAllInputs = (overrides: Partial<{
+    exemptCount: number;
+    maleCount: number;
+    femaleCount: number;
+    maleFee: number;
+    femaleFee: number;
+    gymCost: number;
+    shuttlePrice: number;
+    shuttleCount: number;
+  }> = {}) => {
+    saveLastInput({
+      exemptCount: overrides.exemptCount ?? exemptCount,
+      maleCount: overrides.maleCount ?? maleCount,
+      femaleCount: overrides.femaleCount ?? femaleCount,
+      maleFee: overrides.maleFee ?? maleFee,
+      femaleFee: overrides.femaleFee ?? femaleFee,
+      gymCost: overrides.gymCost ?? gymCost,
+      shuttlePrice: overrides.shuttlePrice ?? shuttlePrice,
+      shuttleCount: overrides.shuttleCount ?? shuttleCount,
+    });
+  };
 
   if (!session) {
     navigate('/');
@@ -268,7 +297,7 @@ export function AccountingPage() {
                   onClick={() => {
                     const newValue = Math.max(0, exemptCount - 1);
                     setExemptCount(newValue);
-                    saveLastInput({ exemptCount: newValue, maleCount, femaleCount, shuttleCount });
+                    saveAllInputs({ exemptCount: newValue });
                   }}
                   className="w-6 h-6 rounded-full bg-white text-gray-600 hover:bg-gray-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
@@ -279,7 +308,7 @@ export function AccountingPage() {
                   onClick={() => {
                     const newValue = exemptCount + 1;
                     setExemptCount(newValue);
-                    saveLastInput({ exemptCount: newValue, maleCount, femaleCount, shuttleCount });
+                    saveAllInputs({ exemptCount: newValue });
                   }}
                   className="w-6 h-6 rounded-full bg-white text-gray-600 hover:bg-gray-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
@@ -294,7 +323,7 @@ export function AccountingPage() {
                   onClick={() => {
                     const newValue = Math.max(0, maleCount - 1);
                     setMaleCount(newValue);
-                    saveLastInput({ exemptCount, maleCount: newValue, femaleCount, shuttleCount });
+                    saveAllInputs({ maleCount: newValue });
                   }}
                   className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
@@ -305,7 +334,7 @@ export function AccountingPage() {
                   onClick={() => {
                     const newValue = maleCount + 1;
                     setMaleCount(newValue);
-                    saveLastInput({ exemptCount, maleCount: newValue, femaleCount, shuttleCount });
+                    saveAllInputs({ maleCount: newValue });
                   }}
                   className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
@@ -320,7 +349,7 @@ export function AccountingPage() {
                   onClick={() => {
                     const newValue = Math.max(0, femaleCount - 1);
                     setFemaleCount(newValue);
-                    saveLastInput({ exemptCount, maleCount, femaleCount: newValue, shuttleCount });
+                    saveAllInputs({ femaleCount: newValue });
                   }}
                   className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
@@ -331,7 +360,7 @@ export function AccountingPage() {
                   onClick={() => {
                     const newValue = femaleCount + 1;
                     setFemaleCount(newValue);
-                    saveLastInput({ exemptCount, maleCount, femaleCount: newValue, shuttleCount });
+                    saveAllInputs({ femaleCount: newValue });
                   }}
                   className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
@@ -351,7 +380,11 @@ export function AccountingPage() {
                 <span className="text-sm text-gray-600">男</span>
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => setMaleFee(Math.max(0, maleFee - 100))}
+                    onClick={() => {
+                      const newValue = Math.max(0, maleFee - 100);
+                      setMaleFee(newValue);
+                      saveAllInputs({ maleFee: newValue });
+                    }}
                     className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-100 active:scale-95 flex items-center justify-center font-bold text-xs"
                   >
                     −
@@ -359,12 +392,20 @@ export function AccountingPage() {
                   <input
                     type="number"
                     value={maleFee || ''}
-                    onChange={(e) => setMaleFee(parseInt(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const newValue = parseInt(e.target.value) || 0;
+                      setMaleFee(newValue);
+                      saveAllInputs({ maleFee: newValue });
+                    }}
                     className="w-16 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
                     inputMode="numeric"
                   />
                   <button
-                    onClick={() => setMaleFee(maleFee + 100)}
+                    onClick={() => {
+                      const newValue = maleFee + 100;
+                      setMaleFee(newValue);
+                      saveAllInputs({ maleFee: newValue });
+                    }}
                     className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-100 active:scale-95 flex items-center justify-center font-bold text-xs"
                   >
                     +
@@ -383,7 +424,11 @@ export function AccountingPage() {
                 <span className="text-sm text-gray-600">女</span>
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => setFemaleFee(Math.max(0, femaleFee - 100))}
+                    onClick={() => {
+                      const newValue = Math.max(0, femaleFee - 100);
+                      setFemaleFee(newValue);
+                      saveAllInputs({ femaleFee: newValue });
+                    }}
                     className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-100 active:scale-95 flex items-center justify-center font-bold text-xs"
                   >
                     −
@@ -391,12 +436,20 @@ export function AccountingPage() {
                   <input
                     type="number"
                     value={femaleFee || ''}
-                    onChange={(e) => setFemaleFee(parseInt(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const newValue = parseInt(e.target.value) || 0;
+                      setFemaleFee(newValue);
+                      saveAllInputs({ femaleFee: newValue });
+                    }}
                     className="w-16 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
                     inputMode="numeric"
                   />
                   <button
-                    onClick={() => setFemaleFee(femaleFee + 100)}
+                    onClick={() => {
+                      const newValue = femaleFee + 100;
+                      setFemaleFee(newValue);
+                      saveAllInputs({ femaleFee: newValue });
+                    }}
                     className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-100 active:scale-95 flex items-center justify-center font-bold text-xs"
                   >
                     +
@@ -432,7 +485,11 @@ export function AccountingPage() {
                 <span className="text-sm text-gray-600">-</span>
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => setGymCost(Math.max(0, gymCost - 100))}
+                    onClick={() => {
+                      const newValue = Math.max(0, gymCost - 100);
+                      setGymCost(newValue);
+                      saveAllInputs({ gymCost: newValue });
+                    }}
                     className="w-6 h-6 rounded-full bg-white text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-xs"
                   >
                     −
@@ -440,12 +497,20 @@ export function AccountingPage() {
                   <input
                     type="number"
                     value={gymCost || ''}
-                    onChange={(e) => setGymCost(parseInt(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const newValue = parseInt(e.target.value) || 0;
+                      setGymCost(newValue);
+                      saveAllInputs({ gymCost: newValue });
+                    }}
                     className="w-20 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
                     inputMode="numeric"
                   />
                   <button
-                    onClick={() => setGymCost(gymCost + 100)}
+                    onClick={() => {
+                      const newValue = gymCost + 100;
+                      setGymCost(newValue);
+                      saveAllInputs({ gymCost: newValue });
+                    }}
                     className="w-6 h-6 rounded-full bg-white text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-xs"
                   >
                     +
@@ -466,7 +531,11 @@ export function AccountingPage() {
                   <input
                     type="number"
                     value={shuttlePrice || ''}
-                    onChange={(e) => setShuttlePrice(parseInt(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const newValue = parseInt(e.target.value) || 0;
+                      setShuttlePrice(newValue);
+                      saveAllInputs({ shuttlePrice: newValue });
+                    }}
                     className="w-16 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
                     inputMode="numeric"
                   />
@@ -477,7 +546,7 @@ export function AccountingPage() {
                     onClick={() => {
                       const newValue = Math.max(0, shuttleCount - 1);
                       setShuttleCount(newValue);
-                      saveLastInput({ exemptCount, maleCount, femaleCount, shuttleCount: newValue });
+                      saveAllInputs({ shuttleCount: newValue });
                     }}
                     className="w-7 h-7 rounded-full bg-white text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-sm"
                   >
@@ -488,7 +557,7 @@ export function AccountingPage() {
                     onClick={() => {
                       const newValue = shuttleCount + 1;
                       setShuttleCount(newValue);
-                      saveLastInput({ exemptCount, maleCount, femaleCount, shuttleCount: newValue });
+                      saveAllInputs({ shuttleCount: newValue });
                     }}
                     className="w-7 h-7 rounded-full bg-white text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-sm"
                   >
