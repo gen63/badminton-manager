@@ -188,29 +188,34 @@ export function AccountingPage() {
     const totalExpense = gymCost + shuttleTotal;
     if (participantCount === 0) return { male: 0, female: 0 };
 
+    // 練習種別に応じた男女差額
+    const genderDiff = practiceType === '単' ? 400 : 200; // 単は400円差、複/楽は200円差
+
     let minProfitMale = 0;
-    let minProfitFemale = 0;
     let minProfit = Infinity;
 
-    // 100円刻みで全組み合わせを試す（0円〜1500円の範囲）
-    for (let female = 0; female <= 1500; female += 100) {
-      for (let male = female; male <= 1500; male += 100) {
-        const income = male * maleCount + female * femaleCount;
-        const profit = income - totalExpense;
+    // 男子の会費を100円刻みで探索（0円〜1500円の範囲）
+    for (let male = genderDiff; male <= 1500; male += 100) {
+      const female = male - genderDiff;
+      if (female < 0) continue;
 
-        // 赤字にならず、最も黒字が少ないものを選ぶ
-        if (profit >= 0 && profit < minProfit) {
-          minProfit = profit;
-          minProfitMale = male;
-          minProfitFemale = female;
-        }
+      const income = male * maleCount + female * femaleCount;
+      const profit = income - totalExpense;
+
+      // 赤字にならず、最も黒字が少ないものを選ぶ
+      if (profit >= 0 && profit < minProfit) {
+        minProfit = profit;
+        minProfitMale = male;
       }
     }
 
     // 適正会費 = 最小黒字会費 + 100円
+    const appropriateMale = minProfitMale + 100;
+    const appropriateFemale = appropriateMale - genderDiff;
+
     return {
-      male: minProfitMale + 100,
-      female: minProfitFemale + 100,
+      male: appropriateMale,
+      female: appropriateFemale,
     };
   };
 

@@ -9,7 +9,7 @@ export default defineConfig({
     port: 5173,
   },
   define: {
-    __APP_VERSION__: JSON.stringify('500'), // コミット数ベース
+    __APP_VERSION__: JSON.stringify('501'), // コミット数ベース
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   plugins: [
