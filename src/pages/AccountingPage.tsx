@@ -187,8 +187,8 @@ export function AccountingPage() {
   const generateCopyText = () => {
     const lines = [
       `${formattedDate} ${gymShortName} ${practiceType}`,
-      `参加${participantCount}`,
-      `免除${exemptCount} 男${maleCount} 女${femaleCount}`,
+      `参加合計 ${participantCount}人`,
+      `内訳 免除${exemptCount} 男${maleCount} 女${femaleCount}`,
       `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
       `女 ${femaleFee}×${femaleCount} = ${femaleTotal.toLocaleString()}`,
       `免除 ${exemptCount}×0 = 0`,
