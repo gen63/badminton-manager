@@ -144,7 +144,7 @@ export function AccountingPage() {
       `免除${exemptCount} 男${maleCount} 女${femaleCount}`,
       `男${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
       `女${femaleFee}×${femaleCount} = ${femaleTotal.toLocaleString()}`,
-      `免除 ${exemptCount} 0円`,
+      `免除 ${exemptCount}×0 = 0`,
       `体育館-${gymCost.toLocaleString()}`,
       `シャトル使用数${shuttlePrice}×${shuttleCount} = ${shuttleTotal.toLocaleString()}`,
       '',
@@ -370,9 +370,11 @@ export function AccountingPage() {
             <div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">免除</span>
+                <span className="text-sm font-semibold">0</span>
+                <span className="text-sm text-gray-600">×</span>
                 <span className="text-sm font-semibold">{exemptCount}</span>
               </div>
-              <span className="text-lg font-bold text-gray-600">0円</span>
+              <span className="text-lg font-bold text-gray-600">0</span>
             </div>
           </div>
         </div>
