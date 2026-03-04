@@ -37,44 +37,76 @@ export function AccountingPage() {
     return null;
   }
 
-  // 試合履歴から初期値を自動設定
+  // 試合履歴・過去の会計データから初期値を自動設定
   useEffect(() => {
-    if (initialized || matchHistory.length === 0) return;
+    if (initialized) return;
 
-    // 試合に参加した全プレイヤーIDを抽出
-    const participantIds = new Set<string>();
-    matchHistory.forEach((match) => {
-      match.teamA.forEach((id) => participantIds.add(id));
-      match.teamB.forEach((id) => participantIds.add(id));
-    });
+    // 体育館別の固定料金設定
+    const gymCostMap: Record<string, number> = {
+      '目白': 900,
+      '千早': 900,
+      '南長崎': 900,
+      '巣鴨': 900,
+    };
 
-    // プレイヤー情報から性別を集計
-    let maleParticipants = 0;
-    let femaleParticipants = 0;
-    let unknownGender = 0;
-
-    participantIds.forEach((playerId) => {
-      const player = players.find((p) => p.id === playerId);
-      if (player?.gender === 'M') {
-        maleParticipants++;
-      } else if (player?.gender === 'F') {
-        femaleParticipants++;
+    // 過去の会計履歴から直近の料金設定を取得
+    if (records.length > 0) {
+      const latestRecord = records[records.length - 1];
+      setMaleFee(latestRecord.maleFee);
+      setFemaleFee(latestRecord.femaleFee);
+      setShuttlePrice(latestRecord.shuttlePrice);
+      
+      // 同じ体育館の直近データがあればその体育館代を使う
+      const sameGymRecord = [...records].reverse().find(r => r.gym === gymShortName);
+      if (sameGymRecord) {
+        setGymCost(sameGymRecord.gymCost);
       } else {
-        unknownGender++;
+        // なければ体育館別の固定値
+        setGymCost(gymCostMap[gymShortName] || 900);
       }
-    });
+    } else {
+      // 過去データがない場合は体育館別の固定値
+      setGymCost(gymCostMap[gymShortName] || 900);
+    }
 
-    // 性別不明者は男性として扱う（デフォルト）
-    maleParticipants += unknownGender;
+    // 試合履歴から参加者・シャトル数を推定
+    if (matchHistory.length > 0) {
+      // 試合に参加した全プレイヤーIDを抽出
+      const participantIds = new Set<string>();
+      matchHistory.forEach((match) => {
+        match.teamA.forEach((id) => participantIds.add(id));
+        match.teamB.forEach((id) => participantIds.add(id));
+      });
 
-    // シャトル使用数の推定（1試合あたり約1.5個）
-    const estimatedShuttles = Math.ceil(matchHistory.length * 1.5);
+      // プレイヤー情報から性別を集計
+      let maleParticipants = 0;
+      let femaleParticipants = 0;
+      let unknownGender = 0;
 
-    setMaleCount(maleParticipants);
-    setFemaleCount(femaleParticipants);
-    setShuttleCount(estimatedShuttles);
+      participantIds.forEach((playerId) => {
+        const player = players.find((p) => p.id === playerId);
+        if (player?.gender === 'M') {
+          maleParticipants++;
+        } else if (player?.gender === 'F') {
+          femaleParticipants++;
+        } else {
+          unknownGender++;
+        }
+      });
+
+      // 性別不明者は男性として扱う（デフォルト）
+      maleParticipants += unknownGender;
+
+      // シャトル使用数の推定（1試合あたり約1.5個）
+      const estimatedShuttles = Math.ceil(matchHistory.length * 1.5);
+
+      setMaleCount(maleParticipants);
+      setFemaleCount(femaleParticipants);
+      setShuttleCount(estimatedShuttles);
+    }
+
     setInitialized(true);
-  }, [matchHistory, players, initialized]);
+  }, [matchHistory, players, records, gymShortName, initialized]);
 
   // 現在の参加者数と内訳（休憩中でない人）
   const presentPlayers = players.filter(p => !p.isResting);
@@ -246,14 +278,23 @@ export function AccountingPage() {
           </div>
         </div>
 
+        {/* 自動入力ヒント */}
+        {(matchHistory.length > 0 || records.length > 0) && (
+          <div className="card p-3 bg-indigo-50 border-indigo-200">
+            <div className="text-xs text-indigo-700 space-y-1">
+              {matchHistory.length > 0 && (
+                <div>💡 試合履歴から: 男女内訳・シャトル数</div>
+              )}
+              {records.length > 0 && (
+                <div>💡 過去の会計から: 料金設定・体育館代</div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* 参加人数 */}
         <div className="card p-4">
           <h2 className="text-sm font-bold mb-3 text-gray-700">参加人数</h2>
-          {matchHistory.length > 0 && (
-            <div className="text-xs text-gray-500 mb-2">
-              💡 試合履歴から自動入力済み（試合参加: 男{currentMaleCount + currentUnknownCount} 女{currentFemaleCount} / シャトル{shuttleCount}個）
-            </div>
-          )}
           <div className="grid grid-cols-4 gap-2">
             <div className="bg-blue-50 rounded-lg p-3">
               <div className="text-xs text-gray-600 mb-1">合計</div>
