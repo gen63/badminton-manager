@@ -36,6 +36,23 @@ const getInitialDateTime = () => {
   return `${year}-${month}-${day}T${hourStr}:00`;
 };
 
+// 曜日に応じて体育館の初期値を設定
+const getInitialGym = () => {
+  const now = new Date();
+  const dayOfWeek = now.getDay(); // 0:日曜, 1:月曜, ..., 6:土曜
+  
+  if (dayOfWeek === 0) {
+    // 日曜: 高松
+    return '高松';
+  } else if (dayOfWeek === 6) {
+    // 土曜: 目白
+    return '目白';
+  } else {
+    // 平日（月〜金）: ぴいす
+    return 'ぴいす';
+  }
+};
+
 export function SessionCreate() {
   const navigate = useNavigate();
   const setSession = useSessionStore((state) => state.setSession);
@@ -78,7 +95,7 @@ export function SessionCreate() {
 
   const [courtCount, setCourtCount] = useState(3);
   const [targetScore, setTargetScore] = useState(15);
-  const [selectedGym, setSelectedGym] = useState('');
+  const [selectedGym, setSelectedGym] = useState(getInitialGym);
   const [practiceDateTime, setPracticeDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
