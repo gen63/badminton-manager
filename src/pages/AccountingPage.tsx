@@ -412,32 +412,48 @@ export function AccountingPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between bg-red-50 rounded-lg px-3 py-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">シャトル</span>
-                <input
-                  type="number"
-                  value={shuttlePrice || ''}
-                  onChange={(e) => setShuttlePrice(parseInt(e.target.value) || 0)}
-                  className="w-16 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
-                  inputMode="numeric"
-                />
-                <span className="text-sm text-gray-600">×</span>
-                <input
-                  type="number"
-                  value={shuttleCount || ''}
-                  onChange={(e) => {
-                    const newValue = parseInt(e.target.value) || 0;
-                    setShuttleCount(newValue);
-                    saveLastInput({ exemptCount, maleCount, femaleCount, shuttleCount: newValue });
-                  }}
-                  className="w-12 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
-                  inputMode="numeric"
-                />
+            <div className="bg-red-50 rounded-lg px-3 py-2">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-600">シャトル使用数</span>
+                <span className="text-lg font-bold text-red-600">
+                  -{shuttleTotal.toLocaleString()}
+                </span>
               </div>
-              <span className="text-lg font-bold text-red-600">
-                -{shuttleTotal.toLocaleString()}
-              </span>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-1">
+                  <input
+                    type="number"
+                    value={shuttlePrice || ''}
+                    onChange={(e) => setShuttlePrice(parseInt(e.target.value) || 0)}
+                    className="w-16 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
+                    inputMode="numeric"
+                  />
+                  <span className="text-sm text-gray-600">×</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      const newValue = Math.max(0, shuttleCount - 1);
+                      setShuttleCount(newValue);
+                      saveLastInput({ exemptCount, maleCount, femaleCount, shuttleCount: newValue });
+                    }}
+                    className="w-7 h-7 rounded-full bg-white text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-sm"
+                  >
+                    −
+                  </button>
+                  <span className="text-lg font-bold text-gray-800 w-10 text-center">{shuttleCount}</span>
+                  <button
+                    onClick={() => {
+                      const newValue = shuttleCount + 1;
+                      setShuttleCount(newValue);
+                      saveLastInput({ exemptCount, maleCount, femaleCount, shuttleCount: newValue });
+                    }}
+                    className="w-7 h-7 rounded-full bg-white text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-sm"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
