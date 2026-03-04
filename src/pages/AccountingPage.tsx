@@ -704,6 +704,15 @@ export function AccountingPage() {
           </pre>
         </div>
 
+        {/* 適正会費との差額警告 */}
+        {(Math.abs(maleFee - appropriateFee.male) >= 200 || Math.abs(femaleFee - appropriateFee.female) >= 200) && (
+          <div className="card p-4 bg-yellow-50 border-2 border-yellow-300">
+            <p className="text-sm text-yellow-800 font-semibold text-center">
+              ⚠️ 適正会費と会費の差が200円以上あります、調整を検討してください。
+            </p>
+          </div>
+        )}
+
         {/* アクションボタン */}
         <div className="flex gap-3">
           <button
