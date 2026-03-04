@@ -9,7 +9,7 @@ export default defineConfig({
     port: 5173,
   },
   define: {
-    __APP_VERSION__: JSON.stringify('499'), // コミット数ベース
+    __APP_VERSION__: JSON.stringify('500'), // コミット数ベース
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   plugins: [
@@ -48,6 +48,8 @@ export default defineConfig({
       },
       workbox: {
         cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
