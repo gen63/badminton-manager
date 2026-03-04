@@ -712,42 +712,45 @@ export function AccountingPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
 
-            {/* その他欄 */}
-            <div className="bg-gray-50 rounded-lg px-3 py-2">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600 w-16">その他</span>
-                  <input
-                    type="text"
-                    value={otherDescription}
-                    onChange={(e) => {
-                      setOtherDescription(e.target.value);
-                      saveAllInputs({ otherDescription: e.target.value });
-                    }}
-                    placeholder="説明（任意）"
-                    className="flex-1 text-sm bg-white rounded px-2 py-1"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600 w-16">金額</span>
-                  <input
-                    type="number"
-                    value={otherAmount || ''}
-                    onChange={(e) => {
-                      const newValue = parseInt(e.target.value) || 0;
-                      setOtherAmount(newValue);
-                      saveAllInputs({ otherAmount: newValue });
-                    }}
-                    placeholder="0"
-                    className="flex-1 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
-                    inputMode="numeric"
-                  />
-                </div>
-                <p className="text-xs text-gray-500">
-                  ※ プラスは正の数、マイナスは負の数で入力
-                </p>
+        {/* その他 */}
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 text-gray-700">その他</h2>
+          <div className="bg-gray-50 rounded-lg px-3 py-2">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600 w-16">説明</span>
+                <input
+                  type="text"
+                  value={otherDescription}
+                  onChange={(e) => {
+                    setOtherDescription(e.target.value);
+                    saveAllInputs({ otherDescription: e.target.value });
+                  }}
+                  placeholder="例：立替払い戻し、備品購入"
+                  className="flex-1 text-sm bg-white rounded px-2 py-1"
+                />
               </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600 w-16">金額</span>
+                <input
+                  type="number"
+                  value={otherAmount || ''}
+                  onChange={(e) => {
+                    const newValue = parseInt(e.target.value) || 0;
+                    setOtherAmount(newValue);
+                    saveAllInputs({ otherAmount: newValue });
+                  }}
+                  placeholder="0"
+                  className="flex-1 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
+                  inputMode="numeric"
+                />
+              </div>
+              <p className="text-xs text-gray-500">
+                ※ プラスは正の数、マイナスは負の数で入力
+              </p>
             </div>
           </div>
         </div>
