@@ -3,9 +3,10 @@ import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useGameStore } from '../stores/gameStore';
 import { sendAccountingToSheets } from '../lib/sheetsApi';
 import { ArrowLeft, DollarSign, Save, Copy, Upload, Loader2, Trash2 } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 
@@ -13,6 +14,7 @@ export function AccountingPage() {
   const navigate = useNavigate();
   const { session } = useSessionStore();
   const { players } = usePlayerStore();
+  const { matchHistory } = useGameStore();
   const { records, addRecord, deleteRecord } = useAccountingStore();
   const { gasWebAppUrl } = useSettingsStore();
   const toast = useToast();
@@ -28,14 +30,58 @@ export function AccountingPage() {
   const [shuttleCount, setShuttleCount] = useState<number>(0);
   const [copied, setCopied] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
   if (!session) {
     navigate('/');
     return null;
   }
 
-  // 現在の参加者数
-  const participantCount = players.filter(p => p.isPresent).length;
+  // 試合履歴から初期値を自動設定
+  useEffect(() => {
+    if (initialized || matchHistory.length === 0) return;
+
+    // 試合に参加した全プレイヤーIDを抽出
+    const participantIds = new Set<string>();
+    matchHistory.forEach((match) => {
+      match.teamA.forEach((id) => participantIds.add(id));
+      match.teamB.forEach((id) => participantIds.add(id));
+    });
+
+    // プレイヤー情報から性別を集計
+    let maleParticipants = 0;
+    let femaleParticipants = 0;
+    let unknownGender = 0;
+
+    participantIds.forEach((playerId) => {
+      const player = players.find((p) => p.id === playerId);
+      if (player?.gender === 'M') {
+        maleParticipants++;
+      } else if (player?.gender === 'F') {
+        femaleParticipants++;
+      } else {
+        unknownGender++;
+      }
+    });
+
+    // 性別不明者は男性として扱う（デフォルト）
+    maleParticipants += unknownGender;
+
+    // シャトル使用数の推定（1試合あたり約1.5個）
+    const estimatedShuttles = Math.ceil(matchHistory.length * 1.5);
+
+    setMaleCount(maleParticipants);
+    setFemaleCount(femaleParticipants);
+    setShuttleCount(estimatedShuttles);
+    setInitialized(true);
+  }, [matchHistory, players, initialized]);
+
+  // 現在の参加者数と内訳（休憩中でない人）
+  const presentPlayers = players.filter(p => !p.isResting);
+  const participantCount = presentPlayers.length;
+  const currentMaleCount = presentPlayers.filter(p => p.gender === 'M').length;
+  const currentFemaleCount = presentPlayers.filter(p => p.gender === 'F').length;
+  const currentUnknownCount = presentPlayers.filter(p => !p.gender).length;
 
   // 計算
   const maleTotal = maleCount * maleFee;
@@ -203,6 +249,11 @@ export function AccountingPage() {
         {/* 参加人数 */}
         <div className="card p-4">
           <h2 className="text-sm font-bold mb-3 text-gray-700">参加人数</h2>
+          {matchHistory.length > 0 && (
+            <div className="text-xs text-gray-500 mb-2">
+              💡 試合履歴から自動入力済み（試合参加: 男{currentMaleCount + currentUnknownCount} 女{currentFemaleCount} / シャトル{shuttleCount}個）
+            </div>
+          )}
           <div className="grid grid-cols-4 gap-2">
             <div className="bg-blue-50 rounded-lg p-3">
               <div className="text-xs text-gray-600 mb-1">合計</div>
