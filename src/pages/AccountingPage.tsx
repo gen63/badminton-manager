@@ -230,27 +230,10 @@ export function AccountingPage() {
           >
             <ArrowLeft size={20} />
           </button>
-          <div className="flex items-center gap-2 flex-1">
+          <div className="flex items-center gap-2">
             <DollarSign size={20} />
             <h1 className="text-lg font-bold">会計</h1>
           </div>
-          {gasWebAppUrl && (
-            <button
-              onClick={handleUpload}
-              disabled={isUploading}
-              aria-label="Sheetsにアップロード"
-              className="icon-btn disabled:opacity-50"
-            >
-              {isUploading ? <Loader2 size={20} className="animate-spin" /> : <Upload size={20} />}
-            </button>
-          )}
-          <button
-            onClick={handleCopy}
-            aria-label="コピー"
-            className="icon-btn"
-          >
-            <Copy size={20} />
-          </button>
         </div>
       </div>
 
@@ -440,6 +423,36 @@ export function AccountingPage() {
           <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono bg-white p-3 rounded border border-gray-200">
             {generateCopyText()}
           </pre>
+        </div>
+
+        {/* アクションボタン */}
+        <div className="flex gap-3">
+          <button
+            onClick={handleCopy}
+            className="flex-1 btn-primary flex items-center justify-center gap-2 py-3 px-6"
+          >
+            <Copy size={18} />
+            コピー
+          </button>
+          {gasWebAppUrl && (
+            <button
+              onClick={handleUpload}
+              disabled={isUploading}
+              className="flex-1 btn-primary flex items-center justify-center gap-2 py-3 px-6 disabled:opacity-50"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  送信中...
+                </>
+              ) : (
+                <>
+                  <Upload size={18} />
+                  アップロード
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
