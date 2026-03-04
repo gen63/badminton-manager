@@ -264,6 +264,11 @@ export function AccountingPage() {
     // 適正会費
     referenceLines.push(`適正会費: 男${appropriateFee.male}円 女${appropriateFee.female}円`);
 
+    // 適正会費との差額警告（体育館代900円以下かつ差額200円以上）
+    if (gymCost <= 900 && (Math.abs(maleFee - appropriateFee.male) >= 200 || Math.abs(femaleFee - appropriateFee.female) >= 200)) {
+      referenceLines.push('⚠️ 適正会費と会費の差が200円以上あります、調整を検討してください。');
+    }
+
     // 参考セクションがあれば追加
     if (referenceLines.length > 0) {
       lines.push('', '参考', ...referenceLines);
