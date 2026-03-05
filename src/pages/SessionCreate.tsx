@@ -60,8 +60,6 @@ export function SessionCreate() {
   const initializeCourts = useGameStore((state) => state.initializeCourts);
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
-  const setGasWebAppUrl = useSettingsStore((state) => state.setGasWebAppUrl);
-  const [gasUrlInput, setGasUrlInput] = useState(gasWebAppUrl);
 
   // PWA更新検知 & 自動リロード
   const {
@@ -105,18 +103,14 @@ export function SessionCreate() {
 
 
   const handleLoadFromSheets = async () => {
-    const url = gasUrlInput || gasWebAppUrl;
-    if (!url) {
-      setLoadError('GAS Web App URLを入力してください');
+    if (!gasWebAppUrl) {
+      setLoadError('設定画面でGAS Web App URLを設定してください');
       return;
-    }
-    if (url !== gasWebAppUrl) {
-      setGasWebAppUrl(url);
     }
     setIsLoadingMembers(true);
     setLoadingText('読み込み中...');
     setLoadError('');
-    const result = await fetchMembersFromSheets(url, () => {
+    const result = await fetchMembersFromSheets(gasWebAppUrl, () => {
       setLoadingText('再試行中...');
     });
     
@@ -355,18 +349,6 @@ export function SessionCreate() {
               練習参加メンバー
             </label>
             <div className="mb-2">
-              <div className="mb-2 max-w-[240px]">
-                <input
-                  type="url"
-                  value={gasUrlInput}
-                  onChange={(e) => setGasUrlInput(e.target.value)}
-                  placeholder="https://script.google.com/macros/s/..."
-                  className="input-field min-h-[44px] text-sm"
-                />
-                <p className="text-xs text-gray-400 mt-1">
-                  GAS Web App URLを入力
-                </p>
-              </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleLoadFromSheets}
