@@ -1,6 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { execSync } from 'child_process'
+
+// ビルド時に自動でコミット数を取得
+const getCommitCount = () => {
+  try {
+    return execSync('git rev-list --count HEAD').toString().trim()
+  } catch {
+    return 'unknown'
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -9,7 +19,7 @@ export default defineConfig({
     port: 5173,
   },
   define: {
-    __APP_VERSION__: JSON.stringify('530'), // コミット数ベース
+    __APP_VERSION__: JSON.stringify(getCommitCount()), // コミット数を自動取得
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   plugins: [
