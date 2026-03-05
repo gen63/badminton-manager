@@ -112,18 +112,19 @@ export function SettingsPage() {
                 <MapPin size={12} />
                 体育館
               </label>
-              <select
+              <input
+                type="text"
+                list="gym-options-settings"
                 value={session.config.gym || ''}
                 onChange={(e) => updateConfig({ gym: e.target.value || undefined })}
-                className="select-field min-h-[44px] w-auto"
-              >
-                <option value="">選択してください</option>
+                placeholder="選択または入力してください"
+                className="input-field min-h-[44px] w-auto"
+              />
+              <datalist id="gym-options-settings">
                 {GYM_OPTIONS.map((gym) => (
-                  <option key={gym} value={gym}>
-                    {gym}
-                  </option>
+                  <option key={gym} value={gym} />
                 ))}
-              </select>
+              </datalist>
             </div>
 
             <div>

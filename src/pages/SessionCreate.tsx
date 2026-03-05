@@ -302,18 +302,19 @@ export function SessionCreate() {
               体育館
             </label>
             <div className="max-w-[240px]">
-              <select
+              <input
+                type="text"
+                list="gym-options"
                 value={selectedGym}
                 onChange={(e) => setSelectedGym(e.target.value)}
-                className="select-field min-h-[52px]"
-              >
-                <option value="">選択してください</option>
+                placeholder="選択または入力してください"
+                className="input-field min-h-[52px]"
+              />
+              <datalist id="gym-options">
                 {GYM_OPTIONS.map((gym) => (
-                  <option key={gym} value={gym}>
-                    {gym}
-                  </option>
+                  <option key={gym} value={gym} />
                 ))}
-              </select>
+              </datalist>
             </div>
           </div>
 
