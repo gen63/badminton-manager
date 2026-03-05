@@ -121,20 +121,66 @@ export function SessionCreate() {
     });
     
     if (result.success) {
-      setPlayerNames(membersToText(result.members));
-      const hasAllRatings = result.members.length > 0 &&
-        result.members.every(m => m.rating != null && m.rating >= 1);
-      setAllRated(hasAllRatings);
+      // 入力欄に名前があるかチェック
+      const hasInputNames = playerNames.trim().length > 0;
       
-      // 読み込み成功時、自動的にセッションを開始
-      if (result.members.length > 0) {
-        setLoadingText('セッション開始中...');
+      let inputs: { name: string; rating?: number; gender?: 'M' | 'F' }[];
+      let hasAllRatings = false;
+      
+      if (!hasInputNames) {
+        // パターン1: 入力欄が空 → 今まで通り全データ取得
+        setPlayerNames(membersToText(result.members));
+        hasAllRatings = result.members.length > 0 &&
+          result.members.every(m => m.rating != null && m.rating >= 1);
         
-        const inputs = result.members.map((member) => ({
+        inputs = result.members.map((member) => ({
           name: member.name,
           rating: member.rating,
           gender: member.gender,
         }));
+      } else {
+        // パターン2: 入力欄に名前あり → 性別だけを補完
+        const inputLines = playerNames
+          .split('\n')
+          .map(line => parsePlayerInput(line))
+          .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
+        
+        // Sheetsから取得した性別情報でマッチング
+        const sheetsMembersMap = new Map(
+          result.members.map(m => [m.name, m.gender])
+        );
+        
+        inputs = inputLines.map((input) => {
+          const genderFromSheets = sheetsMembersMap.get(input.name);
+          return {
+            name: input.name,
+            rating: input.rating, // 入力済みのレーティングがあればそれを使う（なければundefined）
+            gender: input.gender || genderFromSheets, // 入力済みの性別優先、なければSheetsから補完
+          };
+        });
+        
+        // 入力欄を更新（性別が補完された状態）
+        const updatedText = inputs.map((input) => {
+          const parts = [input.name];
+          if (input.gender) {
+            parts.push(input.gender === 'M' ? '男' : '女');
+          }
+          if (input.rating) {
+            parts.push(String(input.rating));
+          }
+          return parts.join('  ');
+        }).join('\n');
+        setPlayerNames(updatedText);
+        
+        hasAllRatings = false; // 名前入力モードではレーティングは不要
+      }
+      
+      setAllRated(hasAllRatings);
+      
+      // 読み込み成功時、自動的にセッションを開始
+      if (inputs.length > 0) {
+        setLoadingText('セッション開始中...');
+        
         addPlayers(inputs);
 
         const sessionId = generateSessionId();
