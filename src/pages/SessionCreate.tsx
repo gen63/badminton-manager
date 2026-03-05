@@ -177,8 +177,8 @@ export function SessionCreate() {
       
       setAllRated(hasAllRatings);
       
-      // 読み込み成功時、自動的にセッションを開始
-      if (inputs.length > 0) {
+      // パターン1のみ自動開始（入力欄が空だった場合）
+      if (!hasInputNames && inputs.length > 0) {
         setLoadingText('セッション開始中...');
         
         addPlayers(inputs);
@@ -211,6 +211,9 @@ export function SessionCreate() {
         }, 100);
         return;
       }
+      
+      // パターン2（名前入力済み）の場合は、性別補完後に留まる
+      setIsLoadingMembers(false);
     } else {
       setLoadError(result.message);
     }
