@@ -97,7 +97,6 @@ export function SessionCreate() {
   const [practiceDateTime, setPracticeDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
-  const [loadingText, setLoadingText] = useState('読み込み中...');
   const [loadError, setLoadError] = useState('');
   const [allRated, setAllRated] = useState(false);
 
@@ -108,11 +107,8 @@ export function SessionCreate() {
       return;
     }
     setIsLoadingMembers(true);
-    setLoadingText('読み込み中...');
     setLoadError('');
-    const result = await fetchMembersFromSheets(gasWebAppUrl, () => {
-      setLoadingText('再試行中...');
-    });
+    const result = await fetchMembersFromSheets(gasWebAppUrl);
     
     if (result.success) {
       // 入力欄に名前があるかチェック
@@ -173,8 +169,6 @@ export function SessionCreate() {
       
       // パターン1のみ自動開始（入力欄が空だった場合）
       if (!hasInputNames && inputs.length > 0) {
-        setLoadingText('セッション開始中...');
-        
         addPlayers(inputs);
 
         const sessionId = generateSessionId();
@@ -349,36 +343,7 @@ export function SessionCreate() {
             <label className="label">
               練習参加メンバー
             </label>
-            <div className="mb-2">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleLoadFromSheets}
-                  disabled={isLoadingMembers}
-                  className="btn-outline text-sm flex items-center justify-center gap-2"
-                >
-                  {isLoadingMembers ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      {loadingText}
-                    </>
-                  ) : (
-                    <>
-                      <Download size={16} />
-                      Sheetsから読み込み
-                    </>
-                  )}
-                </button>
-                {allRated && (
-                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold">
-                    R
-                  </span>
-                )}
-              </div>
-              {loadError && (
-                <p className="text-xs text-red-500 mt-1">{loadError}</p>
-              )}
-            </div>
-            <div className="max-w-[240px]">
+            <div className="max-w-[240px] relative">
               <textarea
                 value={playerNames}
                 onChange={(e) => setPlayerNames(e.target.value)}
@@ -387,6 +352,32 @@ export function SessionCreate() {
                 className="textarea-field"
                 style={{ WebkitAppearance: 'none' }}
               />
+              
+              {/* 小さいアイコンボタン */}
+              <button
+                onClick={handleLoadFromSheets}
+                disabled={isLoadingMembers}
+                className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:opacity-50 flex items-center justify-center transition-colors"
+                title="Sheetsから読み込み"
+              >
+                {isLoadingMembers ? (
+                  <Loader2 size={14} className="animate-spin text-gray-600" />
+                ) : (
+                  <Download size={14} className="text-gray-600" />
+                )}
+              </button>
+              
+              {/* Rバッジとエラー表示 */}
+              <div className="flex items-center gap-2 mt-2">
+                {allRated && (
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold">
+                    R
+                  </span>
+                )}
+                {loadError && (
+                  <p className="text-xs text-red-500">{loadError}</p>
+                )}
+              </div>
             </div>
           </div>
 
