@@ -65,6 +65,21 @@ git push origin master
 - Genにキャッシュバスティング付きURLを連携（タイムスタンプ付き）
 - 形式: `https://gen63.github.io/badminton-manager/?t=UNIX_TIMESTAMP`
 - 例: `https://gen63.github.io/badminton-manager/?t=1738227684`
+- **バージョン番号を報告（vite.config.ts の __APP_VERSION__ を確認）**
+
+## 📌 バージョン管理
+
+**バージョン番号の場所:** `vite.config.ts` の `__APP_VERSION__`
+
+現在のバージョン確認:
+```bash
+grep '__APP_VERSION__' vite.config.ts
+```
+
+**バージョン更新タイミング（手動）:**
+- 機能追加時
+- 重要なバグ修正時
+- UI/UXの大きな変更時
 
 ## プロジェクト情報
 
