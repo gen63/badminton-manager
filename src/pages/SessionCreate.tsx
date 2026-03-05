@@ -343,29 +343,31 @@ export function SessionCreate() {
             <label className="label">
               練習参加メンバー
             </label>
-            <div className="max-w-[240px] relative">
-              <textarea
-                value={playerNames}
-                onChange={(e) => setPlayerNames(e.target.value)}
-                placeholder="星野真吾  男&#10;山口裕史  男&#10;佐野朋美  女"
-                rows={5}
-                className="textarea-field"
-                style={{ WebkitAppearance: 'none' }}
-              />
-              
-              {/* 小さいアイコンボタン */}
-              <button
-                onClick={handleLoadFromSheets}
-                disabled={isLoadingMembers}
-                className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:opacity-50 flex items-center justify-center transition-colors"
-                title="Sheetsから読み込み"
-              >
-                {isLoadingMembers ? (
-                  <Loader2 size={14} className="animate-spin text-gray-600" />
-                ) : (
-                  <Download size={14} className="text-gray-600" />
-                )}
-              </button>
+            <div className="max-w-[240px]">
+              <div className="relative">
+                <textarea
+                  value={playerNames}
+                  onChange={(e) => setPlayerNames(e.target.value)}
+                  placeholder="星野真吾  男&#10;山口裕史  男&#10;佐野朋美  女"
+                  rows={5}
+                  className="textarea-field w-full pr-12"
+                  style={{ WebkitAppearance: 'none' }}
+                />
+                
+                {/* 小さいアイコンボタン */}
+                <button
+                  onClick={handleLoadFromSheets}
+                  disabled={isLoadingMembers}
+                  className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:opacity-50 flex items-center justify-center transition-colors"
+                  title="Sheetsから読み込み"
+                >
+                  {isLoadingMembers ? (
+                    <Loader2 size={14} className="animate-spin text-gray-600" />
+                  ) : (
+                    <Download size={14} className="text-gray-600" />
+                  )}
+                </button>
+              </div>
               
               {/* Rバッジとエラー表示 */}
               <div className="flex items-center gap-2 mt-2">
