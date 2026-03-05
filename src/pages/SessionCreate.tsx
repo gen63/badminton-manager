@@ -387,9 +387,6 @@ export function SessionCreate() {
                 className="textarea-field"
                 style={{ WebkitAppearance: 'none' }}
               />
-              <p className="text-xs text-gray-400 mt-2">
-                1行に1人ずつ入力してください（任意）
-              </p>
             </div>
           </div>
 
