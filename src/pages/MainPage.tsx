@@ -6,13 +6,14 @@ import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Settings, History, Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown, CalendarCheck } from 'lucide-react';
+import { Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
 import { WinnerSelectModal } from '../components/WinnerSelectModal';
 import { useReservationStore } from '../stores/reservationStore';
 import { ReservationModal } from '../components/ReservationModal';
+import { BottomNav } from '../components/BottomNav';
 
 export function MainPage() {
   const navigate = useNavigate();
@@ -517,18 +518,6 @@ export function MainPage() {
               <Users size={16} />
               <span>一括</span>
             </button>
-            <button
-              onClick={() => setShowReservationModal(true)}
-              className="relative flex items-center gap-1.5 px-2.5 py-1.5 bg-muted text-muted-foreground border border-border rounded-lg text-xs font-medium transition-all active:scale-95"
-            >
-              <CalendarCheck size={16} />
-              <span>予約</span>
-              {pendingReservations.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-orange-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                  {pendingReservations.length}
-                </span>
-              )}
-            </button>
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -545,23 +534,11 @@ export function MainPage() {
             >
               <Redo2 size={18} />
             </button>
-            <button
-              onClick={() => navigate('/history')}
-              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors"
-            >
-              <History size={18} />
-            </button>
-            <button
-              onClick={() => navigate('/settings')}
-              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors"
-            >
-              <Settings size={18} />
-            </button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 pb-[280px]">
+      <main className="flex-1 pb-[340px]">
         {/* Courts Section */}
         <section className="pt-4 pb-2 px-4">
           <div className="grid grid-cols-3 gap-2">
@@ -992,6 +969,11 @@ export function MainPage() {
           onClose={() => toast.hideToast(t.id)}
         />
       ))}
+
+      <BottomNav
+        onReservationOpen={() => setShowReservationModal(true)}
+        reservationCount={pendingReservations.length}
+      />
     </div>
   );
 }
