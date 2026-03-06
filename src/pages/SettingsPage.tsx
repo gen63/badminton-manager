@@ -14,7 +14,7 @@ export function SettingsPage() {
   const { clearPlayers } = usePlayerStore();
   const { courts, clearHistory, resizeCourts } = useGameStore();
   const activeCourtCount = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== '')).length;
-  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores } = useSettingsStore();
+  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeRotation, setPrioritizeRotation } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
 
@@ -220,6 +220,39 @@ export function SettingsPage() {
                 {recordScores
                   ? '終了時に勝敗を記録'
                   : '勝敗記録なし'}
+              </p>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">配置タイミング</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPrioritizeRotation(false)}
+                  className={`flex-1 select-button text-xs px-2 ${
+                    !prioritizeRotation
+                      ? 'select-button-active'
+                      : 'select-button-inactive'
+                  }`}
+                >
+                  {!prioritizeRotation && <span className="mr-1">✓</span>}
+                  回数優先
+                </button>
+                <button
+                  onClick={() => setPrioritizeRotation(true)}
+                  className={`flex-1 select-button text-xs px-2 ${
+                    prioritizeRotation
+                      ? 'select-button-active'
+                      : 'select-button-inactive'
+                  }`}
+                >
+                  {prioritizeRotation && <span className="mr-1">✓</span>}
+                  流動優先
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1">
+                {prioritizeRotation
+                  ? '過半数のコート終了後にまとめて配置'
+                  : '空きが出たら即座に配置'}
               </p>
             </div>
           </div>
