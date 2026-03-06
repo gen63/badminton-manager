@@ -242,8 +242,10 @@ export function MainPage() {
 
     setShowWinnerModal(null);
 
-    // 自動配置を実行（連続モードと同じ動作）
-    handleContinuousNext(courtId);
+    // 連続モードが有効な場合のみ自動配置を実行
+    if (continuousMatchMode) {
+      handleContinuousNext(courtId);
+    }
   };
 
   const handleContinuousNext = (courtId: number) => {
