@@ -231,6 +231,7 @@ export function MainPage() {
       const { courts: currentCourts, matchHistory: currentHistory, updateCourt: storeUpdateCourt, startGame: storeStartGame } = useGameStore.getState();
       const { players: currentPlayers } = usePlayerStore.getState();
       const { useStayDurationPriority: currentPriority } = useSettingsStore.getState();
+      const { reservations: currentReservations, fulfillReservation: storeFulfillReservation } = useReservationStore.getState();
 
       const currentPlayersInCourts = new Set(
         currentCourts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
@@ -257,10 +258,22 @@ export function MainPage() {
           practiceStartTime: session?.config.practiceStartTime,
           allPlayers: allActivePlayers,
           useStayDurationPriority: currentPriority,
+          reservations: currentReservations,
         }
       );
 
       if (assignments[0]) {
+        // 予約消化判定
+        const assignedPlayerIds = new Set(
+          assignments.flatMap(a => [...a.teamA, ...a.teamB])
+        );
+        const currentPendingReservations = currentReservations.filter(r => r.status === 'pending');
+        for (const reservation of currentPendingReservations) {
+          if (reservation.playerIds.every(id => assignedPlayerIds.has(id))) {
+            storeFulfillReservation(reservation.id);
+          }
+        }
+
         storeUpdateCourt(courtId, {
           teamA: assignments[0].teamA,
           teamB: assignments[0].teamB,
