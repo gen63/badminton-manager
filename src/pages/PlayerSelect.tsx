@@ -4,6 +4,8 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { buildInitialOrder, applyStreakSwaps } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
+import { useToast } from '../hooks/useToast';
+import { Toast } from '../components/Toast';
 import { Trash2, UserPlus, Users, ArrowRight } from 'lucide-react';
 
 export function PlayerSelect() {
@@ -11,6 +13,7 @@ export function PlayerSelect() {
   const { players, addPlayers, removePlayer } = usePlayerStore();
   const { matchHistory } = useGameStore();
   const [newPlayerNames, setNewPlayerNames] = useState('');
+  const toast = useToast();
 
   // 動的序列でソート（弱い順 = 序列の逆順）
   const dynamicOrder = applyStreakSwaps(buildInitialOrder(players), matchHistory, 3);
@@ -31,7 +34,10 @@ export function PlayerSelect() {
         .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
 
       if (inputs.length > 0) {
-        addPlayers(inputs);
+        const result = addPlayers(inputs);
+        if (result.skipped.length > 0) {
+          toast.warning(`重複スキップ: ${result.skipped.join('、')}`);
+        }
         setNewPlayerNames('');
       }
     }
@@ -134,6 +140,12 @@ export function PlayerSelect() {
           完了
           <ArrowRight size={18} />
         </button>
+      </div>
+      {/* トースト通知 */}
+      <div className="fixed bottom-20 left-0 right-0 z-50 flex flex-col items-center gap-2 pointer-events-none">
+        {toast.toasts.map((t) => (
+          <Toast key={t.id} message={t.message} type={t.type} onClose={() => toast.hideToast(t.id)} />
+        ))}
       </div>
     </div>
   );

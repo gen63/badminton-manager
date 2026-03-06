@@ -780,8 +780,12 @@ export function MainPage() {
                       if (e.key === 'Enter' && newPlayerName.trim()) {
                         const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
                         if (parsed) {
-                          addPlayers([parsed]);
-                          setNewPlayerName('');
+                          const result = addPlayers([parsed]);
+                          if (result.skipped.length > 0) {
+                            toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
+                          } else {
+                            setNewPlayerName('');
+                          }
                         }
                       }
                     }}
@@ -795,8 +799,12 @@ export function MainPage() {
                     if (newPlayerName.trim()) {
                       const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
                       if (parsed) {
-                        addPlayers([parsed]);
-                        setNewPlayerName('');
+                        const result = addPlayers([parsed]);
+                        if (result.skipped.length > 0) {
+                          toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
+                        } else {
+                          setNewPlayerName('');
+                        }
                       }
                     }
                   }}

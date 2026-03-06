@@ -10,7 +10,7 @@ interface PlayerInput {
 
 interface PlayerState {
   players: Player[];
-  addPlayers: (inputs: PlayerInput[]) => void;
+  addPlayers: (inputs: PlayerInput[]) => { added: number; skipped: string[] };
   removePlayer: (id: string) => void;
   toggleRest: (id: string) => void;
   updatePlayer: (id: string, updates: Partial<Player>) => void;
@@ -19,24 +19,45 @@ interface PlayerState {
 
 export const usePlayerStore = create<PlayerState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       players: [],
-      addPlayers: (inputs) =>
-        set((state) => ({
-          players: [
-            ...state.players,
-            ...inputs.map((input) => ({
-              id: `player-${Date.now()}-${Math.random()}`,
-              name: input.name,
-              rating: input.rating,
-              gender: input.gender,
-              isResting: true, // 全員休憩で開始（チェックイン待ち）
-              gamesPlayed: 0,
-              lastPlayedAt: null,
-              activatedAt: null, // 休憩解除時に設定
-            })),
-          ],
-        })),
+      addPlayers: (inputs) => {
+        const existingNames = new Set(get().players.map((p) => p.name.trim()));
+        const seen = new Set<string>();
+        const skipped: string[] = [];
+        const toAdd: PlayerInput[] = [];
+
+        for (const input of inputs) {
+          const trimmedName = input.name.trim();
+          if (!trimmedName) continue;
+          if (existingNames.has(trimmedName) || seen.has(trimmedName)) {
+            skipped.push(trimmedName);
+            continue;
+          }
+          seen.add(trimmedName);
+          toAdd.push(input);
+        }
+
+        if (toAdd.length > 0) {
+          set((state) => ({
+            players: [
+              ...state.players,
+              ...toAdd.map((input) => ({
+                id: `player-${Date.now()}-${Math.random()}`,
+                name: input.name.trim(),
+                rating: input.rating,
+                gender: input.gender,
+                isResting: true, // 全員休憩で開始（チェックイン待ち）
+                gamesPlayed: 0,
+                lastPlayedAt: null,
+                activatedAt: null, // 休憩解除時に設定
+              })),
+            ],
+          }));
+        }
+
+        return { added: toAdd.length, skipped };
+      },
       removePlayer: (id) =>
         set((state) => ({
           players: state.players.filter((p) => p.id !== id),
