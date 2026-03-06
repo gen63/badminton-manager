@@ -5,7 +5,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
-import { generateSessionId, parsePlayerInput } from '../lib/utils';
+import { generateSessionId, parsePlayerInput, getRecommendedCourtCount } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { GYM_OPTIONS } from '../types/session';
 import { Sparkles, Download, Loader2 } from 'lucide-react';
@@ -171,13 +171,14 @@ export function SessionCreate() {
       if (!hasInputNames && inputs.length > 0) {
         addPlayers(inputs);
 
+        const adjustedCourtCount = getRecommendedCourtCount(inputs.length, courtCount);
         const sessionId = generateSessionId();
         const now = Date.now();
         const practiceTime = new Date(practiceDateTime).getTime();
         const session = {
           id: sessionId,
           config: {
-            courtCount,
+            courtCount: adjustedCourtCount,
             targetScore,
             practiceDate: practiceDateTime.split('T')[0],
             practiceStartTime: practiceTime,
@@ -188,7 +189,7 @@ export function SessionCreate() {
         };
 
         setSession(session);
-        initializeCourts(courtCount);
+        initializeCourts(adjustedCourtCount);
         
         // ローディング状態を解除してから遷移
         setIsLoadingMembers(false);
@@ -209,6 +210,7 @@ export function SessionCreate() {
   };
 
   const handleCreate = () => {
+    let playerCount = 0;
     if (playerNames.trim()) {
       const inputs = playerNames
         .split('\n')
@@ -216,16 +218,20 @@ export function SessionCreate() {
         .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
       if (inputs.length > 0) {
         addPlayers(inputs);
+        playerCount = inputs.length;
       }
     }
 
+    const adjustedCourtCount = playerCount > 0
+      ? getRecommendedCourtCount(playerCount, courtCount)
+      : courtCount;
     const sessionId = generateSessionId();
     const now = Date.now();
     const practiceTime = new Date(practiceDateTime).getTime();
     const session = {
       id: sessionId,
       config: {
-        courtCount,
+        courtCount: adjustedCourtCount,
         targetScore,
         practiceDate: practiceDateTime.split('T')[0],
         practiceStartTime: practiceTime,
@@ -236,7 +242,7 @@ export function SessionCreate() {
     };
 
     setSession(session);
-    initializeCourts(courtCount);
+    initializeCourts(adjustedCourtCount);
     navigate('/main');
   };
 
