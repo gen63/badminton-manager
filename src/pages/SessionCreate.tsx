@@ -169,9 +169,9 @@ export function SessionCreate() {
       
       // パターン1のみ自動開始（入力欄が空だった場合）
       if (!hasInputNames && inputs.length > 0) {
-        addPlayers(inputs);
+        const result = addPlayers(inputs);
 
-        const adjustedCourtCount = getRecommendedCourtCount(inputs.length, courtCount);
+        const adjustedCourtCount = getRecommendedCourtCount(result.added, courtCount);
         const sessionId = generateSessionId();
         const now = Date.now();
         const practiceTime = new Date(practiceDateTime).getTime();
@@ -217,8 +217,8 @@ export function SessionCreate() {
         .map((line) => parsePlayerInput(line))
         .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
       if (inputs.length > 0) {
-        addPlayers(inputs);
-        playerCount = inputs.length;
+        const result = addPlayers(inputs);
+        playerCount = result.added;
       }
     }
 

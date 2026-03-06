@@ -21,7 +21,7 @@ export function MainPage() {
   const { players, toggleRest, updatePlayer, addPlayers } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts } =
     useGameStore();
-  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, recordScores } = useSettingsStore();
+  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, recordScores, prioritizeRotation } = useSettingsStore();
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
   const { reservations, addReservation, removeReservation, fulfillReservation } = useReservationStore();
   const toast = useToast();
@@ -242,8 +242,10 @@ export function MainPage() {
 
     setShowWinnerModal(null);
 
-    // 自動配置を実行（連続モードと同じ動作）
-    handleContinuousNext(courtId);
+    // 連続モードが有効な場合のみ自動配置を実行
+    if (continuousMatchMode) {
+      handleContinuousNext(courtId);
+    }
   };
 
   const handleContinuousNext = (courtId: number) => {
@@ -358,7 +360,10 @@ export function MainPage() {
   const visibleUnfinished = showAllUnfinished ? unfinishedMatches : unfinishedMatches.slice(0, 1);
 
   const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
-  const canAutoAssign = emptyCourts.length > 0 && activePlayers.length >= 4;
+  const playingCourts = courts.filter(c => c.isPlaying);
+  const shouldBlockAssignment = prioritizeRotation && !continuousMatchMode
+    && playingCourts.length > 0 && emptyCourts.length <= playingCourts.length;
+  const canAutoAssign = emptyCourts.length > 0 && activePlayers.length >= 4 && !shouldBlockAssignment;
 
   const handleSwapPlayer = (courtId: number, position: number, newPlayerId: string) => {
     const court = courts.find((c) => c.id === courtId);
@@ -558,6 +563,9 @@ export function MainPage() {
               <Users size={16} />
               <span>一括</span>
             </button>
+            {shouldBlockAssignment && emptyCourts.length > 0 && (
+              <span className="text-[10px] text-muted-foreground">他コート終了後に配置</span>
+            )}
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -710,14 +718,18 @@ export function MainPage() {
                         </div>
                         <p className="text-xs text-muted-foreground font-medium">空き</p>
                       </div>
-                      <button
-                        onClick={() => handleAutoAssign(court.id)}
-                        disabled={!canAutoAssign}
-                        className="px-3 py-1.5 bg-white border border-border shadow-sm rounded-lg text-xs font-medium text-primary flex items-center gap-1.5 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Plus size={12} />
-                        配置
-                      </button>
+                      {shouldBlockAssignment ? (
+                        <p className="text-[10px] text-muted-foreground">試合終了を待機中...</p>
+                      ) : (
+                        <button
+                          onClick={() => handleAutoAssign(court.id)}
+                          disabled={!canAutoAssign}
+                          className="px-3 py-1.5 bg-white border border-border shadow-sm rounded-lg text-xs font-medium text-primary flex items-center gap-1.5 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Plus size={12} />
+                          配置
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -780,8 +792,12 @@ export function MainPage() {
                       if (e.key === 'Enter' && newPlayerName.trim()) {
                         const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
                         if (parsed) {
-                          addPlayers([parsed]);
-                          setNewPlayerName('');
+                          const result = addPlayers([parsed]);
+                          if (result.skipped.length > 0) {
+                            toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
+                          } else {
+                            setNewPlayerName('');
+                          }
                         }
                       }
                     }}
@@ -795,8 +811,12 @@ export function MainPage() {
                     if (newPlayerName.trim()) {
                       const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
                       if (parsed) {
-                        addPlayers([parsed]);
-                        setNewPlayerName('');
+                        const result = addPlayers([parsed]);
+                        if (result.skipped.length > 0) {
+                          toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
+                        } else {
+                          setNewPlayerName('');
+                        }
                       }
                     }
                   }}
