@@ -7,11 +7,15 @@ import { parsePlayerInput } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { Trash2, UserPlus, Users, ArrowRight } from 'lucide-react';
+import { useSessionStore } from '../stores/sessionStore';
+import { BottomNav } from '../components/BottomNav';
 
 export function PlayerSelect() {
   const navigate = useNavigate();
   const { players, addPlayers, removePlayer } = usePlayerStore();
   const { matchHistory } = useGameStore();
+  const { session } = useSessionStore();
+  const isTabMode = !!session;
   const [newPlayerNames, setNewPlayerNames] = useState('');
   const toast = useToast();
 
@@ -132,14 +136,18 @@ export function PlayerSelect() {
           )}
         </div>
 
-        {/* 完了ボタン */}
-        <button
-          onClick={handleContinue}
-          className="btn-primary w-full flex items-center justify-center gap-2"
-        >
-          完了
-          <ArrowRight size={18} />
-        </button>
+        {/* 完了ボタン（セットアップモードのみ） */}
+        {!isTabMode && (
+          <button
+            onClick={handleContinue}
+            className="btn-primary w-full flex items-center justify-center gap-2"
+          >
+            完了
+            <ArrowRight size={18} />
+          </button>
+        )}
+
+        {isTabMode && <div className="h-16" />}
       </div>
       {/* トースト通知 */}
       <div className="fixed bottom-20 left-0 right-0 z-50 flex flex-col items-center gap-2 pointer-events-none">
@@ -147,6 +155,8 @@ export function PlayerSelect() {
           <Toast key={t.id} message={t.message} type={t.type} onClose={() => toast.hideToast(t.id)} />
         ))}
       </div>
+
+      {isTabMode && <BottomNav activeTab="players" />}
     </div>
   );
 }

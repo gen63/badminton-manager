@@ -6,7 +6,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useUndoStore } from '../stores/undoStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { GYM_OPTIONS } from '../types/session';
-import { ArrowLeft, Trash2, Users, Settings as SettingsIcon, Clock, MapPin, DollarSign } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Clock, MapPin } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -260,24 +260,6 @@ export function SettingsPage() {
 
         {/* アクション */}
         <div className="space-y-3">
-          <div className="flex gap-3 justify-center">
-            <button
-              onClick={() => navigate('/accounting')}
-              className="btn-primary flex items-center justify-center gap-2 py-3 px-6"
-            >
-              <DollarSign size={18} />
-              会計
-            </button>
-
-            <button
-              onClick={() => navigate('/players')}
-              className="btn-primary flex items-center justify-center gap-2 py-3 px-6"
-            >
-              <Users size={18} />
-              参加者を管理
-            </button>
-          </div>
-
           <div className="flex justify-center">
             <button
               onClick={handleReset}
