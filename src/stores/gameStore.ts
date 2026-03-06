@@ -7,6 +7,7 @@ interface GameState {
   courts: Court[];
   matchHistory: Match[];
   initializeCourts: (count: number) => void;
+  resizeCourts: (count: number) => void;
   updateCourt: (courtId: number, updates: Partial<Court>) => void;
   startGame: (courtId: number) => void;
   finishGame: (courtId: number, scoreA: number, scoreB: number) => void;
@@ -33,6 +34,26 @@ export const useGameStore = create<GameState>()(
             startedAt: null,
             finishedAt: null,
           })),
+        }),
+      resizeCourts: (count) =>
+        set((state) => {
+          const existing = state.courts;
+          if (count <= existing.length) {
+            // 減らす場合: 先頭からcount個を保持
+            return { courts: existing.slice(0, count) };
+          }
+          // 増やす場合: 既存を保持し、新しいコートを追加
+          const newCourts = Array.from({ length: count - existing.length }, (_, i) => ({
+            id: existing.length + i + 1,
+            teamA: ['', ''] as [string, string],
+            teamB: ['', ''] as [string, string],
+            scoreA: 0,
+            scoreB: 0,
+            isPlaying: false,
+            startedAt: null as number | null,
+            finishedAt: null as number | null,
+          }));
+          return { courts: [...existing, ...newCourts] };
         }),
       updateCourt: (courtId, updates) =>
         set((state) => ({

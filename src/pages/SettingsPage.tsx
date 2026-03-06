@@ -12,7 +12,7 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const { session, updateConfig, clearSession } = useSessionStore();
   const { clearPlayers } = usePlayerStore();
-  const { clearHistory, initializeCourts } = useGameStore();
+  const { clearHistory, resizeCourts } = useGameStore();
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
@@ -24,7 +24,7 @@ export function SettingsPage() {
 
   const handleCourtCountChange = (count: number) => {
     updateConfig({ courtCount: count });
-    initializeCourts(count);
+    resizeCourts(count);
   };
 
   const handleTargetScoreChange = (score: number) => {
