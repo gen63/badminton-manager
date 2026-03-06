@@ -8,6 +8,7 @@ interface GameState {
   matchHistory: Match[];
   initializeCourts: (count: number) => void;
   resizeCourts: (count: number) => void;
+  removeCourtById: (courtId: number) => void;
   updateCourt: (courtId: number, updates: Partial<Court>) => void;
   startGame: (courtId: number) => void;
   finishGame: (courtId: number, scoreA: number, scoreB: number) => void;
@@ -56,9 +57,14 @@ export const useGameStore = create<GameState>()(
           const isCourtActive = (c: Court) => c.isPlaying || (c.teamA[0] && c.teamA[0] !== '');
           const activeCourts = existing.filter(isCourtActive);
           const emptyCourts = existing.filter(c => !isCourtActive(c));
-          // 使用中コートが収まらない場合はそのまま先頭からcount個
+          // 使用中コートが収まらない場合は使用中コートを優先保持
           if (activeCourts.length >= count) {
-            return { courts: existing.slice(0, count) };
+            const kept = activeCourts.slice(0, count);
+            return {
+              courts: kept
+                .sort((a, b) => a.id - b.id)
+                .map((c, i) => ({ ...c, id: i + 1 })),
+            };
           }
           // 使用中コートを保持 + 空きコートで残り枠を埋める
           const kept = [...activeCourts, ...emptyCourts.slice(0, count - activeCourts.length)];
@@ -69,6 +75,12 @@ export const useGameStore = create<GameState>()(
               .map((c, i) => ({ ...c, id: i + 1 })),
           };
         }),
+      removeCourtById: (courtId) =>
+        set((state) => ({
+          courts: state.courts
+            .filter((c) => c.id !== courtId)
+            .map((c, i) => ({ ...c, id: i + 1 })),
+        })),
       updateCourt: (courtId, updates) =>
         set((state) => ({
           courts: state.courts.map((c) =>
