@@ -262,6 +262,9 @@ export function MainPage() {
       );
 
       if (waitingPlayers.length < 4) {
+        if (waitingPlayers.length <= 1 && continuousMatchMode) {
+          setContinuousMatchMode(false);
+        }
         toast.error('待機中のプレイヤーが足りないため自動配置できません');
         return;
       }
@@ -422,6 +425,12 @@ export function MainPage() {
       if (recommended < courts.length) {
         resizeCourts(recommended);
         updateConfig({ courtCount: recommended });
+      }
+
+      // 待機可能メンバーが1人以下なら連続モードをオフ
+      const waitingCount = players.filter(p => !p.isResting && p.id !== playerId && !playersInCourts.has(p.id)).length;
+      if (waitingCount <= 1 && continuousMatchMode) {
+        setContinuousMatchMode(false);
       }
     }
   };
