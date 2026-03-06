@@ -19,7 +19,7 @@ export function MainPage() {
   const navigate = useNavigate();
   const { session, updateConfig } = useSessionStore();
   const { players, toggleRest, updatePlayer, addPlayers } = usePlayerStore();
-  const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts } =
+  const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, recordScores, prioritizeRotation } = useSettingsStore();
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
@@ -84,9 +84,8 @@ export function MainPage() {
     if (!court) return;
     const hasPlayers = court.teamA[0] && court.teamA[0] !== '';
     if (hasPlayers || court.isPlaying) return;
-    const newCount = courts.length - 1;
-    resizeCourts(newCount);
-    updateConfig({ courtCount: newCount });
+    removeCourtById(courtId);
+    updateConfig({ courtCount: courts.length - 1 });
   };
 
   const pendingReservations = reservations.filter(r => r.status === 'pending');
