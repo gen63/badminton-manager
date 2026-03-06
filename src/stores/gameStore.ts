@@ -7,6 +7,7 @@ interface GameState {
   courts: Court[];
   matchHistory: Match[];
   initializeCourts: (count: number) => void;
+  resizeCourts: (count: number) => void;
   updateCourt: (courtId: number, updates: Partial<Court>) => void;
   startGame: (courtId: number) => void;
   finishGame: (courtId: number, scoreA: number, scoreB: number) => void;
@@ -33,6 +34,40 @@ export const useGameStore = create<GameState>()(
             startedAt: null,
             finishedAt: null,
           })),
+        }),
+      resizeCourts: (count) =>
+        set((state) => {
+          const existing = state.courts;
+          if (count >= existing.length) {
+            // 増やす場合: 既存を保持し、新しいコートを追加
+            const newCourts = Array.from({ length: count - existing.length }, (_, i) => ({
+              id: existing.length + i + 1,
+              teamA: ['', ''] as [string, string],
+              teamB: ['', ''] as [string, string],
+              scoreA: 0,
+              scoreB: 0,
+              isPlaying: false,
+              startedAt: null as number | null,
+              finishedAt: null as number | null,
+            }));
+            return { courts: [...existing, ...newCourts] };
+          }
+          // 減らす場合: 使用中コートを優先保持し、空きコートを末尾から削除
+          const isCourtActive = (c: Court) => c.isPlaying || (c.teamA[0] && c.teamA[0] !== '');
+          const activeCourts = existing.filter(isCourtActive);
+          const emptyCourts = existing.filter(c => !isCourtActive(c));
+          // 使用中コートが収まらない場合はそのまま先頭からcount個
+          if (activeCourts.length >= count) {
+            return { courts: existing.slice(0, count) };
+          }
+          // 使用中コートを保持 + 空きコートで残り枠を埋める
+          const kept = [...activeCourts, ...emptyCourts.slice(0, count - activeCourts.length)];
+          // IDを1から振り直す
+          return {
+            courts: kept
+              .sort((a, b) => a.id - b.id)
+              .map((c, i) => ({ ...c, id: i + 1 })),
+          };
         }),
       updateCourt: (courtId, updates) =>
         set((state) => ({

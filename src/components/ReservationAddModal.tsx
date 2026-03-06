@@ -33,9 +33,11 @@ export function ReservationAddModal({
     }
   };
 
-  // 休憩中でないプレイヤーのみ選択可能
-  const selectablePlayers = players.filter(p => !p.isResting);
-  const restingPlayers = players.filter(p => p.isResting);
+  // 待機中→休憩中の順で表示
+  const sortedPlayers = [...players].sort((a, b) => {
+    if (a.isResting !== b.isResting) return a.isResting ? 1 : -1;
+    return 0;
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -58,7 +60,7 @@ export function ReservationAddModal({
 
         {/* Content */}
         <div className="p-4 flex flex-col gap-2">
-          {selectablePlayers.map((player) => {
+          {sortedPlayers.map((player) => {
             const isSelected = selectedIds.has(player.id);
             const textColor = player.gender === 'M'
               ? 'text-blue-600'
@@ -73,11 +75,13 @@ export function ReservationAddModal({
                 className={`relative flex items-center justify-between border-2 p-3 rounded-xl transition-all shadow-sm active:scale-95 ${
                   isSelected
                     ? 'bg-green-50 border-green-500'
+                    : player.isResting
+                    ? 'bg-muted/30 border-border'
                     : 'bg-card border-border'
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className={`font-semibold text-sm ${textColor}`}>
+                  <span className={`font-semibold text-sm ${player.isResting ? 'text-muted-foreground' : textColor}`}>
                     {getPlayerName(player.id)}
                   </span>
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
@@ -89,6 +93,11 @@ export function ReservationAddModal({
                   }`}>
                     {player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : '-'}
                   </span>
+                  {player.isResting && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700">
+                      休憩中
+                    </span>
+                  )}
                 </div>
                 {isSelected && (
                   <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white">
@@ -98,22 +107,6 @@ export function ReservationAddModal({
               </button>
             );
           })}
-
-          {restingPlayers.length > 0 && (
-            <div className="mt-2 opacity-50">
-              <p className="text-xs text-muted-foreground mb-1">休憩中（選択不可）</p>
-              {restingPlayers.map((player) => (
-                <div
-                  key={player.id}
-                  className="flex items-center p-3 rounded-xl border-2 border-border bg-muted/30 mb-2"
-                >
-                  <span className="font-semibold text-sm text-muted-foreground">
-                    {getPlayerName(player.id)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Footer */}
