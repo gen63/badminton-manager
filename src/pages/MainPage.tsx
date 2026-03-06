@@ -6,11 +6,13 @@ import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Settings, History, Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown } from 'lucide-react';
+import { Settings, History, Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown, CalendarCheck } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
 import { WinnerSelectModal } from '../components/WinnerSelectModal';
+import { useReservationStore } from '../stores/reservationStore';
+import { ReservationModal } from '../components/ReservationModal';
 
 export function MainPage() {
   const navigate = useNavigate();
@@ -20,6 +22,7 @@ export function MainPage() {
     useGameStore();
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, recordScores } = useSettingsStore();
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
+  const { reservations, addReservation, removeReservation, fulfillReservation } = useReservationStore();
   const toast = useToast();
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;
@@ -31,6 +34,7 @@ export function MainPage() {
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [showWinnerModal, setShowWinnerModal] = useState<{ courtId: number; teamA: string[]; teamB: string[] } | null>(null);
+  const [showReservationModal, setShowReservationModal] = useState(false);
   const playerCardRef = useRef<HTMLDivElement>(null);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
@@ -65,6 +69,8 @@ export function MainPage() {
     });
   };
 
+  const pendingReservations = reservations.filter(r => r.status === 'pending');
+
   const handleAutoAssign = (courtId?: number) => {
     try {
       let courtsToAssign: number[];
@@ -92,22 +98,32 @@ export function MainPage() {
           practiceStartTime: session?.config.practiceStartTime,
           allPlayers: allActivePlayers,
           useStayDurationPriority,
+          reservations,
         }
       );
 
-      courtsToAssign.forEach((id, index) => {
-        const assignment = assignments[index];
-        if (assignment) {
-          updateCourt(id, {
-            teamA: assignment.teamA,
-            teamB: assignment.teamB,
-            scoreA: 0,
-            scoreB: 0,
-            isPlaying: false,
-            startedAt: null,
-            finishedAt: null,
-          });
+      // 配置されたプレイヤーIDを集める
+      const assignedPlayerIds = new Set(
+        assignments.flatMap(a => [...a.teamA, ...a.teamB])
+      );
+
+      // 予約消化判定: 予約メンバー全員が配置されたら fulfilled
+      for (const reservation of pendingReservations) {
+        if (reservation.playerIds.every(id => assignedPlayerIds.has(id))) {
+          fulfillReservation(reservation.id);
         }
+      }
+
+      assignments.forEach((assignment) => {
+        updateCourt(assignment.courtId, {
+          teamA: assignment.teamA,
+          teamB: assignment.teamB,
+          scoreA: 0,
+          scoreB: 0,
+          isPlaying: false,
+          startedAt: null,
+          finishedAt: null,
+        });
       });
     } catch (error) {
       toast.error(
@@ -147,6 +163,7 @@ export function MainPage() {
       courts: structuredClone(useGameStore.getState().courts),
       players: structuredClone(usePlayerStore.getState().players),
       matchHistory: structuredClone(useGameStore.getState().matchHistory),
+      reservations: structuredClone(useReservationStore.getState().reservations),
     });
 
     // スコアを設定
@@ -487,6 +504,18 @@ export function MainPage() {
               <Users size={16} />
               <span>一括</span>
             </button>
+            <button
+              onClick={() => setShowReservationModal(true)}
+              className="relative flex items-center gap-1.5 px-2.5 py-1.5 bg-muted text-muted-foreground border border-border rounded-lg text-xs font-medium transition-all active:scale-95"
+            >
+              <CalendarCheck size={16} />
+              <span>予約</span>
+              {pendingReservations.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-orange-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                  {pendingReservations.length}
+                </span>
+              )}
+            </button>
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -735,7 +764,8 @@ export function MainPage() {
             <div className="grid grid-cols-3 gap-2">
               {activePlayers.map((player) => {
                 const isSelected = selectedPlayer?.id === player.id;
-                
+                const isReserved = pendingReservations.some(r => r.playerIds.includes(player.id));
+
                 return (
                   <button
                     key={player.id}
@@ -743,6 +773,8 @@ export function MainPage() {
                     className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm transition-all text-left h-[58px] ${
                       isSelected
                         ? 'ring-2 ring-primary ring-offset-1 border-primary'
+                        : isReserved
+                        ? 'border-orange-300 bg-orange-50/50'
                         : 'border-border'
                     }`}
                   >
@@ -773,14 +805,19 @@ export function MainPage() {
                         </button>
                       </div>
                     )}
+                    {isReserved && (
+                      <div className="absolute top-0.5 left-0.5">
+                        <span className="px-1 py-0.5 bg-orange-500 text-white text-[8px] font-bold rounded">予約</span>
+                      </div>
+                    )}
                     <div className="w-full text-center">
                       <div className="text-sm font-semibold truncate text-foreground leading-tight">{player.name}</div>
                       <div className="text-xs flex items-center justify-center gap-1 leading-tight">
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold leading-tight ${
-                          player.gender === 'M' 
-                            ? 'bg-blue-100 text-blue-700' 
-                            : player.gender === 'F' 
-                            ? 'bg-pink-100 text-pink-700' 
+                          player.gender === 'M'
+                            ? 'bg-blue-100 text-blue-700'
+                            : player.gender === 'F'
+                            ? 'bg-pink-100 text-pink-700'
                             : 'bg-muted text-muted-foreground'
                         }`}>
                           {player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : player.gender}
@@ -918,6 +955,18 @@ export function MainPage() {
           getPlayerGender={getPlayerGender}
           onConfirm={(winnerIds) => handleWinnerConfirm(showWinnerModal.courtId, winnerIds)}
           onCancel={() => setShowWinnerModal(null)}
+        />
+      )}
+
+      {showReservationModal && (
+        <ReservationModal
+          reservations={reservations}
+          players={players}
+          playersInCourts={playersInCourts}
+          getPlayerName={getPlayerName}
+          onAdd={(playerIds) => addReservation(playerIds)}
+          onRemove={(id) => removeReservation(id)}
+          onClose={() => setShowReservationModal(false)}
         />
       )}
 

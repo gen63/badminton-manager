@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { UndoEntry } from '../types/undo';
 import { useGameStore } from './gameStore';
 import { usePlayerStore } from './playerStore';
+import { useReservationStore } from './reservationStore';
 
 const MAX_UNDO = 50;
 
@@ -22,6 +23,7 @@ function createCurrentSnapshot(): UndoEntry {
     courts: structuredClone(useGameStore.getState().courts),
     players: structuredClone(usePlayerStore.getState().players),
     matchHistory: structuredClone(useGameStore.getState().matchHistory),
+    reservations: structuredClone(useReservationStore.getState().reservations),
     timestamp: Date.now(),
   };
 }
@@ -34,6 +36,11 @@ function restoreSnapshot(entry: UndoEntry) {
   usePlayerStore.setState({
     players: structuredClone(entry.players),
   });
+  if (entry.reservations) {
+    useReservationStore.setState({
+      reservations: structuredClone(entry.reservations),
+    });
+  }
 }
 
 export const useUndoStore = create<UndoState>()(
