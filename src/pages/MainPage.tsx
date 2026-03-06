@@ -543,11 +543,16 @@ export function MainPage() {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setContinuousMatchMode(!continuousMatchMode)}
+              onClick={() => {
+                if (prioritizeRotation && !continuousMatchMode) return;
+                setContinuousMatchMode(!continuousMatchMode);
+              }}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 ${
                 continuousMatchMode
                   ? 'bg-green-50 text-green-700 border border-green-200'
-                  : 'bg-muted text-muted-foreground border border-border'
+                  : prioritizeRotation
+                    ? 'bg-muted text-muted-foreground/40 border border-border cursor-not-allowed'
+                    : 'bg-muted text-muted-foreground border border-border'
               }`}
             >
               <Repeat size={16} />
