@@ -14,7 +14,7 @@ export function SettingsPage() {
   const { clearPlayers } = usePlayerStore();
   const { courts, clearHistory, resizeCourts } = useGameStore();
   const activeCourtCount = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== '')).length;
-  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeRotation, setPrioritizeRotation, setContinuousMatchMode } = useSettingsStore();
+  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeRotation, setPrioritizeRotation } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
 
@@ -238,7 +238,7 @@ export function SettingsPage() {
                   回数優先
                 </button>
                 <button
-                  onClick={() => { setPrioritizeRotation(true); setContinuousMatchMode(false); }}
+                  onClick={() => setPrioritizeRotation(true)}
                   className={`flex-1 select-button text-xs px-2 ${
                     prioritizeRotation
                       ? 'select-button-active'
