@@ -97,3 +97,16 @@ export function parsePlayerInput(
 
   return { name, rating, gender };
 }
+
+/**
+ * 参加人数に応じた推奨コート数を算出
+ * ルール: 待機人数（参加人数 - コート数×4）が2人以上になる最大コート数
+ */
+export function getRecommendedCourtCount(playerCount: number, maxCourts: number = 3): number {
+  for (let courts = maxCourts; courts >= 1; courts--) {
+    if (playerCount - courts * 4 >= 2) {
+      return courts;
+    }
+  }
+  return 1;
+}

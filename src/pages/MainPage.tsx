@@ -4,7 +4,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
-import { parsePlayerInput } from '../lib/utils';
+import { parsePlayerInput, getRecommendedCourtCount } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
 import { Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -17,9 +17,9 @@ import { BottomNav } from '../components/BottomNav';
 
 export function MainPage() {
   const navigate = useNavigate();
-  const { session } = useSessionStore();
+  const { session, updateConfig } = useSessionStore();
   const { players, toggleRest, updatePlayer, addPlayers } = usePlayerStore();
-  const { courts, matchHistory, updateCourt, startGame, finishGame } =
+  const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts } =
     useGameStore();
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, recordScores } = useSettingsStore();
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
@@ -393,6 +393,18 @@ export function MainPage() {
     }
 
     toggleRest(playerId);
+
+    // 休憩に入った場合、アクティブ人数に応じてコート数を自動縮小
+    if (!player?.isResting) {
+      // toggleRest後なのでisRestingが反転→休憩に入るケース
+      // 現在のアクティブ人数を再計算（この人を除外）
+      const activeCount = players.filter(p => !p.isResting && p.id !== playerId).length;
+      const recommended = getRecommendedCourtCount(activeCount, courts.length);
+      if (recommended < courts.length) {
+        resizeCourts(recommended);
+        updateConfig({ courtCount: recommended });
+      }
+    }
   };
 
   const handlePlayerTap = (
