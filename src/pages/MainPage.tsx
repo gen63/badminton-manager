@@ -6,7 +6,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { parsePlayerInput, getRecommendedCourtCount } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown } from 'lucide-react';
+import { Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown, Minus } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
@@ -68,6 +68,25 @@ export function MainPage() {
       startedAt: null,
       finishedAt: null,
     });
+  };
+
+  const handleAddCourt = () => {
+    if (courts.length < 3) {
+      const newCount = courts.length + 1;
+      resizeCourts(newCount);
+      updateConfig({ courtCount: newCount });
+    }
+  };
+
+  const handleRemoveCourt = (courtId: number) => {
+    if (courts.length <= 1) return;
+    const court = courts.find(c => c.id === courtId);
+    if (!court) return;
+    const hasPlayers = court.teamA[0] && court.teamA[0] !== '';
+    if (hasPlayers || court.isPlaying) return;
+    const newCount = courts.length - 1;
+    resizeCourts(newCount);
+    updateConfig({ courtCount: newCount });
   };
 
   const pendingReservations = reservations.filter(r => r.status === 'pending');
@@ -561,7 +580,7 @@ export function MainPage() {
                 : null;
 
               return (
-                <div key={court.id} className="w-full bg-card border border-border rounded-xl shadow-sm flex flex-col overflow-hidden">
+                <div key={court.id} className="w-full bg-card border border-border rounded-xl shadow-sm flex flex-col overflow-hidden min-w-0">
                   <div className="flex items-center justify-between px-2 py-2 border-b border-border bg-muted/20">
                     <div className="flex items-center gap-1.5">
                       <span className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
@@ -573,7 +592,7 @@ export function MainPage() {
                         {court.isPlaying && matchNumber ? `#${matchNumber}` : hasPlayers ? '準備中' : '空き'}
                       </span>
                     </div>
-                    {court.isPlaying && court.startedAt && (
+                    {court.isPlaying && court.startedAt ? (
                       <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium">
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <circle cx="12" cy="12" r="10" strokeWidth="2"/>
@@ -581,6 +600,14 @@ export function MainPage() {
                         </svg>
                         <span>{formatElapsedTime(court.startedAt)}</span>
                       </div>
+                    ) : !hasPlayers && courts.length > 1 && (
+                      <button
+                        onClick={() => handleRemoveCourt(court.id)}
+                        className="w-5 h-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center hover:bg-destructive/20 hover:text-destructive transition-colors"
+                        aria-label="コート削除"
+                      >
+                        <Minus size={12} />
+                      </button>
                     )}
                   </div>
                   
@@ -687,6 +714,15 @@ export function MainPage() {
                 </div>
               );
             })}
+            {courts.length < 3 && (
+              <button
+                onClick={handleAddCourt}
+                className="w-full bg-card border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center gap-1 min-h-[80px] hover:border-primary/50 hover:bg-primary/5 transition-colors"
+              >
+                <Plus size={20} className="text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">コート追加</span>
+              </button>
+            )}
           </div>
         </section>
 
