@@ -46,7 +46,7 @@ export function ReservationModal({
         getPlayerName={getPlayerName}
         onConfirm={(playerIds) => {
           onAdd(playerIds);
-          setShowAdd(false);
+          onClose();
         }}
         onCancel={() => setShowAdd(false)}
       />
