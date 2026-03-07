@@ -6,8 +6,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useUndoStore } from '../stores/undoStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
-import { GYM_OPTIONS } from '../types/session';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Clock, MapPin } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -83,44 +82,6 @@ export function SettingsPage() {
                   </button>
                 ))}
               </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-gray-700 mb-1.5 block flex items-center gap-1.5">
-                <MapPin size={12} />
-                体育館
-              </label>
-              <input
-                type="text"
-                list="gym-options-settings"
-                value={session.config.gym || ''}
-                onChange={(e) => updateConfig({ gym: e.target.value || undefined })}
-                placeholder="選択または入力してください"
-                className="input-field min-h-[44px] w-auto"
-              />
-              <datalist id="gym-options-settings">
-                {GYM_OPTIONS.map((gym) => (
-                  <option key={gym} value={gym} />
-                ))}
-              </datalist>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-gray-700 mb-1.5 block flex items-center gap-1.5">
-                <Clock size={12} />
-                練習開始日時
-              </label>
-              <input
-                type="datetime-local"
-                value={new Date(session.config.practiceStartTime - new Date(session.config.practiceStartTime).getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
-                onChange={(e) => {
-                  const newTime = new Date(e.target.value).getTime();
-                  if (!isNaN(newTime)) {
-                    updateConfig({ practiceStartTime: newTime });
-                  }
-                }}
-                className="input-field min-h-[44px] w-auto"
-              />
             </div>
 
             <div>

@@ -10,6 +10,7 @@ export interface AccountingRecord {
   femaleFee: number;
   exemptCount: number;
   participantCount: number;
+  matchCount: number;
   members: string; // JSON形式: [{"name":"山田太郎","gender":"M"}]
   incomeTotal: number; // 収入合計
   gymCost: number;

@@ -5,7 +5,8 @@ import { useAccountingStore } from '../stores/accountingStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useGameStore } from '../stores/gameStore';
 import { sendAccountingToSheets } from '../lib/sheetsApi';
-import { DollarSign, Copy, Upload, Loader2 } from 'lucide-react';
+import { GYM_OPTIONS } from '../types/session';
+import { DollarSign, Copy, Upload, Loader2, MapPin, Clock } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
@@ -13,7 +14,7 @@ import { BottomNav } from '../components/BottomNav';
 
 export function AccountingPage() {
   const navigate = useNavigate();
-  const { session } = useSessionStore();
+  const { session, updateConfig } = useSessionStore();
   const { players } = usePlayerStore();
   const { matchHistory } = useGameStore();
   const { records, addRecord, lastInput, saveLastInput } = useAccountingStore();
@@ -29,6 +30,7 @@ export function AccountingPage() {
   const [gymCost, setGymCost] = useState<number>(900);
   const [shuttlePrice, setShuttlePrice] = useState<number>(480);
   const [shuttleCount, setShuttleCount] = useState<number>(0);
+  const [matchCount, setMatchCount] = useState<number>(0);
   const [practiceType, setPracticeType] = useState<string>('複');
   const [otherDescription, setOtherDescription] = useState<string>('');
   const [otherAmount, setOtherAmount] = useState<number>(0);
@@ -81,6 +83,7 @@ export function AccountingPage() {
       setGymCost(lastInput.gymCost);
       setShuttlePrice(lastInput.shuttlePrice);
       setShuttleCount(lastInput.shuttleCount);
+      setMatchCount(lastInput.matchCount || 0);
       // 古いデータとの互換性のため、practiceTypeがなければデフォルト値
       // 旧形式（ダブルス/シングルス/初級）を新形式（複/単/楽）に変換
       let type = lastInput.practiceType || '複';
@@ -124,6 +127,7 @@ export function AccountingPage() {
       setMaleCount(maleParticipants);
       setFemaleCount(femaleParticipants);
       setShuttleCount(estimatedShuttles);
+      setMatchCount(matchHistory.length);
     }
 
     // 保存された値がない場合のみ、料金設定を過去データ・固定値から取得
@@ -164,6 +168,7 @@ export function AccountingPage() {
     gymCost: number;
     shuttlePrice: number;
     shuttleCount: number;
+    matchCount: number;
     practiceType: string;
     otherDescription: string;
     otherAmount: number;
@@ -177,6 +182,7 @@ export function AccountingPage() {
       gymCost: overrides.gymCost ?? gymCost,
       shuttlePrice: overrides.shuttlePrice ?? shuttlePrice,
       shuttleCount: overrides.shuttleCount ?? shuttleCount,
+      matchCount: overrides.matchCount ?? matchCount,
       practiceType: overrides.practiceType ?? practiceType,
       otherDescription: overrides.otherDescription ?? otherDescription,
       otherAmount: overrides.otherAmount ?? otherAmount,
@@ -237,6 +243,7 @@ export function AccountingPage() {
     const lines = [
       `${formattedDate} ${gymShortName} ${practiceType}`,
       `参加合計 ${participantCount}人(免除${exemptCount} 男${maleCount} 女${femaleCount})`,
+      `試合数 ${matchCount}試合`,
       '',
       '【収入】',
       `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
@@ -361,6 +368,7 @@ export function AccountingPage() {
       femaleFee,
       exemptCount,
       participantCount,
+      matchCount,
       members: membersJson,
       incomeTotal,
       gymCost,
@@ -387,6 +395,7 @@ export function AccountingPage() {
           femaleFee,
           exemptCount,
           participantCount,
+          matchCount,
           members: membersJson,
           incomeTotal,
           gymCost,
@@ -419,10 +428,53 @@ export function AccountingPage() {
       </div>
 
       <div className="max-w-md mx-auto p-3 space-y-3">
-        {/* 日付・体育館 */}
-        <div className="card p-4 bg-blue-50 border-blue-200">
-          <div className="text-2xl font-bold text-center text-gray-800">
-            {formattedDate} {gymShortName} {practiceType}
+        {/* 日付・体育館・練習日時 */}
+        <div className="card p-4 space-y-3">
+          {/* 日付・体育館・練習種別の表示 */}
+          <div className="bg-blue-50 rounded-lg p-3 text-center">
+            <div className="text-2xl font-bold text-gray-800">
+              {formattedDate} {gymShortName} {practiceType}
+            </div>
+          </div>
+
+          {/* 体育館選択 */}
+          <div>
+            <label className="text-xs font-semibold text-gray-700 mb-1.5 block flex items-center gap-1.5">
+              <MapPin size={12} />
+              体育館
+            </label>
+            <input
+              type="text"
+              list="gym-options-accounting"
+              value={session.config.gym || ''}
+              onChange={(e) => updateConfig({ gym: e.target.value || undefined })}
+              placeholder="選択または入力してください"
+              className="input-field min-h-[44px] w-full"
+            />
+            <datalist id="gym-options-accounting">
+              {GYM_OPTIONS.map((gym) => (
+                <option key={gym} value={gym} />
+              ))}
+            </datalist>
+          </div>
+
+          {/* 練習開始日時 */}
+          <div>
+            <label className="text-xs font-semibold text-gray-700 mb-1.5 block flex items-center gap-1.5">
+              <Clock size={12} />
+              練習開始日時
+            </label>
+            <input
+              type="datetime-local"
+              value={new Date(session.config.practiceStartTime - new Date(session.config.practiceStartTime).getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+              onChange={(e) => {
+                const newTime = new Date(e.target.value).getTime();
+                if (!isNaN(newTime)) {
+                  updateConfig({ practiceStartTime: newTime });
+                }
+              }}
+              className="input-field min-h-[44px] w-full"
+            />
           </div>
         </div>
 
@@ -545,6 +597,37 @@ export function AccountingPage() {
                   +
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 試合回数 */}
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 text-gray-700">試合回数</h2>
+          <div className="flex items-center justify-between bg-purple-50 rounded-lg px-3 py-2">
+            <span className="text-sm text-gray-600">試合数</span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  const newValue = Math.max(0, matchCount - 1);
+                  setMatchCount(newValue);
+                  saveAllInputs({ matchCount: newValue });
+                }}
+                className="w-7 h-7 rounded-full bg-white text-purple-600 hover:bg-purple-100 active:scale-95 flex items-center justify-center font-bold text-sm"
+              >
+                −
+              </button>
+              <span className="text-2xl font-bold text-purple-800 w-12 text-center">{matchCount}</span>
+              <button
+                onClick={() => {
+                  const newValue = matchCount + 1;
+                  setMatchCount(newValue);
+                  saveAllInputs({ matchCount: newValue });
+                }}
+                className="w-7 h-7 rounded-full bg-white text-purple-600 hover:bg-purple-100 active:scale-95 flex items-center justify-center font-bold text-sm"
+              >
+                +
+              </button>
             </div>
           </div>
         </div>

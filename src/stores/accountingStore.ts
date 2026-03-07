@@ -11,6 +11,7 @@ interface LastInput {
   gymCost: number;
   shuttlePrice: number;
   shuttleCount: number;
+  matchCount: number;
   practiceType: string;
   otherDescription?: string;
   otherAmount?: number;
