@@ -6,6 +6,7 @@ import { HistoryPage } from './pages/HistoryPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ScoreInputPage } from './pages/ScoreInputPage';
 import { AccountingPage } from './pages/AccountingPage';
+import { ReservationPage } from './pages/ReservationPage';
 import { PWAPrompt } from './components/PWAPrompt';
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/accounting" element={<AccountingPage />} />
+        <Route path="/reservation" element={<ReservationPage />} />
         <Route path="/score/:matchId" element={<ScoreInputPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
