@@ -110,3 +110,49 @@ export function getRecommendedCourtCount(playerCount: number, maxCourts: number 
   }
   return 1;
 }
+
+/**
+ * 流動優先モードのブロック判定ユーティリティ。
+ *
+ * @param prioritizeRotation 流動優先モードかどうか
+ * @param occupiedCourts 目前でプレー中またはプレイヤーが入っているコート数
+ * @param emptyCourts 空いているコート数
+ * @param waitingCount 待機中のプレイヤー人数（コート内に入っていないアクティブプレイヤー）
+ * @param totalActiveCount アクティブ（休憩中でない）プレイヤーの総数
+ * @param baseThreshold ブロックするための基本待機人数閾値（従来は3／7など）
+ *
+ * ブロックされる条件:
+ *   1. 流動優先モードが有効
+ *   2. 少なくとも1コートはプレー中かプレイヤー割り当て済みかつ
+ *      1コート以上が空いている
+ *   3. 待機人数が baseThreshold 未満 または
+ *      総アクティブ人数がコートキャパシティ（totalCourts×4）に
+ *      等しく、かつまだ全コートが空いていない（＝空きが1つ以上）
+ *
+ * この2番目の追加条件により「2コート8人のとき、1コートだけが
+ * 終了して待機4人になるケース」などをブロックできる。
+ */
+export function shouldBlockForRotation(
+  prioritizeRotation: boolean,
+  occupiedCourts: number,
+  emptyCourts: number,
+  waitingCount: number,
+  totalActiveCount: number,
+  baseThreshold: number
+): boolean {
+  if (!prioritizeRotation) return false;
+  if (occupiedCourts === 0 || emptyCourts === 0) return false;
+
+  const remainingAfterAssignment = Math.max(0, waitingCount - (emptyCourts * 4));
+  if (remainingAfterAssignment < baseThreshold) {
+    return true;
+  }
+
+  const totalCourts = occupiedCourts + emptyCourts;
+  const maxCapacity = totalCourts * 4;
+  if (totalActiveCount === maxCapacity && emptyCourts < totalCourts) {
+    return true;
+  }
+
+  return false;
+}

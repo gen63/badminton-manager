@@ -95,3 +95,71 @@ describe('generateSessionId', () => {
     expect(id1).not.toBe(id2);
   });
 });
+
+// --- 流動優先関連のテスト -----------------------------------------------
+import { shouldBlockForRotation } from './utils';
+
+describe('shouldBlockForRotation', () => {
+  it('returns false when prioritizeRotation is off', () => {
+    expect(
+      shouldBlockForRotation(false, 1, 1, 0, 4, 3)
+    ).toBe(false);
+  });
+
+  it('requires at least one occupied and one empty court', () => {
+    expect(
+      shouldBlockForRotation(true, 0, 2, 0, 8, 3)
+    ).toBe(false);
+    expect(
+      shouldBlockForRotation(true, 2, 0, 0, 8, 3)
+    ).toBe(false);
+  });
+
+  it('blocks when waitingCount below base threshold', () => {
+    expect(
+      shouldBlockForRotation(true, 1, 1, 2, 8, 3)
+    ).toBe(true);
+    expect(
+      shouldBlockForRotation(true, 1, 2, 6, 12, 7)
+    ).toBe(true);
+  });
+
+  it('blocks when active count equals capacity and not all courts empty', () => {
+    // 2 courts, 8 active, one occupied, one empty, waiting 4 which is >= threshold
+    expect(
+      shouldBlockForRotation(true, 1, 1, 4, 8, 3)
+    ).toBe(true);
+
+    // 3 courts, 12 active, two occupied one empty
+    expect(
+      shouldBlockForRotation(true, 2, 1, 4, 12, 3)
+    ).toBe(true);
+
+    // but if all courts empty, should not block even if active==capacity
+    expect(
+      shouldBlockForRotation(true, 0, 2, 8, 8, 3)
+    ).toBe(false);
+  });
+
+  it('blocks when remaining players after assignment below base threshold', () => {
+    // 2 courts, 1 occupied 1 empty, waiting 4, total 8, base 3 -> remaining 0 < 3 -> block
+    expect(
+      shouldBlockForRotation(true, 1, 1, 4, 8, 3)
+    ).toBe(true);
+
+    // waiting 6 -> remaining 2 < 3 -> block
+    expect(
+      shouldBlockForRotation(true, 1, 1, 6, 10, 3)
+    ).toBe(true);
+
+    // waiting 7 -> remaining 3 >= 3 -> not block (but full capacity blocks)
+    expect(
+      shouldBlockForRotation(true, 1, 1, 7, 11, 3)
+    ).toBe(true); // still blocked by full capacity
+
+    // waiting 8 -> remaining 4 >= 3 and totalActive 12 > 8 -> not block
+    expect(
+      shouldBlockForRotation(true, 1, 1, 8, 12, 3)
+    ).toBe(false);
+  });
+});

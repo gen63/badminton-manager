@@ -4,7 +4,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
-import { parsePlayerInput, getRecommendedCourtCount } from '../lib/utils';
+import { parsePlayerInput, getRecommendedCourtCount, shouldBlockForRotation } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
 import { Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown, Minus, Settings } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -22,6 +22,9 @@ export function MainPage() {
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, recordScores, prioritizeRotation } = useSettingsStore();
+
+  // total active players cache used by flow-priority checks
+  const totalActiveCount = players.filter(p => !p.isResting).length;
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
   const { reservations, fulfillReservation } = useReservationStore();
   const toast = useToast();
@@ -394,12 +397,23 @@ export function MainPage() {
   const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
   const occupiedCourts = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
   const waitingCount = sortedWaitingPlayers.length;
-  const shouldBlockAssignment = prioritizeRotation
-    && occupiedCourts.length > 0 && emptyCourts.length > 0 && waitingCount < 3;
-  const shouldBlockContinuous = prioritizeRotation
-    && occupiedCourts.length > 0 && waitingCount < 7;
+  const shouldBlockAssignment = shouldBlockForRotation(
+    prioritizeRotation,
+    occupiedCourts.length,
+    emptyCourts.length,
+    waitingCount,
+    totalActiveCount,
+    3
+  );
+  const shouldBlockContinuous = shouldBlockForRotation(
+    prioritizeRotation,
+    occupiedCourts.length,
+    emptyCourts.length,
+    waitingCount,
+    totalActiveCount,
+    7
+  );
   const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= 4 && !shouldBlockAssignment;
-  const totalActiveCount = players.filter(p => !p.isResting).length;
   const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * 4;
 
   const handleSwapPlayer = (courtId: number, position: number, newPlayerId: string) => {
@@ -599,7 +613,7 @@ export function MainPage() {
               <span>一括</span>
             </button>
             {shouldBlockAssignment && emptyCourts.length > 0 && (
-              <span className="text-[10px] text-muted-foreground leading-tight min-w-0">流動性確保のため待機中</span>
+              <span className="text-[10px] text-muted-foreground leading-tight min-w-0">全コート終了を待って一括配置を推奨</span>
             )}
           </div>
           <div className="flex items-center gap-1.5">
