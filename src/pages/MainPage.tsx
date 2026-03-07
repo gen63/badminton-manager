@@ -12,7 +12,7 @@ import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
 import { WinnerSelectModal } from '../components/WinnerSelectModal';
 import { useReservationStore } from '../stores/reservationStore';
-import { ReservationModal } from '../components/ReservationModal';
+
 import { BottomNav } from '../components/BottomNav';
 
 export function MainPage() {
@@ -23,7 +23,7 @@ export function MainPage() {
     useGameStore();
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, recordScores, prioritizeRotation } = useSettingsStore();
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
-  const { reservations, addReservation, removeReservation, fulfillReservation } = useReservationStore();
+  const { reservations, fulfillReservation } = useReservationStore();
   const toast = useToast();
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;
@@ -35,7 +35,7 @@ export function MainPage() {
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [showWinnerModal, setShowWinnerModal] = useState<{ courtId: number; teamA: string[]; teamB: string[] } | null>(null);
-  const [showReservationModal, setShowReservationModal] = useState(false);
+
   const playerCardRef = useRef<HTMLDivElement>(null);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
@@ -52,6 +52,7 @@ export function MainPage() {
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
 
   if (!session) {
     navigate('/');
@@ -1030,18 +1031,6 @@ export function MainPage() {
         />
       )}
 
-      {showReservationModal && (
-        <ReservationModal
-          reservations={reservations}
-          players={players}
-          playersInCourts={playersInCourts}
-          getPlayerName={getPlayerName}
-          onAdd={(playerIds) => addReservation(playerIds)}
-          onRemove={(id) => removeReservation(id)}
-          onClose={() => setShowReservationModal(false)}
-        />
-      )}
-
       {/* Toast notifications */}
       {toast.toasts.map((t) => (
         <Toast
@@ -1052,10 +1041,7 @@ export function MainPage() {
         />
       ))}
 
-      <BottomNav
-        activeTab="reservation"
-        onReservationOpen={() => setShowReservationModal(true)}
-      />
+      <BottomNav activeTab="court" />
     </div>
   );
 }

@@ -1,22 +1,22 @@
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, History, Users, DollarSign } from 'lucide-react';
+import { CalendarCheck, History, Users, DollarSign, LayoutGrid } from 'lucide-react';
 import { useReservationStore } from '../stores/reservationStore';
 
-type TabId = 'reservation' | 'players' | 'accounting' | 'history';
+type TabId = 'reservation' | 'court' | 'players' | 'accounting' | 'history';
 
 interface BottomNavProps {
   activeTab: TabId;
-  onReservationOpen?: () => void;
 }
 
-export function BottomNav({ activeTab, onReservationOpen }: BottomNavProps) {
+export function BottomNav({ activeTab }: BottomNavProps) {
   const navigate = useNavigate();
   const reservationCount = useReservationStore(
     (s) => s.reservations.filter((r) => r.status === 'pending').length
   );
 
-  const tabs: { id: TabId; label: string; icon: typeof CalendarCheck; path?: string }[] = [
-    { id: 'reservation', label: '予約', icon: CalendarCheck },
+  const tabs: { id: TabId; label: string; icon: typeof CalendarCheck; path: string }[] = [
+    { id: 'reservation', label: '予約', icon: CalendarCheck, path: '/reservation' },
+    { id: 'court', label: 'メイン', icon: LayoutGrid, path: '/main' },
     { id: 'players', label: '参加者', icon: Users, path: '/players' },
     { id: 'accounting', label: '会計', icon: DollarSign, path: '/accounting' },
     { id: 'history', label: '履歴', icon: History, path: '/history' },
@@ -24,15 +24,7 @@ export function BottomNav({ activeTab, onReservationOpen }: BottomNavProps) {
 
   const handleTabClick = (tab: (typeof tabs)[number]) => {
     if (tab.id === activeTab) return;
-    if (tab.id === 'reservation') {
-      if (onReservationOpen) {
-        onReservationOpen();
-      } else {
-        navigate('/main');
-      }
-    } else if (tab.path) {
-      navigate(tab.path);
-    }
+    navigate(tab.path);
   };
 
   return (
@@ -45,14 +37,14 @@ export function BottomNav({ activeTab, onReservationOpen }: BottomNavProps) {
             <button
               key={tab.id}
               onClick={() => handleTabClick(tab)}
-              className={`relative flex flex-col items-center justify-center gap-1 min-w-[64px] h-[48px] active:scale-95 transition-transform ${
+              className={`relative flex flex-col items-center justify-center gap-1 min-w-[56px] h-[48px] active:scale-95 transition-transform ${
                 isActive ? 'text-blue-600' : 'text-gray-400'
               }`}
             >
               <Icon size={22} />
               <span className="text-[10px] font-medium">{tab.label}</span>
               {tab.id === 'reservation' && reservationCount > 0 && (
-                <span className="absolute top-0 right-1.5 min-w-[18px] h-[18px] bg-orange-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                <span className="absolute top-0 right-0.5 min-w-[18px] h-[18px] bg-orange-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
                   {reservationCount}
                 </span>
               )}
