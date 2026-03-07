@@ -5,7 +5,7 @@ import { useAccountingStore } from '../stores/accountingStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useGameStore } from '../stores/gameStore';
 import { sendAccountingToSheets } from '../lib/sheetsApi';
-import { ArrowLeft, DollarSign, Copy, Upload, Loader2 } from 'lucide-react';
+import { DollarSign, Copy, Upload, Loader2 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
@@ -411,13 +411,6 @@ export function AccountingPage() {
       {/* ヘッダー */}
       <div className="header-gradient text-gray-800 p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
-          <button
-            onClick={() => navigate('/main')}
-            aria-label="戻る"
-            className="icon-btn"
-          >
-            <ArrowLeft size={20} />
-          </button>
           <div className="flex items-center gap-2">
             <DollarSign size={20} />
             <h1 className="text-lg font-bold">会計</h1>
