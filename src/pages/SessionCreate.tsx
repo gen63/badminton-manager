@@ -7,7 +7,7 @@ import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { generateSessionId, parsePlayerInput, getRecommendedCourtCount } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
-import { Sparkles, Download, Loader2 } from 'lucide-react';
+import { Sparkles, Download, Loader2, Play } from 'lucide-react';
 
 // 現在日時を取得（曜日に応じて時刻を設定）
 const getInitialDateTime = () => {
@@ -247,12 +247,18 @@ export function SessionCreate() {
 
   return (
     <div className="bg-app overflow-x-hidden">
+      {/* ヘッダー */}
+      <div className="header-gradient text-gray-800 p-3">
+        <div className="max-w-6xl mx-auto flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Play size={20} />
+            <h1 className="text-lg font-bold">セッション開始</h1>
+          </div>
+        </div>
+      </div>
+
       <div className="max-w-md mx-auto w-full px-4 py-6">
         <div className="card p-6 space-y-6 overflow-hidden">
-          {/* タイトル */}
-          <h1 className="text-xl font-bold text-center text-gray-800">
-            セッション開始
-          </h1>
 
           {/* 当日参加者 */}
           <div>
