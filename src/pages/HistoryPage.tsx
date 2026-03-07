@@ -6,7 +6,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { formatTime, copyToClipboard } from '../lib/utils';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
-import { Copy, Trash2, Edit3, Clock, Upload, Loader2 } from 'lucide-react';
+import { Copy, Trash2, Edit3, Clock, Upload, Loader2, History } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
@@ -75,7 +75,10 @@ export function HistoryPage() {
       {/* ヘッダー */}
       <div className="header-gradient text-gray-800 p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
-          <h1 className="text-lg font-bold flex-1">試合履歴</h1>
+          <div className="flex items-center gap-2 flex-1">
+            <History size={20} />
+            <h1 className="text-lg font-bold">試合履歴</h1>
+          </div>
           {gasWebAppUrl && (
             <button
               onClick={handleUpload}
