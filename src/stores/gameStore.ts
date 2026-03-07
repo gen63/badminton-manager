@@ -109,7 +109,7 @@ export const useGameStore = create<GameState>()(
             scoreB,
             startedAt: court.startedAt || Date.now(),
             finishedAt: Date.now(),
-            winner: scoreA > scoreB ? 'A' : 'B',
+            // winner is not set here, will be set later
           };
 
           return {

@@ -5,7 +5,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
-import { generateSessionId, parsePlayerInput, getRecommendedCourtCount } from '../lib/utils';
+import { generateSessionId, parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { Sparkles, Download, Loader2, Play } from 'lucide-react';
 
@@ -91,7 +91,6 @@ export function SessionCreate() {
     }
   }, [needRefresh, updateServiceWorker]);
 
-  const [courtCount] = useState(1);
   const [targetScore] = useState(15);
   const [selectedGym] = useState(getInitialGym);
   const [practiceDateTime] = useState(getInitialDateTime);
@@ -169,9 +168,9 @@ export function SessionCreate() {
       
       // パターン1のみ自動開始（入力欄が空だった場合）
       if (!hasInputNames && inputs.length > 0) {
-        const result = addPlayers(inputs);
+        addPlayers(inputs);
 
-        const adjustedCourtCount = getRecommendedCourtCount(result.added, 3);
+        const adjustedCourtCount = 1;
         const sessionId = generateSessionId();
         const now = Date.now();
         const practiceTime = new Date(practiceDateTime).getTime();
@@ -210,21 +209,17 @@ export function SessionCreate() {
   };
 
   const handleCreate = () => {
-    let playerCount = 0;
     if (playerNames.trim()) {
       const inputs = playerNames
         .split('\n')
         .map((line) => parsePlayerInput(line))
         .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
       if (inputs.length > 0) {
-        const result = addPlayers(inputs);
-        playerCount = result.added;
+        addPlayers(inputs);
       }
     }
 
-    const adjustedCourtCount = playerCount > 0
-      ? getRecommendedCourtCount(playerCount, 3)
-      : courtCount;
+    const adjustedCourtCount = 1;
     const sessionId = generateSessionId();
     const now = Date.now();
     const practiceTime = new Date(practiceDateTime).getTime();

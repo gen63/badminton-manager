@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { CalendarCheck, History, Users, DollarSign, LayoutGrid } from 'lucide-react';
 import { useReservationStore } from '../stores/reservationStore';
+import { useGameStore } from '../stores/gameStore';
 
 type TabId = 'reservation' | 'court' | 'players' | 'accounting' | 'history';
 
@@ -12,6 +13,9 @@ export function BottomNav({ activeTab }: BottomNavProps) {
   const navigate = useNavigate();
   const reservationCount = useReservationStore(
     (s) => s.reservations.filter((r) => r.status === 'pending').length
+  );
+  const unrecordedMatchesCount = useGameStore(
+    (s) => s.matchHistory.filter((m) => m.winner === undefined).length
   );
 
   const tabs: { id: TabId; label: string; icon: typeof CalendarCheck; path: string }[] = [
@@ -46,6 +50,11 @@ export function BottomNav({ activeTab }: BottomNavProps) {
               {tab.id === 'reservation' && reservationCount > 0 && (
                 <span className="absolute top-0 right-0.5 min-w-[18px] h-[18px] bg-orange-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
                   {reservationCount}
+                </span>
+              )}
+              {tab.id === 'history' && unrecordedMatchesCount > 0 && (
+                <span className="absolute top-0 right-0.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                  {unrecordedMatchesCount}
                 </span>
               )}
             </button>

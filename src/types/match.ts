@@ -7,7 +7,7 @@ export interface Match {
   scoreB: number;
   startedAt: number;
   finishedAt: number;
-  winner: 'A' | 'B';
+  winner?: 'A' | 'B';
 }
 
 export interface MatchLog extends Match {
