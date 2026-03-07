@@ -5,6 +5,7 @@ import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useUndoStore } from '../stores/undoStore';
 import { useAccountingStore } from '../stores/accountingStore';
+import { useReservationStore } from '../stores/reservationStore';
 import { GYM_OPTIONS } from '../types/session';
 import { ArrowLeft, Trash2, Settings as SettingsIcon, Clock, MapPin } from 'lucide-react';
 
@@ -17,6 +18,7 @@ export function SettingsPage() {
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeRotation, setPrioritizeRotation } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
+  const { clearReservations } = useReservationStore();
 
   if (!session) {
     navigate('/');
@@ -37,6 +39,7 @@ export function SettingsPage() {
     clearPlayers();
     clearUndo();
     clearRecords();
+    clearReservations();
     clearSession();
     navigate('/');
   };

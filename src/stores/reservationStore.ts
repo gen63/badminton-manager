@@ -16,18 +16,22 @@ export const useReservationStore = create<ReservationState>()(
       reservations: [],
 
       addReservation: (playerIds) =>
-        set((state) => ({
-          reservations: [
-            ...state.reservations,
-            {
-              id: `rsv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              playerIds,
-              status: 'pending',
-              createdAt: Date.now(),
-              fulfilledAt: null,
-            },
-          ],
-        })),
+        set((state) => {
+          const maxOrder = state.reservations.reduce((max, r) => Math.max(max, r.orderNumber ?? 0), 0);
+          return {
+            reservations: [
+              ...state.reservations,
+              {
+                id: `rsv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                orderNumber: maxOrder + 1,
+                playerIds,
+                status: 'pending',
+                createdAt: Date.now(),
+                fulfilledAt: null,
+              },
+            ],
+          };
+        }),
 
       removeReservation: (id) =>
         set((state) => ({

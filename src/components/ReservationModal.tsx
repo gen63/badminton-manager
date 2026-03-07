@@ -86,7 +86,7 @@ export function ReservationModal({
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-muted-foreground">#{index + 1}</span>
+                    <span className="text-xs font-bold text-muted-foreground">#{reservation.orderNumber ?? index + 1}</span>
                     {status === 'ready' ? (
                       <span className="flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">
                         <CheckCircle2 size={10} />
@@ -156,6 +156,9 @@ export function ReservationModal({
                       key={reservation.id}
                       className="bg-muted/30 border border-border rounded-xl p-3"
                     >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-bold text-muted-foreground">#{reservation.orderNumber ?? '?'}</span>
+                      </div>
                       <div className="flex flex-wrap gap-1.5">
                         {reservation.playerIds.map(id => (
                           <span
