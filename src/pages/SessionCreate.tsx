@@ -59,6 +59,7 @@ export function SessionCreate() {
   const initializeCourts = useGameStore((state) => state.initializeCourts);
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
+  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeRotation, setPrioritizeRotation } = useSettingsStore();
 
   // PWA更新検知 & 自動リロード
   const {
@@ -303,6 +304,92 @@ export function SessionCreate() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* 配置モード */}
+          <div>
+            <label className="label">配置モード</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setUseStayDurationPriority(true)}
+                className={`flex-1 select-button text-xs px-2 ${
+                  useStayDurationPriority ? 'select-button-active' : 'select-button-inactive'
+                }`}
+              >
+                {useStayDurationPriority && <span className="mr-1">✓</span>}
+                待機時間
+              </button>
+              <button
+                onClick={() => setUseStayDurationPriority(false)}
+                className={`flex-1 select-button text-xs px-2 ${
+                  !useStayDurationPriority ? 'select-button-active' : 'select-button-inactive'
+                }`}
+              >
+                {!useStayDurationPriority && <span className="mr-1">✓</span>}
+                試合回数
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-500 mt-1">
+              {useStayDurationPriority ? '滞在時間が長い人を優先' : '試合回数が少ない人を優先'}
+            </p>
+          </div>
+
+          {/* 勝敗記録 */}
+          <div>
+            <label className="label">勝敗記録</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setRecordScores(true)}
+                className={`flex-1 select-button text-xs px-2 ${
+                  recordScores ? 'select-button-active' : 'select-button-inactive'
+                }`}
+              >
+                {recordScores && <span className="mr-1">✓</span>}
+                ON
+              </button>
+              <button
+                onClick={() => setRecordScores(false)}
+                className={`flex-1 select-button text-xs px-2 ${
+                  !recordScores ? 'select-button-active' : 'select-button-inactive'
+                }`}
+              >
+                {!recordScores && <span className="mr-1">✓</span>}
+                OFF
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-500 mt-1">
+              {recordScores ? '終了時に勝敗を記録' : '勝敗記録なし'}
+            </p>
+          </div>
+
+          {/* 配置タイミング */}
+          <div>
+            <label className="label">配置タイミング</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPrioritizeRotation(true)}
+                className={`flex-1 select-button text-xs px-2 ${
+                  prioritizeRotation ? 'select-button-active' : 'select-button-inactive'
+                }`}
+              >
+                {prioritizeRotation && <span className="mr-1">✓</span>}
+                流動優先
+              </button>
+              <button
+                onClick={() => setPrioritizeRotation(false)}
+                className={`flex-1 select-button text-xs px-2 ${
+                  !prioritizeRotation ? 'select-button-active' : 'select-button-inactive'
+                }`}
+              >
+                {!prioritizeRotation && <span className="mr-1">✓</span>}
+                回数優先
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-500 mt-1">
+              {prioritizeRotation
+                ? '待機者が少ない時は他コート終了を待って一括配置'
+                : '空きが出たら即座に配置'}
+            </p>
           </div>
 
           {/* 作成ボタン */}

@@ -60,8 +60,8 @@ export function MainPage() {
     const empty = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
     const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
     const active = players.filter(p => !p.isResting);
-    const origWaiting = active.length - courts.length * 4;
-    if (occupied.length > 0 && empty.length > 0 && origWaiting < 3) {
+    const actualWaiting = active.length - occupied.length * 4;
+    if (occupied.length > 0 && empty.length > 0 && actualWaiting < 3) {
       setContinuousMatchMode(false);
     }
   }, [prioritizeRotation, continuousMatchMode, courts, players, setContinuousMatchMode]);
@@ -280,10 +280,10 @@ export function MainPage() {
 
       // ブロック条件チェック（useEffectの隙間をカバー）
       const currentEmpty = currentCourts.filter(c => !c.teamA[0] || c.teamA[0] === '');
-      const currentPlaying = currentCourts.filter(c => c.isPlaying);
+      const currentOccupied = currentCourts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
       const currentActive = currentPlayers.filter(p => !p.isResting);
-      const origWaiting = currentActive.length - currentCourts.length * 4;
-      if (pr && currentPlaying.length > 0 && currentEmpty.length > 0 && origWaiting < 3) {
+      const currentActualWaiting = currentActive.length - currentOccupied.length * 4;
+      if (pr && currentOccupied.length > 0 && currentEmpty.length > 0 && currentActualWaiting < 3) {
         setContinuousMatchMode(false);
         return;
       }
@@ -394,9 +394,9 @@ export function MainPage() {
 
   const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
   const occupiedCourts = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
-  const originalWaiting = activePlayers.length - courts.length * 4;
+  const actualWaitingCount = activePlayers.length - occupiedCourts.length * 4;
   const shouldBlockAssignment = prioritizeRotation
-    && occupiedCourts.length > 0 && emptyCourts.length > 0 && originalWaiting < 3;
+    && occupiedCourts.length > 0 && emptyCourts.length > 0 && actualWaitingCount < 3;
   const canAutoAssign = emptyCourts.length > 0 && activePlayers.length >= 4 && !shouldBlockAssignment;
   const totalActiveCount = players.filter(p => !p.isResting).length;
   const canAddCourt = courts.length < 3 && getRecommendedCourtCount(totalActiveCount, 3) > courts.length;
@@ -582,7 +582,7 @@ export function MainPage() {
             <button
               onClick={() => setContinuousMatchMode(!continuousMatchMode)}
               disabled={shouldBlockAssignment}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
                 continuousMatchMode
                   ? 'bg-green-50 text-green-700 border border-green-200'
                   : 'bg-muted text-muted-foreground border border-border'
@@ -595,13 +595,13 @@ export function MainPage() {
             <button
               onClick={() => handleAutoAssign()}
               disabled={!canAutoAssign}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
             >
               <Users size={16} />
               <span>一括</span>
             </button>
             {shouldBlockAssignment && emptyCourts.length > 0 && (
-              <span className="text-[10px] text-muted-foreground">流動性確保のため待機中</span>
+              <span className="text-[10px] text-muted-foreground leading-tight min-w-0">流動性確保のため待機中</span>
             )}
           </div>
           <div className="flex items-center gap-1.5">
