@@ -60,7 +60,7 @@ export function MainPage() {
     const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
     const active = players.filter(p => !p.isResting);
     const actualWaiting = active.length - occupied.length * 4;
-    if (occupied.length > 0 && actualWaiting < 3) {
+    if (occupied.length > 0 && actualWaiting < 7) {
       setContinuousMatchMode(false);
     }
   }, [prioritizeRotation, continuousMatchMode, courts, players, setContinuousMatchMode]);
@@ -281,7 +281,7 @@ export function MainPage() {
       const currentOccupied = currentCourts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
       const currentActive = currentPlayers.filter(p => !p.isResting);
       const currentActualWaiting = currentActive.length - currentOccupied.length * 4;
-      if (pr && currentOccupied.length > 0 && currentActualWaiting < 3) {
+      if (pr && currentOccupied.length > 0 && currentActualWaiting < 7) {
         setContinuousMatchMode(false);
         return;
       }
@@ -394,9 +394,9 @@ export function MainPage() {
   const occupiedCourts = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
   const waitingCount = sortedWaitingPlayers.length;
   const shouldBlockAssignment = prioritizeRotation
-    && occupiedCourts.length > 0 && emptyCourts.length > 0 && waitingCount < 3;
+    && occupiedCourts.length > 0 && emptyCourts.length > 0 && waitingCount < 7;
   const shouldBlockContinuous = prioritizeRotation
-    && occupiedCourts.length > 0 && waitingCount < 3;
+    && occupiedCourts.length > 0 && waitingCount < 7;
   const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= 4 && !shouldBlockAssignment;
   const totalActiveCount = players.filter(p => !p.isResting).length;
   const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * 4;
