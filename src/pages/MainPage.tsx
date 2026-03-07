@@ -582,7 +582,7 @@ export function MainPage() {
             <button
               onClick={() => setContinuousMatchMode(!continuousMatchMode)}
               disabled={shouldBlockAssignment}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
                 continuousMatchMode
                   ? 'bg-green-50 text-green-700 border border-green-200'
                   : 'bg-muted text-muted-foreground border border-border'
@@ -595,13 +595,13 @@ export function MainPage() {
             <button
               onClick={() => handleAutoAssign()}
               disabled={!canAutoAssign}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
             >
               <Users size={16} />
               <span>一括</span>
             </button>
             {shouldBlockAssignment && emptyCourts.length > 0 && (
-              <span className="text-[10px] text-muted-foreground">流動性確保のため待機中</span>
+              <span className="text-[10px] text-muted-foreground leading-tight min-w-0">流動性確保のため待機中</span>
             )}
           </div>
           <div className="flex items-center gap-1.5">
