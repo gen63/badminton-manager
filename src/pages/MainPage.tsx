@@ -278,11 +278,10 @@ export function MainPage() {
       const { reservations: currentReservations, fulfillReservation: storeFulfillReservation } = useReservationStore.getState();
 
       // ブロック条件チェック（useEffectの隙間をカバー）
-      const currentEmpty = currentCourts.filter(c => !c.teamA[0] || c.teamA[0] === '');
       const currentOccupied = currentCourts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
       const currentActive = currentPlayers.filter(p => !p.isResting);
       const currentActualWaiting = currentActive.length - currentOccupied.length * 4;
-      if (pr && currentOccupied.length > 0 && currentEmpty.length > 0 && currentActualWaiting < 3) {
+      if (pr && currentOccupied.length > 0 && currentActualWaiting < 3) {
         setContinuousMatchMode(false);
         return;
       }
@@ -370,7 +369,7 @@ export function MainPage() {
   const waitingPlayersUnsorted = players
     .filter((p) => !p.isResting && !playersInCourts.has(p.id));
 
-  const activePlayers = sortWaitingPlayers(waitingPlayersUnsorted, {
+  const sortedWaitingPlayers = sortWaitingPlayers(waitingPlayersUnsorted, {
     emptyCourtIds: courts
       .filter(c => !c.teamA[0] || c.teamA[0] === '')
       .map(c => c.id),
@@ -393,12 +392,12 @@ export function MainPage() {
 
   const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
   const occupiedCourts = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
-  const actualWaitingCount = activePlayers.length - occupiedCourts.length * 4;
+  const waitingCount = sortedWaitingPlayers.length;
   const shouldBlockAssignment = prioritizeRotation
-    && occupiedCourts.length > 0 && emptyCourts.length > 0 && actualWaitingCount < 3;
+    && occupiedCourts.length > 0 && emptyCourts.length > 0 && waitingCount < 3;
   const shouldBlockContinuous = prioritizeRotation
-    && occupiedCourts.length > 0 && actualWaitingCount < 3;
-  const canAutoAssign = emptyCourts.length > 0 && activePlayers.length >= 4 && !shouldBlockAssignment;
+    && occupiedCourts.length > 0 && waitingCount < 3;
+  const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= 4 && !shouldBlockAssignment;
   const totalActiveCount = players.filter(p => !p.isResting).length;
   const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * 4;
 
@@ -458,10 +457,8 @@ export function MainPage() {
 
     toggleRest(playerId);
 
-    // 休憩に入った場合、アクティブ人数に応じてコート数を自動縮小
+    // 休憩に入る場合（toggleRest前のisResting=false）、コート数を自動縮小
     if (!player?.isResting) {
-      // toggleRest後なのでisRestingが反転→休憩に入るケース
-      // 現在のアクティブ人数を再計算（この人を除外）
       const activeCount = players.filter(p => !p.isResting && p.id !== playerId).length;
       const recommended = getRecommendedCourtCount(activeCount, courts.length);
       if (recommended < courts.length) {
@@ -469,9 +466,8 @@ export function MainPage() {
         updateConfig({ courtCount: recommended });
       }
 
-      // 待機可能メンバーが1人以下なら連続モードをオフ
-      const waitingCount = players.filter(p => !p.isResting && p.id !== playerId && !playersInCourts.has(p.id)).length;
-      if (waitingCount <= 1 && continuousMatchMode) {
+      const waitingAfterRest = players.filter(p => !p.isResting && p.id !== playerId && !playersInCourts.has(p.id)).length;
+      if (waitingAfterRest <= 1 && continuousMatchMode) {
         setContinuousMatchMode(false);
       }
     }
@@ -820,7 +816,7 @@ export function MainPage() {
         <section className="px-4 flex flex-col gap-4 transition-all duration-300" ref={playerCardRef}>
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground">待機中 ({activePlayers.length})</h3>
+              <h3 className="text-sm font-bold text-foreground">待機中 ({sortedWaitingPlayers.length})</h3>
               <button
                 onClick={() => setShowAddPlayer(!showAddPlayer)}
                 className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1.5 rounded-lg hover:bg-primary/20 transition-colors flex items-center gap-1.5"
@@ -880,7 +876,7 @@ export function MainPage() {
             )}
 
             <div className="grid grid-cols-3 gap-2">
-              {activePlayers.map((player) => {
+              {sortedWaitingPlayers.map((player) => {
                 const isSelected = selectedPlayer?.id === player.id;
                 const isReserved = pendingReservations.some(r => r.playerIds.includes(player.id));
 
