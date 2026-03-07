@@ -57,11 +57,10 @@ export function MainPage() {
   // 「配置済み（準備中）」もプレイ中と同様に扱う
   useEffect(() => {
     if (!prioritizeRotation || !continuousMatchMode) return;
-    const empty = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
     const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
     const active = players.filter(p => !p.isResting);
     const actualWaiting = active.length - occupied.length * 4;
-    if (occupied.length > 0 && empty.length > 0 && actualWaiting < 3) {
+    if (occupied.length > 0 && actualWaiting < 3) {
       setContinuousMatchMode(false);
     }
   }, [prioritizeRotation, continuousMatchMode, courts, players, setContinuousMatchMode]);
@@ -397,6 +396,8 @@ export function MainPage() {
   const actualWaitingCount = activePlayers.length - occupiedCourts.length * 4;
   const shouldBlockAssignment = prioritizeRotation
     && occupiedCourts.length > 0 && emptyCourts.length > 0 && actualWaitingCount < 3;
+  const shouldBlockContinuous = prioritizeRotation
+    && occupiedCourts.length > 0 && actualWaitingCount < 3;
   const canAutoAssign = emptyCourts.length > 0 && activePlayers.length >= 4 && !shouldBlockAssignment;
   const totalActiveCount = players.filter(p => !p.isResting).length;
   const canAddCourt = courts.length < 3 && getRecommendedCourtCount(totalActiveCount, 3) > courts.length;
@@ -581,7 +582,7 @@ export function MainPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setContinuousMatchMode(!continuousMatchMode)}
-              disabled={shouldBlockAssignment}
+              disabled={shouldBlockContinuous}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
                 continuousMatchMode
                   ? 'bg-green-50 text-green-700 border border-green-200'
