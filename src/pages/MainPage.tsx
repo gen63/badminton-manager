@@ -88,6 +88,15 @@ export function MainPage() {
       const newCount = courts.length + 1;
       resizeCourts(newCount);
       updateConfig({ courtCount: newCount });
+
+      // コート増加後に待機人数が不足する場合、連続モードをOFF
+      if (continuousMatchMode) {
+        const activeCount = players.filter(p => !p.isResting).length;
+        const waitingAfter = activeCount - newCount * 4;
+        if (waitingAfter < 3) {
+          setContinuousMatchMode(false);
+        }
+      }
     }
   };
 
