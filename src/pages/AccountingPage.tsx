@@ -9,6 +9,7 @@ import { ArrowLeft, DollarSign, Copy, Upload, Loader2 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
+import { BottomNav } from '../components/BottomNav';
 
 export function AccountingPage() {
   const navigate = useNavigate();
@@ -411,7 +412,7 @@ export function AccountingPage() {
       <div className="header-gradient text-gray-800 p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <button
-            onClick={() => navigate('/settings')}
+            onClick={() => navigate('/main')}
             aria-label="戻る"
             className="icon-btn"
           >
@@ -872,6 +873,8 @@ export function AccountingPage() {
           onClose={() => toast.hideToast(t.id)}
         />
       ))}
+
+      <BottomNav activeTab="accounting" />
     </div>
   );
 }

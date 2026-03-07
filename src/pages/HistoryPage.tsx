@@ -10,6 +10,7 @@ import { ArrowLeft, Copy, Trash2, Edit3, Clock, Upload, Loader2 } from 'lucide-r
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
+import { BottomNav } from '../components/BottomNav';
 
 export function HistoryPage() {
   const navigate = useNavigate();
@@ -200,6 +201,8 @@ export function HistoryPage() {
           onClose={() => toast.hideToast(t.id)}
         />
       ))}
+
+      <BottomNav activeTab="history" />
     </div>
   );
 }

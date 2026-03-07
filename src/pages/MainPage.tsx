@@ -6,7 +6,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { parsePlayerInput, getRecommendedCourtCount } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown, Minus } from 'lucide-react';
+import { Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown, Minus, Settings } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
@@ -581,6 +581,12 @@ export function MainPage() {
             >
               <Redo2 size={18} />
             </button>
+            <button
+              onClick={() => navigate('/settings')}
+              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+            >
+              <Settings size={18} />
+            </button>
           </div>
         </div>
       </header>
@@ -1047,8 +1053,8 @@ export function MainPage() {
       ))}
 
       <BottomNav
+        activeTab="reservation"
         onReservationOpen={() => setShowReservationModal(true)}
-        reservationCount={pendingReservations.length}
       />
     </div>
   );
