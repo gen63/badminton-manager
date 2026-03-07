@@ -400,7 +400,7 @@ export function MainPage() {
     && occupiedCourts.length > 0 && actualWaitingCount < 3;
   const canAutoAssign = emptyCourts.length > 0 && activePlayers.length >= 4 && !shouldBlockAssignment;
   const totalActiveCount = players.filter(p => !p.isResting).length;
-  const canAddCourt = courts.length < 3 && getRecommendedCourtCount(totalActiveCount, 3) > courts.length;
+  const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * 4;
 
   const handleSwapPlayer = (courtId: number, position: number, newPlayerId: string) => {
     const court = courts.find((c) => c.id === courtId);
