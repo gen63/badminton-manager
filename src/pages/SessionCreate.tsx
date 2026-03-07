@@ -251,7 +251,7 @@ export function SessionCreate() {
         <div className="card p-6 space-y-6 overflow-hidden">
           {/* タイトル */}
           <h1 className="text-xl font-bold text-center text-gray-800">
-            バドミントンマネージャー
+            セッション開始
           </h1>
 
           {/* 当日参加者 */}
