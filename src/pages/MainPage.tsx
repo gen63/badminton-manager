@@ -60,8 +60,8 @@ export function MainPage() {
     const empty = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
     const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
     const active = players.filter(p => !p.isResting);
-    const origWaiting = active.length - courts.length * 4;
-    if (occupied.length > 0 && empty.length > 0 && origWaiting < 3) {
+    const actualWaiting = active.length - occupied.length * 4;
+    if (occupied.length > 0 && empty.length > 0 && actualWaiting < 3) {
       setContinuousMatchMode(false);
     }
   }, [prioritizeRotation, continuousMatchMode, courts, players, setContinuousMatchMode]);
@@ -280,10 +280,10 @@ export function MainPage() {
 
       // ブロック条件チェック（useEffectの隙間をカバー）
       const currentEmpty = currentCourts.filter(c => !c.teamA[0] || c.teamA[0] === '');
-      const currentPlaying = currentCourts.filter(c => c.isPlaying);
+      const currentOccupied = currentCourts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
       const currentActive = currentPlayers.filter(p => !p.isResting);
-      const origWaiting = currentActive.length - currentCourts.length * 4;
-      if (pr && currentPlaying.length > 0 && currentEmpty.length > 0 && origWaiting < 3) {
+      const currentActualWaiting = currentActive.length - currentOccupied.length * 4;
+      if (pr && currentOccupied.length > 0 && currentEmpty.length > 0 && currentActualWaiting < 3) {
         setContinuousMatchMode(false);
         return;
       }
@@ -394,9 +394,9 @@ export function MainPage() {
 
   const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
   const occupiedCourts = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
-  const originalWaiting = activePlayers.length - courts.length * 4;
+  const actualWaitingCount = activePlayers.length - occupiedCourts.length * 4;
   const shouldBlockAssignment = prioritizeRotation
-    && occupiedCourts.length > 0 && emptyCourts.length > 0 && originalWaiting < 3;
+    && occupiedCourts.length > 0 && emptyCourts.length > 0 && actualWaitingCount < 3;
   const canAutoAssign = emptyCourts.length > 0 && activePlayers.length >= 4 && !shouldBlockAssignment;
   const totalActiveCount = players.filter(p => !p.isResting).length;
   const canAddCourt = courts.length < 3 && getRecommendedCourtCount(totalActiveCount, 3) > courts.length;
