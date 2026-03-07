@@ -54,13 +54,14 @@ export function MainPage() {
   }, []);
 
   // ブロック条件成立時に連続モードを強制OFF
+  // 「配置済み（準備中）」もプレイ中と同様に扱う
   useEffect(() => {
     if (!prioritizeRotation || !continuousMatchMode) return;
     const empty = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
-    const playing = courts.filter(c => c.isPlaying);
+    const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
     const active = players.filter(p => !p.isResting);
     const origWaiting = active.length - courts.length * 4;
-    if (playing.length > 0 && empty.length > 0 && origWaiting < 3) {
+    if (occupied.length > 0 && empty.length > 0 && origWaiting < 3) {
       setContinuousMatchMode(false);
     }
   }, [prioritizeRotation, continuousMatchMode, courts, players, setContinuousMatchMode]);
@@ -392,10 +393,10 @@ export function MainPage() {
   const visibleUnfinished = showAllUnfinished ? unfinishedMatches : unfinishedMatches.slice(0, 1);
 
   const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
-  const playingCourts = courts.filter(c => c.isPlaying);
+  const occupiedCourts = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
   const originalWaiting = activePlayers.length - courts.length * 4;
   const shouldBlockAssignment = prioritizeRotation
-    && playingCourts.length > 0 && emptyCourts.length > 0 && originalWaiting < 3;
+    && occupiedCourts.length > 0 && emptyCourts.length > 0 && originalWaiting < 3;
   const canAutoAssign = emptyCourts.length > 0 && activePlayers.length >= 4 && !shouldBlockAssignment;
   const totalActiveCount = players.filter(p => !p.isResting).length;
   const canAddCourt = courts.length < 3 && getRecommendedCourtCount(totalActiveCount, 3) > courts.length;
