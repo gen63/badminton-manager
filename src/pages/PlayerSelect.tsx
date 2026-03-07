@@ -122,9 +122,6 @@ export function PlayerSelect() {
               <Users size={20} />
               <h1 className="text-lg font-bold">参加者管理</h1>
             </div>
-            <span className="text-sm text-muted-foreground">
-              {players.length}人
-            </span>
           </div>
         </div>
 
@@ -158,6 +155,9 @@ export function PlayerSelect() {
           <div className="card p-4">
             <h2 className="section-title mb-4">
               参加者一覧
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                ({players.length}人)
+              </span>
             </h2>
             {renderPlayerList()}
           </div>
