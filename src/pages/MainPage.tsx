@@ -10,7 +10,6 @@ import { Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
-import { WinnerSelectModal } from '../components/WinnerSelectModal';
 import { useReservationStore } from '../stores/reservationStore';
 
 import { BottomNav } from '../components/BottomNav';
@@ -37,7 +36,6 @@ export function MainPage() {
   const [showAllUnfinished, setShowAllUnfinished] = useState(false);
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
   const [showAddPlayer, setShowAddPlayer] = useState(false);
-  const [showWinnerModal, setShowWinnerModal] = useState<{ courtId: number; teamA: string[]; teamB: string[] } | null>(null);
 
   const playerCardRef = useRef<HTMLDivElement>(null);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -184,175 +182,7 @@ export function MainPage() {
     startGame(courtId);
   };
 
-  const handleShowWinnerModal = (courtId: number) => {
-    const court = courts.find((c) => c.id === courtId);
-    if (!court) return;
-    
-    // 勝敗記録がOFFの場合は直接終了処理
-    if (!recordScores) {
-      handleWinnerConfirm(courtId, 'unknown');
-      return;
-    }
-    
-    setShowWinnerModal({
-      courtId,
-      teamA: court.teamA,
-      teamB: court.teamB,
-    });
-  };
 
-  const handleWinnerConfirm = (courtId: number, winnerIds: string[] | 'unknown') => {
-    const court = courts.find((c) => c.id === courtId);
-    if (!court) return;
-
-    pushUndo({
-      courts: structuredClone(useGameStore.getState().courts),
-      players: structuredClone(usePlayerStore.getState().players),
-      matchHistory: structuredClone(useGameStore.getState().matchHistory),
-      reservations: structuredClone(useReservationStore.getState().reservations),
-    });
-
-    // スコアを設定
-    let scoreA = 0;
-    let scoreB = 0;
-    
-    if (winnerIds !== 'unknown') {
-      // 勝者2人がどちらのチームか判定
-      const winnersInTeamA = winnerIds.filter(id => court.teamA.includes(id)).length;
-      
-      if (winnersInTeamA === 2) {
-        // teamA が勝ち
-        scoreA = 100;
-        scoreB = 99;
-      } else if (winnersInTeamA === 0) {
-        // teamB が勝ち
-        scoreA = 99;
-        scoreB = 100;
-      } else {
-        // 混合ペア（teamA から1人、teamB から1人）
-        // この場合は勝者2人を teamA として扱う
-        scoreA = 100;
-        scoreB = 99;
-      }
-    }
-    // winnerIds === 'unknown' の場合は 0-0 のまま
-
-    finishGame(courtId, scoreA, scoreB);
-
-    [...court.teamA, ...court.teamB].forEach((playerId) => {
-      const player = players.find((p) => p.id === playerId);
-      if (player) {
-        updatePlayer(playerId, {
-          gamesPlayed: player.gamesPlayed + 1,
-          lastPlayedAt: Date.now(),
-        });
-      }
-    });
-
-    if (court.restingPlayerIds && court.restingPlayerIds.length > 0) {
-      court.restingPlayerIds.forEach((playerId) => {
-        updatePlayer(playerId, { isResting: true });
-      });
-    }
-
-    updateCourt(courtId, {
-      teamA: ['', ''],
-      teamB: ['', ''],
-      scoreA: 0,
-      scoreB: 0,
-      isPlaying: false,
-      startedAt: null,
-      finishedAt: null,
-      restingPlayerIds: [],
-    });
-
-    setShowWinnerModal(null);
-
-    // 連続モードが有効な場合のみ自動配置を実行
-    if (continuousMatchMode) {
-      handleContinuousNext(courtId);
-    }
-  };
-
-  const handleContinuousNext = (courtId: number) => {
-    try {
-      const { courts: currentCourts, matchHistory: currentHistory, updateCourt: storeUpdateCourt, startGame: storeStartGame } = useGameStore.getState();
-      const { players: currentPlayers } = usePlayerStore.getState();
-      const { useStayDurationPriority: currentPriority, prioritizeRotation: pr } = useSettingsStore.getState();
-      const { reservations: currentReservations, fulfillReservation: storeFulfillReservation } = useReservationStore.getState();
-
-      // ブロック条件チェック（useEffectの隙間をカバー）
-      const currentOccupied = currentCourts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
-      const currentActive = currentPlayers.filter(p => !p.isResting);
-      const currentActualWaiting = currentActive.length - currentOccupied.length * 4;
-      if (pr && currentOccupied.length > 0 && currentActualWaiting < 7) {
-        setContinuousMatchMode(false);
-        return;
-      }
-
-      const currentPlayersInCourts = new Set(
-        currentCourts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
-      );
-
-      const waitingPlayers = currentPlayers.filter(
-        (p) => !p.isResting && !currentPlayersInCourts.has(p.id)
-      );
-
-      if (waitingPlayers.length < 4) {
-        if (waitingPlayers.length <= 1 && continuousMatchMode) {
-          setContinuousMatchMode(false);
-        }
-        toast.error('待機中のプレイヤーが足りないため自動配置できません');
-        return;
-      }
-
-      const allActivePlayers = currentPlayers.filter(p => !p.isResting);
-
-      const assignments = assignCourts(
-        waitingPlayers,
-        1,
-        currentHistory,
-        {
-          totalCourtCount: currentCourts.length,
-          targetCourtIds: [courtId],
-          practiceStartTime: session?.config.practiceStartTime,
-          allPlayers: allActivePlayers,
-          useStayDurationPriority: currentPriority,
-          reservations: currentReservations,
-        }
-      );
-
-      if (assignments[0]) {
-        // 予約消化判定
-        const assignedPlayerIds = new Set(
-          assignments.flatMap(a => [...a.teamA, ...a.teamB])
-        );
-        const currentPendingReservations = currentReservations.filter(r => r.status === 'pending');
-        for (const reservation of currentPendingReservations) {
-          if (reservation.playerIds.every(id => assignedPlayerIds.has(id))) {
-            storeFulfillReservation(reservation.id);
-          }
-        }
-
-        storeUpdateCourt(courtId, {
-          teamA: assignments[0].teamA,
-          teamB: assignments[0].teamB,
-          scoreA: 0,
-          scoreB: 0,
-          isPlaying: false,
-          startedAt: null,
-          finishedAt: null,
-        });
-        storeStartGame(courtId);
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : '自動配置に失敗しました'
-      );
-    }
-  };
 
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '未設定';
@@ -390,7 +220,7 @@ export function MainPage() {
 
   const unfinishedMatches = [...matchHistory]
     .reverse()
-    .filter((m) => m.scoreA === 0 && m.scoreB === 0)
+    .filter((m) => m.winner === undefined)
     .slice(0, 4);
   const visibleUnfinished = showAllUnfinished ? unfinishedMatches : unfinishedMatches.slice(0, 1);
 
@@ -641,7 +471,7 @@ export function MainPage() {
         </div>
       </header>
 
-      <main className="flex-1 pb-[340px]">
+      <main className="flex-1 pb-[60px]">
         {/* Courts Section */}
         <section className="pt-4 pb-2 px-4">
           <div className="grid grid-cols-3 gap-2">
@@ -741,7 +571,44 @@ export function MainPage() {
                       
                       {court.isPlaying ? (
                         <button
-                          onClick={() => handleShowWinnerModal(court.id)}
+                          onClick={() => {
+                            const currentCourt = courts.find((c) => c.id === court.id);
+                            if (!currentCourt) return;
+                            pushUndo({
+                              courts: structuredClone(useGameStore.getState().courts),
+                              players: structuredClone(usePlayerStore.getState().players),
+                              matchHistory: structuredClone(useGameStore.getState().matchHistory),
+                              reservations: structuredClone(useReservationStore.getState().reservations),
+                            });
+                            finishGame(court.id, 0, 0);
+                            [...court.teamA, ...court.teamB].forEach((playerId) => {
+                              const player = players.find((p) => p.id === playerId);
+                              if (player) {
+                                updatePlayer(playerId, {
+                                  gamesPlayed: player.gamesPlayed + 1,
+                                  lastPlayedAt: Date.now(),
+                                });
+                              }
+                            });
+                            if (court.restingPlayerIds && court.restingPlayerIds.length > 0) {
+                              court.restingPlayerIds.forEach((playerId: string) => {
+                                updatePlayer(playerId, { isResting: true });
+                              });
+                            }
+                            updateCourt(court.id, {
+                              teamA: ['', ''],
+                              teamB: ['', ''],
+                              scoreA: 0,
+                              scoreB: 0,
+                              isPlaying: false,
+                              startedAt: null,
+                              finishedAt: null,
+                              restingPlayerIds: [],
+                            });
+                            if (continuousMatchMode) {
+                              // handleContinuousNextは削除されたので、適宜処理
+                            }
+                          }}
                           className="w-full py-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
                         >
                           <StopCircle size={14} />
@@ -1010,7 +877,7 @@ export function MainPage() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
-                <h3 className="text-sm font-bold">スコア未入力</h3>
+                <h3 className="text-sm font-bold">結果未入力</h3>
                 {unfinishedMatches.length > 0 && (
                   <span className="text-xs bg-orange-200/50 px-1.5 py-0.5 rounded font-semibold">
                     {unfinishedMatches.length}
@@ -1019,7 +886,7 @@ export function MainPage() {
               </div>
               <div className="min-w-[120px] flex justify-end items-center min-h-[28px]">
                 {unfinishedMatches.length === 0 ? (
-                  <span className="text-xs text-orange-600/60">スコア未入力の試合がありません</span>
+                  <span className="text-xs text-orange-600/60">結果未入力の試合がありません</span>
                 ) : unfinishedMatches.length > 1 ? (
                   <button 
                     onClick={() => setShowAllUnfinished(!showAllUnfinished)}
@@ -1072,19 +939,6 @@ export function MainPage() {
             )}
           </div>
         </section>
-      )}
-
-      {/* Winner Select Modal */}
-      {showWinnerModal && (
-        <WinnerSelectModal
-          courtId={showWinnerModal.courtId}
-          teamA={showWinnerModal.teamA}
-          teamB={showWinnerModal.teamB}
-          getPlayerName={getPlayerName}
-          getPlayerGender={getPlayerGender}
-          onConfirm={(winnerIds) => handleWinnerConfirm(showWinnerModal.courtId, winnerIds)}
-          onCancel={() => setShowWinnerModal(null)}
-        />
       )}
 
       {/* Toast notifications */}

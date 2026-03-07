@@ -126,7 +126,7 @@ export function ScoreInputPage() {
             ...m,
             scoreA,
             scoreB,
-            winner: scoreA > scoreB ? ('A' as const) : ('B' as const),
+            winner: (scoreA > scoreB ? 'A' : scoreB > scoreA ? 'B' : undefined) as 'A' | 'B' | undefined,
           }
         : m
     );
