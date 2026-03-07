@@ -54,13 +54,14 @@ export function MainPage() {
   }, []);
 
   // ブロック条件成立時に連続モードを強制OFF
+  // 「配置済み（準備中）」もプレイ中と同様に扱う
   useEffect(() => {
     if (!prioritizeRotation || !continuousMatchMode) return;
     const empty = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
-    const playing = courts.filter(c => c.isPlaying);
+    const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
     const active = players.filter(p => !p.isResting);
     const origWaiting = active.length - courts.length * 4;
-    if (playing.length > 0 && empty.length > 0 && origWaiting < 3) {
+    if (occupied.length > 0 && empty.length > 0 && origWaiting < 3) {
       setContinuousMatchMode(false);
     }
   }, [prioritizeRotation, continuousMatchMode, courts, players, setContinuousMatchMode]);
@@ -88,6 +89,15 @@ export function MainPage() {
       const newCount = courts.length + 1;
       resizeCourts(newCount);
       updateConfig({ courtCount: newCount });
+
+      // コート増加後に待機人数が不足する場合、連続モードをOFF
+      if (continuousMatchMode) {
+        const activeCount = players.filter(p => !p.isResting).length;
+        const waitingAfter = activeCount - newCount * 4;
+        if (waitingAfter < 3) {
+          setContinuousMatchMode(false);
+        }
+      }
     }
   };
 
@@ -383,11 +393,13 @@ export function MainPage() {
   const visibleUnfinished = showAllUnfinished ? unfinishedMatches : unfinishedMatches.slice(0, 1);
 
   const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
-  const playingCourts = courts.filter(c => c.isPlaying);
+  const occupiedCourts = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
   const originalWaiting = activePlayers.length - courts.length * 4;
   const shouldBlockAssignment = prioritizeRotation
-    && playingCourts.length > 0 && emptyCourts.length > 0 && originalWaiting < 3;
+    && occupiedCourts.length > 0 && emptyCourts.length > 0 && originalWaiting < 3;
   const canAutoAssign = emptyCourts.length > 0 && activePlayers.length >= 4 && !shouldBlockAssignment;
+  const totalActiveCount = players.filter(p => !p.isResting).length;
+  const canAddCourt = courts.length < 3 && getRecommendedCourtCount(totalActiveCount, 3) > courts.length;
 
   const handleSwapPlayer = (courtId: number, position: number, newPlayerId: string) => {
     const court = courts.find((c) => c.id === courtId);
@@ -769,10 +781,17 @@ export function MainPage() {
             {courts.length < 3 && (
               <button
                 onClick={handleAddCourt}
-                className="w-full bg-card border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center gap-1 min-h-[80px] hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                disabled={!canAddCourt}
+                className={`w-full bg-card border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-1 min-h-[80px] transition-colors ${
+                  canAddCourt
+                    ? 'border-border hover:border-primary/50 hover:bg-primary/5'
+                    : 'border-border/50 opacity-50 cursor-not-allowed'
+                }`}
               >
                 <Plus size={20} className="text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground">コート追加</span>
+                <span className="text-xs font-medium text-muted-foreground">
+                  {canAddCourt ? 'コート追加' : 'プレイヤー不足'}
+                </span>
               </button>
             )}
           </div>
