@@ -394,7 +394,7 @@ export function MainPage() {
   const occupiedCourts = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
   const waitingCount = sortedWaitingPlayers.length;
   const shouldBlockAssignment = prioritizeRotation
-    && occupiedCourts.length > 0 && emptyCourts.length > 0 && waitingCount < 7;
+    && occupiedCourts.length > 0 && emptyCourts.length > 0 && waitingCount < 3;
   const shouldBlockContinuous = prioritizeRotation
     && occupiedCourts.length > 0 && waitingCount < 7;
   const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= 4 && !shouldBlockAssignment;
