@@ -15,11 +15,11 @@ export function BottomNav({ activeTab }: BottomNavProps) {
   );
 
   const tabs: { id: TabId; label: string; icon: typeof CalendarCheck; path: string }[] = [
-    { id: 'reservation', label: '予約', icon: CalendarCheck, path: '/reservation' },
     { id: 'court', label: 'メイン', icon: LayoutGrid, path: '/main' },
+    { id: 'reservation', label: '予約', icon: CalendarCheck, path: '/reservation' },
+    { id: 'history', label: '履歴', icon: History, path: '/history' },
     { id: 'players', label: '参加者', icon: Users, path: '/players' },
     { id: 'accounting', label: '会計', icon: DollarSign, path: '/accounting' },
-    { id: 'history', label: '履歴', icon: History, path: '/history' },
   ];
 
   const handleTabClick = (tab: (typeof tabs)[number]) => {

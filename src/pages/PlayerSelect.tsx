@@ -76,33 +76,40 @@ export function PlayerSelect() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {sortedPlayers.map((player) => {
             const hasHistory = playersInHistory.has(player.id);
             return (
               <div
                 key={player.id}
-                className={`player-pill ${
-                  player.gender === 'M' ? 'player-pill-male'
-                  : player.gender === 'F' ? 'player-pill-female'
-                  : ''
-                }`}
+                className="relative bg-card border border-border rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm h-[58px]"
               >
-                <span className="font-medium text-gray-800 text-sm truncate">
-                  {player.name}
-                </span>
-                <button
-                  onClick={() => handleDelete(player)}
-                  aria-label={`${player.name}を削除`}
-                  disabled={hasHistory}
-                  className={`min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center rounded-full flex-shrink-0 transition-all duration-150 ${
-                    hasHistory
-                      ? 'text-gray-300 cursor-not-allowed'
-                      : 'text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100'
-                  }`}
-                >
-                  <Trash2 size={18} />
-                </button>
+                <div className="absolute top-0.5 right-0.5">
+                  <button
+                    onClick={() => handleDelete(player)}
+                    aria-label={`${player.name}を削除`}
+                    disabled={hasHistory}
+                    className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors ${
+                      hasHistory
+                        ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                        : 'bg-red-100 text-red-600 hover:bg-red-200'
+                    }`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="w-full text-center">
+                  <div className="text-sm font-semibold truncate text-foreground leading-tight">{player.name}</div>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold leading-tight ${
+                    player.gender === 'M'
+                      ? 'bg-blue-100 text-blue-700'
+                      : player.gender === 'F'
+                      ? 'bg-pink-100 text-pink-700'
+                      : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : '-'}
+                  </span>
+                </div>
               </div>
             );
           })}
@@ -122,9 +129,6 @@ export function PlayerSelect() {
               <Users size={20} />
               <h1 className="text-lg font-bold">参加者管理</h1>
             </div>
-            <span className="text-sm text-muted-foreground">
-              {players.length}人
-            </span>
           </div>
         </div>
 
@@ -158,6 +162,9 @@ export function PlayerSelect() {
           <div className="card p-4">
             <h2 className="section-title mb-4">
               参加者一覧
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                ({players.length}人)
+              </span>
             </h2>
             {renderPlayerList()}
           </div>
