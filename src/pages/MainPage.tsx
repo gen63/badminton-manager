@@ -53,6 +53,18 @@ export function MainPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // ブロック条件成立時に連続モードを強制OFF
+  useEffect(() => {
+    if (!prioritizeRotation || !continuousMatchMode) return;
+    const empty = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
+    const playing = courts.filter(c => c.isPlaying);
+    const active = players.filter(p => !p.isResting);
+    const origWaiting = active.length - courts.length * 4;
+    if (playing.length > 0 && empty.length > 0 && origWaiting < 3) {
+      setContinuousMatchMode(false);
+    }
+  }, [prioritizeRotation, continuousMatchMode, courts, players, setContinuousMatchMode]);
+
 
   if (!session) {
     navigate('/');
@@ -134,14 +146,15 @@ export function MainPage() {
         }
       }
 
+      const isBulk = !courtId;
       assignments.forEach((assignment) => {
         updateCourt(assignment.courtId, {
           teamA: assignment.teamA,
           teamB: assignment.teamB,
           scoreA: 0,
           scoreB: 0,
-          isPlaying: false,
-          startedAt: null,
+          isPlaying: isBulk,
+          startedAt: isBulk ? Date.now() : null,
           finishedAt: null,
         });
       });
@@ -252,8 +265,18 @@ export function MainPage() {
     try {
       const { courts: currentCourts, matchHistory: currentHistory, updateCourt: storeUpdateCourt, startGame: storeStartGame } = useGameStore.getState();
       const { players: currentPlayers } = usePlayerStore.getState();
-      const { useStayDurationPriority: currentPriority } = useSettingsStore.getState();
+      const { useStayDurationPriority: currentPriority, prioritizeRotation: pr } = useSettingsStore.getState();
       const { reservations: currentReservations, fulfillReservation: storeFulfillReservation } = useReservationStore.getState();
+
+      // ブロック条件チェック（useEffectの隙間をカバー）
+      const currentEmpty = currentCourts.filter(c => !c.teamA[0] || c.teamA[0] === '');
+      const currentPlaying = currentCourts.filter(c => c.isPlaying);
+      const currentActive = currentPlayers.filter(p => !p.isResting);
+      const origWaiting = currentActive.length - currentCourts.length * 4;
+      if (pr && currentPlaying.length > 0 && currentEmpty.length > 0 && origWaiting < 3) {
+        setContinuousMatchMode(false);
+        return;
+      }
 
       const currentPlayersInCourts = new Set(
         currentCourts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
@@ -361,8 +384,9 @@ export function MainPage() {
 
   const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
   const playingCourts = courts.filter(c => c.isPlaying);
-  const shouldBlockAssignment = prioritizeRotation && !continuousMatchMode
-    && playingCourts.length > 0 && emptyCourts.length <= playingCourts.length;
+  const originalWaiting = activePlayers.length - courts.length * 4;
+  const shouldBlockAssignment = prioritizeRotation
+    && playingCourts.length > 0 && emptyCourts.length > 0 && originalWaiting < 3;
   const canAutoAssign = emptyCourts.length > 0 && activePlayers.length >= 4 && !shouldBlockAssignment;
 
   const handleSwapPlayer = (courtId: number, position: number, newPlayerId: string) => {
@@ -564,7 +588,7 @@ export function MainPage() {
               <span>一括</span>
             </button>
             {shouldBlockAssignment && emptyCourts.length > 0 && (
-              <span className="text-[10px] text-muted-foreground">他コート終了後に配置</span>
+              <span className="text-[10px] text-muted-foreground">流動性確保のため待機中</span>
             )}
           </div>
           <div className="flex items-center gap-1.5">
@@ -725,7 +749,7 @@ export function MainPage() {
                         <p className="text-xs text-muted-foreground font-medium">空き</p>
                       </div>
                       {shouldBlockAssignment ? (
-                        <p className="text-[10px] text-muted-foreground">試合終了を待機中...</p>
+                        <p className="text-[10px] text-muted-foreground">他コート終了後に一括配置してください</p>
                       ) : (
                         <button
                           onClick={() => handleAutoAssign(court.id)}
