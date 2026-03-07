@@ -7,7 +7,6 @@ import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { generateSessionId, parsePlayerInput, getRecommendedCourtCount } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
-import { GYM_OPTIONS } from '../types/session';
 import { Sparkles, Download, Loader2 } from 'lucide-react';
 
 // 現在日時を取得（曜日に応じて時刻を設定）
@@ -92,9 +91,9 @@ export function SessionCreate() {
   }, [needRefresh, updateServiceWorker]);
 
   const [courtCount] = useState(1);
-  const [targetScore, setTargetScore] = useState(15);
-  const [selectedGym, setSelectedGym] = useState(getInitialGym);
-  const [practiceDateTime, setPracticeDateTime] = useState(getInitialDateTime);
+  const [targetScore] = useState(15);
+  const [selectedGym] = useState(getInitialGym);
+  const [practiceDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -250,76 +249,10 @@ export function SessionCreate() {
     <div className="bg-app overflow-x-hidden">
       <div className="max-w-md mx-auto w-full px-4 py-6">
         <div className="card p-6 space-y-6 overflow-hidden">
-          {/* 点数 */}
-          <div>
-            <label className="label">
-              目標点数
-            </label>
-            <div className="flex gap-3 justify-start">
-              {[15, 21].map((score) => (
-                <button
-                  key={score}
-                  onClick={() => setTargetScore(score)}
-                  className={`select-button ${
-                    targetScore === score
-                      ? 'select-button-active'
-                      : 'select-button-inactive'
-                  }`}
-                >
-                  {targetScore === score && <span className="mr-1">✓</span>}
-                  {score}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 体育館 */}
-          <div>
-            <label className="label">
-              体育館
-            </label>
-            <div className="max-w-[240px]">
-              <input
-                type="text"
-                list="gym-options"
-                value={selectedGym}
-                onChange={(e) => setSelectedGym(e.target.value)}
-                placeholder="選択または入力してください"
-                className="input-field min-h-[52px]"
-              />
-              <datalist id="gym-options">
-                {GYM_OPTIONS.map((gym) => (
-                  <option key={gym} value={gym} />
-                ))}
-              </datalist>
-            </div>
-          </div>
-
-          {/* 練習開始日時 */}
-          <div>
-            <label className="label">
-              練習開始日時
-            </label>
-            <div className="relative max-w-[240px]">
-              <input
-                type="datetime-local"
-                value={practiceDateTime}
-                onChange={(e) => setPracticeDateTime(e.target.value)}
-                className="input-field opacity-0 absolute inset-0 w-full h-full cursor-pointer"
-              />
-              <div className="input-field text-center text-blue-600 pointer-events-none">
-                {(() => {
-                  const d = new Date(practiceDateTime);
-                  const year = d.getFullYear();
-                  const month = String(d.getMonth() + 1).padStart(2, '0');
-                  const day = String(d.getDate()).padStart(2, '0');
-                  const hour = String(d.getHours()).padStart(2, '0');
-                  const min = String(d.getMinutes()).padStart(2, '0');
-                  return `${year}/${month}/${day} ${hour}:${min}`;
-                })()}
-              </div>
-            </div>
-          </div>
+          {/* タイトル */}
+          <h1 className="text-xl font-bold text-center text-gray-800">
+            セッション開始
+          </h1>
 
           {/* 当日参加者 */}
           <div>
