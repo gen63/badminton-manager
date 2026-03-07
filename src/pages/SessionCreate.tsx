@@ -91,7 +91,7 @@ export function SessionCreate() {
     }
   }, [needRefresh, updateServiceWorker]);
 
-  const [courtCount, setCourtCount] = useState(3);
+  const [courtCount] = useState(1);
   const [targetScore, setTargetScore] = useState(15);
   const [selectedGym, setSelectedGym] = useState(getInitialGym);
   const [practiceDateTime, setPracticeDateTime] = useState(getInitialDateTime);
@@ -171,7 +171,7 @@ export function SessionCreate() {
       if (!hasInputNames && inputs.length > 0) {
         const result = addPlayers(inputs);
 
-        const adjustedCourtCount = getRecommendedCourtCount(result.added, courtCount);
+        const adjustedCourtCount = getRecommendedCourtCount(result.added, 3);
         const sessionId = generateSessionId();
         const now = Date.now();
         const practiceTime = new Date(practiceDateTime).getTime();
@@ -223,7 +223,7 @@ export function SessionCreate() {
     }
 
     const adjustedCourtCount = playerCount > 0
-      ? getRecommendedCourtCount(playerCount, courtCount)
+      ? getRecommendedCourtCount(playerCount, 3)
       : courtCount;
     const sessionId = generateSessionId();
     const now = Date.now();
@@ -250,29 +250,6 @@ export function SessionCreate() {
     <div className="bg-app overflow-x-hidden">
       <div className="max-w-md mx-auto w-full px-4 py-6">
         <div className="card p-6 space-y-6 overflow-hidden">
-          {/* コート数 */}
-          <div>
-            <label className="label">
-              コート数
-            </label>
-            <div className="flex gap-3 justify-start">
-              {[1, 2, 3].map((count) => (
-                <button
-                  key={count}
-                  onClick={() => setCourtCount(count)}
-                  className={`select-button ${
-                    courtCount === count
-                      ? 'select-button-active'
-                      : 'select-button-inactive'
-                  }`}
-                >
-                  {courtCount === count && <span className="mr-1">✓</span>}
-                  {count}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* 点数 */}
           <div>
             <label className="label">
