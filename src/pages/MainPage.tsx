@@ -93,7 +93,8 @@ export function MainPage() {
       if (continuousMatchMode) {
         const activeCount = players.filter(p => !p.isResting).length;
         const waitingAfter = activeCount - newCount * 4;
-        if (waitingAfter < 3) {
+        const threshold = prioritizeRotation ? 7 : 3;
+        if (waitingAfter < threshold) {
           setContinuousMatchMode(false);
         }
       }
