@@ -13,8 +13,7 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const { session, updateConfig, clearSession } = useSessionStore();
   const { clearPlayers } = usePlayerStore();
-  const { courts, clearHistory, resizeCourts } = useGameStore();
-  const activeCourtCount = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== '')).length;
+  const { clearHistory } = useGameStore();
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeRotation, setPrioritizeRotation } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
@@ -24,11 +23,6 @@ export function SettingsPage() {
     navigate('/');
     return null;
   }
-
-  const handleCourtCountChange = (count: number) => {
-    updateConfig({ courtCount: count });
-    resizeCourts(count);
-  };
 
   const handleTargetScoreChange = (score: number) => {
     updateConfig({ targetScore: score });
@@ -71,37 +65,6 @@ export function SettingsPage() {
             コート設定
           </h2>
           <div className="space-y-3">
-            <div>
-              <label className="label">コート数</label>
-              <div className="flex gap-3">
-                {[1, 2, 3].map((count) => {
-                  const disabled = count < activeCourtCount;
-                  return (
-                    <button
-                      key={count}
-                      onClick={() => handleCourtCountChange(count)}
-                      disabled={disabled}
-                      className={`select-button ${
-                        session.config.courtCount === count
-                          ? 'select-button-active'
-                          : disabled
-                          ? 'select-button-inactive opacity-30 cursor-not-allowed'
-                          : 'select-button-inactive'
-                      }`}
-                    >
-                      {session.config.courtCount === count && <span className="mr-1">✓</span>}
-                      {count}
-                    </button>
-                  );
-                })}
-              </div>
-              {activeCourtCount > 1 && (
-                <p className="text-[10px] text-gray-500 mt-1">
-                  {activeCourtCount}コート使用中のため{activeCourtCount - 1}以下に変更できません
-                </p>
-              )}
-            </div>
-
             <div>
               <label className="label">目標点数</label>
               <div className="flex gap-3">
