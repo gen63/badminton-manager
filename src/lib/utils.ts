@@ -128,6 +128,19 @@ export function getRecommendedCourtCount(playerCount: number, maxCourts: number 
  *   3. 空きコートを埋めた後の待機人数が baseThreshold 以下
  *
  * 多様性優先モードの意図: 組み合わせの多様性を高めるため複数コート一括配置を促す
+ *
+ * 【実際の動作範囲】
+ * baseThreshold=2 の場合：
+ *   2コート（1使用中+1空き）:
+ *     - ブロック発動: 8-10人（待機4-6人）
+ *     - ブロック解除: 11人以上（待機7人以上）
+ *   3コート（2使用中+1空き）:
+ *     - ブロック発動: 12-14人（待機4-6人）
+ *     - ブロック解除: 15人以上（待機7人以上）
+ *
+ * 一般式:
+ *   ブロック発動の総人数範囲: occupiedCourts × 4 + 4 ≤ total ≤ occupiedCourts × 4 + 6
+ *   ブロック解除の最小人数: total ≥ occupiedCourts × 4 + 7
  */
 export function shouldBlockForDiversity(
   prioritizeDiversity: boolean,
