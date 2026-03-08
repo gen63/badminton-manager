@@ -6,7 +6,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { parsePlayerInput, getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown, Minus, Settings } from 'lucide-react';
+import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown, Minus, Settings } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
@@ -557,7 +557,7 @@ export function MainPage() {
                     ) : !hasPlayers && courts.length > 1 && (
                       <button
                         onClick={() => handleRemoveCourt(court.id)}
-                        className="min-w-[44px] min-h-[44px] rounded-full bg-muted text-muted-foreground flex items-center justify-center hover:bg-destructive/20 hover:text-destructive transition-colors"
+                        className="w-6 h-6 rounded-full bg-muted text-muted-foreground flex items-center justify-center hover:bg-destructive/20 hover:text-destructive transition-colors"
                         aria-label="コート削除"
                       >
                         <Minus size={12} />
@@ -828,13 +828,13 @@ export function MainPage() {
                     }`}
                   >
                     {!isSelected && (
-                      <div className="absolute top-0.5 right-0.5">
+                      <div className="absolute top-1/2 -translate-y-1/2 right-1">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleToggleRestWithLock(player.id);
                           }}
-                          className="min-w-[44px] min-h-[44px] rounded-full bg-orange-100 text-orange-600 flex items-center justify-center hover:bg-orange-200 transition-colors"
+                          className="w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center hover:bg-orange-200 transition-colors"
                           aria-label="休憩"
                         >
                           <Coffee className="w-3 h-3" />
@@ -895,17 +895,6 @@ export function MainPage() {
                       onClick={() => handlePlayerTap(player.id)}
                       className="relative bg-muted/50 border border-border rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors h-[58px]"
                     >
-                      <div className="absolute top-0.5 right-0.5">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleToggleRestWithLock(player.id);
-                          }}
-                          className="min-w-[44px] min-h-[44px] rounded-full bg-green-100 text-green-600 flex items-center justify-center hover:bg-green-200"
-                        >
-                          <ArrowUp className="w-3 h-3" />
-                        </button>
-                      </div>
                       <div className="w-full text-center">
                         <div className="text-sm font-semibold truncate text-muted-foreground leading-tight">{player.name}</div>
                         <div className="text-xs text-muted-foreground leading-tight">{player.gamesPlayed}試合</div>
