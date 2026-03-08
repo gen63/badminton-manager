@@ -28,3 +28,6 @@ dev-dist/
 coverage/
 
 *Identifier
+
+# Claude Code
+.claude/*.local.*
