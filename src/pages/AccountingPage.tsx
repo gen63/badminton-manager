@@ -155,6 +155,18 @@ export function AccountingPage() {
     setInitialized(true);
   }, [matchHistory, players, records, gymShortName, initialized, session, lastInput]);
 
+  // 試合数を試合履歴に同期（試合履歴が変わったら自動更新）
+  useEffect(() => {
+    if (!initialized) return;
+    
+    const currentMatchCount = matchHistory.length;
+    if (currentMatchCount !== matchCount) {
+      setMatchCount(currentMatchCount);
+      // 自動更新した値を保存
+      saveAllInputs({ matchCount: currentMatchCount });
+    }
+  }, [matchHistory.length, initialized]);
+
   // 参加人数の合計（免除+男+女）
   const participantCount = exemptCount + maleCount + femaleCount;
 
@@ -282,24 +294,27 @@ export function AccountingPage() {
     // 参考セクション
     const referenceLines: string[] = [];
 
-    // 試合数の情報（試合履歴がある場合のみ）
-    if (matchHistory.length > 0) {
-      const participantIds = new Set<string>();
-      matchHistory.forEach((match) => {
-        match.teamA.forEach((id) => participantIds.add(id));
-        match.teamB.forEach((id) => participantIds.add(id));
-      });
+    // 試合数の情報（試合数がある場合のみ）
+    if (matchCount > 0) {
+      // 試合履歴から参加者数を計算（平均試合数用）
+      let activePlayerCount = 0;
+      if (matchHistory.length > 0) {
+        const participantIds = new Set<string>();
+        matchHistory.forEach((match) => {
+          match.teamA.forEach((id) => participantIds.add(id));
+          match.teamB.forEach((id) => participantIds.add(id));
+        });
+        activePlayerCount = participantIds.size;
+      }
 
-      const totalMatches = matchHistory.length;
-      const activePlayerCount = participantIds.size;
-      const avgMatches = activePlayerCount > 0 ? (totalMatches * 4 / activePlayerCount).toFixed(1) : '0.0';
+      const avgMatches = activePlayerCount > 0 ? (matchCount * 4 / activePlayerCount).toFixed(1) : '0.0';
 
       // シャトル効率の計算
       if (shuttleCount > 0) {
-        const matchesPerShuttle = (totalMatches / shuttleCount).toFixed(1);
-        referenceLines.push(`試合数 ${totalMatches}試合 (平均${avgMatches}試合/人, 1個で${matchesPerShuttle}試合)`);
+        const matchesPerShuttle = (matchCount / shuttleCount).toFixed(1);
+        referenceLines.push(`試合数 ${matchCount}試合 (平均${avgMatches}試合/人, 1個で${matchesPerShuttle}試合)`);
       } else {
-        referenceLines.push(`試合数 ${totalMatches}試合 (平均${avgMatches}試合/人)`);
+        referenceLines.push(`試合数 ${matchCount}試合 (平均${avgMatches}試合/人)`);
       }
     }
 
@@ -513,8 +528,8 @@ export function AccountingPage() {
 
         {/* 参加人数 */}
         <div className="card p-4">
-          <h2 className="text-sm font-bold mb-3 text-gray-700">参加人数</h2>
-          <div className="grid grid-cols-4 gap-2">
+          <h2 className="text-sm font-bold mb-3 text-gray-700">参加人数・試合数</h2>
+          <div className="grid grid-cols-4 gap-2 mb-3">
             <div className="bg-blue-50 rounded-lg p-3">
               <div className="text-xs text-muted-foreground mb-1">合計</div>
               <div className="text-2xl font-bold text-blue-600">{participantCount}</div>
@@ -598,35 +613,34 @@ export function AccountingPage() {
               </div>
             </div>
           </div>
-        </div>
-
-        {/* 試合回数 */}
-        <div className="card p-4">
-          <h2 className="text-sm font-bold mb-3 text-gray-700">試合回数</h2>
-          <div className="flex items-center justify-between bg-purple-50 rounded-lg px-3 py-2">
-            <span className="text-sm text-muted-foreground">試合数</span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => {
-                  const newValue = Math.max(0, matchCount - 1);
-                  setMatchCount(newValue);
-                  saveAllInputs({ matchCount: newValue });
-                }}
-                className="w-7 h-7 rounded-full bg-card text-purple-600 hover:bg-purple-100 active:scale-95 flex items-center justify-center font-bold text-sm"
-              >
-                −
-              </button>
-              <span className="text-2xl font-bold text-purple-800 w-12 text-center">{matchCount}</span>
-              <button
-                onClick={() => {
-                  const newValue = matchCount + 1;
-                  setMatchCount(newValue);
-                  saveAllInputs({ matchCount: newValue });
-                }}
-                className="w-7 h-7 rounded-full bg-card text-purple-600 hover:bg-purple-100 active:scale-95 flex items-center justify-center font-bold text-sm"
-              >
-                +
-              </button>
+          
+          {/* 試合数 */}
+          <div className="mt-3 bg-green-50 rounded-lg p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-700 font-semibold">試合数</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const newValue = Math.max(0, matchCount - 1);
+                    setMatchCount(newValue);
+                    saveAllInputs({ matchCount: newValue });
+                  }}
+                  className="w-7 h-7 rounded-full bg-white text-green-600 hover:bg-green-100 active:scale-95 flex items-center justify-center font-bold text-sm"
+                >
+                  −
+                </button>
+                <span className="text-2xl font-bold text-green-700 w-12 text-center">{matchCount}</span>
+                <button
+                  onClick={() => {
+                    const newValue = matchCount + 1;
+                    setMatchCount(newValue);
+                    saveAllInputs({ matchCount: newValue });
+                  }}
+                  className="w-7 h-7 rounded-full bg-white text-green-600 hover:bg-green-100 active:scale-95 flex items-center justify-center font-bold text-sm"
+                >
+                  +
+                </button>
+              </div>
             </div>
           </div>
         </div>
