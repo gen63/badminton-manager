@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
-import { getSession, joinSession } from '../services/sessionService';
+import { getSession, joinSession, subscribeToGameState } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
+import { requestNotificationPermission } from '../lib/notifications';
 import type { Session } from '../types/session';
-import { Loader2 } from 'lucide-react';
+import { usePlayerStore } from '../stores/playerStore';
+import { useGameStore } from '../stores/gameStore';
+import { useReservationStore } from '../stores/reservationStore';
+import { Loader2, UserPlus } from 'lucide-react';
 
 export function SessionJoinPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
 
   const [session, setSession] = useState<Session | null>(null);
-  const [playerName, setPlayerName] = useState('');
+  const [selectedName, setSelectedName] = useState('');
+  const [customName, setCustomName] = useState('');
+  const [isCustomMode, setIsCustomMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState('');
@@ -32,20 +38,27 @@ export function SessionJoinPage() {
           setError('セッションが見つかりません');
         } else {
           setSession(data);
+          // 登録済みプレイヤーがいなければ直接入力モード
+          if (!data.registeredPlayers || data.registeredPlayers.length === 0) {
+            setIsCustomMode(true);
+          }
         }
       })
       .catch((err) => setError(getErrorMessage(err)))
       .finally(() => setLoading(false));
   }, [sessionId]);
 
+  const playerName = isCustomMode ? customName.trim() : selectedName;
+
   const handleJoin = async () => {
-    if (!playerName.trim() || !sessionId || !session) return;
+    if (!playerName || !sessionId || !session) return;
 
     setJoining(true);
     setError('');
 
     try {
-      await joinSession(sessionId, playerName.trim());
+      await joinSession(sessionId, playerName);
+      requestNotificationPermission();
 
       initializeSession({
         id: sessionId,
@@ -54,11 +67,33 @@ export function SessionJoinPage() {
         updatedAt: Date.now(),
         createdBy: session.createdBy,
         participants: session.participants,
+        registeredPlayers: session.registeredPlayers,
         status: session.status,
       });
-      setCurrentUser(playerName.trim());
+      setCurrentUser(playerName);
 
-      navigate('/main');
+      // Firestoreからゲーム状態を取得してローカルストアにセット
+      // （古いlocalStorageデータを上書き）
+      const unsub = subscribeToGameState(sessionId, (gameState) => {
+        if (gameState) {
+          usePlayerStore.setState({ players: gameState.players });
+          useGameStore.setState({
+            courts: gameState.courts,
+            matchHistory: gameState.matchHistory,
+          });
+          if (gameState.reservations) {
+            useReservationStore.setState({ reservations: gameState.reservations });
+          }
+        }
+        unsub();
+        navigate('/main');
+      });
+
+      // タイムアウト: 3秒以内にデータ取れなくても遷移
+      setTimeout(() => {
+        unsub();
+        navigate('/main');
+      }, 3000);
     } catch (err) {
       setError(getErrorMessage(err));
       setJoining(false);
@@ -90,6 +125,12 @@ export function SessionJoinPage() {
     );
   }
 
+  // 参加済みの名前（選択肢から除外）
+  const joinedNames = new Set(session?.participants || []);
+  const availablePlayers = (session?.registeredPlayers || []).filter(
+    (name) => !joinedNames.has(name),
+  );
+
   return (
     <div className="min-h-screen bg-app p-4">
       <div className="max-w-md mx-auto space-y-4">
@@ -99,67 +140,80 @@ export function SessionJoinPage() {
           <p className="text-xs text-muted-foreground">セッションID: {sessionId}</p>
         </div>
 
-        {/* セッション情報 */}
-        {session && (
-          <div className="card p-4">
-            <div className="space-y-2 text-sm">
-              {session.createdBy && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">管理者</span>
-                  <span className="font-medium">{session.createdBy}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">目標点数</span>
-                <span className="font-medium">{session.config.targetScore}点</span>
-              </div>
-              {session.config.gym && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">体育館</span>
-                  <span className="font-medium">{session.config.gym}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 名前入力 */}
+        {/* 名前選択 */}
         <div className="card p-4">
           <label className="label">あなたの名前</label>
-          <input
-            type="text"
-            value={playerName}
-            onChange={(e) => setPlayerName(e.target.value)}
-            placeholder="名前を入力"
-            className="input-field mb-2"
-            onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-          />
+
+          {!isCustomMode && availablePlayers.length > 0 ? (
+            <>
+              {/* 登録済みプレイヤーから選択 */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                {availablePlayers.map((name) => (
+                  <button
+                    key={name}
+                    onClick={() => setSelectedName(name)}
+                    className={`select-button text-sm px-2 py-2 ${
+                      selectedName === name
+                        ? 'select-button-active'
+                        : 'select-button-inactive'
+                    }`}
+                  >
+                    {selectedName === name && <span className="mr-1">✓</span>}
+                    {name}
+                  </button>
+                ))}
+              </div>
+
+              {/* リストにない場合 */}
+              <button
+                onClick={() => {
+                  setIsCustomMode(true);
+                  setSelectedName('');
+                }}
+                className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+              >
+                <UserPlus size={14} />
+                リストにない名前で参加
+              </button>
+            </>
+          ) : (
+            <>
+              {/* 直接入力 */}
+              <input
+                type="text"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="名前を入力"
+                className="input-field mb-2"
+                onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+              />
+              {session?.registeredPlayers && session.registeredPlayers.length > 0 && (
+                <button
+                  onClick={() => {
+                    setIsCustomMode(false);
+                    setCustomName('');
+                  }}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 mb-2 block"
+                >
+                  リストから選択に戻る
+                </button>
+              )}
+            </>
+          )}
+
           {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
+
           <button
             onClick={handleJoin}
-            disabled={!playerName.trim() || joining}
-            className="btn-primary w-full flex items-center justify-center gap-2"
+            disabled={!playerName || joining}
+            className="btn-primary w-full flex items-center justify-center gap-2 mt-3"
           >
             {joining && <Loader2 size={16} className="animate-spin" />}
             {joining ? '入室中...' : '入室する'}
           </button>
         </div>
 
-        {/* 参加者リスト */}
-        {session?.participants && session.participants.length > 0 && (
-          <div className="text-center">
-            <p className="text-xs text-muted-foreground mb-2">
-              現在の参加者: {session.participants.length}人
-            </p>
-            <div className="flex flex-wrap gap-1.5 justify-center">
-              {session.participants.map((name) => (
-                <span key={name} className="text-xs bg-muted text-muted-foreground px-2 py-1 rounded-full">
-                  {name}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+
       </div>
     </div>
   );

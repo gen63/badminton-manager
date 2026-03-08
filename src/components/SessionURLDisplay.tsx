@@ -9,7 +9,7 @@ interface SessionURLDisplayProps {
 export function SessionURLDisplay({ sessionId, onClose }: SessionURLDisplayProps) {
   const [copied, setCopied] = useState(false);
 
-  const baseUrl = window.location.origin + window.location.pathname.replace(/\/$/, '');
+  const baseUrl = window.location.origin + '/badminton-manager';
   const sessionUrl = `${baseUrl}/session/${sessionId}`;
 
   const handleCopy = async () => {

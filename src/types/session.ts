@@ -16,5 +16,6 @@ export interface Session {
   // Phase 1: Firebase同期用フィールド
   createdBy?: string;
   participants?: string[];
+  registeredPlayers?: string[]; // セッション作成時に登録された選手名
   status?: 'active' | 'ended';
 }

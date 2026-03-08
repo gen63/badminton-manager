@@ -7,8 +7,9 @@ import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { generateSessionId, parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
-import { createSession } from '../services/sessionService';
+import { createSession, syncGameState } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
+import { requestNotificationPermission } from '../lib/notifications';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { Sparkles, Download, Loader2, Play } from 'lucide-react';
 
@@ -64,6 +65,9 @@ export function SessionCreate() {
   // Phase 1 モード判定
   const isPhase1Mode = location.pathname === '/session/create';
   const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
+  const [showNameSelect, setShowNameSelect] = useState(false);
+  const [selectedCreatorName, setSelectedCreatorName] = useState('');
+  const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
   const { addPlayers } = usePlayerStore();
   const initializeCourts = useGameStore((state) => state.initializeCourts);
 
@@ -218,14 +222,16 @@ export function SessionCreate() {
   };
 
   const handleCreate = async () => {
-    if (playerNames.trim()) {
-      const inputs = playerNames
-        .split('\n')
-        .map((line) => parsePlayerInput(line))
-        .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
-      if (inputs.length > 0) {
-        addPlayers(inputs);
-      }
+    // プレイヤー名をパース
+    const playerInputs = playerNames.trim()
+      ? playerNames
+          .split('\n')
+          .map((line) => parsePlayerInput(line))
+          .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null)
+      : [];
+
+    if (playerInputs.length > 0) {
+      addPlayers(playerInputs);
     }
 
     const adjustedCourtCount = 1;
@@ -243,10 +249,13 @@ export function SessionCreate() {
     if (isPhase1Mode) {
       try {
         const creatorName = 'Admin'; // TODO: 認証後は実名を入れる
+        const registeredPlayers = playerInputs.map((p) => p.name);
         const sessionId = await createSession({
           config: sessionConfig,
           createdBy: creatorName,
+          participants: [creatorName],
           status: 'active',
+          registeredPlayers,
         });
 
         initializeSession({
@@ -255,10 +264,19 @@ export function SessionCreate() {
           createdAt: now,
           updatedAt: now,
           createdBy: creatorName,
+          participants: [creatorName],
           status: 'active',
+          registeredPlayers,
         });
         initializeCourts(adjustedCourtCount);
+
+        // 初期ゲーム状態をFirestoreにpush（参加者がすぐ取得できるように）
+        const { players } = usePlayerStore.getState();
+        const { courts, matchHistory } = useGameStore.getState();
+        await syncGameState(sessionId, { players, courts, matchHistory, reservations: [] });
+
         setCreatedSessionId(sessionId);
+        requestNotificationPermission();
       } catch (err) {
         setLoadError(getErrorMessage(err));
       }
@@ -279,6 +297,61 @@ export function SessionCreate() {
     navigate('/main');
   };
 
+  // Phase 1: 名前選択画面（URL共有後）
+  if (createdSessionId && showNameSelect) {
+    const registeredPlayers = useSessionStore.getState().session?.registeredPlayers || [];
+    const handleCreatorNameSelect = () => {
+      if (!selectedCreatorName) return;
+      setCurrentUser(selectedCreatorName);
+      navigate('/main');
+    };
+
+    return (
+      <div className="bg-app overflow-x-hidden min-h-screen flex items-center justify-center p-4">
+        <div className="max-w-md w-full space-y-4">
+          <div className="card p-6">
+            <div className="text-center mb-4">
+              <h2 className="text-xl font-bold text-foreground mb-1">あなたの名前を選択</h2>
+              <p className="text-sm text-muted-foreground">試合通知に使用します</p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {registeredPlayers.map((name) => (
+                <button
+                  key={name}
+                  onClick={() => setSelectedCreatorName(name)}
+                  className={`select-button text-sm px-2 py-2 ${
+                    selectedCreatorName === name
+                      ? 'select-button-active'
+                      : 'select-button-inactive'
+                  }`}
+                >
+                  {selectedCreatorName === name && <span className="mr-1">✓</span>}
+                  {name}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={handleCreatorNameSelect}
+              disabled={!selectedCreatorName}
+              className="btn-primary w-full"
+            >
+              メイン画面へ
+            </button>
+
+            <button
+              onClick={() => navigate('/main')}
+              className="btn-secondary w-full mt-2"
+            >
+              スキップ
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Phase 1: URL表示画面
   if (createdSessionId) {
     return (
@@ -286,7 +359,7 @@ export function SessionCreate() {
         <div className="max-w-md w-full">
           <SessionURLDisplay
             sessionId={createdSessionId}
-            onClose={() => navigate('/main')}
+            onClose={() => setShowNameSelect(true)}
           />
         </div>
       </div>

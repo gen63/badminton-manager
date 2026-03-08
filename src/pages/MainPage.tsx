@@ -12,6 +12,7 @@ import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useRealtimeSession } from '../hooks/useRealtimeSession';
+import { useFirebaseSync } from '../hooks/useFirebaseSync';
 
 import { BottomNav } from '../components/BottomNav';
 
@@ -22,6 +23,7 @@ export function MainPage() {
   // Phase 1: セッション共有モード時のリアルタイム同期
   const isSharedSession = !!session?.createdBy;
   useRealtimeSession(isSharedSession ? session?.id ?? null : null);
+  useFirebaseSync();
   const { players, toggleRest, updatePlayer, addPlayers } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();
@@ -666,7 +668,7 @@ export function MainPage() {
                               handleContinuousNext(court.id);
                             }
                           }}
-                          className="w-full py-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
+                          className="w-full min-h-[44px] bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
                         >
                           <StopCircle size={14} />
                           終了
@@ -675,7 +677,7 @@ export function MainPage() {
                         <div className="flex gap-1.5">
                           <button
                             onClick={() => handleStartGame(court.id)}
-                            className="flex-1 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
+                            className="flex-1 min-h-[44px] bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
                           >
                             <Play size={14} />
                             開始
