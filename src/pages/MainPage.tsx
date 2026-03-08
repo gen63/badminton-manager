@@ -523,7 +523,7 @@ export function MainPage() {
         </div>
       )}
 
-      <main className="flex-1 pb-[80px]">
+      <main className="flex-1 pb-[calc(60px+env(safe-area-inset-bottom)+1rem)]">
         {/* Courts Section */}
         <section className="pt-4 pb-2 px-4">
           <div className="grid grid-cols-3 gap-2">
