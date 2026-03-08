@@ -155,12 +155,13 @@ export function AccountingPage() {
     setInitialized(true);
   }, [matchHistory, players, records, gymShortName, initialized, session, lastInput]);
 
-  // 試合数を試合履歴に同期（試合履歴が変わったら自動更新）
+  // 試合数を試合履歴に同期（増えた時だけ更新）
   useEffect(() => {
     if (!initialized) return;
     
     const currentMatchCount = matchHistory.length;
-    if (currentMatchCount !== matchCount) {
+    // 試合履歴が増えた場合のみ自動更新
+    if (currentMatchCount > matchCount) {
       setMatchCount(currentMatchCount);
       // 自動更新した値を保存
       saveAllInputs({ matchCount: currentMatchCount });
