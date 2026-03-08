@@ -243,7 +243,6 @@ export function AccountingPage() {
     const lines = [
       `${formattedDate} ${gymShortName} ${practiceType}`,
       `参加合計 ${participantCount}人(免除${exemptCount} 男${maleCount} 女${femaleCount})`,
-      `試合数 ${matchCount}試合`,
       '',
       '【収入】',
       `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
@@ -354,7 +353,7 @@ export function AccountingPage() {
     
     // 収入合計と支出合計を計算
     const incomeTotal = maleTotal + femaleTotal;
-    const expenseTotal = gymCost + shuttleTotal - (otherAmount < 0 ? otherAmount : 0);
+    const expenseTotal = gymCost + shuttleTotal + (otherAmount < 0 ? Math.abs(otherAmount) : 0);
     
     const record = {
       id: crypto.randomUUID(),
