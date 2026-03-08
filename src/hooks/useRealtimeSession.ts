@@ -28,8 +28,4 @@ export function useRealtimeSession(sessionId: string | null) {
       unsubscribeRef.current = null;
     };
   }, [sessionId, updateSession]);
-
-  return {
-    isConnected: !!unsubscribeRef.current,
-  };
 }

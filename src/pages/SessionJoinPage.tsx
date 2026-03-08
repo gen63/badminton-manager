@@ -18,19 +18,15 @@ export function SessionJoinPage() {
   const [selectedName, setSelectedName] = useState('');
   const [customName, setCustomName] = useState('');
   const [isCustomMode, setIsCustomMode] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!sessionId);
   const [joining, setJoining] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => sessionId ? '' : 'セッションIDが指定されていません');
 
   const initializeSession = useSessionStore((state) => state.initialize);
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
 
   useEffect(() => {
-    if (!sessionId) {
-      setError('セッションIDが指定されていません');
-      setLoading(false);
-      return;
-    }
+    if (!sessionId) return;
 
     getSession(sessionId)
       .then((data) => {

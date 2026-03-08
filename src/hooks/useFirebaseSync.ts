@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
@@ -20,6 +20,22 @@ export function useFirebaseSync() {
 
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSyncingFromRemote = useRef(false);
+
+  const pushGameState = useCallback((sid: string) => {
+    const { players } = usePlayerStore.getState();
+    const { courts, matchHistory } = useGameStore.getState();
+    const { reservations } = useReservationStore.getState();
+    syncGameState(sid, { players, courts, matchHistory, reservations }).catch((err) => {
+      console.error('Failed to sync game state:', err);
+    });
+  }, []);
+
+  const schedulePush = useCallback((sid: string) => {
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => {
+      pushGameState(sid);
+    }, 500); // 500msデバウンス
+  }, [pushGameState]);
 
   // ローカル変更をFirestoreにpush（デバウンス）
   useEffect(() => {
@@ -49,7 +65,7 @@ export function useFirebaseSync() {
       unsubReservations();
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [isShared, sessionId]);
+  }, [isShared, sessionId, schedulePush, pushGameState]);
 
   // Firestoreからpull（リアルタイム監視）
   useEffect(() => {
@@ -92,22 +108,6 @@ export function useFirebaseSync() {
 
     return unsub;
   }, [isShared, sessionId]);
-
-  function schedulePush(sid: string) {
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    syncTimerRef.current = setTimeout(() => {
-      pushGameState(sid);
-    }, 500); // 500msデバウンス
-  }
-
-  function pushGameState(sid: string) {
-    const { players } = usePlayerStore.getState();
-    const { courts, matchHistory } = useGameStore.getState();
-    const { reservations } = useReservationStore.getState();
-    syncGameState(sid, { players, courts, matchHistory, reservations }).catch((err) => {
-      console.error('Failed to sync game state:', err);
-    });
-  }
 }
 
 /** 試合開始を検知して通知を送る */
