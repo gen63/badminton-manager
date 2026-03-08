@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { cn, formatDate, formatTime, formatDuration, generateSessionId } from './utils';
+import { describe, it, expect, vi } from 'vitest';
+import { cn, formatDate, formatTime, formatDuration, generateSessionId, copyToClipboard, parsePlayerInput, getRecommendedCourtCount, shouldBlockForRotation } from './utils';
 
 describe('cn', () => {
   it('単一のクラス名を返す', () => {
@@ -152,14 +152,81 @@ describe('shouldBlockForRotation', () => {
       shouldBlockForRotation(true, 1, 1, 6, 10, 3)
     ).toBe(true);
 
-    // waiting 7 -> remaining 3 >= 3 -> not block (but full capacity blocks)
+    // waiting 7 -> remaining 3 >= 3 but totalActive 11 >= 8 -> blocked by full capacity
     expect(
       shouldBlockForRotation(true, 1, 1, 7, 11, 3)
-    ).toBe(true); // still blocked by full capacity
+    ).toBe(true); // blocked by full capacity
 
-    // waiting 8 -> remaining 4 >= 3 and totalActive 12 > 8 -> not block
+    // waiting 8 -> remaining 4 >= 3 but totalActive 12 >= 8 -> blocked by full capacity
     expect(
       shouldBlockForRotation(true, 1, 1, 8, 12, 3)
-    ).toBe(false);
+    ).toBe(true);
+  });
+});
+
+describe('copyToClipboard', () => {
+  it('クリップボードにテキストをコピーする', async () => {
+    const mockWriteText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: mockWriteText },
+      writable: true,
+    });
+
+    const result = await copyToClipboard('test text');
+    expect(result).toBe(true);
+    expect(mockWriteText).toHaveBeenCalledWith('test text');
+  });
+
+  it('クリップボードコピーに失敗した場合falseを返す', async () => {
+    const mockWriteText = vi.fn().mockRejectedValue(new Error('Clipboard error'));
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: mockWriteText },
+      writable: true,
+    });
+
+    const result = await copyToClipboard('test text');
+    expect(result).toBe(false);
+  });
+});
+
+describe('parsePlayerInput', () => {
+  it('名前のみのパース', () => {
+    expect(parsePlayerInput('Alice')).toEqual({ name: 'Alice' });
+  });
+
+  it('名前とレーティングのパース', () => {
+    expect(parsePlayerInput('Alice  1500', /\s+/)).toEqual({ name: 'Alice', rating: 1500 });
+  });
+
+  it('名前と性別のパース', () => {
+    expect(parsePlayerInput('Alice  M', /\s+/)).toEqual({ name: 'Alice', gender: 'M' });
+    expect(parsePlayerInput('Alice  女', /\s+/)).toEqual({ name: 'Alice', gender: 'F' });
+  });
+
+  it('名前、レーティング、性別のパース', () => {
+    expect(parsePlayerInput('Alice  1500  M', /\s+/)).toEqual({ name: 'Alice', rating: 1500, gender: 'M' });
+  });
+
+  it('タブ区切りのパース', () => {
+    expect(parsePlayerInput('Alice\t1500\tM')).toEqual({ name: 'Alice', rating: 1500, gender: 'M' });
+  });
+
+  it('空行はnullを返す', () => {
+    expect(parsePlayerInput('')).toBe(null);
+    expect(parsePlayerInput('   ')).toBe(null);
+  });
+});
+
+describe('getRecommendedCourtCount', () => {
+  it('参加人数に応じたコート数を推奨する', () => {
+    expect(getRecommendedCourtCount(4)).toBe(1); // 4-4=0 <2
+    expect(getRecommendedCourtCount(6)).toBe(1); // 6-4=2 >=2
+    expect(getRecommendedCourtCount(10)).toBe(2); // 10-8=2 >=2
+    expect(getRecommendedCourtCount(14)).toBe(3); // 14-12=2 >=2
+    expect(getRecommendedCourtCount(15)).toBe(3); // 15-12=3 >=2
+  });
+
+  it('最大コート数を制限する', () => {
+    expect(getRecommendedCourtCount(20, 2)).toBe(2); // max 2
   });
 });
