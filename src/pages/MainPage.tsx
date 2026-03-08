@@ -557,7 +557,7 @@ export function MainPage() {
                     ) : !hasPlayers && courts.length > 1 && (
                       <button
                         onClick={() => handleRemoveCourt(court.id)}
-                        className="w-5 h-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center hover:bg-destructive/20 hover:text-destructive transition-colors"
+                        className="min-w-[44px] min-h-[44px] rounded-full bg-muted text-muted-foreground flex items-center justify-center hover:bg-destructive/20 hover:text-destructive transition-colors"
                         aria-label="コート削除"
                       >
                         <Minus size={12} />
@@ -677,7 +677,7 @@ export function MainPage() {
                           </button>
                           <button
                             onClick={() => handleClearCourt(court.id)}
-                            className="w-8 h-8 flex items-center justify-center rounded-lg border border-border bg-background text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-border bg-background text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -739,7 +739,7 @@ export function MainPage() {
               </div>
               <button
                 onClick={() => setSelectedPlayer(null)}
-                className="w-8 h-8 rounded-full bg-background/20 hover:bg-background/30 flex items-center justify-center text-background"
+                className="min-w-[44px] min-h-[44px] rounded-full bg-background/20 hover:bg-background/30 flex items-center justify-center text-background"
               >
                 <X size={18} />
               </button>
@@ -834,7 +834,7 @@ export function MainPage() {
                             e.stopPropagation();
                             handleToggleRestWithLock(player.id);
                           }}
-                          className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center hover:bg-orange-200 transition-colors"
+                          className="min-w-[44px] min-h-[44px] rounded-full bg-orange-100 text-orange-600 flex items-center justify-center hover:bg-orange-200 transition-colors"
                           aria-label="休憩"
                         >
                           <Coffee className="w-3 h-3" />
@@ -848,7 +848,7 @@ export function MainPage() {
                             e.stopPropagation();
                             setSelectedPlayer(null);
                           }}
-                          className="w-4 h-4 rounded-full bg-primary text-white flex items-center justify-center border border-white"
+                          className="min-w-[44px] min-h-[44px] rounded-full bg-primary text-white flex items-center justify-center border border-white"
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -901,7 +901,7 @@ export function MainPage() {
                             e.stopPropagation();
                             handleToggleRestWithLock(player.id);
                           }}
-                          className="w-5 h-5 rounded-full bg-green-100 text-green-600 flex items-center justify-center hover:bg-green-200"
+                          className="min-w-[44px] min-h-[44px] rounded-full bg-green-100 text-green-600 flex items-center justify-center hover:bg-green-200"
                         >
                           <ArrowUp className="w-3 h-3" />
                         </button>

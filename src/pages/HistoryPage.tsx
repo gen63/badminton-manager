@@ -167,14 +167,14 @@ export function HistoryPage() {
                         <button
                           onClick={() => handleEdit(match.id)}
                           aria-label="編集"
-                          className="p-1.5 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
+                          className="p-1.5 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
                         >
                           <Edit3 size={13} />
                         </button>
                         <button
                           onClick={() => handleDelete(match.id)}
                           aria-label="削除"
-                          className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
+                          className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
                         >
                           <Trash2 size={13} />
                         </button>
