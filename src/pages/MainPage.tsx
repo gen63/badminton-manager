@@ -11,12 +11,17 @@ import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
 import { useReservationStore } from '../stores/reservationStore';
+import { useRealtimeSession } from '../hooks/useRealtimeSession';
 
 import { BottomNav } from '../components/BottomNav';
 
 export function MainPage() {
   const navigate = useNavigate();
   const { session, updateConfig } = useSessionStore();
+
+  // Phase 1: セッション共有モード時のリアルタイム同期
+  const isSharedSession = !!session?.createdBy;
+  useRealtimeSession(isSharedSession ? session?.id ?? null : null);
   const { players, toggleRest, updatePlayer, addPlayers } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();

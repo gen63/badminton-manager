@@ -4,15 +4,22 @@ import type { Session, SessionConfig } from '../types/session';
 
 interface SessionState {
   session: Session | null;
+  currentUser: string | null;
   setSession: (session: Session) => void;
   updateConfig: (config: Partial<SessionConfig>) => void;
   clearSession: () => void;
+  // Phase 1: Firebase同期用
+  setCurrentUser: (name: string) => void;
+  initialize: (session: Session) => void;
+  isCreator: () => boolean;
+  updateSession: (updates: Partial<Session>) => void;
 }
 
 export const useSessionStore = create<SessionState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       session: null,
+      currentUser: null,
       setSession: (session) => set({ session }),
       updateConfig: (config) =>
         set((state) => ({
@@ -24,7 +31,25 @@ export const useSessionStore = create<SessionState>()(
               }
             : null,
         })),
-      clearSession: () => set({ session: null }),
+      clearSession: () => set({ session: null, currentUser: null }),
+      // Phase 1
+      setCurrentUser: (name) => set({ currentUser: name }),
+      initialize: (session) =>
+        set({
+          session,
+          currentUser: session.createdBy || null,
+        }),
+      isCreator: () => {
+        const { session, currentUser } = get();
+        if (!session?.createdBy || !currentUser) return true; // Phase 0: 全員管理者
+        return currentUser === session.createdBy;
+      },
+      updateSession: (updates) =>
+        set((state) => ({
+          session: state.session
+            ? { ...state.session, ...updates, updatedAt: Date.now() }
+            : null,
+        })),
     }),
     {
       name: 'badminton-session',

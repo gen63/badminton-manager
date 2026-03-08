@@ -7,6 +7,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { ScoreInputPage } from './pages/ScoreInputPage';
 import { AccountingPage } from './pages/AccountingPage';
 import { ReservationPage } from './pages/ReservationPage';
+import { SessionJoinPage } from './pages/SessionJoinPage';
 import { PWAPrompt } from './components/PWAPrompt';
 
 function App() {
@@ -14,6 +15,8 @@ function App() {
     <BrowserRouter basename="/badminton-manager">
       <Routes>
         <Route path="/" element={<SessionCreate />} />
+        <Route path="/session/create" element={<SessionCreate />} />
+        <Route path="/session/:sessionId" element={<SessionJoinPage />} />
         <Route path="/players" element={<PlayerSelect />} />
         <Route path="/main" element={<MainPage />} />
         <Route path="/history" element={<HistoryPage />} />

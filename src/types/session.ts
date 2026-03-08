@@ -13,4 +13,8 @@ export interface Session {
   config: SessionConfig;
   createdAt: number;
   updatedAt: number;
+  // Phase 1: Firebase同期用フィールド
+  createdBy?: string;
+  participants?: string[];
+  status?: 'active' | 'ended';
 }

@@ -6,11 +6,14 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useUndoStore } from '../stores/undoStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
-import { ArrowLeft, Trash2, Settings as SettingsIcon } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, clearSession } = useSessionStore();
+  const { session, updateConfig, clearSession, isCreator } = useSessionStore();
+
+  // Phase 1: 権限判定
+  const isAdmin = isCreator();
   const { clearPlayers } = usePlayerStore();
   const { clearHistory } = useGameStore();
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
@@ -185,18 +188,58 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* アクション */}
-        <div className="space-y-3">
-          <div className="flex justify-center">
-            <button
-              onClick={handleReset}
-              className="btn-danger flex items-center justify-center gap-2 py-3 px-6"
-            >
-              <Trash2 size={18} />
-              リセット
-            </button>
+        {/* セッション管理（Phase 1: 管理者のみ） */}
+        {isAdmin && session.createdBy && (
+          <div className="card p-4">
+            <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+              <span className="w-6 h-6 rounded-lg bg-purple-100 flex items-center justify-center">
+                <Shield size={14} className="text-purple-600" />
+              </span>
+              セッション管理
+              <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">管理者</span>
+            </h2>
+            <div className="bg-muted rounded-xl p-3 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">管理者</span>
+                <span className="font-medium">{session.createdBy}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">セッションID</span>
+                <span className="font-mono">{session.id}</span>
+              </div>
+              {session.participants && session.participants.length > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">参加者</span>
+                  <span className="font-medium">{session.participants.length}人</span>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* 一般ユーザー向け注意事項（Phase 1） */}
+        {!isAdmin && session.createdBy && (
+          <div className="card p-4 bg-blue-50 border border-blue-200">
+            <p className="text-xs text-blue-800">
+              セッション管理・リセットは管理者（{session.createdBy}）のみが実行できます。
+            </p>
+          </div>
+        )}
+
+        {/* アクション */}
+        {isAdmin && (
+          <div className="space-y-3">
+            <div className="flex justify-center">
+              <button
+                onClick={handleReset}
+                className="btn-danger flex items-center justify-center gap-2 py-3 px-6"
+              >
+                <Trash2 size={18} />
+                リセット
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

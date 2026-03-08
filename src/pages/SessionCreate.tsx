@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -7,6 +7,9 @@ import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { generateSessionId, parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
+import { createSession } from '../services/sessionService';
+import { getErrorMessage } from '../lib/errorHandler';
+import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { Sparkles, Download, Loader2, Play } from 'lucide-react';
 
 // 現在日時を取得（曜日に応じて時刻を設定）
@@ -54,7 +57,13 @@ const getInitialGym = () => {
 
 export function SessionCreate() {
   const navigate = useNavigate();
+  const location = useLocation();
   const setSession = useSessionStore((state) => state.setSession);
+  const initializeSession = useSessionStore((state) => state.initialize);
+
+  // Phase 1 モード判定
+  const isPhase1Mode = location.pathname === '/session/create';
+  const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
   const { addPlayers } = usePlayerStore();
   const initializeCourts = useGameStore((state) => state.initializeCourts);
 
@@ -208,7 +217,7 @@ export function SessionCreate() {
     setIsLoadingMembers(false);
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (playerNames.trim()) {
       const inputs = playerNames
         .split('\n')
@@ -220,18 +229,47 @@ export function SessionCreate() {
     }
 
     const adjustedCourtCount = 1;
-    const sessionId = generateSessionId();
     const now = Date.now();
     const practiceTime = new Date(practiceDateTime).getTime();
+    const sessionConfig = {
+      courtCount: adjustedCourtCount,
+      targetScore,
+      practiceDate: practiceDateTime.split('T')[0],
+      practiceStartTime: practiceTime,
+      gym: selectedGym || undefined,
+    };
+
+    // Phase 1: Firebaseにセッション作成
+    if (isPhase1Mode) {
+      try {
+        const creatorName = 'Admin'; // TODO: 認証後は実名を入れる
+        const sessionId = await createSession({
+          config: sessionConfig,
+          createdBy: creatorName,
+          status: 'active',
+        });
+
+        initializeSession({
+          id: sessionId,
+          config: sessionConfig,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: creatorName,
+          status: 'active',
+        });
+        initializeCourts(adjustedCourtCount);
+        setCreatedSessionId(sessionId);
+      } catch (err) {
+        setLoadError(getErrorMessage(err));
+      }
+      return;
+    }
+
+    // Phase 0: LocalStorageのみ
+    const sessionId = generateSessionId();
     const session = {
       id: sessionId,
-      config: {
-        courtCount: adjustedCourtCount,
-        targetScore,
-        practiceDate: practiceDateTime.split('T')[0],
-        practiceStartTime: practiceTime,
-        gym: selectedGym || undefined,
-      },
+      config: sessionConfig,
       createdAt: now,
       updatedAt: now,
     };
@@ -240,6 +278,20 @@ export function SessionCreate() {
     initializeCourts(adjustedCourtCount);
     navigate('/main');
   };
+
+  // Phase 1: URL表示画面
+  if (createdSessionId) {
+    return (
+      <div className="bg-app overflow-x-hidden min-h-screen flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <SessionURLDisplay
+            sessionId={createdSessionId}
+            onClose={() => navigate('/main')}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-app overflow-x-hidden">
