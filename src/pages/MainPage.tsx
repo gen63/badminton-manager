@@ -518,7 +518,7 @@ export function MainPage() {
       {shouldBlockAssignment && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-center gap-2">
           <span className="text-xs text-amber-800 font-medium text-center">
-            💡 多様確保のため、一括配置を推奨
+            💡 組み合わせの多様性を確保するため、一括配置を推奨
           </span>
         </div>
       )}
