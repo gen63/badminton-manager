@@ -114,21 +114,22 @@ export function HistoryPage() {
               {[...matchHistory].reverse().map((match, reverseIndex) => {
                 const matchNumber = matchHistory.length - reverseIndex;
                 const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
-                
+                const isNoScore = match.scoreA === 0 && match.scoreB === 0 && !match.winner;
+
                 // 勝ちペアを左に、スコアの高い方を左に
                 const isTeamAWinner = match.winner === 'A';
                 const leftTeam = isTeamAWinner ? match.teamA : match.teamB;
                 const rightTeam = isTeamAWinner ? match.teamB : match.teamA;
                 const leftScore = isTeamAWinner ? match.scoreA : match.scoreB;
                 const rightScore = isTeamAWinner ? match.scoreB : match.scoreA;
-                
+
                 const leftNames = leftTeam.map(getPlayerName).join(' ');
                 const rightNames = rightTeam.map(getPlayerName).join(' ');
 
                 return (
                   <div
                     key={match.id}
-                    className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg p-2 border border-gray-100"
+                    className={`rounded-lg p-2 border ${isNoScore ? 'bg-orange-50 border-orange-300' : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-100'}`}
                   >
                     <div className="flex items-center gap-2">
                       {/* 試合番号 */}
@@ -156,9 +157,15 @@ export function HistoryPage() {
                             {formatTime(match.finishedAt)}
                           </span>
                           <span className="whitespace-nowrap">({duration}分)</span>
-                          <span className="text-xs font-bold text-foreground bg-card px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
-                            {leftScore} - {rightScore}
-                          </span>
+                          {isNoScore ? (
+                            <span className="text-xs font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full whitespace-nowrap">
+                              未入力
+                            </span>
+                          ) : (
+                            <span className="text-xs font-bold text-foreground bg-card px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
+                              {leftScore} - {rightScore}
+                            </span>
+                          )}
                         </div>
                       </div>
 
