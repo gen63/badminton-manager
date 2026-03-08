@@ -11,8 +11,8 @@ interface SettingsState {
   setContinuousMatchMode: (value: boolean) => void;
   recordScores: boolean;
   setRecordScores: (value: boolean) => void;
-  prioritizeRotation: boolean;
-  setPrioritizeRotation: (value: boolean) => void;
+  prioritizeDiversity: boolean;
+  setPrioritizeDiversity: (value: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -27,8 +27,8 @@ export const useSettingsStore = create<SettingsState>()(
       setContinuousMatchMode: (value) => set({ continuousMatchMode: value }),
       recordScores: true,
       setRecordScores: (value) => set({ recordScores: value }),
-      prioritizeRotation: false,
-      setPrioritizeRotation: (value) => set({ prioritizeRotation: value }),
+      prioritizeDiversity: false,
+      setPrioritizeDiversity: (value) => set({ prioritizeDiversity: value }),
     }),
     {
       name: 'badminton-settings',

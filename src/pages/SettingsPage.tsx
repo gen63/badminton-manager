@@ -13,7 +13,7 @@ export function SettingsPage() {
   const { session, updateConfig, clearSession } = useSessionStore();
   const { clearPlayers } = usePlayerStore();
   const { clearHistory } = useGameStore();
-  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeRotation, setPrioritizeRotation } = useSettingsStore();
+  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
   const { clearReservations } = useReservationStore();
@@ -154,31 +154,31 @@ export function SettingsPage() {
               <label className="text-xs font-semibold text-gray-700 mb-1.5 block">配置タイミング</label>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setPrioritizeRotation(true)}
+                  onClick={() => setPrioritizeDiversity(true)}
                   className={`flex-1 select-button text-xs px-2 ${
-                    prioritizeRotation
+                    prioritizeDiversity
                       ? 'select-button-active'
                       : 'select-button-inactive'
                   }`}
                 >
-                  {prioritizeRotation && <span className="mr-1">✓</span>}
-                  流動優先
+                  {prioritizeDiversity && <span className="mr-1">✓</span>}
+                  多様性優先
                 </button>
                 <button
-                  onClick={() => setPrioritizeRotation(false)}
+                  onClick={() => setPrioritizeDiversity(false)}
                   className={`flex-1 select-button text-xs px-2 ${
-                    !prioritizeRotation
+                    !prioritizeDiversity
                       ? 'select-button-active'
                       : 'select-button-inactive'
                   }`}
                 >
-                  {!prioritizeRotation && <span className="mr-1">✓</span>}
+                  {!prioritizeDiversity && <span className="mr-1">✓</span>}
                   回数優先
                 </button>
               </div>
               <p className="text-[10px] text-gray-500 mt-1">
-                {prioritizeRotation
-                  ? '待機者が少ない時は他コート終了を待って一括配置'
+                {prioritizeDiversity
+                  ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
                   : '空きが出たら即座に配置'}
               </p>
             </div>

@@ -4,7 +4,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
-import { parsePlayerInput, getRecommendedCourtCount, shouldBlockForRotation } from '../lib/utils';
+import { parsePlayerInput, getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
 import { Coffee, Users, ArrowUp, Plus, X, Repeat, Undo2, Redo2, Play, StopCircle, Trash2, ChevronDown, Minus, Settings } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -20,7 +20,7 @@ export function MainPage() {
   const { players, toggleRest, updatePlayer, addPlayers } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();
-  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeRotation } = useSettingsStore();
+  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeDiversity } = useSettingsStore();
 
   // total active players cache used by flow-priority checks
   const totalActiveCount = players.filter(p => !p.isResting).length;
@@ -56,14 +56,14 @@ export function MainPage() {
   // ブロック条件成立時に連続モードを強制OFF
   // 「配置済み（準備中）」もプレイ中と同様に扱う
   useEffect(() => {
-    if (!prioritizeRotation || !continuousMatchMode) return;
+    if (!prioritizeDiversity || !continuousMatchMode) return;
     const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
     const active = players.filter(p => !p.isResting);
     const actualWaiting = active.length - occupied.length * 4;
     if (occupied.length > 0 && actualWaiting < 7) {
       setContinuousMatchMode(false);
     }
-  }, [prioritizeRotation, continuousMatchMode, courts, players, setContinuousMatchMode]);
+  }, [prioritizeDiversity, continuousMatchMode, courts, players, setContinuousMatchMode]);
 
 
   if (!session) {
@@ -93,7 +93,7 @@ export function MainPage() {
       if (continuousMatchMode) {
         const activeCount = players.filter(p => !p.isResting).length;
         const waitingAfter = activeCount - newCount * 4;
-        const threshold = prioritizeRotation ? 7 : 3;
+        const threshold = prioritizeDiversity ? 7 : 2;
         if (waitingAfter < threshold) {
           setContinuousMatchMode(false);
         }
@@ -184,7 +184,7 @@ export function MainPage() {
   const handleContinuousNext = (courtId: number) => {
     const { courts, matchHistory, updateCourt, startGame } = useGameStore.getState();
     const { players } = usePlayerStore.getState();
-    const { useStayDurationPriority, prioritizeRotation } = useSettingsStore.getState();
+    const { useStayDurationPriority, prioritizeDiversity } = useSettingsStore.getState();
 
     // 最新の待機プレイヤーを計算
     const playersInCourts = new Set(
@@ -194,8 +194,8 @@ export function MainPage() {
       p => !p.isResting && !playersInCourts.has(p.id)
     );
 
-    // ブロックチェック（prioritizeRotation ON時）
-    if (prioritizeRotation) {
+    // ブロックチェック（prioritizeDiversity ON時）
+    if (prioritizeDiversity) {
       const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
       const active = players.filter(p => !p.isResting);
       const actualWaiting = active.length - occupied.length * 4;
@@ -274,16 +274,16 @@ export function MainPage() {
   const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
   const occupiedCourts = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
   const waitingCount = sortedWaitingPlayers.length;
-  const shouldBlockAssignment = shouldBlockForRotation(
-    prioritizeRotation,
+  const shouldBlockAssignment = shouldBlockForDiversity(
+    prioritizeDiversity,
     occupiedCourts.length,
     emptyCourts.length,
     waitingCount,
     totalActiveCount,
-    3
+    2
   );
-  const shouldBlockContinuous = shouldBlockForRotation(
-    prioritizeRotation,
+  const shouldBlockContinuous = shouldBlockForDiversity(
+    prioritizeDiversity,
     occupiedCourts.length,
     emptyCourts.length,
     waitingCount,
@@ -489,9 +489,6 @@ export function MainPage() {
               <Users size={16} />
               <span>一括</span>
             </button>
-            {shouldBlockAssignment && emptyCourts.length > 0 && (
-              <span className="text-[10px] text-muted-foreground leading-tight min-w-0">全コート終了を待って一括配置を推奨</span>
-            )}
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -517,6 +514,14 @@ export function MainPage() {
           </div>
         </div>
       </header>
+
+      {shouldBlockAssignment && emptyCourts.length > 0 && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-center gap-2">
+          <span className="text-xs text-amber-800 font-medium text-center">
+            💡 多様な組み合わせのため、全コート終了後の一括配置を推奨
+          </span>
+        </div>
+      )}
 
       <main className="flex-1 pb-[60px]">
         {/* Courts Section */}

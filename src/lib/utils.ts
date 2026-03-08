@@ -112,36 +112,36 @@ export function getRecommendedCourtCount(playerCount: number, maxCourts: number 
 }
 
 /**
- * 流動優先モードのブロック判定ユーティリティ。
+ * 多様性優先モードのブロック判定ユーティリティ。
  *
- * @param prioritizeRotation 流動優先モードかどうか
+ * @param prioritizeDiversity 多様性優先モードかどうか
  * @param occupiedCourts 目前でプレー中またはプレイヤーが入っているコート数
  * @param emptyCourts 空いているコート数
  * @param waitingCount 待機中のプレイヤー人数（コート内に入っていないアクティブプレイヤー）
  * @param totalActiveCount アクティブ（休憩中でない）プレイヤーの総数
- * @param baseThreshold ブロックするための基本待機人数閾値（従来は3／7など）
+ * @param baseThreshold ブロックするための基本待機人数閾値（通常は2）
  *
  * ブロックされる条件:
- *   1. 流動優先モードが有効
+ *   1. 多様性優先モードが有効
  *   2. 少なくとも1コートはプレー中かプレイヤー割り当て済みかつ
  *      1コート以上が空いている
- *   3. 空きコートを埋めた後の待機人数が baseThreshold 未満
+ *   3. 空きコートを埋めた後の待機人数が baseThreshold 以下
  *
- * 流動優先モードの意図: 空いたコートをすぐに埋めて回転を速くする
+ * 多様性優先モードの意図: 組み合わせの多様性を高めるため複数コート一括配置を促す
  */
-export function shouldBlockForRotation(
-  prioritizeRotation: boolean,
+export function shouldBlockForDiversity(
+  prioritizeDiversity: boolean,
   occupiedCourts: number,
   emptyCourts: number,
   waitingCount: number,
   _totalActiveCount: number,
   baseThreshold: number
 ): boolean {
-  if (!prioritizeRotation) return false;
+  if (!prioritizeDiversity) return false;
   if (occupiedCourts === 0 || emptyCourts === 0) return false;
 
   const remainingAfterAssignment = Math.max(0, waitingCount - (emptyCourts * 4));
-  if (remainingAfterAssignment < baseThreshold) {
+  if (remainingAfterAssignment <= baseThreshold) {
     return true;
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { cn, formatDate, formatTime, formatDuration, generateSessionId, copyToClipboard, parsePlayerInput, getRecommendedCourtCount, shouldBlockForRotation } from './utils';
+import { cn, formatDate, formatTime, formatDuration, generateSessionId, copyToClipboard, parsePlayerInput, getRecommendedCourtCount, shouldBlockForDiversity } from './utils';
 
 describe('cn', () => {
   it('単一のクラス名を返す', () => {
@@ -96,70 +96,62 @@ describe('generateSessionId', () => {
   });
 });
 
-// --- 流動優先関連のテスト -----------------------------------------------
+// --- 多様性優先関連のテスト -----------------------------------------------
 
-describe('shouldBlockForRotation', () => {
-  it('returns false when prioritizeRotation is off', () => {
+describe('shouldBlockForDiversity', () => {
+  it('returns false when prioritizeDiversity is off', () => {
     expect(
-      shouldBlockForRotation(false, 1, 1, 0, 4, 3)
+      shouldBlockForDiversity(false, 1, 1, 0, 4, 2)
     ).toBe(false);
   });
 
   it('requires at least one occupied and one empty court', () => {
     expect(
-      shouldBlockForRotation(true, 0, 2, 0, 8, 3)
+      shouldBlockForDiversity(true, 0, 2, 0, 8, 2)
     ).toBe(false);
     expect(
-      shouldBlockForRotation(true, 2, 0, 0, 8, 3)
-    ).toBe(false);
-  });
-
-  it('blocks when waitingCount below base threshold', () => {
-    expect(
-      shouldBlockForRotation(true, 1, 1, 2, 8, 3)
-    ).toBe(true);
-    expect(
-      shouldBlockForRotation(true, 1, 2, 6, 12, 7)
-    ).toBe(true);
-  });
-
-  it('blocks when active count equals capacity and not all courts empty', () => {
-    // 2 courts, 8 active, one occupied, one empty, waiting 4 which is >= threshold
-    expect(
-      shouldBlockForRotation(true, 1, 1, 4, 8, 3)
-    ).toBe(true);
-
-    // 3 courts, 12 active, two occupied one empty
-    expect(
-      shouldBlockForRotation(true, 2, 1, 4, 12, 3)
-    ).toBe(true);
-
-    // but if all courts empty, should not block even if active==capacity
-    expect(
-      shouldBlockForRotation(true, 0, 2, 8, 8, 3)
+      shouldBlockForDiversity(true, 2, 0, 0, 8, 2)
     ).toBe(false);
   });
 
-  it('blocks when remaining players after assignment below base threshold', () => {
-    // 2 courts, 1 occupied 1 empty, waiting 4, total 8, base 3 -> remaining 0 < 3 -> block
+  it('blocks when remaining after assignment <= base threshold (2)', () => {
+    // 1 empty, waiting 4 -> remaining 0 <= 2 -> block
     expect(
-      shouldBlockForRotation(true, 1, 1, 4, 8, 3)
+      shouldBlockForDiversity(true, 1, 1, 4, 8, 2)
     ).toBe(true);
 
-    // waiting 6 -> remaining 2 < 3 -> block
+    // 1 empty, waiting 5 -> remaining 1 <= 2 -> block
     expect(
-      shouldBlockForRotation(true, 1, 1, 6, 10, 3)
+      shouldBlockForDiversity(true, 1, 1, 5, 9, 2)
     ).toBe(true);
 
-    // waiting 7 -> remaining 3 >= 3 but totalActive 11 >= 8 -> blocked by full capacity
+    // 1 empty, waiting 6 -> remaining 2 <= 2 -> block
     expect(
-      shouldBlockForRotation(true, 1, 1, 7, 11, 3)
-    ).toBe(true); // blocked by full capacity
-
-    // waiting 8 -> remaining 4 >= 3 but totalActive 12 >= 8 -> blocked by full capacity
-    expect(
-      shouldBlockForRotation(true, 1, 1, 8, 12, 3)
+      shouldBlockForDiversity(true, 1, 1, 6, 10, 2)
     ).toBe(true);
+
+    // 1 empty, waiting 7 -> remaining 3 > 2 -> no block (元の問題が解決)
+    expect(
+      shouldBlockForDiversity(true, 1, 1, 7, 11, 2)
+    ).toBe(false);
+  });
+
+  it('blocks when all courts empty -> no block (no occupied courts)', () => {
+    expect(
+      shouldBlockForDiversity(true, 0, 2, 8, 8, 2)
+    ).toBe(false);
+  });
+
+  it('連続モード用の高いthreshold (7) でもテスト', () => {
+    // 1 empty, waiting 10 -> remaining 6 <= 7 -> block
+    expect(
+      shouldBlockForDiversity(true, 1, 1, 10, 14, 7)
+    ).toBe(true);
+
+    // 1 empty, waiting 12 -> remaining 8 > 7 -> no block
+    expect(
+      shouldBlockForDiversity(true, 1, 1, 12, 16, 7)
+    ).toBe(false);
   });
 });
 
