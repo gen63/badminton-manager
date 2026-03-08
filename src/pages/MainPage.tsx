@@ -842,7 +842,7 @@ export function MainPage() {
                       </div>
                     )}
                     {isSelected && (
-                      <div className="absolute -top-1 -right-1 z-10">
+                      <div className="absolute top-1/2 -translate-y-1/2 right-1 z-10">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
