@@ -875,7 +875,7 @@ export function MainPage() {
           </div>
 
           {/* On Break */}
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 mb-6">
             <h3 className="text-sm font-bold text-muted-foreground">休憩中 ({restingPlayers.length})</h3>
             {restingAndPlaceholderPlayers.length > 0 ? (
               <div className="grid grid-cols-3 gap-2 opacity-75">
