@@ -97,7 +97,6 @@ describe('generateSessionId', () => {
 });
 
 // --- 流動優先関連のテスト -----------------------------------------------
-import { shouldBlockForRotation } from './utils';
 
 describe('shouldBlockForRotation', () => {
   it('returns false when prioritizeRotation is off', () => {
