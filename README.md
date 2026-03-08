@@ -172,10 +172,17 @@ npm run preview
 
 ### デプロイ
 
+masterブランチへのpushで**GitHub Actionsが自動デプロイ**します。
+
 ```bash
-# GitHub Pagesにデプロイ
-npm run deploy
+git add -A
+git commit -m "変更内容"
+git push origin master
 ```
+
+デプロイ進捗: https://github.com/gen63/badminton-manager/actions
+
+詳細な手順やチェックリストは `PROJECT.md` を参照してください。
 
 ## 📱 使い方
 

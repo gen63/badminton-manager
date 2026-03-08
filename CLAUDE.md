@@ -36,46 +36,19 @@
 
 ---
 
-## 📁 ディレクトリ構造
+## 📚 プロジェクト情報
 
-```
-badminton-manager/
-├── docs/
-│   └── plans/          # 設計ドキュメント・計画書
-├── src/
-│   ├── components/     # 再利用可能なUIコンポーネント
-│   ├── pages/          # ページコンポーネント
-│   ├── stores/         # Zustand ストア
-│   ├── hooks/          # カスタムフック
-│   ├── lib/            # ユーティリティ・アルゴリズム
-│   └── types/          # TypeScript型定義
-└── DESIGN.md           # UIデザインガイドライン
-```
+開発時に必要な詳細情報は以下のファイルを参照:
+
+- **PROJECT.md** - コミット前チェック、デプロイ手順、プロジェクト構成
+- **DESIGN.md** - UIデザインガイドライン（タップターゲット、余白、色など）
+- **README.md** - プロジェクト概要、機能一覧、技術スタック
 
 ---
 
-## 🛠️ 技術スタック
+## ⚠️ 重要なルール
 
-- **フレームワーク**: React + TypeScript
-- **ビルド**: Vite
-- **スタイリング**: Tailwind CSS
-- **状態管理**: Zustand
-- **デプロイ**: GitHub Pages (GitHub Actions)
-
----
-
-## 📐 デザインルール
-
-`DESIGN.md` を参照。特に重要なポイント：
-
-- タップターゲット: 44px以上
-- 画面端余白: 20px以上（`p-5`）
-- iOS Safari対応必須
-
----
-
-## ⚠️ 注意事項
-
-- **commit前に必ずlintを実行**: `npm run lint`
-- PRを作成する前にローカルでビルド確認: `npm run build`
+- **commit前に必ずチェック**: `npm run build` と `npm run lint` を実行
+  - 詳細は `PROJECT.md` を参照
+- **デザイン変更時**: 必ず `DESIGN.md` を読む
 - コミットメッセージは日本語OK

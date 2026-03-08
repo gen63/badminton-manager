@@ -39,16 +39,9 @@ npm run dev
 - GitHub Actionsでビルド失敗 = デプロイ失敗 = ユーザーに届かない
 - ローカルで事前チェックして品質を保つ
 
-## 🚨 デプロイポリシー
+## 🚀 デプロイ手順
 
-**修正したら必ずデプロイ**
-
-- GitHub Pages で本番公開されるため、未デプロイ厳禁
-- デプロイ忘れ = ユーザーに反映されない
-
-## デプロイ手順（GitHub Actions）
-
-**⚠️ `npm run deploy` は使わない！masterへのpushで自動デプロイ**
+**masterへのpushで自動デプロイ（GitHub Actions）**
 
 ```bash
 cd /home/gen/badminton-manager
@@ -57,33 +50,50 @@ git commit -m "変更内容"
 git push origin master
 ```
 
-- masterにpushすると GitHub Actions が自動でビルド＆デプロイ
-- 進捗確認: https://github.com/gen63/badminton-manager/actions
-- 完了まで1〜2分程度
+### デプロイの流れ
+1. masterにpush
+2. GitHub Actionsが自動でビルド＆デプロイ（1〜2分）
+3. GitHub Pagesに公開
 
-**デプロイ後:**
-- Genにキャッシュバスティング付きURLを連携（タイムスタンプ付き）
-- 形式: `https://gen63.github.io/badminton-manager/?t=UNIX_TIMESTAMP`
-- 例: `https://gen63.github.io/badminton-manager/?t=1738227684`
-- **バージョン番号を報告（vite.config.ts の __APP_VERSION__ を確認）**
+### デプロイ後の報告
+- **バージョン番号**を報告（コミット数で自動算出）
+  - 確認方法: `git rev-list --count HEAD`
+  - 例: "Deployed version 606 to master"
+- **キャッシュバスティング付きURL**を送信
+  - 形式: `https://gen63.github.io/badminton-manager/?t=UNIX_TIMESTAMP`
+  - 例: `https://gen63.github.io/badminton-manager/?t=1738227684`
 
-## 📌 バージョン管理
+### 進捗確認
+- GitHub Actions: https://github.com/gen63/badminton-manager/actions
 
-**バージョン番号の場所:** `vite.config.ts` の `__APP_VERSION__`
+## 📁 ディレクトリ構造
 
-現在のバージョン確認:
-```bash
-grep '__APP_VERSION__' vite.config.ts
+```
+badminton-manager/
+├── docs/
+│   └── plans/          # 設計ドキュメント・計画書
+├── src/
+│   ├── components/     # 再利用可能なUIコンポーネント
+│   ├── pages/          # ページコンポーネント
+│   ├── stores/         # Zustand ストア
+│   ├── hooks/          # カスタムフック
+│   ├── lib/            # ユーティリティ・アルゴリズム
+│   └── types/          # TypeScript型定義
+├── CLAUDE.md           # AI向けワークフロー指示
+├── PROJECT.md          # プロジェクト設定（このファイル）
+├── DESIGN.md           # UIデザインガイドライン
+└── README.md           # プロジェクト概要
 ```
 
-**バージョン更新タイミング（手動）:**
-- 機能追加時
-- 重要なバグ修正時
-- UI/UXの大きな変更時
-
-## プロジェクト情報
+## 📌 プロジェクト情報
 
 - **リポジトリ:** https://github.com/gen63/badminton-manager
 - **公開URL:** https://gen63.github.io/badminton-manager/
-- **フレームワーク:** React + Vite + TypeScript
-- **デプロイ:** GitHub Pages (gh-pages)
+- **技術スタック:**
+  - フレームワーク: React 19 + TypeScript
+  - ビルド: Vite
+  - スタイリング: Tailwind CSS 4
+  - 状態管理: Zustand
+  - ルーティング: React Router v7
+- **デプロイ:** GitHub Pages (gh-pages branch)
+- **バージョン:** コミット数で自動管理（`git rev-list --count HEAD`）
