@@ -79,6 +79,7 @@ export function MainPage() {
   }
 
   const handleClearCourt = (courtId: number) => {
+    pushUndo();
     updateCourt(courtId, {
       teamA: ['', ''],
       teamB: ['', ''],
@@ -463,6 +464,22 @@ export function MainPage() {
     redo();
   };
 
+  // Ctrl+Z / Ctrl+Y キーボードショートカット
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
+
   const formatElapsedTime = (startedAt: number) => {
     const elapsed = Math.floor((currentTime - startedAt) / 1000);
     const minutes = Math.floor(elapsed / 60);
@@ -502,6 +519,7 @@ export function MainPage() {
               onClick={handleUndo}
               disabled={undoStack.length === 0}
               className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="元に戻す"
             >
               <Undo2 size={18} />
             </button>
@@ -509,6 +527,7 @@ export function MainPage() {
               onClick={handleRedo}
               disabled={redoStack.length === 0}
               className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="やり直し"
             >
               <Redo2 size={18} />
             </button>
@@ -633,12 +652,7 @@ export function MainPage() {
                           onClick={() => {
                             const currentCourt = courts.find((c) => c.id === court.id);
                             if (!currentCourt) return;
-                            pushUndo({
-                              courts: structuredClone(useGameStore.getState().courts),
-                              players: structuredClone(usePlayerStore.getState().players),
-                              matchHistory: structuredClone(useGameStore.getState().matchHistory),
-                              reservations: structuredClone(useReservationStore.getState().reservations),
-                            });
+                            pushUndo();
                             finishGame(court.id, 0, 0);
                             [...court.teamA, ...court.teamB].forEach((playerId) => {
                               const player = players.find((p) => p.id === playerId);

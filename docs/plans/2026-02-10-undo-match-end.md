@@ -114,7 +114,6 @@ persist設定：
 3. undoStack.pop() → 復元対象
 4. gameStore.setState({ courts, matchHistory })
 5. playerStore.setState({ players })
-6. トースト「試合終了を取り消しました」
 
 【Redo時】
 1. 現在の状態をスナップショット
@@ -122,7 +121,6 @@ persist設定：
 3. redoStack.pop() → 復元対象
 4. gameStore.setState({ courts, matchHistory })
 5. playerStore.setState({ players })
-6. トースト「試合終了をやり直しました」
 ```
 
 ### 4. ヘッダーUI
@@ -165,7 +163,7 @@ MainPage ヘッダーに Undo/Redo ボタンを配置：
 - コートへの手動配置
 
 → これは許容する。Undoは「その時点の状態に完全に戻す」という明確なセマンティクス。
-→ UIでUndo時にトーストで通知すれば、ユーザーは何が起きたか理解できる。
+→ Undo/Redoボタンの状態変化（disabled切替）でユーザーは操作結果を把握できる。
 
 ### 7. 注意点: 連続モードで進行中の試合に対するUndo
 
@@ -205,7 +203,8 @@ Undoすると**自動開始された試合も消えて、元の試合が進行�
 ### Step 5: ヘッダーUI
 - MainPage ヘッダーに Undo/Redo ボタン追加
 - 活性/非活性の制御
-- トースト通知
+- aria-label（アクセシビリティ）
+- Ctrl+Z / Ctrl+Y キーボードショートカット
 
 ### Step 6: ビルド確認
 - `npm run build` で型エラー・ビルドエラーがないことを確認

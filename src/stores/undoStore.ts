@@ -4,15 +4,14 @@ import type { UndoEntry } from '../types/undo';
 import { useGameStore } from './gameStore';
 import { usePlayerStore } from './playerStore';
 import { useReservationStore } from './reservationStore';
+import { useSettingsStore } from './settingsStore';
 
 const MAX_UNDO = 50;
-
-type UndoEntryInput = Omit<UndoEntry, 'timestamp'>;
 
 interface UndoState {
   undoStack: UndoEntry[];
   redoStack: UndoEntry[];
-  pushUndo: (entry: UndoEntryInput) => void;
+  pushUndo: () => void;
   undo: () => boolean;
   redo: () => boolean;
   clearAll: () => void;
@@ -24,6 +23,7 @@ function createCurrentSnapshot(): UndoEntry {
     players: structuredClone(usePlayerStore.getState().players),
     matchHistory: structuredClone(useGameStore.getState().matchHistory),
     reservations: structuredClone(useReservationStore.getState().reservations),
+    continuousMatchMode: useSettingsStore.getState().continuousMatchMode,
     timestamp: Date.now(),
   };
 }
@@ -41,6 +41,9 @@ function restoreSnapshot(entry: UndoEntry) {
       reservations: structuredClone(entry.reservations),
     });
   }
+  if (entry.continuousMatchMode !== undefined) {
+    useSettingsStore.getState().setContinuousMatchMode(entry.continuousMatchMode);
+  }
 }
 
 export const useUndoStore = create<UndoState>()(
@@ -49,11 +52,13 @@ export const useUndoStore = create<UndoState>()(
       undoStack: [],
       redoStack: [],
 
-      pushUndo: (entry) =>
+      pushUndo: () => {
+        const snapshot = createCurrentSnapshot();
         set(() => ({
-          undoStack: [...get().undoStack.slice(-(MAX_UNDO - 1)), { ...entry, timestamp: Date.now() }],
+          undoStack: [...get().undoStack.slice(-(MAX_UNDO - 1)), snapshot],
           redoStack: [],
-        })),
+        }));
+      },
 
       undo: () => {
         const { undoStack, redoStack } = get();

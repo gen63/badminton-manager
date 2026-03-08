@@ -8,5 +8,6 @@ export interface UndoEntry {
   players: Player[];
   matchHistory: Match[];
   reservations?: Reservation[];
+  continuousMatchMode?: boolean;
   timestamp: number;
 }
