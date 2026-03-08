@@ -105,28 +105,50 @@ describe('shouldBlockForDiversity', () => {
     ).toBe(false);
   });
 
-  it('requires at least one empty court', () => {
-    // 空きコートがない場合はブロックしない
+  it('shows recommendation even when no empty courts (预告として)', () => {
+    // 空きコート0、待機2人 → 仮に1コート空くと余り-2 <= 2 → 推奨表示
     expect(
-      shouldBlockForDiversity(true, 2, 0, 0, 8, 2)
+      shouldBlockForDiversity(true, 2, 0, 2, 8, 2)
+    ).toBe(true);
+
+    // 空きコート0、待機10人 → 仮に1コート空くと余り6 > 2 → 推奨なし
+    expect(
+      shouldBlockForDiversity(true, 2, 0, 10, 16, 2)
     ).toBe(false);
   });
 
   it('blocks when all courts empty but players insufficient for diversity', () => {
-    // 2コート全空き、8人 -> 余り0 <= 2 -> ブロック
+    // 2コート全空き、8人 -> 余り0 <= 2 -> 推奨表示
     expect(
       shouldBlockForDiversity(true, 0, 2, 8, 8, 2)
     ).toBe(true);
 
-    // 2コート全空き、10人 -> 余り2 <= 2 -> ブロック
+    // 2コート全空き、10人 -> 余り2 <= 2 -> 推奨表示
     expect(
       shouldBlockForDiversity(true, 0, 2, 10, 10, 2)
     ).toBe(true);
 
-    // 2コート全空き、11人 -> 余り3 > 2 -> ブロックなし
+    // 2コート全空き、11人 -> 余り3 > 2 -> 推奨なし
     expect(
       shouldBlockForDiversity(true, 0, 2, 11, 11, 2)
     ).toBe(false);
+  });
+
+  it('edge case: 3コート全空きは推奨なし', () => {
+    // 3コート全空き、10人 -> エッジケース -> 推奨なし
+    expect(
+      shouldBlockForDiversity(true, 0, 3, 10, 10, 2)
+    ).toBe(false);
+
+    // 3コート全空き、14人 -> エッジケース -> 推奨なし
+    expect(
+      shouldBlockForDiversity(true, 0, 3, 14, 14, 2)
+    ).toBe(false);
+
+    // 3コート（1使用中+2空き）、10人 -> 余り2 <= 2 -> 推奨表示
+    expect(
+      shouldBlockForDiversity(true, 1, 2, 10, 14, 2)
+    ).toBe(true);
   });
 
   it('blocks when remaining after assignment <= base threshold (2)', () => {

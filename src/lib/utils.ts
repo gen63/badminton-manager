@@ -121,10 +121,11 @@ export function getRecommendedCourtCount(playerCount: number, maxCourts: number 
  * @param totalActiveCount アクティブ（休憩中でない）プレイヤーの総数
  * @param baseThreshold ブロックするための基本待機人数閾値（通常は2）
  *
- * ブロックされる条件:
+ * 推奨メッセージを表示する条件:
  *   1. 多様性優先モードが有効
- *   2. 空きコートが1つ以上ある
- *   3. 空きコートを埋めた後の待機人数が baseThreshold 以下
+ *   2. エッジケース除外：3コート以上全空きの場合は推奨なし（1コートずつ配置OK）
+ *   3. 空きコートを埋めた後（または仮に1コート空いた場合）の待機人数が baseThreshold 以下
+ *   ※ 空きコートがない場合も、次に空いたときの予告として表示
  *
  * 多様性優先モードの意図: 組み合わせの多様性を高めるため複数コート一括配置を促す
  *
@@ -143,16 +144,24 @@ export function getRecommendedCourtCount(playerCount: number, maxCourts: number 
  */
 export function shouldBlockForDiversity(
   prioritizeDiversity: boolean,
-  _occupiedCourts: number,
+  occupiedCourts: number,
   emptyCourts: number,
   waitingCount: number,
   _totalActiveCount: number,
   baseThreshold: number
 ): boolean {
   if (!prioritizeDiversity) return false;
-  if (emptyCourts === 0) return false;  // 空きがない場合はブロックしない
 
-  const remainingAfterAssignment = Math.max(0, waitingCount - (emptyCourts * 4));
+  // エッジケース：3コート以上全空きの場合は推奨なし
+  const totalCourts = occupiedCourts + emptyCourts;
+  if (totalCourts >= 3 && occupiedCourts === 0) {
+    return false;
+  }
+
+  // 空きコートがない場合は、仮に1コート空くとして計算
+  const effectiveEmptyCourts = Math.max(emptyCourts, 1);
+  
+  const remainingAfterAssignment = Math.max(0, waitingCount - (effectiveEmptyCourts * 4));
   if (remainingAfterAssignment <= baseThreshold) {
     return true;
   }

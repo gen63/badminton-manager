@@ -515,7 +515,7 @@ export function MainPage() {
         </div>
       </header>
 
-      {shouldBlockAssignment && emptyCourts.length > 0 && (
+      {shouldBlockAssignment && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-center gap-2">
           <span className="text-xs text-amber-800 font-medium text-center">
             💡 多様確保のため、一括配置を推奨
@@ -694,7 +694,7 @@ export function MainPage() {
                       </div>
                       <div className="flex flex-col gap-1 items-center">
                         {shouldBlockAssignment && (
-                          <p className="text-[10px] text-amber-700">⚠️ 一括推奨</p>
+                          <p className="text-[10px] text-amber-700">⚠️ 一括配置推奨</p>
                         )}
                         <button
                           onClick={() => handleAutoAssign(court.id)}
