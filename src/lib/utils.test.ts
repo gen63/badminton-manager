@@ -105,12 +105,27 @@ describe('shouldBlockForDiversity', () => {
     ).toBe(false);
   });
 
-  it('requires at least one occupied and one empty court', () => {
-    expect(
-      shouldBlockForDiversity(true, 0, 2, 0, 8, 2)
-    ).toBe(false);
+  it('requires at least one empty court', () => {
+    // 空きコートがない場合はブロックしない
     expect(
       shouldBlockForDiversity(true, 2, 0, 0, 8, 2)
+    ).toBe(false);
+  });
+
+  it('blocks when all courts empty but players insufficient for diversity', () => {
+    // 2コート全空き、8人 -> 余り0 <= 2 -> ブロック
+    expect(
+      shouldBlockForDiversity(true, 0, 2, 8, 8, 2)
+    ).toBe(true);
+
+    // 2コート全空き、10人 -> 余り2 <= 2 -> ブロック
+    expect(
+      shouldBlockForDiversity(true, 0, 2, 10, 10, 2)
+    ).toBe(true);
+
+    // 2コート全空き、11人 -> 余り3 > 2 -> ブロックなし
+    expect(
+      shouldBlockForDiversity(true, 0, 2, 11, 11, 2)
     ).toBe(false);
   });
 
@@ -133,12 +148,6 @@ describe('shouldBlockForDiversity', () => {
     // 1 empty, waiting 7 -> remaining 3 > 2 -> no block (元の問題が解決)
     expect(
       shouldBlockForDiversity(true, 1, 1, 7, 11, 2)
-    ).toBe(false);
-  });
-
-  it('blocks when all courts empty -> no block (no occupied courts)', () => {
-    expect(
-      shouldBlockForDiversity(true, 0, 2, 8, 8, 2)
     ).toBe(false);
   });
 

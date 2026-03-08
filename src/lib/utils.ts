@@ -123,35 +123,34 @@ export function getRecommendedCourtCount(playerCount: number, maxCourts: number 
  *
  * ブロックされる条件:
  *   1. 多様性優先モードが有効
- *   2. 少なくとも1コートはプレー中かプレイヤー割り当て済みかつ
- *      1コート以上が空いている
+ *   2. 空きコートが1つ以上ある
  *   3. 空きコートを埋めた後の待機人数が baseThreshold 以下
  *
  * 多様性優先モードの意図: 組み合わせの多様性を高めるため複数コート一括配置を促す
  *
  * 【実際の動作範囲】
  * baseThreshold=2 の場合：
- *   2コート（1使用中+1空き）:
- *     - ブロック発動: 8-10人（待機4-6人）
- *     - ブロック解除: 11人以上（待機7人以上）
- *   3コート（2使用中+1空き）:
- *     - ブロック発動: 12-14人（待機4-6人）
- *     - ブロック解除: 15人以上（待機7人以上）
+ *   2コート（全空き or 1使用中+1空き）:
+ *     - ブロック発動: 8-10人（全空き時）、4-6人待機（1コート使用中）
+ *     - ブロック解除: 11人以上（全空き時）、7人以上待機（1コート使用中）
+ *   3コート（全空き or 2使用中+1空き）:
+ *     - ブロック発動: 12-14人（全空き時）、4-6人待機（2コート使用中）
+ *     - ブロック解除: 15人以上（全空き時）、7人以上待機（2コート使用中）
  *
  * 一般式:
- *   ブロック発動の総人数範囲: occupiedCourts × 4 + 4 ≤ total ≤ occupiedCourts × 4 + 6
- *   ブロック解除の最小人数: total ≥ occupiedCourts × 4 + 7
+ *   ブロック発動: waitingCount ≤ emptyCourts × 4 + baseThreshold
+ *   ブロック解除: waitingCount > emptyCourts × 4 + baseThreshold
  */
 export function shouldBlockForDiversity(
   prioritizeDiversity: boolean,
-  occupiedCourts: number,
+  _occupiedCourts: number,
   emptyCourts: number,
   waitingCount: number,
   _totalActiveCount: number,
   baseThreshold: number
 ): boolean {
   if (!prioritizeDiversity) return false;
-  if (occupiedCourts === 0 || emptyCourts === 0) return false;
+  if (emptyCourts === 0) return false;  // 空きがない場合はブロックしない
 
   const remainingAfterAssignment = Math.max(0, waitingCount - (emptyCourts * 4));
   if (remainingAfterAssignment <= baseThreshold) {

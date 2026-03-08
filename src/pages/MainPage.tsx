@@ -290,7 +290,7 @@ export function MainPage() {
     totalActiveCount,
     7
   );
-  const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= 4 && !shouldBlockAssignment;
+  const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= 4;
   const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * 4;
 
   const handleSwapPlayer = (courtId: number, position: number, newPlayerId: string) => {
@@ -518,7 +518,7 @@ export function MainPage() {
       {shouldBlockAssignment && emptyCourts.length > 0 && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-center gap-2">
           <span className="text-xs text-amber-800 font-medium text-center">
-            💡 多様な組み合わせのため、全コート終了後の一括配置を推奨
+            💡 多様確保のため、一括配置を推奨
           </span>
         </div>
       )}
@@ -692,9 +692,10 @@ export function MainPage() {
                         </div>
                         <p className="text-xs text-muted-foreground font-medium">空き</p>
                       </div>
-                      {shouldBlockAssignment ? (
-                        <p className="text-[10px] text-muted-foreground">他コート終了後に一括配置してください</p>
-                      ) : (
+                      <div className="flex flex-col gap-1 items-center">
+                        {shouldBlockAssignment && (
+                          <p className="text-[10px] text-amber-700">⚠️ 一括推奨</p>
+                        )}
                         <button
                           onClick={() => handleAutoAssign(court.id)}
                           disabled={!canAutoAssign}
@@ -703,7 +704,7 @@ export function MainPage() {
                           <Plus size={12} />
                           配置
                         </button>
-                      )}
+                      </div>
                     </div>
                   )}
                 </div>
