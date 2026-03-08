@@ -494,20 +494,20 @@ export function MainPage() {
             <button
               onClick={handleUndo}
               disabled={undoStack.length === 0}
-              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <Undo2 size={18} />
             </button>
             <button
               onClick={handleRedo}
               disabled={redoStack.length === 0}
-              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <Redo2 size={18} />
             </button>
             <button
               onClick={() => navigate('/settings')}
-              className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+              className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-muted-foreground transition-colors"
             >
               <Settings size={18} />
             </button>
@@ -699,7 +699,7 @@ export function MainPage() {
                         <button
                           onClick={() => handleAutoAssign(court.id)}
                           disabled={!canAutoAssign}
-                          className="px-3 py-1.5 bg-white border border-border shadow-sm rounded-lg text-xs font-medium text-primary flex items-center gap-1.5 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3 py-1.5 bg-card border border-border shadow-sm rounded-lg text-xs font-medium text-primary flex items-center gap-1.5 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Plus size={12} />
                           配置
@@ -783,7 +783,7 @@ export function MainPage() {
                         }
                       }
                     }}
-                    className="w-full h-10 pl-3 pr-3 bg-input border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    className="w-full h-10 pl-3 pr-3 bg-input border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50"
                     placeholder="こば 男"
                     autoFocus
                   />

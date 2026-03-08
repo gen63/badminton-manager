@@ -196,7 +196,7 @@ html, body, #root {
     background: var(--color-input);
     border: 1px solid var(--color-border);
     border-radius: calc(var(--radius) + 0.25rem);
-    font-size: 0.875rem;
+    font-size: 1rem;
     transition: all 0.15s ease;
   }
 
@@ -214,7 +214,7 @@ html, body, #root {
     background: var(--color-input);
     border: 1px solid var(--color-border);
     border-radius: calc(var(--radius) + 0.25rem);
-    font-size: 0.875rem;
+    font-size: 1rem;
     transition: all 0.15s ease;
     background-image: url('data:image/svg+xml;charset=UTF-8,%3csvg%20xmlns%3d%22http%3a%2f%2fwww.w3.org%2f2000%2fsvg%22%20width%3d%2224%22%20height%3d%2224%22%20viewBox%3d%220%200%2024%2024%22%20fill%3d%22none%22%20stroke%3d%22%2364748b%22%20stroke-width%3d%222%22%20stroke-linecap%3d%22round%22%20stroke-linejoin%3d%22round%22%3e%3cpolyline%20points%3d%226%209%2012%2015%2018%209%22%3e%3c%2fpolyline%3e%3c%2fsvg%3e');
     background-repeat: no-repeat;
@@ -235,7 +235,7 @@ html, body, #root {
     background: var(--color-input);
     border: 1px solid var(--color-border);
     border-radius: calc(var(--radius) + 0.25rem);
-    font-size: 0.875rem;
+    font-size: 1rem;
     resize: none;
     transition: all 0.15s ease;
   }

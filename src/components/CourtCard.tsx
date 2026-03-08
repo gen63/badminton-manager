@@ -34,7 +34,7 @@ interface PlayerPillProps {
 function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, getPlayerGamesPlayed, getPlayerGender, onPlayerTap, onClearSelection }: PlayerPillProps) {
   if (!playerId) {
     return (
-      <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
+      <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-border" />
     );
   }
 
@@ -53,9 +53,9 @@ function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, getPl
         : ''
       }`}
     >
-      <span className="text-gray-800 font-medium flex items-center min-w-0 overflow-hidden flex-1">
+      <span className="text-foreground font-medium flex items-center min-w-0 overflow-hidden flex-1">
         <span className="player-name-court flex-1 min-w-0">{name}</span>
-        <span className="text-[10px] text-gray-400 ml-1 flex-shrink-0 tabular-nums">
+        <span className="text-[10px] text-muted-foreground ml-1 flex-shrink-0 tabular-nums">
           {gamesPlayed}
         </span>
       </span>
@@ -78,8 +78,8 @@ function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, getPl
 function EmptySlots() {
   return (
     <div className="space-y-1">
-      <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
-      <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-gray-200" />
+      <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-border" />
+      <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-border" />
     </div>
   );
 }
@@ -91,7 +91,7 @@ function UnassignedDisplay() {
       <EmptySlots />
 
       {/* VS相当のスペースに「未配置」テキスト */}
-      <div className="text-center text-gray-400 text-xs py-1 font-medium">未配置</div>
+      <div className="text-center text-muted-foreground text-xs py-1 font-medium">未配置</div>
 
       {/* 下ペア相当のスペース */}
       <EmptySlots />
@@ -127,7 +127,7 @@ export function CourtCard({
     >
       {/* コート番号とステータス */}
       <div className="flex items-center justify-center gap-1.5 mb-1.5 min-h-[36px]">
-        <span className="text-2xl font-bold text-gray-400">
+        <span className="text-2xl font-bold text-muted-foreground">
           {circledNumbers[court.id - 1] || court.id}
         </span>
         {court.isPlaying && (
@@ -157,7 +157,7 @@ export function CourtCard({
           {/* VS */}
           <div className="flex items-center gap-1 my-1">
             <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
-            <span className="text-gray-400 text-[10px] font-bold">VS</span>
+            <span className="text-muted-foreground text-[10px] font-bold">VS</span>
             <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
           </div>
 

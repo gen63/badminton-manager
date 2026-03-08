@@ -244,7 +244,7 @@ export function SessionCreate() {
   return (
     <div className="bg-app overflow-x-hidden">
       {/* ヘッダー */}
-      <div className="header-gradient text-gray-800 p-3">
+      <div className="header-gradient text-foreground p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <div className="flex items-center gap-2">
             <Play size={20} />
@@ -276,13 +276,13 @@ export function SessionCreate() {
                 <button
                   onClick={handleLoadFromSheets}
                   disabled={isLoadingMembers}
-                  className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:opacity-50 flex items-center justify-center transition-colors"
+                  className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-muted hover:bg-secondary disabled:bg-muted disabled:opacity-50 flex items-center justify-center transition-colors"
                   title="Sheetsから読み込み"
                 >
                   {isLoadingMembers ? (
-                    <Loader2 size={14} className="animate-spin text-gray-600" />
+                    <Loader2 size={14} className="animate-spin text-muted-foreground" />
                   ) : (
-                    <Download size={14} className="text-gray-600" />
+                    <Download size={14} className="text-muted-foreground" />
                   )}
                 </button>
               </div>
@@ -324,7 +324,7 @@ export function SessionCreate() {
                 試合回数
               </button>
             </div>
-            <p className="text-[10px] text-gray-500 mt-1">
+            <p className="text-[10px] text-muted-foreground mt-1">
               {useStayDurationPriority ? '滞在時間が長い人を優先' : '試合回数が少ない人を優先'}
             </p>
           </div>
@@ -352,7 +352,7 @@ export function SessionCreate() {
                 OFF
               </button>
             </div>
-            <p className="text-[10px] text-gray-500 mt-1">
+            <p className="text-[10px] text-muted-foreground mt-1">
               {recordScores ? '終了時に勝敗を記録' : '勝敗記録なし'}
             </p>
           </div>
@@ -380,7 +380,7 @@ export function SessionCreate() {
                 回数優先
               </button>
             </div>
-            <p className="text-[10px] text-gray-500 mt-1">
+            <p className="text-[10px] text-muted-foreground mt-1">
               {prioritizeDiversity
                 ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
                 : '空きが出たら即座に配置'}
@@ -400,7 +400,7 @@ export function SessionCreate() {
         </div>
 
         {/* バージョン表示 */}
-        <p className="text-center text-xs text-gray-400 mt-4">
+        <p className="text-center text-xs text-muted-foreground mt-4">
           v{__APP_VERSION__}
         </p>
       </div>

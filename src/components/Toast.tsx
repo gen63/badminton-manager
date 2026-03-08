@@ -48,14 +48,14 @@ export function Toast({ message, type, onClose, duration = 3000 }: ToastProps) {
         className={`flex items-center gap-3 px-4 py-3 rounded-2xl border shadow-lg max-w-md mx-auto ${bgColors[type]}`}
       >
         {icons[type]}
-        <p className="flex-1 text-sm font-medium text-gray-800">{message}</p>
+        <p className="flex-1 text-sm font-medium text-foreground">{message}</p>
         <button
           onClick={() => {
             setIsVisible(false);
             setTimeout(onClose, 300);
           }}
           aria-label="閉じる"
-          className="p-2 -mr-1 text-gray-500 hover:text-gray-700 active:scale-95 transition-all min-w-[44px] min-h-[44px] flex items-center justify-center"
+          className="p-2 -mr-1 text-muted-foreground hover:text-gray-700 active:scale-95 transition-all min-w-[44px] min-h-[44px] flex items-center justify-center"
         >
           ✕
         </button>

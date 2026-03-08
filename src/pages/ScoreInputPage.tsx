@@ -136,24 +136,24 @@ export function ScoreInputPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-20">
+    <div className="min-h-screen bg-muted pb-20">
       {/* ヘッダー */}
-      <div className="bg-white p-2 shadow-sm">
+      <div className="bg-card p-2 shadow-sm">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <h1 className="text-base font-medium text-gray-600">スコア入力</h1>
+          <h1 className="text-base font-medium text-muted-foreground">スコア入力</h1>
           <button
             onClick={() => navigate(fromPage)}
             aria-label="閉じる"
-            className="p-3 hover:bg-gray-100 active:bg-gray-200 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
+            className="p-3 hover:bg-muted active:bg-muted active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
-            <X size={24} className="text-gray-600" />
+            <X size={24} className="text-muted-foreground" />
           </button>
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto p-3 space-y-2">
         {/* 対戦カード */}
-        <div className="bg-white rounded-2xl shadow-sm p-3">
+        <div className="bg-card rounded-2xl shadow-sm p-3">
           {selectedPlayer && (
             <div className="mb-2 p-2 bg-indigo-50 border border-indigo-200 rounded-xl text-sm text-indigo-700 text-center">
               メンバーを選択中 — 交換したい相手をタップ
@@ -169,14 +169,14 @@ export function ScoreInputPage() {
               className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                 selectedPlayer?.position === 0
                   ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                  : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
+                  : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
               }`}
             >
               {getPlayerName(match.teamA[0])}
             </button>
 
             {/* VS */}
-            <span className="text-gray-400 font-bold text-xs row-span-2 self-center">VS</span>
+            <span className="text-muted-foreground font-bold text-xs row-span-2 self-center">VS</span>
 
             {/* C */}
             <button
@@ -184,7 +184,7 @@ export function ScoreInputPage() {
               className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                 selectedPlayer?.position === 2
                   ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                  : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
+                  : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
               }`}
             >
               {getPlayerName(match.teamB[0])}
@@ -196,7 +196,7 @@ export function ScoreInputPage() {
               className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                 selectedPlayer?.position === 1
                   ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                  : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
+                  : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
               }`}
             >
               {getPlayerName(match.teamA[1])}
@@ -210,7 +210,7 @@ export function ScoreInputPage() {
               className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                 selectedPlayer?.position === 3
                   ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                  : 'bg-white border border-gray-200 text-gray-800 hover:border-gray-300 active:bg-gray-100 active:scale-[0.98]'
+                  : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
               }`}
             >
               {getPlayerName(match.teamB[1])}
@@ -219,31 +219,31 @@ export function ScoreInputPage() {
         </div>
 
         {/* スコア表示 */}
-        <div className="bg-white rounded-2xl shadow-sm p-3">
+        <div className="bg-card rounded-2xl shadow-sm p-3">
           <div className="text-center">
-            <div className="text-3xl font-bold text-gray-800">
+            <div className="text-3xl font-bold text-foreground">
               {inputHistory.length > 0 ? (
                 <>
                   <span className="text-indigo-500">{scoreA}</span>
                   {inputHistory.length === 2 && (
                     <>
-                      <span className="text-gray-400 mx-4">-</span>
+                      <span className="text-muted-foreground mx-4">-</span>
                       <span className="text-indigo-500">{scoreB}</span>
                     </>
                   )}
                   {inputHistory.length === 1 && (
-                    <span className="text-gray-400 mx-4">- ?</span>
+                    <span className="text-muted-foreground mx-4">- ?</span>
                   )}
                 </>
               ) : (
-                <span className="text-gray-400 text-base font-normal">点数を順番にタップ</span>
+                <span className="text-muted-foreground text-base font-normal">点数を順番にタップ</span>
               )}
             </div>
           </div>
         </div>
 
         {/* 点数ボタングリッド */}
-        <div className="bg-white rounded-2xl shadow-sm p-3">
+        <div className="bg-card rounded-2xl shadow-sm p-3">
           <div className="grid grid-cols-6 gap-1">
             {Array.from({ length: 31 }, (_, i) => i).map((num) => {
               // targetScore付近（±2）を目立たせる
@@ -257,7 +257,7 @@ export function ScoreInputPage() {
                   className={`min-h-[36px] rounded-lg text-sm font-semibold transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed ${
                     isHighlighted
                       ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 active:bg-indigo-300 active:scale-[0.95]'
-                      : 'bg-gray-100 text-gray-800 hover:bg-gray-200 active:bg-gray-300 active:scale-[0.95]'
+                      : 'bg-muted text-foreground hover:bg-muted active:bg-gray-300 active:scale-[0.95]'
                   }`}
                 >
                   {num}
@@ -269,7 +269,7 @@ export function ScoreInputPage() {
       </div>
 
       {/* アクションボタン - 画面下部に固定 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white p-3 pb-safe">
+      <div className="fixed bottom-0 left-0 right-0 bg-card p-3 pb-safe">
         <div className="max-w-2xl mx-auto grid grid-cols-2 gap-3">
           <button
             onClick={handleClear}

@@ -42,7 +42,7 @@ export function BottomNav({ activeTab }: BottomNavProps) {
               key={tab.id}
               onClick={() => handleTabClick(tab)}
               className={`relative flex flex-col items-center justify-center gap-1 min-w-[56px] h-[48px] active:scale-95 transition-transform ${
-                isActive ? 'text-blue-600' : 'text-gray-400'
+                isActive ? 'text-blue-600' : 'text-muted-foreground'
               }`}
             >
               <Icon size={22} />

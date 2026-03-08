@@ -40,7 +40,7 @@ export function SettingsPage() {
   return (
     <div className="bg-app pb-20">
       {/* ヘッダー */}
-      <div className="header-gradient text-gray-800 p-3">
+      <div className="header-gradient text-foreground p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <button
             onClick={() => navigate('/main')}
@@ -110,7 +110,7 @@ export function SettingsPage() {
                   試合回数
                 </button>
               </div>
-              <p className="text-[10px] text-gray-500 mt-1">
+              <p className="text-[10px] text-muted-foreground mt-1">
                 {useStayDurationPriority
                   ? '滞在時間が長い人を優先'
                   : '試合回数が少ない人を優先'}
@@ -143,7 +143,7 @@ export function SettingsPage() {
                   OFF
                 </button>
               </div>
-              <p className="text-[10px] text-gray-500 mt-1">
+              <p className="text-[10px] text-muted-foreground mt-1">
                 {recordScores
                   ? '終了時に勝敗を記録'
                   : '勝敗記録なし'}
@@ -176,7 +176,7 @@ export function SettingsPage() {
                   回数優先
                 </button>
               </div>
-              <p className="text-[10px] text-gray-500 mt-1">
+              <p className="text-[10px] text-muted-foreground mt-1">
                 {prioritizeDiversity
                   ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
                   : '空きが出たら即座に配置'}

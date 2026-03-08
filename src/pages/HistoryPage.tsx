@@ -73,7 +73,7 @@ export function HistoryPage() {
   return (
     <div className="bg-app pb-20">
       {/* ヘッダー */}
-      <div className="header-gradient text-gray-800 p-3">
+      <div className="header-gradient text-foreground p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <div className="flex items-center gap-2 flex-1">
             <History size={20} />
@@ -140,23 +140,23 @@ export function HistoryPage() {
                       <div className="flex-1 min-w-0 space-y-0.5">
                         {/* 名前（横一列・改行なし） */}
                         <div className="flex items-center text-sm gap-1.5 leading-tight">
-                          <span className="font-bold text-gray-800 whitespace-nowrap flex-shrink-0">
+                          <span className="font-bold text-foreground whitespace-nowrap flex-shrink-0">
                             {leftNames}
                           </span>
-                          <span className="text-gray-400 font-bold text-[10px] px-1.5 bg-white rounded-full py-0.5 flex-shrink-0">VS</span>
-                          <span className="text-gray-600 truncate">
+                          <span className="text-muted-foreground font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
+                          <span className="text-muted-foreground truncate">
                             {rightNames}
                           </span>
                         </div>
                         
                         {/* 時間・スコア（横一列・改行なし） */}
-                        <div className="flex items-center gap-1.5 text-[11px] text-gray-500 leading-tight">
+                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground leading-tight">
                           <span className="flex items-center gap-0.5 whitespace-nowrap">
                             <Clock size={11} />
                             {formatTime(match.finishedAt)}
                           </span>
                           <span className="whitespace-nowrap">({duration}分)</span>
-                          <span className="text-xs font-bold text-gray-800 bg-white px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
+                          <span className="text-xs font-bold text-foreground bg-card px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
                             {leftScore} - {rightScore}
                           </span>
                         </div>
@@ -167,14 +167,14 @@ export function HistoryPage() {
                         <button
                           onClick={() => handleEdit(match.id)}
                           aria-label="編集"
-                          className="p-1.5 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
+                          className="p-1.5 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
                         >
                           <Edit3 size={13} />
                         </button>
                         <button
                           onClick={() => handleDelete(match.id)}
                           aria-label="削除"
-                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
+                          className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
                         >
                           <Trash2 size={13} />
                         </button>

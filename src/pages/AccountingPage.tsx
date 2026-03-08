@@ -418,7 +418,7 @@ export function AccountingPage() {
   return (
     <div className="bg-app pb-20">
       {/* ヘッダー */}
-      <div className="header-gradient text-gray-800 p-3">
+      <div className="header-gradient text-foreground p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <div className="flex items-center gap-2">
             <DollarSign size={20} />
@@ -432,7 +432,7 @@ export function AccountingPage() {
         <div className="card p-4 space-y-3">
           {/* 日付・体育館・練習種別の表示 */}
           <div className="bg-blue-50 rounded-lg p-3 text-center">
-            <div className="text-2xl font-bold text-gray-800">
+            <div className="text-2xl font-bold text-foreground">
               {formattedDate} {gymShortName} {practiceType}
             </div>
           </div>
@@ -517,11 +517,11 @@ export function AccountingPage() {
           <h2 className="text-sm font-bold mb-3 text-gray-700">参加人数</h2>
           <div className="grid grid-cols-4 gap-2">
             <div className="bg-blue-50 rounded-lg p-3">
-              <div className="text-xs text-gray-600 mb-1">合計</div>
+              <div className="text-xs text-muted-foreground mb-1">合計</div>
               <div className="text-2xl font-bold text-blue-600">{participantCount}</div>
             </div>
-            <div className="bg-gray-50 rounded-lg p-2">
-              <div className="text-xs text-gray-600 mb-1 text-center">免除</div>
+            <div className="bg-muted/50 rounded-lg p-2">
+              <div className="text-xs text-muted-foreground mb-1 text-center">免除</div>
               <div className="flex items-center justify-between gap-1">
                 <button
                   onClick={() => {
@@ -529,25 +529,25 @@ export function AccountingPage() {
                     setExemptCount(newValue);
                     saveAllInputs({ exemptCount: newValue });
                   }}
-                  className="w-6 h-6 rounded-full bg-white text-gray-600 hover:bg-gray-200 active:scale-95 flex items-center justify-center font-bold text-sm"
+                  className="w-6 h-6 rounded-full bg-card text-muted-foreground hover:bg-muted active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
                   −
                 </button>
-                <span className="text-xl font-bold text-gray-800">{exemptCount}</span>
+                <span className="text-xl font-bold text-foreground">{exemptCount}</span>
                 <button
                   onClick={() => {
                     const newValue = exemptCount + 1;
                     setExemptCount(newValue);
                     saveAllInputs({ exemptCount: newValue });
                   }}
-                  className="w-6 h-6 rounded-full bg-white text-gray-600 hover:bg-gray-200 active:scale-95 flex items-center justify-center font-bold text-sm"
+                  className="w-6 h-6 rounded-full bg-card text-muted-foreground hover:bg-muted active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
                   +
                 </button>
               </div>
             </div>
             <div className="bg-blue-100 rounded-lg p-2">
-              <div className="text-xs text-gray-600 mb-1 text-center">男</div>
+              <div className="text-xs text-muted-foreground mb-1 text-center">男</div>
               <div className="flex items-center justify-between gap-1">
                 <button
                   onClick={() => {
@@ -555,7 +555,7 @@ export function AccountingPage() {
                     setMaleCount(newValue);
                     saveAllInputs({ maleCount: newValue });
                   }}
-                  className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-200 active:scale-95 flex items-center justify-center font-bold text-sm"
+                  className="w-6 h-6 rounded-full bg-card text-blue-600 hover:bg-blue-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
                   −
                 </button>
@@ -566,14 +566,14 @@ export function AccountingPage() {
                     setMaleCount(newValue);
                     saveAllInputs({ maleCount: newValue });
                   }}
-                  className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-200 active:scale-95 flex items-center justify-center font-bold text-sm"
+                  className="w-6 h-6 rounded-full bg-card text-blue-600 hover:bg-blue-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
                   +
                 </button>
               </div>
             </div>
             <div className="bg-pink-100 rounded-lg p-2">
-              <div className="text-xs text-gray-600 mb-1 text-center">女</div>
+              <div className="text-xs text-muted-foreground mb-1 text-center">女</div>
               <div className="flex items-center justify-between gap-1">
                 <button
                   onClick={() => {
@@ -581,7 +581,7 @@ export function AccountingPage() {
                     setFemaleCount(newValue);
                     saveAllInputs({ femaleCount: newValue });
                   }}
-                  className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-200 active:scale-95 flex items-center justify-center font-bold text-sm"
+                  className="w-6 h-6 rounded-full bg-card text-pink-600 hover:bg-pink-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
                   −
                 </button>
@@ -592,7 +592,7 @@ export function AccountingPage() {
                     setFemaleCount(newValue);
                     saveAllInputs({ femaleCount: newValue });
                   }}
-                  className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-200 active:scale-95 flex items-center justify-center font-bold text-sm"
+                  className="w-6 h-6 rounded-full bg-card text-pink-600 hover:bg-pink-200 active:scale-95 flex items-center justify-center font-bold text-sm"
                 >
                   +
                 </button>
@@ -605,7 +605,7 @@ export function AccountingPage() {
         <div className="card p-4">
           <h2 className="text-sm font-bold mb-3 text-gray-700">試合回数</h2>
           <div className="flex items-center justify-between bg-purple-50 rounded-lg px-3 py-2">
-            <span className="text-sm text-gray-600">試合数</span>
+            <span className="text-sm text-muted-foreground">試合数</span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => {
@@ -613,7 +613,7 @@ export function AccountingPage() {
                   setMatchCount(newValue);
                   saveAllInputs({ matchCount: newValue });
                 }}
-                className="w-7 h-7 rounded-full bg-white text-purple-600 hover:bg-purple-100 active:scale-95 flex items-center justify-center font-bold text-sm"
+                className="w-7 h-7 rounded-full bg-card text-purple-600 hover:bg-purple-100 active:scale-95 flex items-center justify-center font-bold text-sm"
               >
                 −
               </button>
@@ -624,7 +624,7 @@ export function AccountingPage() {
                   setMatchCount(newValue);
                   saveAllInputs({ matchCount: newValue });
                 }}
-                className="w-7 h-7 rounded-full bg-white text-purple-600 hover:bg-purple-100 active:scale-95 flex items-center justify-center font-bold text-sm"
+                className="w-7 h-7 rounded-full bg-card text-purple-600 hover:bg-purple-100 active:scale-95 flex items-center justify-center font-bold text-sm"
               >
                 +
               </button>
@@ -638,7 +638,7 @@ export function AccountingPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">男</span>
+                <span className="text-sm text-muted-foreground">男</span>
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => {
@@ -646,7 +646,7 @@ export function AccountingPage() {
                       setMaleFee(newValue);
                       saveAllInputs({ maleFee: newValue });
                     }}
-                    className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-100 active:scale-95 flex items-center justify-center font-bold text-xs"
+                    className="w-6 h-6 rounded-full bg-card text-blue-600 hover:bg-blue-100 active:scale-95 flex items-center justify-center font-bold text-xs"
                   >
                     −
                   </button>
@@ -658,7 +658,7 @@ export function AccountingPage() {
                       setMaleFee(newValue);
                       saveAllInputs({ maleFee: newValue });
                     }}
-                    className="w-16 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
+                    className="w-16 text-sm font-semibold bg-card rounded px-2 py-1 text-right"
                     inputMode="numeric"
                   />
                   <button
@@ -667,12 +667,12 @@ export function AccountingPage() {
                       setMaleFee(newValue);
                       saveAllInputs({ maleFee: newValue });
                     }}
-                    className="w-6 h-6 rounded-full bg-white text-blue-600 hover:bg-blue-100 active:scale-95 flex items-center justify-center font-bold text-xs"
+                    className="w-6 h-6 rounded-full bg-card text-blue-600 hover:bg-blue-100 active:scale-95 flex items-center justify-center font-bold text-xs"
                   >
                     +
                   </button>
                 </div>
-                <span className="text-sm text-gray-600">×</span>
+                <span className="text-sm text-muted-foreground">×</span>
                 <span className="text-sm font-semibold">{maleCount}</span>
               </div>
               <span className="text-lg font-bold text-blue-600">
@@ -682,7 +682,7 @@ export function AccountingPage() {
 
             <div className="flex items-center justify-between bg-pink-50 rounded-lg px-3 py-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">女</span>
+                <span className="text-sm text-muted-foreground">女</span>
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => {
@@ -690,7 +690,7 @@ export function AccountingPage() {
                       setFemaleFee(newValue);
                       saveAllInputs({ femaleFee: newValue });
                     }}
-                    className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-100 active:scale-95 flex items-center justify-center font-bold text-xs"
+                    className="w-6 h-6 rounded-full bg-card text-pink-600 hover:bg-pink-100 active:scale-95 flex items-center justify-center font-bold text-xs"
                   >
                     −
                   </button>
@@ -702,7 +702,7 @@ export function AccountingPage() {
                       setFemaleFee(newValue);
                       saveAllInputs({ femaleFee: newValue });
                     }}
-                    className="w-16 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
+                    className="w-16 text-sm font-semibold bg-card rounded px-2 py-1 text-right"
                     inputMode="numeric"
                   />
                   <button
@@ -711,12 +711,12 @@ export function AccountingPage() {
                       setFemaleFee(newValue);
                       saveAllInputs({ femaleFee: newValue });
                     }}
-                    className="w-6 h-6 rounded-full bg-white text-pink-600 hover:bg-pink-100 active:scale-95 flex items-center justify-center font-bold text-xs"
+                    className="w-6 h-6 rounded-full bg-card text-pink-600 hover:bg-pink-100 active:scale-95 flex items-center justify-center font-bold text-xs"
                   >
                     +
                   </button>
                 </div>
-                <span className="text-sm text-gray-600">×</span>
+                <span className="text-sm text-muted-foreground">×</span>
                 <span className="text-sm font-semibold">{femaleCount}</span>
               </div>
               <span className="text-lg font-bold text-pink-600">
@@ -724,14 +724,14 @@ export function AccountingPage() {
               </span>
             </div>
 
-            <div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+            <div className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">免除</span>
+                <span className="text-sm text-muted-foreground">免除</span>
                 <span className="text-sm font-semibold">0</span>
-                <span className="text-sm text-gray-600">×</span>
+                <span className="text-sm text-muted-foreground">×</span>
                 <span className="text-sm font-semibold">{exemptCount}</span>
               </div>
-              <span className="text-lg font-bold text-gray-600">0</span>
+              <span className="text-lg font-bold text-muted-foreground">0</span>
             </div>
           </div>
         </div>
@@ -741,9 +741,9 @@ export function AccountingPage() {
           <h2 className="text-sm font-bold mb-3 text-gray-700">支出</h2>
           <div className="space-y-2">
             <div className="flex items-center justify-between bg-red-50 rounded-lg px-3 py-2">
-              <span className="text-sm text-gray-600">体育館</span>
+              <span className="text-sm text-muted-foreground">体育館</span>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">-</span>
+                <span className="text-sm text-muted-foreground">-</span>
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => {
@@ -751,7 +751,7 @@ export function AccountingPage() {
                       setGymCost(newValue);
                       saveAllInputs({ gymCost: newValue });
                     }}
-                    className="w-6 h-6 rounded-full bg-white text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-xs"
+                    className="w-6 h-6 rounded-full bg-card text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-xs"
                   >
                     −
                   </button>
@@ -763,7 +763,7 @@ export function AccountingPage() {
                       setGymCost(newValue);
                       saveAllInputs({ gymCost: newValue });
                     }}
-                    className="w-20 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
+                    className="w-20 text-sm font-semibold bg-card rounded px-2 py-1 text-right"
                     inputMode="numeric"
                   />
                   <button
@@ -772,7 +772,7 @@ export function AccountingPage() {
                       setGymCost(newValue);
                       saveAllInputs({ gymCost: newValue });
                     }}
-                    className="w-6 h-6 rounded-full bg-white text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-xs"
+                    className="w-6 h-6 rounded-full bg-card text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-xs"
                   >
                     +
                   </button>
@@ -782,7 +782,7 @@ export function AccountingPage() {
 
             <div className="bg-red-50 rounded-lg px-3 py-2">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-gray-600">シャトル使用数</span>
+                <span className="text-sm text-muted-foreground">シャトル使用数</span>
                 <span className="text-lg font-bold text-red-600">
                   -{shuttleTotal.toLocaleString()}
                 </span>
@@ -797,10 +797,10 @@ export function AccountingPage() {
                       setShuttlePrice(newValue);
                       saveAllInputs({ shuttlePrice: newValue });
                     }}
-                    className="w-16 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
+                    className="w-16 text-sm font-semibold bg-card rounded px-2 py-1 text-right"
                     inputMode="numeric"
                   />
-                  <span className="text-sm text-gray-600">×</span>
+                  <span className="text-sm text-muted-foreground">×</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -809,18 +809,18 @@ export function AccountingPage() {
                       setShuttleCount(newValue);
                       saveAllInputs({ shuttleCount: newValue });
                     }}
-                    className="w-7 h-7 rounded-full bg-white text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-sm"
+                    className="w-7 h-7 rounded-full bg-card text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-sm"
                   >
                     −
                   </button>
-                  <span className="text-lg font-bold text-gray-800 w-10 text-center">{shuttleCount}</span>
+                  <span className="text-lg font-bold text-foreground w-10 text-center">{shuttleCount}</span>
                   <button
                     onClick={() => {
                       const newValue = shuttleCount + 1;
                       setShuttleCount(newValue);
                       saveAllInputs({ shuttleCount: newValue });
                     }}
-                    className="w-7 h-7 rounded-full bg-white text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-sm"
+                    className="w-7 h-7 rounded-full bg-card text-red-600 hover:bg-red-100 active:scale-95 flex items-center justify-center font-bold text-sm"
                   >
                     +
                   </button>
@@ -834,20 +834,20 @@ export function AccountingPage() {
         <div className="card overflow-hidden">
           <button
             onClick={() => setIsOtherExpanded(!isOtherExpanded)}
-            className="w-full p-4 flex items-center justify-between hover:bg-gray-50 active:bg-gray-100 transition-colors"
+            className="w-full p-4 flex items-center justify-between hover:bg-muted/50 active:bg-muted transition-colors"
           >
             <h2 className="text-sm font-bold text-gray-700">その他</h2>
-            <span className="text-gray-600 text-sm">
+            <span className="text-muted-foreground text-sm">
               {isOtherExpanded ? '▲' : '▼'}
             </span>
           </button>
           
           {isOtherExpanded && (
             <div className="px-4 pb-4">
-              <div className="bg-gray-50 rounded-lg px-3 py-2">
+              <div className="bg-muted/50 rounded-lg px-3 py-2">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600 w-16">説明</span>
+                    <span className="text-sm text-muted-foreground w-16">説明</span>
                     <input
                       type="text"
                       value={otherDescription}
@@ -856,11 +856,11 @@ export function AccountingPage() {
                         saveAllInputs({ otherDescription: e.target.value });
                       }}
                       placeholder="例：立替払い戻し、備品購入"
-                      className="flex-1 text-sm bg-white rounded px-2 py-1"
+                      className="flex-1 text-sm bg-card rounded px-2 py-1"
                     />
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600 w-16">金額</span>
+                    <span className="text-sm text-muted-foreground w-16">金額</span>
                     <input
                       type="number"
                       value={otherAmount || ''}
@@ -870,7 +870,7 @@ export function AccountingPage() {
                         saveAllInputs({ otherAmount: newValue });
                       }}
                       placeholder="0"
-                      className="flex-1 text-sm font-semibold bg-white rounded px-2 py-1 text-right"
+                      className="flex-1 text-sm font-semibold bg-card rounded px-2 py-1 text-right"
                       inputMode="numeric"
                     />
                   </div>
@@ -892,7 +892,7 @@ export function AccountingPage() {
         {/* 合計 */}
         <div className="card p-4 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200">
           <h2 className="text-sm font-bold mb-3 text-gray-700">合計</h2>
-          <div className="text-xs text-gray-600 mb-2 font-mono">
+          <div className="text-xs text-muted-foreground mb-2 font-mono">
             {maleTotal.toLocaleString()}+{femaleTotal.toLocaleString()}-{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
             {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
           </div>
@@ -902,9 +902,9 @@ export function AccountingPage() {
         </div>
 
         {/* プレビュー */}
-        <div className="card p-4 bg-gray-50">
-          <h2 className="text-xs font-bold mb-2 text-gray-600">コピー内容プレビュー</h2>
-          <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono bg-white p-3 rounded border border-gray-200">
+        <div className="card p-4 bg-muted/50">
+          <h2 className="text-xs font-bold mb-2 text-muted-foreground">コピー内容プレビュー</h2>
+          <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono bg-card p-3 rounded border border-border">
             {generateCopyText()}
           </pre>
         </div>
