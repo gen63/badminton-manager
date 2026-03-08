@@ -150,7 +150,7 @@ export function shouldBlockForRotation(
 
   const totalCourts = occupiedCourts + emptyCourts;
   const maxCapacity = totalCourts * 4;
-  if (totalActiveCount === maxCapacity && emptyCourts < totalCourts) {
+  if (totalActiveCount >= maxCapacity) {
     return true;
   }
 

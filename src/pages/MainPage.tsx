@@ -181,6 +181,60 @@ export function MainPage() {
     startGame(courtId);
   };
 
+  const handleContinuousNext = (courtId: number) => {
+    const { courts, matchHistory, updateCourt, startGame } = useGameStore.getState();
+    const { players } = usePlayerStore.getState();
+    const { useStayDurationPriority, prioritizeRotation } = useSettingsStore.getState();
+
+    // 最新の待機プレイヤーを計算
+    const playersInCourts = new Set(
+      courts.flatMap(c => [...c.teamA, ...c.teamB]).filter(id => id?.trim())
+    );
+    const waitingPlayers = players.filter(
+      p => !p.isResting && !playersInCourts.has(p.id)
+    );
+
+    // ブロックチェック（prioritizeRotation ON時）
+    if (prioritizeRotation) {
+      const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
+      const active = players.filter(p => !p.isResting);
+      const actualWaiting = active.length - occupied.length * 4;
+      if (occupied.length > 0 && actualWaiting < 7) {
+        setContinuousMatchMode(false);
+        return;
+      }
+    }
+
+    if (waitingPlayers.length < 7) {
+      toast.error('待機中のプレイヤーが足りません');
+      return;
+    }
+
+    // 配置アルゴリズム実行
+    const assignments = assignCourts(waitingPlayers, 1, matchHistory, {
+      targetCourtIds: [courtId],
+      totalCourtCount: courts.length,
+      useStayDurationPriority,
+      reservations: reservations,
+    });
+
+    if (assignments[0]) {
+      const assignment = assignments[0];
+      updateCourt(courtId, {
+        teamA: assignment.teamA,
+        teamB: assignment.teamB,
+        scoreA: 0,
+        scoreB: 0,
+        isPlaying: false,
+        startedAt: null,
+        finishedAt: null,
+      });
+      startGame(courtId);
+    } else {
+      toast.error('配置アルゴリズムでエラーが発生しました');
+    }
+  };
+
 
 
   const getPlayerName = (playerId: string) => {
@@ -599,7 +653,7 @@ export function MainPage() {
                               restingPlayerIds: [],
                             });
                             if (continuousMatchMode) {
-                              // handleContinuousNextは削除されたので、適宜処理
+                              handleContinuousNext(court.id);
                             }
                           }}
                           className="w-full py-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
