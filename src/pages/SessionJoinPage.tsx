@@ -8,7 +8,7 @@ import type { Session } from '../types/session';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
-import { Loader2, UserPlus } from 'lucide-react';
+import { Loader2, Plus } from 'lucide-react';
 
 export function SessionJoinPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -16,8 +16,9 @@ export function SessionJoinPage() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [selectedName, setSelectedName] = useState('');
-  const [customName, setCustomName] = useState('');
-  const [isCustomMode, setIsCustomMode] = useState(false);
+  const [newPlayerName, setNewPlayerName] = useState('');
+  const [showAddPlayer, setShowAddPlayer] = useState(false);
+  const [additionalPlayers, setAdditionalPlayers] = useState<string[]>([]);
   const [loading, setLoading] = useState(!!sessionId);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(() => sessionId ? '' : 'セッションIDが指定されていません');
@@ -34,9 +35,9 @@ export function SessionJoinPage() {
           setError('セッションが見つかりません');
         } else {
           setSession(data);
-          // 登録済みプレイヤーがいなければ直接入力モード
+          // 登録済みプレイヤーがいなければ追加フォームを表示
           if (!data.registeredPlayers || data.registeredPlayers.length === 0) {
-            setIsCustomMode(true);
+            setShowAddPlayer(true);
           }
         }
       })
@@ -44,16 +45,38 @@ export function SessionJoinPage() {
       .finally(() => setLoading(false));
   }, [sessionId]);
 
-  const playerName = isCustomMode ? customName.trim() : selectedName;
+  // プレイヤー追加処理
+  const handleAddPlayer = () => {
+    const trimmed = newPlayerName.trim();
+    if (!trimmed) return;
+
+    // 既存メンバーと重複チェック
+    const joinedNames = new Set(session?.participants || []);
+    const allPlayers = [
+      ...(session?.registeredPlayers || []).filter(name => !joinedNames.has(name)),
+      ...additionalPlayers
+    ];
+    
+    if (allPlayers.includes(trimmed)) {
+      setError('その名前は既に登録されています');
+      return;
+    }
+
+    setAdditionalPlayers([...additionalPlayers, trimmed]);
+    setSelectedName(trimmed); // 追加したメンバーを自動選択
+    setNewPlayerName('');
+    setShowAddPlayer(false);
+    setError('');
+  };
 
   const handleJoin = async () => {
-    if (!playerName || !sessionId || !session) return;
+    if (!selectedName || !sessionId || !session) return;
 
     setJoining(true);
     setError('');
 
     try {
-      await joinSession(sessionId, playerName);
+      await joinSession(sessionId, selectedName);
       requestNotificationPermission();
 
       initializeSession({
@@ -66,7 +89,7 @@ export function SessionJoinPage() {
         registeredPlayers: session.registeredPlayers,
         status: session.status,
       });
-      setCurrentUser(playerName);
+      setCurrentUser(selectedName);
 
       // Firestoreからゲーム状態を取得してローカルストアにセット
       // （古いlocalStorageデータを上書き）
@@ -126,6 +149,9 @@ export function SessionJoinPage() {
   const availablePlayers = (session?.registeredPlayers || []).filter(
     (name) => !joinedNames.has(name),
   );
+  
+  // 全ての選択可能なプレイヤー（既存 + 追加）
+  const allSelectablePlayers = [...availablePlayers, ...additionalPlayers];
 
   return (
     <div className="min-h-screen bg-app p-4">
@@ -140,76 +166,77 @@ export function SessionJoinPage() {
         <div className="card p-4">
           <label className="label">あなたの名前</label>
 
-          {!isCustomMode && availablePlayers.length > 0 ? (
-            <>
-              {/* 登録済みプレイヤーから選択 */}
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                {availablePlayers.map((name) => (
-                  <button
-                    key={name}
-                    onClick={() => setSelectedName(name)}
-                    className={`select-button text-sm px-2 py-2 ${
-                      selectedName === name
-                        ? 'select-button-active'
-                        : 'select-button-inactive'
-                    }`}
-                  >
-                    {selectedName === name && <span className="mr-1">✓</span>}
-                    {name}
-                  </button>
-                ))}
-              </div>
-
-              {/* リストにない場合 */}
-              <button
-                onClick={() => {
-                  setIsCustomMode(true);
-                  setSelectedName('');
-                }}
-                className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
-              >
-                <UserPlus size={14} />
-                リストにない名前で参加
-              </button>
-            </>
-          ) : (
-            <>
-              {/* 直接入力 */}
-              <input
-                type="text"
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-                placeholder="名前を入力"
-                className="input-field mb-2"
-                onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-              />
-              {session?.registeredPlayers && session.registeredPlayers.length > 0 && (
+          {/* 登録済みプレイヤー + 追加プレイヤーから選択 */}
+          {allSelectablePlayers.length > 0 && (
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              {allSelectablePlayers.map((name) => (
                 <button
-                  onClick={() => {
-                    setIsCustomMode(false);
-                    setCustomName('');
-                  }}
-                  className="text-xs text-indigo-600 hover:text-indigo-800 mb-2 block"
+                  key={name}
+                  onClick={() => setSelectedName(name)}
+                  className={`select-button text-sm px-2 py-2 ${
+                    selectedName === name
+                      ? 'select-button-active'
+                      : 'select-button-inactive'
+                  }`}
                 >
-                  リストから選択に戻る
+                  {selectedName === name && <span className="mr-1">✓</span>}
+                  {name}
                 </button>
-              )}
-            </>
+              ))}
+            </div>
           )}
+
+          {/* リストにない名前で参加 */}
+          <div className="border-t border-border pt-3 mb-3">
+            <button
+              onClick={() => setShowAddPlayer(!showAddPlayer)}
+              className="text-sm text-primary hover:text-primary/80 font-medium flex items-center gap-1"
+            >
+              <Plus size={16} />
+              リストにない名前で参加
+            </button>
+
+            {/* 追加フォーム（折りたたみ式） */}
+            {showAddPlayer && (
+              <div className="mt-3 bg-muted/30 rounded-xl p-3 flex gap-2">
+                <input
+                  type="text"
+                  value={newPlayerName}
+                  onChange={(e) => setNewPlayerName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newPlayerName.trim()) {
+                      handleAddPlayer();
+                    }
+                  }}
+                  placeholder="名前を入力"
+                  className="flex-1 input-field"
+                  autoFocus
+                />
+                <button
+                  onClick={handleAddPlayer}
+                  disabled={!newPlayerName.trim()}
+                  className="bg-primary text-primary-foreground rounded-xl px-4 py-2 text-sm font-medium
+                           hover:bg-primary/90 active:bg-primary/80 active:scale-[0.98]
+                           disabled:opacity-50 disabled:cursor-not-allowed
+                           transition-all duration-150 flex items-center justify-center"
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+            )}
+          </div>
 
           {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
 
           <button
             onClick={handleJoin}
-            disabled={!playerName || joining}
-            className="btn-primary w-full flex items-center justify-center gap-2 mt-3"
+            disabled={!selectedName || joining}
+            className="btn-primary w-full flex items-center justify-center gap-2"
           >
             {joining && <Loader2 size={16} className="animate-spin" />}
             {joining ? '入室中...' : '入室する'}
           </button>
         </div>
-
-
       </div>
     </div>
   );
