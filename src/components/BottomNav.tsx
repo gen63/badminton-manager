@@ -2,6 +2,8 @@ import { useNavigate } from 'react-router-dom';
 import { CalendarCheck, History, Users, DollarSign, LayoutGrid } from 'lucide-react';
 import { useReservationStore } from '../stores/reservationStore';
 import { useGameStore } from '../stores/gameStore';
+import { useSessionStore } from '../stores/sessionStore';
+import { useToast } from '../hooks/useToast';
 
 type TabId = 'reservation' | 'court' | 'players' | 'accounting' | 'history';
 
@@ -11,12 +13,18 @@ interface BottomNavProps {
 
 export function BottomNav({ activeTab }: BottomNavProps) {
   const navigate = useNavigate();
+  const toast = useToast();
+  const session = useSessionStore((s) => s.session);
   const reservationCount = useReservationStore(
     (s) => s.reservations.filter((r) => r.status === 'pending').length
   );
   const unrecordedMatchesCount = useGameStore(
     (s) => s.matchHistory.filter((m) => m.winner === undefined).length
   );
+
+  // PWA判定
+  const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
+                (navigator as Navigator & { standalone?: boolean }).standalone;
 
   const tabs: { id: TabId; label: string; icon: typeof CalendarCheck; path: string }[] = [
     { id: 'court', label: 'メイン', icon: LayoutGrid, path: '/main' },
@@ -28,6 +36,13 @@ export function BottomNav({ activeTab }: BottomNavProps) {
 
   const handleTabClick = (tab: (typeof tabs)[number]) => {
     if (tab.id === activeTab) return;
+
+    // オンラインセッション + ブラウザの場合、試合予約はPWA専用
+    if (tab.id === 'reservation' && session?.createdBy && !isPWA) {
+      toast.warning('試合予約はPWAアプリ専用機能です');
+      return;
+    }
+
     navigate(tab.path);
   };
 
