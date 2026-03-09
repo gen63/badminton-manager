@@ -22,6 +22,7 @@ export function SessionJoinPage() {
   const [loading, setLoading] = useState(!!sessionId);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(() => sessionId ? '' : 'セッションIDが指定されていません');
+  const [showForceConfirm, setShowForceConfirm] = useState(false);
 
   const initializeSession = useSessionStore((state) => state.initialize);
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
@@ -69,14 +70,22 @@ export function SessionJoinPage() {
     setError('');
   };
 
-  const handleJoin = async () => {
+  const handleJoin = async (force = false) => {
     if (!selectedName || !sessionId || !session) return;
 
     setJoining(true);
     setError('');
 
     try {
-      await joinSession(sessionId, selectedName);
+      const result = await joinSession(sessionId, selectedName, { force });
+      
+      // 既に参加している場合は確認ダイアログを表示
+      if (result.alreadyJoined && !force) {
+        setShowForceConfirm(true);
+        setJoining(false);
+        return;
+      }
+
       requestNotificationPermission();
 
       initializeSession({
@@ -229,7 +238,7 @@ export function SessionJoinPage() {
           {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
 
           <button
-            onClick={handleJoin}
+            onClick={() => handleJoin()}
             disabled={!selectedName || joining}
             className="btn-primary w-full flex items-center justify-center gap-2"
           >
@@ -237,6 +246,42 @@ export function SessionJoinPage() {
             {joining ? '入室中...' : '入室する'}
           </button>
         </div>
+
+        {/* 既に参加している場合の確認ダイアログ */}
+        {showForceConfirm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="card p-6 max-w-sm w-full">
+              <h3 className="text-lg font-bold text-foreground mb-2">確認</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                「{selectedName}」は既に入室しています。
+                <br />
+                <span className="text-amber-600 font-medium">
+                  この名前で入室すると、既に入室している人が退出します。
+                </span>
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setShowForceConfirm(false);
+                    setError('');
+                  }}
+                  className="btn-secondary flex-1"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={() => {
+                    setShowForceConfirm(false);
+                    handleJoin(true);
+                  }}
+                  className="btn-primary flex-1"
+                >
+                  入室する
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

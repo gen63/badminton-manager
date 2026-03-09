@@ -164,7 +164,11 @@ export async function updateSession(
 }
 
 /** セッションに参加者を追加 */
-export async function joinSession(sessionId: string, playerName: string): Promise<void> {
+export async function joinSession(
+  sessionId: string,
+  playerName: string,
+  options?: { force?: boolean }
+): Promise<{ alreadyJoined: boolean }> {
   if (!playerName.trim()) {
     throw new SessionError('参加者名を入力してください', 'invalid-name');
   }
@@ -176,14 +180,27 @@ export async function joinSession(sessionId: string, playerName: string): Promis
       throw new SessionError(`セッション ${sessionId} が見つかりません`, 'not-found');
     }
     const data = docSnap.data();
-    if ((data.participants as string[] || []).includes(playerName)) {
-      return; // 既に参加済み
+    const participants = (data.participants as string[] || []);
+    const alreadyJoined = participants.includes(playerName);
+
+    if (alreadyJoined && !options?.force) {
+      return { alreadyJoined: true };
     }
-    await updateDoc(docRef, {
-      participants: arrayUnion(playerName),
-      updatedAt: serverTimestamp(),
-    });
-    return;
+
+    // force=trueの場合、既存の参加を削除してから追加（追い出し）
+    if (alreadyJoined && options?.force) {
+      const newParticipants = participants.filter((name) => name !== playerName);
+      await updateDoc(docRef, {
+        participants: [...newParticipants, playerName],
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await updateDoc(docRef, {
+        participants: arrayUnion(playerName),
+        updatedAt: serverTimestamp(),
+      });
+    }
+    return { alreadyJoined: false };
   }
 
   // フォールバック: localStorage
@@ -192,12 +209,19 @@ export async function joinSession(sessionId: string, playerName: string): Promis
     throw new SessionError(`セッション ${sessionId} が見つかりません`, 'not-found');
   }
 
-  if (session.participants?.includes(playerName)) {
-    return;
+  const alreadyJoined = session.participants?.includes(playerName) || false;
+  if (alreadyJoined && !options?.force) {
+    return { alreadyJoined: true };
   }
 
-  const participants = [...(session.participants || []), playerName];
+  let participants = session.participants || [];
+  if (alreadyJoined && options?.force) {
+    participants = participants.filter((name) => name !== playerName);
+  }
+  participants = [...participants, playerName];
+
   await updateSession(sessionId, { participants });
+  return { alreadyJoined: false };
 }
 
 /** undefinedをnullに変換（Firestoreはundefinedを受け付けない） */
@@ -247,9 +271,9 @@ export async function syncGameStateWithTransaction(
         updatedAt: serverTimestamp(),
       });
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Firestoreが最大5回リトライした後に失敗
-    if (error?.code === 'aborted') {
+    if ((error as { code?: string })?.code === 'aborted') {
       throw new SessionError(
         '他のユーザーが更新しました。もう一度お試しください',
         'conflict'
