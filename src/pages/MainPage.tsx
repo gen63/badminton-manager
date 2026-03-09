@@ -35,7 +35,9 @@ export function MainPage() {
   const totalActiveCount = players.filter(p => !p.isResting).length;
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
   const { reservations, fulfillReservation } = useReservationStore();
-  const { doublesMen, doublesWomen } = useAccountingStore();
+  const accountingStore = useAccountingStore();
+  const maleFee = accountingStore.lastInput?.maleFee || 800;
+  const femaleFee = accountingStore.lastInput?.femaleFee || 600;
   const toast = useToast();
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;
@@ -215,10 +217,10 @@ export function MainPage() {
     // デフォルト金額を計算（会計設定から）
     const matchCount = player.gamesPlayed;
     const defaultAmount = player.gender === 'M'
-      ? doublesMen * matchCount
+      ? maleFee * matchCount
       : player.gender === 'F'
-      ? doublesWomen * matchCount
-      : doublesMen * matchCount; // 性別不明の場合は男性料金
+      ? femaleFee * matchCount
+      : maleFee * matchCount; // 性別不明の場合は男性料金
 
     setPaymentModalPlayer({
       id: player.id,

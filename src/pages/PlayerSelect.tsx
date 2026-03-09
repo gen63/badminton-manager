@@ -22,7 +22,9 @@ export function PlayerSelect() {
   const [newPlayerNames, setNewPlayerNames] = useState('');
   const toast = useToast();
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
-  const { doublesMen, doublesWomen } = useAccountingStore();
+  const accountingStore = useAccountingStore();
+  const maleFee = accountingStore.lastInput?.maleFee || 800;
+  const femaleFee = accountingStore.lastInput?.femaleFee || 600;
 
   // 試合履歴に登場するプレイヤーIDのセット
   const playersInHistory = new Set(
@@ -76,10 +78,10 @@ export function PlayerSelect() {
     // デフォルト金額を計算（会計設定から）
     const matchCount = player.gamesPlayed;
     const defaultAmount = player.gender === 'M'
-      ? doublesMen * matchCount
+      ? maleFee * matchCount
       : player.gender === 'F'
-      ? doublesWomen * matchCount
-      : doublesMen * matchCount; // 性別不明の場合は男性料金
+      ? femaleFee * matchCount
+      : maleFee * matchCount; // 性別不明の場合は男性料金
 
     setPaymentModalPlayer({
       id: player.id,
