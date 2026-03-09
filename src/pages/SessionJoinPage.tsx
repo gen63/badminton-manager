@@ -11,6 +11,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { getSession, joinSession } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
 import type { Session } from '../types/session';
+import { Plus } from 'lucide-react';
 
 export function SessionJoinPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -20,6 +21,9 @@ export function SessionJoinPage() {
   const [selectedPlayer, setSelectedPlayer] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [newPlayerName, setNewPlayerName] = useState<string>('');
+  const [showAddPlayer, setShowAddPlayer] = useState(false);
+  const [additionalPlayers, setAdditionalPlayers] = useState<string[]>([]);
   
   const initializeSession = useSessionStore((state) => state.initialize);
   
@@ -52,6 +56,25 @@ export function SessionJoinPage() {
     
     loadSession();
   }, [sessionId]);
+  
+  // プレイヤー追加処理
+  const handleAddPlayer = () => {
+    const trimmed = newPlayerName.trim();
+    if (!trimmed) return;
+    
+    // 既存メンバーと重複チェック
+    const allPlayers = [...(session?.participants || []), ...additionalPlayers];
+    if (allPlayers.includes(trimmed)) {
+      setError('その名前は既に登録されています');
+      return;
+    }
+    
+    setAdditionalPlayers([...additionalPlayers, trimmed]);
+    setSelectedPlayer(trimmed); // 追加したメンバーを自動選択
+    setNewPlayerName('');
+    setShowAddPlayer(false);
+    setError('');
+  };
   
   // 入室処理
   const handleJoin = async () => {
@@ -175,20 +198,63 @@ export function SessionJoinPage() {
             あなたの名前
           </h2>
           
-          {/* TODO: プレイヤーリストから選択 */}
-          <div className="space-y-2 mb-4">
-            <input
-              type="text"
-              value={selectedPlayer}
-              onChange={(e) => setSelectedPlayer(e.target.value)}
-              placeholder="名前を入力"
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3
-                       focus:ring-2 focus:ring-blue-300 focus:border-transparent
-                       text-base"
-            />
-            <p className="text-xs text-gray-500">
-              ※ セッション作成時に登録された名前を入力してください
-            </p>
+          {/* 既存メンバー + 追加メンバーのボタン表示 */}
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            {[...(session.participants || []), ...additionalPlayers].map((name) => (
+              <button
+                key={name}
+                onClick={() => setSelectedPlayer(name)}
+                className={`px-3 py-3 rounded-xl text-sm font-medium transition-all ${
+                  selectedPlayer === name
+                    ? 'bg-blue-500 text-white shadow-md'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+          
+          {/* リストにない名前で参加 */}
+          <div className="border-t border-gray-200 pt-4">
+            <button
+              onClick={() => setShowAddPlayer(!showAddPlayer)}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+            >
+              <Plus size={16} />
+              リストにない名前で参加
+            </button>
+            
+            {/* 追加フォーム（折りたたみ式） */}
+            {showAddPlayer && (
+              <div className="mt-3 bg-gray-50 rounded-xl p-3 flex gap-2">
+                <input
+                  type="text"
+                  value={newPlayerName}
+                  onChange={(e) => setNewPlayerName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newPlayerName.trim()) {
+                      handleAddPlayer();
+                    }
+                  }}
+                  placeholder="名前を入力"
+                  className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2
+                           focus:ring-2 focus:ring-blue-300 focus:border-transparent
+                           text-sm"
+                  autoFocus
+                />
+                <button
+                  onClick={handleAddPlayer}
+                  disabled={!newPlayerName.trim()}
+                  className="bg-blue-500 text-white rounded-xl px-4 py-2 text-sm font-medium
+                           hover:bg-blue-600 active:bg-blue-700 active:scale-[0.98]
+                           disabled:opacity-50 disabled:cursor-not-allowed
+                           transition-all duration-150 flex items-center justify-center"
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
         
