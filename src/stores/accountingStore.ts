@@ -20,6 +20,8 @@ interface LastInput {
 interface AccountingState {
   records: AccountingRecord[];
   lastInput: LastInput | null;
+  doublesMen: number;
+  doublesWomen: number;
   addRecord: (record: Omit<AccountingRecord, 'id' | 'timestamp'>) => void;
   deleteRecord: (id: string) => void;
   clearRecords: () => void;
@@ -31,6 +33,8 @@ export const useAccountingStore = create<AccountingState>()(
     (set) => ({
       records: [],
       lastInput: null,
+      doublesMen: 800,
+      doublesWomen: 600,
 
       addRecord: (record) =>
         set((state) => ({

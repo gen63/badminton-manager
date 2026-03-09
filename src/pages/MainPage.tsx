@@ -13,6 +13,8 @@ import { useUndoStore } from '../stores/undoStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useRealtimeSession } from '../hooks/useRealtimeSession';
 import { useFirebaseSync } from '../hooks/useFirebaseSync';
+import { useAccountingStore } from '../stores/accountingStore';
+import { PaymentModal } from '../components/PaymentModal';
 
 import { BottomNav } from '../components/BottomNav';
 
@@ -24,7 +26,7 @@ export function MainPage() {
   const isSharedSession = !!session?.createdBy;
   useRealtimeSession(isSharedSession ? session?.id ?? null : null);
   useFirebaseSync();
-  const { players, toggleRest, updatePlayer, addPlayers, toggleOperationStatus } = usePlayerStore();
+  const { players, toggleRest, updatePlayer, addPlayers, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeDiversity } = useSettingsStore();
@@ -33,6 +35,7 @@ export function MainPage() {
   const totalActiveCount = players.filter(p => !p.isResting).length;
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
   const { reservations, fulfillReservation } = useReservationStore();
+  const { doublesMen, doublesWomen } = useAccountingStore();
   const toast = useToast();
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;
@@ -42,6 +45,7 @@ export function MainPage() {
   const [newPlayerName, setNewPlayerName] = useState('');
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
   const [showAddPlayer, setShowAddPlayer] = useState(false);
+  const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
 
   const playerCardRef = useRef<HTMLDivElement>(null);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -202,6 +206,37 @@ export function MainPage() {
 
   const handleStartGame = (courtId: number) => {
     startGame(courtId);
+  };
+
+  const handlePaymentClick = (playerId: string) => {
+    const player = players.find(p => p.id === playerId);
+    if (!player) return;
+
+    // デフォルト金額を計算（会計設定から）
+    const matchCount = player.gamesPlayed;
+    const defaultAmount = player.gender === 'M'
+      ? doublesMen * matchCount
+      : player.gender === 'F'
+      ? doublesWomen * matchCount
+      : doublesMen * matchCount; // 性別不明の場合は男性料金
+
+    setPaymentModalPlayer({
+      id: player.id,
+      name: player.name,
+      defaultAmount,
+    });
+  };
+
+  const handlePaymentConfirm = (amount: number) => {
+    if (!paymentModalPlayer) return;
+    
+    // 金額を保存
+    setPaymentAmount(paymentModalPlayer.id, amount);
+    
+    // 支払い完了フラグをON
+    toggleOperationStatus(paymentModalPlayer.id, 'payment');
+    
+    setPaymentModalPlayer(null);
   };
 
   const handleContinuousNext = (courtId: number) => {
@@ -554,7 +589,7 @@ export function MainPage() {
               <span className="text-xs font-semibold text-blue-800">未完了タスク</span>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => toggleOperationStatus(currentPlayer.id, 'payment')}
+                  onClick={() => handlePaymentClick(currentPlayer.id)}
                   className="text-xs py-1 px-3 rounded-lg font-medium transition-colors"
                   style={{
                     backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
@@ -988,6 +1023,16 @@ export function MainPage() {
           onClose={() => toast.hideToast(t.id)}
         />
       ))}
+
+      {/* 支払いモーダル */}
+      {paymentModalPlayer && (
+        <PaymentModal
+          playerName={paymentModalPlayer.name}
+          defaultAmount={paymentModalPlayer.defaultAmount}
+          onConfirm={handlePaymentConfirm}
+          onCancel={() => setPaymentModalPlayer(null)}
+        />
+      )}
 
       <BottomNav activeTab="court" />
     </div>

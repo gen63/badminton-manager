@@ -12,6 +12,7 @@ export interface Player {
     roster: boolean;    // 名簿確認完了
     checkin: boolean;   // チェックイン完了
   };
+  paymentAmount?: number; // 支払った金額（円）
 }
 
 export interface PlayerStats {

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
+import { useAccountingStore } from '../stores/accountingStore';
 import { buildInitialOrder, applyStreakSwaps } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
@@ -9,16 +10,19 @@ import { Toast } from '../components/Toast';
 import { Trash2, UserPlus, Users, ArrowRight } from 'lucide-react';
 import { useSessionStore } from '../stores/sessionStore';
 import { BottomNav } from '../components/BottomNav';
+import { PaymentModal } from '../components/PaymentModal';
 
 export function PlayerSelect() {
   const navigate = useNavigate();
-  const { players, addPlayers, removePlayer, toggleOperationStatus } = usePlayerStore();
+  const { players, addPlayers, removePlayer, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
   const { matchHistory } = useGameStore();
   const { session, isCreator } = useSessionStore();
   const isTabMode = !!session;
   const isAdmin = isCreator();
   const [newPlayerNames, setNewPlayerNames] = useState('');
   const toast = useToast();
+  const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
+  const { doublesMen, doublesWomen } = useAccountingStore();
 
   // 試合履歴に登場するプレイヤーIDのセット
   const playersInHistory = new Set(
@@ -65,6 +69,37 @@ export function PlayerSelect() {
     removePlayer(player.id);
   };
 
+  const handlePaymentClick = (playerId: string) => {
+    const player = players.find(p => p.id === playerId);
+    if (!player) return;
+
+    // デフォルト金額を計算（会計設定から）
+    const matchCount = player.gamesPlayed;
+    const defaultAmount = player.gender === 'M'
+      ? doublesMen * matchCount
+      : player.gender === 'F'
+      ? doublesWomen * matchCount
+      : doublesMen * matchCount; // 性別不明の場合は男性料金
+
+    setPaymentModalPlayer({
+      id: player.id,
+      name: player.name,
+      defaultAmount,
+    });
+  };
+
+  const handlePaymentConfirm = (amount: number) => {
+    if (!paymentModalPlayer) return;
+    
+    // 金額を保存
+    setPaymentAmount(paymentModalPlayer.id, amount);
+    
+    // 支払い完了フラグをON
+    toggleOperationStatus(paymentModalPlayer.id, 'payment');
+    
+    setPaymentModalPlayer(null);
+  };
+
   const renderPlayerList = () => (
     <>
       {players.length === 0 ? (
@@ -102,7 +137,7 @@ export function PlayerSelect() {
                 
                 {/* チェックボックス (各20%) */}
                 <button
-                  onClick={() => toggleOperationStatus(player.id, 'payment')}
+                  onClick={() => handlePaymentClick(player.id)}
                   className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1"
                   style={{
                     backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
@@ -172,6 +207,16 @@ export function PlayerSelect() {
             <Toast key={t.id} message={t.message} type={t.type} onClose={() => toast.hideToast(t.id)} />
           ))}
         </div>
+
+        {/* 支払いモーダル */}
+        {paymentModalPlayer && (
+          <PaymentModal
+            playerName={paymentModalPlayer.name}
+            defaultAmount={paymentModalPlayer.defaultAmount}
+            onConfirm={handlePaymentConfirm}
+            onCancel={() => setPaymentModalPlayer(null)}
+          />
+        )}
 
         <BottomNav activeTab="players" />
       </div>

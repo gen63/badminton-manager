@@ -16,6 +16,7 @@ interface PlayerState {
   updatePlayer: (id: string, updates: Partial<Player>) => void;
   clearPlayers: () => void;
   toggleOperationStatus: (id: string, field: 'payment' | 'roster' | 'checkin') => void;
+  setPaymentAmount: (id: string, amount: number) => void;
 }
 
 export const usePlayerStore = create<PlayerState>()(
@@ -103,6 +104,12 @@ export const usePlayerStore = create<PlayerState>()(
               },
             };
           }),
+        })),
+      setPaymentAmount: (id, amount) =>
+        set((state) => ({
+          players: state.players.map((p) =>
+            p.id === id ? { ...p, paymentAmount: amount } : p
+          ),
         })),
     }),
     {

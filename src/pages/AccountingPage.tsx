@@ -14,12 +14,16 @@ import { BottomNav } from '../components/BottomNav';
 
 export function AccountingPage() {
   const navigate = useNavigate();
-  const { session, updateConfig } = useSessionStore();
+  const { session, updateConfig, isCreator } = useSessionStore();
   const { players } = usePlayerStore();
   const { matchHistory } = useGameStore();
   const { records, addRecord, lastInput, saveLastInput } = useAccountingStore();
   const { accountingWebAppUrl } = useSettingsStore();
   const toast = useToast();
+  const isAdmin = isCreator();
+
+  // タブ状態
+  const [activeTab, setActiveTab] = useState<'input' | 'payments'>('input');
 
   // 入力状態
   const [exemptCount, setExemptCount] = useState<number>(0);
@@ -430,6 +434,23 @@ export function AccountingPage() {
     }
   };
 
+  // 支払い済みプレイヤーの集計
+  const paymentStats = useMemo(() => {
+    const paidPlayers = players.filter(p => p.operationStatus?.payment);
+    const totalAmount = paidPlayers.reduce((sum, p) => sum + (p.paymentAmount || 0), 0);
+    return {
+      paidCount: paidPlayers.length,
+      totalPlayers: players.length,
+      totalAmount,
+      players: paidPlayers.map(p => ({
+        id: p.id,
+        name: p.name,
+        amount: p.paymentAmount || 0,
+        gamesPlayed: p.gamesPlayed,
+      })).sort((a, b) => b.amount - a.amount), // 金額順
+    };
+  }, [players]);
+
   return (
     <div className="bg-app pb-20">
       {/* ヘッダー */}
@@ -442,7 +463,86 @@ export function AccountingPage() {
         </div>
       </div>
 
-      <div className="max-w-md mx-auto p-3 space-y-3">
+      {/* タブ */}
+      {isAdmin && (
+        <div className="border-b border-border bg-card">
+          <div className="max-w-md mx-auto flex">
+            <button
+              onClick={() => setActiveTab('input')}
+              className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                activeTab === 'input'
+                  ? 'text-primary border-b-2 border-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              入力
+            </button>
+            <button
+              onClick={() => setActiveTab('payments')}
+              className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                activeTab === 'payments'
+                  ? 'text-primary border-b-2 border-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              支払い一覧
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'payments' && isAdmin ? (
+        /* 支払い一覧タブ */
+        <div className="max-w-md mx-auto p-3 space-y-3">
+          {/* サマリー */}
+          <div className="card p-4">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">支払い済み</span>
+                <span className="text-lg font-bold text-foreground">
+                  {paymentStats.paidCount} / {paymentStats.totalPlayers}人
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">合計金額</span>
+                <span className="text-2xl font-bold text-primary">
+                  ¥{paymentStats.totalAmount.toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* プレイヤー一覧 */}
+          <div className="card p-4">
+            <h2 className="section-title mb-3">支払い詳細</h2>
+            {paymentStats.players.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                まだ支払いがありません
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {paymentStats.players.map((player) => (
+                  <div
+                    key={player.id}
+                    className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-foreground">{player.name}</div>
+                      <div className="text-xs text-muted-foreground">{player.gamesPlayed}試合</div>
+                    </div>
+                    <div className="text-base font-bold text-foreground">
+                      ¥{player.amount.toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* 入力タブ */
+        <>
+        <div className="max-w-md mx-auto p-3 space-y-3">
         {/* 日付・体育館・練習日時 */}
         <div className="card p-4 space-y-3">
           {/* 日付・体育館・練習種別の表示 */}
@@ -953,6 +1053,8 @@ export function AccountingPage() {
           )}
         </div>
       </div>
+      </>
+      )}
 
       {/* Toast notifications */}
       {toast.toasts.map((t) => (
