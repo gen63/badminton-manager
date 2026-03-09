@@ -65,7 +65,7 @@ export function SessionCreate() {
   // Phase 1 モード判定
   const isPhase1Mode = location.pathname === '/session/create';
   const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
-  const [showNameSelect, setShowNameSelect] = useState(false);
+  const [showCreatorSelect, setShowCreatorSelect] = useState(false);
   const [selectedCreatorName, setSelectedCreatorName] = useState('');
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
   const { addPlayers } = usePlayerStore();
@@ -245,10 +245,16 @@ export function SessionCreate() {
       gym: selectedGym || undefined,
     };
 
+    // Phase 1: 作成者名が未選択の場合は選択画面へ
+    if (isPhase1Mode && !selectedCreatorName) {
+      setShowCreatorSelect(true);
+      return;
+    }
+
     // Phase 1: Firebaseにセッション作成
     if (isPhase1Mode) {
       try {
-        const creatorName = 'Admin'; // TODO: 認証後は実名を入れる
+        const creatorName = selectedCreatorName;
         const registeredPlayers = playerInputs.map((p) => p.name);
         const sessionId = await createSession({
           config: sessionConfig,
@@ -268,6 +274,7 @@ export function SessionCreate() {
           status: 'active',
           registeredPlayers,
         });
+        setCurrentUser(creatorName); // 自動入室
         initializeCourts(adjustedCourtCount);
 
         // 初期ゲーム状態をFirestoreにpush（参加者がすぐ取得できるように）
@@ -297,13 +304,18 @@ export function SessionCreate() {
     navigate('/main');
   };
 
-  // Phase 1: 名前選択画面（URL共有後）
-  if (createdSessionId && showNameSelect) {
-    const registeredPlayers = useSessionStore.getState().session?.registeredPlayers || [];
+  // Phase 1: 作成者名選択画面（セッション作成前）
+  if (showCreatorSelect) {
+    const playerInputs = playerNames
+      .split('\n')
+      .map((line) => parsePlayerInput(line))
+      .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
+
     const handleCreatorNameSelect = () => {
       if (!selectedCreatorName) return;
-      setCurrentUser(selectedCreatorName);
-      navigate('/main');
+      setShowCreatorSelect(false);
+      // handleCreate()を再実行（今度はselectedCreatorNameがセットされているのでセッション作成へ）
+      handleCreate();
     };
 
     return (
@@ -312,40 +324,44 @@ export function SessionCreate() {
           <div className="card p-6">
             <div className="text-center mb-4">
               <h2 className="text-xl font-bold text-foreground mb-1">あなたの名前を選択</h2>
-              <p className="text-sm text-muted-foreground">試合通知に使用します</p>
+              <p className="text-sm text-muted-foreground">セッション管理者として登録されます</p>
             </div>
 
             <div className="grid grid-cols-3 gap-2 mb-4">
-              {registeredPlayers.map((name) => (
+              {playerInputs.map((input) => (
                 <button
-                  key={name}
-                  onClick={() => setSelectedCreatorName(name)}
+                  key={input.name}
+                  onClick={() => setSelectedCreatorName(input.name)}
                   className={`select-button text-sm px-2 py-2 ${
-                    selectedCreatorName === name
+                    selectedCreatorName === input.name
                       ? 'select-button-active'
                       : 'select-button-inactive'
                   }`}
                 >
-                  {selectedCreatorName === name && <span className="mr-1">✓</span>}
-                  {name}
+                  {selectedCreatorName === input.name && <span className="mr-1">✓</span>}
+                  {input.name}
                 </button>
               ))}
             </div>
 
-            <button
-              onClick={handleCreatorNameSelect}
-              disabled={!selectedCreatorName}
-              className="btn-primary w-full"
-            >
-              メイン画面へ
-            </button>
-
-            <button
-              onClick={() => navigate('/main')}
-              className="btn-secondary w-full mt-2"
-            >
-              スキップ
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowCreatorSelect(false);
+                  setSelectedCreatorName('');
+                }}
+                className="btn-secondary flex-1"
+              >
+                戻る
+              </button>
+              <button
+                onClick={handleCreatorNameSelect}
+                disabled={!selectedCreatorName}
+                className="btn-primary flex-1"
+              >
+                セッション作成
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -359,7 +375,7 @@ export function SessionCreate() {
         <div className="max-w-md w-full">
           <SessionURLDisplay
             sessionId={createdSessionId}
-            onClose={() => setShowNameSelect(true)}
+            onClose={() => navigate('/main')}
           />
         </div>
       </div>
