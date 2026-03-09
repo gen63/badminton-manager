@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -10,7 +10,7 @@ import { createSession, syncGameStateWithTransaction } from '../services/session
 import { getErrorMessage } from '../lib/errorHandler';
 import { requestNotificationPermission } from '../lib/notifications';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
-import { Sparkles, Download, Loader2, Play } from 'lucide-react';
+import { Sparkles, Download, Loader2, Play, LogIn } from 'lucide-react';
 
 // 現在日時を取得（曜日に応じて時刻を設定）
 const getInitialDateTime = () => {
@@ -77,10 +77,39 @@ export function SessionCreate() {
   const [selectedGym] = useState(getInitialGym);
   const [practiceDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
+  
+  // Phase 1: セッションID参加機能
+  const [showJoinMode, setShowJoinMode] = useState(false);
+  const [joinSessionId, setJoinSessionId] = useState('');
+  const [clipboardDetected, setClipboardDetected] = useState<string | null>(null);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [allRated, setAllRated] = useState(false);
 
+  // クリップボード自動検出（Phase 1）
+  useEffect(() => {
+    const detectClipboard = async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && /^[A-Z0-9]{6}$/.test(text.trim())) {
+          setClipboardDetected(text.trim());
+        }
+      } catch {
+        // クリップボード読み取り権限がない場合は無視
+      }
+    };
+    
+    if (showJoinMode) {
+      detectClipboard();
+    }
+  }, [showJoinMode]);
+
+  const handleJoinSession = () => {
+    const id = joinSessionId.trim().toUpperCase();
+    if (id.length === 6) {
+      navigate(`/session/${id}`);
+    }
+  };
 
   const handleLoadFromSheets = async () => {
     if (!gasWebAppUrl) {
@@ -337,6 +366,78 @@ export function SessionCreate() {
     );
   }
 
+  // Phase 1: セッションID参加画面
+  if (showJoinMode) {
+    return (
+      <div className="bg-app overflow-x-hidden min-h-screen flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <div className="card p-6">
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-3">
+                <LogIn size={24} className="text-primary" />
+              </div>
+              <h2 className="text-xl font-bold text-foreground mb-2">セッションに参加</h2>
+              <p className="text-sm text-muted-foreground">6文字のセッションIDを入力してください</p>
+            </div>
+
+            {/* クリップボード検出 */}
+            {clipboardDetected && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-800 mb-2">
+                  クリップボードにセッションIDがあります
+                </p>
+                <button
+                  onClick={() => setJoinSessionId(clipboardDetected)}
+                  className="text-sm text-blue-600 font-medium underline"
+                >
+                  {clipboardDetected} を使用
+                </button>
+              </div>
+            )}
+
+            {/* セッションID入力 */}
+            <div className="mb-4">
+              <label className="label">セッションID</label>
+              <input
+                type="text"
+                value={joinSessionId}
+                onChange={(e) => setJoinSessionId(e.target.value.toUpperCase())}
+                placeholder="ABC123"
+                maxLength={6}
+                className="input-field text-center text-2xl font-bold tracking-wider"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleJoinSession();
+                }}
+              />
+            </div>
+
+            {/* ボタン */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowJoinMode(false);
+                  setJoinSessionId('');
+                  setClipboardDetected(null);
+                }}
+                className="btn-secondary flex-1"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleJoinSession}
+                disabled={joinSessionId.length !== 6}
+                className="btn-primary flex-1"
+              >
+                参加する
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // オンラインモード: URL表示画面
   if (createdSessionId) {
     return (
@@ -498,14 +599,36 @@ export function SessionCreate() {
           </div>
 
           {/* 作成ボタン */}
-          <div className="flex justify-center">
-            <button
-              onClick={handleCreate}
-              className="btn-primary text-base flex items-center justify-center gap-2"
-            >
-              <Sparkles size={18} />
-              開始
-            </button>
+          <div className="space-y-3">
+            <div className="flex justify-center">
+              <button
+                onClick={handleCreate}
+                className="btn-primary text-base flex items-center justify-center gap-2"
+              >
+                <Sparkles size={18} />
+                開始
+              </button>
+            </div>
+
+            {/* セッションIDで参加 */}
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border"></div>
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-card px-2 text-muted-foreground">または</span>
+              </div>
+            </div>
+
+            <div className="flex justify-center">
+              <button
+                onClick={() => setShowJoinMode(true)}
+                className="btn-secondary text-sm flex items-center justify-center gap-2"
+              >
+                <LogIn size={16} />
+                セッションIDで参加
+              </button>
+            </div>
           </div>
         </div>
 
