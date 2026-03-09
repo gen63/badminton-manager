@@ -3,8 +3,9 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useSessionStore } from '../stores/sessionStore';
-import { syncGameState, subscribeToGameState } from '../services/sessionService';
+import { syncGameStateWithTransaction, subscribeToGameState } from '../services/sessionService';
 import { notifyMatchStart } from '../lib/notifications';
+import { useToast } from './useToast';
 import type { Court } from '../types/court';
 
 /**
@@ -12,11 +13,14 @@ import type { Court } from '../types/court';
  *
  * 全参加者がFirestoreのゲーム状態をリアルタイムで受信し、
  * ローカルの変更もFirestoreにpushする（双方向同期）
+ * 
+ * Transaction使用により、同時更新時の競合を自動で解決します。
  */
 export function useFirebaseSync() {
   const session = useSessionStore((s) => s.session);
   const sessionId = session?.id;
   const isShared = !!session?.createdBy;
+  const toast = useToast();
 
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSyncingFromRemote = useRef(false);
@@ -25,10 +29,17 @@ export function useFirebaseSync() {
     const { players } = usePlayerStore.getState();
     const { courts, matchHistory } = useGameStore.getState();
     const { reservations } = useReservationStore.getState();
-    syncGameState(sid, { players, courts, matchHistory, reservations }).catch((err) => {
-      console.error('Failed to sync game state:', err);
-    });
-  }, []);
+    
+    syncGameStateWithTransaction(sid, { players, courts, matchHistory, reservations })
+      .catch((err) => {
+        if (err?.code === 'conflict') {
+          // 競合検出（Transactionが最大5回リトライした後に失敗）
+          toast.warning('他のユーザーが更新しました。もう一度お試しください');
+        } else {
+          console.error('Failed to sync game state:', err);
+        }
+      });
+  }, [toast]);
 
   const schedulePush = useCallback((sid: string) => {
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);

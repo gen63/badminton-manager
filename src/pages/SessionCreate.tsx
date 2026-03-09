@@ -7,7 +7,7 @@ import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { generateSessionId, parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
-import { createSession, syncGameState } from '../services/sessionService';
+import { createSession, syncGameStateWithTransaction } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
 import { requestNotificationPermission } from '../lib/notifications';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
@@ -273,7 +273,7 @@ export function SessionCreate() {
         // 初期ゲーム状態をFirestoreにpush（参加者がすぐ取得できるように）
         const { players } = usePlayerStore.getState();
         const { courts, matchHistory } = useGameStore.getState();
-        await syncGameState(sessionId, { players, courts, matchHistory, reservations: [] });
+        await syncGameStateWithTransaction(sessionId, { players, courts, matchHistory, reservations: [] });
 
         setCreatedSessionId(sessionId);
         requestNotificationPermission();

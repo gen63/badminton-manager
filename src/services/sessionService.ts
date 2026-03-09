@@ -12,6 +12,7 @@ import {
   onSnapshot,
   arrayUnion,
   serverTimestamp,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { Session } from '../types/session';
@@ -216,6 +217,47 @@ export async function syncGameState(
     gameState: sanitize(gameState),
     updatedAt: serverTimestamp(),
   });
+}
+
+/**
+ * ゲーム状態をFirestoreに同期（Transaction使用）
+ * 
+ * 競合時に自動リトライ（最大5回）し、同時更新を安全に処理します。
+ * すべての操作（配置、メンバー交換、ゲーム開始など）で使用されます。
+ */
+export async function syncGameStateWithTransaction(
+  sessionId: string,
+  gameState: GameState,
+): Promise<void> {
+  if (!useFirestore) return;
+
+  const docRef = doc(db!, 'sessions', sessionId);
+  
+  try {
+    await runTransaction(db!, async (transaction) => {
+      // Firestoreが競合検出に使用（読み取り必須）
+      const snap = await transaction.get(docRef);
+      if (!snap.exists()) {
+        throw new Error('Session not found');
+      }
+      
+      // 更新（競合があればFirestoreが自動リトライ）
+      transaction.update(docRef, {
+        gameState: sanitize(gameState),
+        updatedAt: serverTimestamp(),
+      });
+    });
+  } catch (error: any) {
+    // Firestoreが最大5回リトライした後に失敗
+    if (error?.code === 'aborted') {
+      throw new SessionError(
+        '他のユーザーが更新しました。もう一度お試しください',
+        'conflict'
+      );
+    }
+    // その他のエラー
+    throw error;
+  }
 }
 
 /** ゲーム状態をリアルタイム監視（参加者が呼ぶ） */
