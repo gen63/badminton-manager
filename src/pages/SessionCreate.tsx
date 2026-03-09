@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
@@ -73,36 +72,6 @@ export function SessionCreate() {
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
-
-  // PWA更新検知 & 自動リロード
-  const {
-    needRefresh: [needRefresh],
-    updateServiceWorker,
-  } = useRegisterSW({
-    onRegisteredSW(_swUrl, r) {
-      // 画面表示時 & フォーカス時に更新チェック
-      const checkForUpdates = () => {
-        r?.update().catch(() => {});
-      };
-
-      checkForUpdates();
-
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible') {
-          checkForUpdates();
-        }
-      };
-
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-    },
-  });
-
-  // 更新検知時に自動リロード
-  useEffect(() => {
-    if (needRefresh) {
-      updateServiceWorker(true); // true = skipWaitingで即座に適用してリロード
-    }
-  }, [needRefresh, updateServiceWorker]);
 
   const [targetScore] = useState(15);
   const [selectedGym] = useState(getInitialGym);
