@@ -136,7 +136,7 @@ export function ScoreInputPage() {
   };
 
   return (
-    <div className="min-h-screen bg-muted pb-[80px]">
+    <div className="min-h-screen bg-muted">
       {/* ヘッダー */}
       <div className="bg-card p-2 shadow-sm">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
@@ -151,7 +151,7 @@ export function ScoreInputPage() {
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto p-3 space-y-2 pb-2">
+      <div className="max-w-2xl mx-auto p-3 space-y-2 pb-[calc(80px+env(safe-area-inset-bottom)+1rem)]">
         {/* 対戦カード */}
         <div className="bg-card rounded-2xl shadow-sm p-3">
           {selectedPlayer && (
