@@ -159,21 +159,25 @@ export function AccountingPage() {
     setInitialized(true);
   }, [matchHistory, players, records, gymShortName, initialized, session, lastInput]);
 
-  // 試合数を試合履歴に同期（増えた時だけ更新）
-  useEffect(() => {
-    if (!initialized) return;
-    
-    const currentMatchCount = matchHistory.length;
-    // 試合履歴が増えた場合のみ自動更新
-    if (currentMatchCount > matchCount) {
-      setMatchCount(currentMatchCount);
-      // 自動更新した値を保存
-      saveAllInputs({ matchCount: currentMatchCount });
-    }
-  }, [matchHistory.length, initialized]);
-
   // 参加人数の合計（免除+男+女）
   const participantCount = exemptCount + maleCount + femaleCount;
+
+  // 支払い済みプレイヤーの集計
+  const paymentStats = useMemo(() => {
+    const paidPlayers = players.filter(p => p.operationStatus?.payment);
+    const totalAmount = paidPlayers.reduce((sum, p) => sum + (p.paymentAmount || 0), 0);
+    return {
+      paidCount: paidPlayers.length,
+      totalPlayers: players.length,
+      totalAmount,
+      players: paidPlayers.map(p => ({
+        id: p.id,
+        name: p.name,
+        amount: p.paymentAmount || 0,
+        gamesPlayed: p.gamesPlayed,
+      })).sort((a, b) => b.amount - a.amount), // 金額順
+    };
+  }, [players]);
 
   // すべての入力値を保存するヘルパー関数
   const saveAllInputs = (overrides: Partial<{
@@ -433,23 +437,6 @@ export function AccountingPage() {
       setIsUploading(false);
     }
   };
-
-  // 支払い済みプレイヤーの集計
-  const paymentStats = useMemo(() => {
-    const paidPlayers = players.filter(p => p.operationStatus?.payment);
-    const totalAmount = paidPlayers.reduce((sum, p) => sum + (p.paymentAmount || 0), 0);
-    return {
-      paidCount: paidPlayers.length,
-      totalPlayers: players.length,
-      totalAmount,
-      players: paidPlayers.map(p => ({
-        id: p.id,
-        name: p.name,
-        amount: p.paymentAmount || 0,
-        gamesPlayed: p.gamesPlayed,
-      })).sort((a, b) => b.amount - a.amount), // 金額順
-    };
-  }, [players]);
 
   return (
     <div className="bg-app pb-20">
