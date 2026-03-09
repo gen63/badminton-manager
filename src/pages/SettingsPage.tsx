@@ -9,12 +9,13 @@ import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { deleteSession } from '../services/sessionService';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrCode } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrCode, Copy, Check } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
   const { session, updateConfig, clearSession, isCreator } = useSessionStore();
   const [showSessionInfo, setShowSessionInfo] = useState(false);
+  const [sessionIdCopied, setSessionIdCopied] = useState(false);
 
   // 権限判定
   const isAdmin = isCreator();
@@ -32,6 +33,25 @@ export function SettingsPage() {
 
   const handleTargetScoreChange = (score: number) => {
     updateConfig({ targetScore: score });
+  };
+
+  const handleCopySessionId = async () => {
+    if (!session.id) return;
+    try {
+      await navigator.clipboard.writeText(session.id);
+      setSessionIdCopied(true);
+      setTimeout(() => setSessionIdCopied(false), 2000);
+    } catch {
+      // フォールバック
+      const input = document.createElement('input');
+      input.value = session.id;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      setSessionIdCopied(true);
+      setTimeout(() => setSessionIdCopied(false), 2000);
+    }
   };
 
   const handleReset = async () => {
@@ -266,9 +286,18 @@ export function SettingsPage() {
                 <span className="text-muted-foreground">管理者</span>
                 <span className="font-medium">{session.createdBy}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">セッションID</span>
-                <span className="font-mono">{session.id}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono">{session.id}</span>
+                  <button
+                    onClick={handleCopySessionId}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    title="セッションIDをコピー"
+                  >
+                    {sessionIdCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                  </button>
+                </div>
               </div>
               {session.participants && session.participants.length > 0 && (
                 <div className="flex justify-between">
