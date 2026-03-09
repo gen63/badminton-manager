@@ -143,6 +143,8 @@ function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
   const myPlayer = players.find((p) => p.name === currentUser);
   if (!myPlayer) return;
 
+  const { matchHistory } = useGameStore.getState();
+
   for (const newCourt of newCourts) {
     const oldCourt = oldCourts.find((c) => c.id === newCourt.id);
 
@@ -161,6 +163,15 @@ function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
         continue;
       }
 
+      // 試合番号を計算（終了済み試合 + 現在プレイ中でIDが小さいコート + 1）
+      const finishedBefore = matchHistory.filter(
+        m => m.finishedAt && newCourt.startedAt && m.finishedAt <= newCourt.startedAt
+      ).length;
+      const playingBefore = newCourts.filter(
+        c => c.isPlaying && c.id < newCourt.id
+      ).length;
+      const matchNumber = finishedBefore + playingBefore + 1;
+
       // プレイヤーIDから名前を取得
       const teamANames = newCourt.teamA.map(id => {
         const player = players.find(p => p.id === id);
@@ -171,7 +182,7 @@ function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
         return player?.name || '';
       });
       
-      notifyMatchStart(newCourt.id, teamANames, teamBNames, newCourt.startedAt ?? undefined);
+      notifyMatchStart(newCourt.id, matchNumber, teamANames, teamBNames, newCourt.startedAt ?? undefined);
     }
   }
 }
