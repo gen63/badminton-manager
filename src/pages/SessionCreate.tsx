@@ -70,6 +70,7 @@ export function SessionCreate() {
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
   const { addPlayers } = usePlayerStore();
   const initializeCourts = useGameStore((state) => state.initializeCourts);
+  const courts = useGameStore((state) => state.courts);
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
@@ -594,7 +595,9 @@ export function SessionCreate() {
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">
               {prioritizeDiversity
-                ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
+                ? courts.length === 1
+                  ? '組み合わせの多様性を優先'
+                  : '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
                 : '空きが出たら即座に配置'}
             </p>
           </div>
