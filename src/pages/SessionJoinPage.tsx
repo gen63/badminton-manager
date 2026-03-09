@@ -4,15 +4,21 @@ import { useSessionStore } from '../stores/sessionStore';
 import { getSession, joinSession, subscribeToGameState } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
 import { requestNotificationPermission } from '../lib/notifications';
-import type { Session } from '../types/session';
+import { type Session } from '../types/session';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
-import { Loader2, Plus } from 'lucide-react';
+import { Loader2, Plus, Copy, Check } from 'lucide-react';
 
 export function SessionJoinPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  
+  // PWA検出
+  const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
+                (navigator as Navigator & { standalone?: boolean }).standalone;
+  
+  const [clipboardCopied, setClipboardCopied] = useState(false);
 
   const [session, setSession] = useState<Session | null>(null);
   const [selectedName, setSelectedName] = useState('');
@@ -26,6 +32,20 @@ export function SessionJoinPage() {
 
   const initializeSession = useSessionStore((state) => state.initialize);
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
+
+  // Safari検出時にセッションIDをクリップボードにコピー
+  useEffect(() => {
+    if (!sessionId || isPWA) return;
+
+    // Safari（非PWA）の場合、自動コピー
+    navigator.clipboard.writeText(sessionId)
+      .then(() => {
+        setClipboardCopied(true);
+      })
+      .catch(() => {
+        // コピー失敗時は無視
+      });
+  }, [sessionId, isPWA]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -162,6 +182,28 @@ export function SessionJoinPage() {
   return (
     <div className="min-h-screen bg-app p-4">
       <div className="max-w-md mx-auto space-y-4">
+        {/* Safari検出バナー（非PWA時のみ） */}
+        {!isPWA && clipboardCopied && (
+          <div className="card p-4 bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center">
+                {clipboardCopied ? <Check size={20} className="text-white" /> : <Copy size={20} className="text-white" />}
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-amber-900 mb-1">
+                  セッションIDをコピーしました
+                </h3>
+                <p className="text-xs text-amber-800 mb-2">
+                  ホーム画面の「バドミントン」アプリを開くと、自動的にこのセッションに参加できます。
+                </p>
+                <div className="bg-white/60 rounded px-2 py-1 text-center">
+                  <span className="text-lg font-bold text-amber-900 tracking-wider">{sessionId}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ヘッダー */}
         <div className="text-center">
           <h1 className="text-xl font-bold text-foreground mb-1">参加者入室</h1>
