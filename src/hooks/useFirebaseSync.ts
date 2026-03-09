@@ -153,7 +153,17 @@ function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
     // 自分がこのコートにいるか
     const allPlayerIds = [...newCourt.teamA, ...newCourt.teamB];
     if (allPlayerIds.includes(myPlayer.id)) {
-      notifyMatchStart(newCourt.id, newCourt.startedAt ?? undefined);
+      // プレイヤーIDから名前を取得
+      const teamANames = newCourt.teamA.map(id => {
+        const player = players.find(p => p.id === id);
+        return player?.name || '';
+      });
+      const teamBNames = newCourt.teamB.map(id => {
+        const player = players.find(p => p.id === id);
+        return player?.name || '';
+      });
+      
+      notifyMatchStart(newCourt.id, teamANames, teamBNames, newCourt.startedAt ?? undefined);
     }
   }
 }

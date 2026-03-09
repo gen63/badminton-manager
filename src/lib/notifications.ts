@@ -16,7 +16,12 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 /** 試合開始通知を送信 */
-export function notifyMatchStart(courtNumber: number, startedAt?: number): void {
+export function notifyMatchStart(
+  courtNumber: number,
+  teamANames: string[],
+  teamBNames: string[],
+  startedAt?: number
+): void {
   if (!isNotificationSupported()) return;
   if (Notification.permission !== 'granted') return;
 
@@ -25,9 +30,16 @@ export function notifyMatchStart(courtNumber: number, startedAt?: number): void 
   const lagMs = startedAt ? now - startedAt : 0;
   const lagSec = Math.round(lagMs / 100) / 10; // 小数点1桁
 
-  const body = startedAt && lagSec > 0
-    ? `コート${courtNumber}の試合が始まりました（${lagSec}秒前）`
-    : `コート${courtNumber}の試合が始まりました`;
+  // チーム名を整形（空文字を除外して結合）
+  const teamA = teamANames.filter(n => n).join(' ');
+  const teamB = teamBNames.filter(n => n).join(' ');
+  const matchInfo = teamA && teamB ? `${teamA} vs ${teamB}` : '';
+
+  const lagInfo = startedAt && lagSec > 0 ? `（${lagSec}秒前）` : '';
+  
+  const body = matchInfo
+    ? `コート${courtNumber}: ${matchInfo} ${lagInfo}`.trim()
+    : `コート${courtNumber}の試合が始まりました ${lagInfo}`.trim();
 
   new Notification('試合開始！', {
     body,
