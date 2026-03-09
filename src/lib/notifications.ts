@@ -16,12 +16,21 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 /** 試合開始通知を送信 */
-export function notifyMatchStart(courtNumber: number): void {
+export function notifyMatchStart(courtNumber: number, startedAt?: number): void {
   if (!isNotificationSupported()) return;
   if (Notification.permission !== 'granted') return;
 
+  // タイムラグを計算
+  const now = Date.now();
+  const lagMs = startedAt ? now - startedAt : 0;
+  const lagSec = Math.round(lagMs / 100) / 10; // 小数点1桁
+
+  const body = startedAt && lagSec > 0
+    ? `コート${courtNumber}の試合が始まりました（${lagSec}秒前）`
+    : `コート${courtNumber}の試合が始まりました`;
+
   new Notification('試合開始！', {
-    body: `コート${courtNumber}の試合が始まりました`,
+    body,
     icon: '/badminton-manager/icons/icon-192x192.png',
     tag: `match-start-court-${courtNumber}`,
   });

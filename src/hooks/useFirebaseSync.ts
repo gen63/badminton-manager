@@ -153,7 +153,7 @@ function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
     // 自分がこのコートにいるか
     const allPlayerIds = [...newCourt.teamA, ...newCourt.teamB];
     if (allPlayerIds.includes(myPlayer.id)) {
-      notifyMatchStart(newCourt.id);
+      notifyMatchStart(newCourt.id, newCourt.startedAt ?? undefined);
     }
   }
 }
