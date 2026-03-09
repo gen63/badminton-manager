@@ -165,7 +165,7 @@ export function PlayerSelect() {
                     color: status.checkin ? '#ffffff' : '#6b7280',
                   }}
                 >
-                  {status.checkin ? '✓' : ''}チェックイン
+                  {status.checkin ? '✓ ' : ''}IN
                 </button>
               </div>
             );
