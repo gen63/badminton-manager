@@ -50,7 +50,7 @@ export function useFirebaseSync() {
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
       pushGameState(sid);
-    }, 500); // 500msデバウンス
+    }, 300); // 300msデバウンス（高速化）
   }, [pushGameState]);
 
   // ローカル変更をFirestoreにpush（デバウンス）
@@ -90,9 +90,9 @@ export function useFirebaseSync() {
     const unsub = subscribeToGameState(sessionId, (gameState) => {
       if (!gameState) return;
 
-      // push直後1秒間はpullを無視（自分の変更が反映されるのを待つ）
+      // push直後600ms間はpullを無視（自分の変更が反映されるのを待つ）
       const timeSinceLastPush = Date.now() - lastPushTime.current;
-      if (timeSinceLastPush < 1000) {
+      if (timeSinceLastPush < 600) {
         console.log('[FirebaseSync] Ignoring pull (recently pushed)');
         return;
       }
