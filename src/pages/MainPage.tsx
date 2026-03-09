@@ -617,7 +617,7 @@ export function MainPage() {
                     color: status.checkin ? '#ffffff' : '#6b7280',
                   }}
                 >
-                  {status.checkin ? '✓ ' : ''}IN
+                  {status.checkin ? '✓' : ''}チェックイン
                 </button>
               </div>
             </div>
