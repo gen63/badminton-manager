@@ -90,9 +90,9 @@ export function useFirebaseSync() {
     const unsub = subscribeToGameState(sessionId, (gameState) => {
       if (!gameState) return;
 
-      // push直後600ms間はpullを無視（自分の変更が反映されるのを待つ）
+      // push直後1000ms間はpullを無視（自分の変更が反映されるのを待つ）
       const timeSinceLastPush = Date.now() - lastPushTime.current;
-      if (timeSinceLastPush < 600) {
+      if (timeSinceLastPush < 1000) {
         console.log('[FirebaseSync] Ignoring pull (recently pushed)');
         return;
       }
