@@ -149,14 +149,16 @@ export function SessionJoinPage() {
             useReservationStore.setState({ reservations: gameState.reservations });
           }
           unsub();
-          navigate('/main');
+          // レンダリング完了を待ってからナビゲート
+          setTimeout(() => navigate('/main'), 0);
         } else {
           // データがない場合（新規セッション）は空で初期化
           usePlayerStore.setState({ players: [] });
           useGameStore.setState({ courts: [], matchHistory: [] });
           useReservationStore.setState({ reservations: [] });
           unsub();
-          navigate('/main');
+          // レンダリング完了を待ってからナビゲート
+          setTimeout(() => navigate('/main'), 0);
         }
       });
 
