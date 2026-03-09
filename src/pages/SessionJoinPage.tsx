@@ -249,16 +249,7 @@ export function SessionJoinPage() {
         {/* ヘッダー */}
         <div className="text-center">
           <h1 className="text-xl font-bold text-foreground mb-1">参加者入室</h1>
-          <div className="flex items-center justify-center gap-2">
-            <p className="text-xs text-muted-foreground">セッションID: {sessionId}</p>
-            <button
-              onClick={handleManualCopy}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              title="セッションIDをコピー"
-            >
-              {clipboardCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
-            </button>
-          </div>
+          <p className="text-xs text-muted-foreground">セッションID: {sessionId}</p>
         </div>
 
         {/* 名前選択 */}
