@@ -33,19 +33,36 @@ export function SessionJoinPage() {
   const initializeSession = useSessionStore((state) => state.initialize);
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
 
-  // Safari検出時にセッションIDをクリップボードにコピー
+  // Safari検出時にセッションIDをクリップボードにコピー（試行）
   useEffect(() => {
     if (!sessionId || isPWA) return;
 
-    // Safari（非PWA）の場合、自動コピー
+    // Safari（非PWA）の場合、自動コピーを試行
     navigator.clipboard.writeText(sessionId)
       .then(() => {
         setClipboardCopied(true);
       })
       .catch(() => {
-        // コピー失敗時は無視
+        // コピー失敗時も無視（手動ボタンで対応）
       });
   }, [sessionId, isPWA]);
+
+  const handleManualCopy = async () => {
+    if (!sessionId) return;
+    try {
+      await navigator.clipboard.writeText(sessionId);
+      setClipboardCopied(true);
+    } catch {
+      // フォールバック: 選択コピー
+      const input = document.createElement('input');
+      input.value = sessionId;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      setClipboardCopied(true);
+    }
+  };
 
   useEffect(() => {
     if (!sessionId) return;
@@ -183,7 +200,7 @@ export function SessionJoinPage() {
     <div className="min-h-screen bg-app p-4">
       <div className="max-w-md mx-auto space-y-4">
         {/* Safari検出バナー（非PWA時のみ） */}
-        {!isPWA && clipboardCopied && (
+        {!isPWA && sessionId && (
           <div className="card p-4 bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300">
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center">
@@ -191,13 +208,24 @@ export function SessionJoinPage() {
               </div>
               <div className="flex-1">
                 <h3 className="text-sm font-bold text-amber-900 mb-1">
-                  セッションIDをコピーしました
+                  {clipboardCopied ? 'セッションIDをコピーしました' : 'PWAアプリで開くとスムーズ'}
                 </h3>
                 <p className="text-xs text-amber-800 mb-2">
                   ホーム画面の「バドミントン」アプリを開くと、自動的にこのセッションに参加できます。
                 </p>
-                <div className="bg-white/60 rounded px-2 py-1 text-center">
-                  <span className="text-lg font-bold text-amber-900 tracking-wider">{sessionId}</span>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex-1 bg-white/60 rounded px-2 py-1 text-center">
+                    <span className="text-lg font-bold text-amber-900 tracking-wider">{sessionId}</span>
+                  </div>
+                  {!clipboardCopied && (
+                    <button
+                      onClick={handleManualCopy}
+                      className="bg-amber-500 hover:bg-amber-600 text-white rounded px-3 py-1 text-xs font-medium flex items-center gap-1"
+                    >
+                      <Copy size={14} />
+                      コピー
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
