@@ -21,7 +21,7 @@ import type { Player } from '../types/player';
 import type { Court } from '../types/court';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
-import { SessionError, isOffline } from '../lib/errorHandler';
+import { SessionError } from '../lib/errorHandler';
 
 /** ゲーム状態の型（Firestore同期用） */
 export interface GameState {
@@ -64,10 +64,6 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
 
 /** セッションを作成 */
 export async function createSession(session: Partial<Session>): Promise<string> {
-  if (isOffline()) {
-    throw new SessionError('オフラインです。インターネット接続を確認してください', 'offline');
-  }
-
   const sessionId = generateFirebaseSessionId();
 
   if (useFirestore) {
