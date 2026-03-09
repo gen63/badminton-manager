@@ -593,13 +593,13 @@ export function SessionCreate() {
                 回数優先
               </button>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1">
-              {prioritizeDiversity
-                ? courts.length === 1
-                  ? '組み合わせの多様性を優先'
-                  : '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
-                : '空きが出たら即座に配置'}
-            </p>
+            {courts.length > 1 && (
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {prioritizeDiversity
+                  ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
+                  : '空きが出たら即座に配置'}
+              </p>
+            )}
           </div>
 
           {/* 作成ボタン */}
