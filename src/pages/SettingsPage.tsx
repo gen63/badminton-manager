@@ -13,12 +13,14 @@ import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrC
 
 export function SettingsPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, clearSession, isCreator } = useSessionStore();
+  const { session, updateConfig, clearSession, isCreator, isAdmin: checkIsAdmin } = useSessionStore();
   const [showSessionInfo, setShowSessionInfo] = useState(false);
   const [sessionIdCopied, setSessionIdCopied] = useState(false);
+  const [showAddAdminModal, setShowAddAdminModal] = useState(false);
 
   // 権限判定
-  const isAdmin = isCreator();
+  const isAdmin = checkIsAdmin();
+  const isCreatorUser = isCreator();
   const { clearPlayers } = usePlayerStore();
   const { clearHistory } = useGameStore();
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
@@ -84,6 +86,40 @@ export function SettingsPage() {
     clearReservations();
     clearSession();
     navigate('/');
+  };
+
+  const handleAddAdmin = async (name: string) => {
+    if (!session.id || !session.createdBy) return;
+    
+    const updatedAdmins = [...(session.admins || []), name];
+    
+    // Firebase更新
+    const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
+    try {
+      await updateFirebaseSession(session.id, { admins: updatedAdmins });
+      // ローカルストア更新
+      useSessionStore.getState().updateSession({ admins: updatedAdmins });
+    } catch (error) {
+      console.error('Failed to add admin:', error);
+    }
+    
+    setShowAddAdminModal(false);
+  };
+
+  const handleRemoveAdmin = async (name: string) => {
+    if (!session.id || !session.createdBy) return;
+    
+    const updatedAdmins = (session.admins || []).filter(admin => admin !== name);
+    
+    // Firebase更新
+    const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
+    try {
+      await updateFirebaseSession(session.id, { admins: updatedAdmins });
+      // ローカルストア更新
+      useSessionStore.getState().updateSession({ admins: updatedAdmins });
+    } catch (error) {
+      console.error('Failed to remove admin:', error);
+    }
   };
 
   return (
@@ -309,6 +345,56 @@ export function SettingsPage() {
           </div>
         )}
 
+        {/* 管理者管理（オンラインモード: 作成者のみ） */}
+        {isCreatorUser && session.createdBy && (
+          <div className="card p-4">
+            <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+              <span className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center">
+                <Shield size={14} className="text-indigo-600" />
+              </span>
+              管理者管理
+              <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">作成者</span>
+            </h2>
+            <div className="space-y-2">
+              {/* 作成者 */}
+              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">⭐️</span>
+                  <div>
+                    <div className="text-sm font-medium text-foreground">{session.createdBy}</div>
+                    <div className="text-[10px] text-muted-foreground">作成者</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 追加管理者 */}
+              {session.admins && session.admins.length > 0 && session.admins.map((admin) => (
+                <div key={admin} className="bg-muted rounded-xl p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🛡</span>
+                    <div className="text-sm font-medium text-foreground">{admin}</div>
+                  </div>
+                  <button
+                    onClick={() => handleRemoveAdmin(admin)}
+                    className="text-xs text-red-600 hover:text-red-700 font-medium"
+                  >
+                    削除
+                  </button>
+                </div>
+              ))}
+
+              {/* 追加ボタン */}
+              <button
+                onClick={() => setShowAddAdminModal(true)}
+                className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl p-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+              >
+                <span className="text-lg">+</span>
+                管理者を追加
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 一般ユーザー向け注意事項（オンラインモード） */}
         {!isAdmin && session.createdBy && (
           <div className="card p-4 bg-blue-50 border border-blue-200">
@@ -342,6 +428,46 @@ export function SettingsPage() {
               sessionId={session.id}
               onClose={() => setShowSessionInfo(false)}
             />
+          </div>
+        </div>
+      )}
+
+      {/* 管理者追加モーダル */}
+      {showAddAdminModal && session.participants && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-card rounded-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-foreground mb-4">管理者を追加</h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              管理者にしたい参加者を選択してください
+            </p>
+            
+            <div className="space-y-2 mb-6">
+              {session.participants
+                .filter(name => name !== session.createdBy && !session.admins?.includes(name))
+                .map((name) => (
+                  <button
+                    key={name}
+                    onClick={() => handleAddAdmin(name)}
+                    className="w-full bg-muted hover:bg-muted/70 rounded-xl p-3 text-left text-sm font-medium text-foreground transition-colors flex items-center gap-2"
+                  >
+                    <span className="text-lg">👤</span>
+                    {name}
+                  </button>
+                ))}
+              
+              {session.participants.filter(name => name !== session.createdBy && !session.admins?.includes(name)).length === 0 && (
+                <p className="text-center text-sm text-muted-foreground py-8">
+                  管理者に追加できる参加者がいません
+                </p>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowAddAdminModal(false)}
+              className="w-full btn-secondary"
+            >
+              キャンセル
+            </button>
           </div>
         </div>
       )}

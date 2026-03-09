@@ -15,6 +15,7 @@ export interface Session {
   updatedAt: number;
   // オンラインモード用フィールド
   createdBy?: string;
+  admins?: string[]; // 追加管理者のリスト
   participants?: string[];
   registeredPlayers?: string[]; // セッション作成時に登録された選手名
   status?: 'active' | 'ended';

@@ -12,6 +12,7 @@ interface SessionState {
   setCurrentUser: (name: string) => void;
   initialize: (session: Session) => void;
   isCreator: () => boolean;
+  isAdmin: () => boolean;
   updateSession: (updates: Partial<Session>) => void;
 }
 
@@ -43,6 +44,11 @@ export const useSessionStore = create<SessionState>()(
         const { session, currentUser } = get();
         if (!session?.createdBy || !currentUser) return true; // ローカルモード: 全員管理者
         return currentUser === session.createdBy;
+      },
+      isAdmin: () => {
+        const { session, currentUser } = get();
+        if (!session?.createdBy || !currentUser) return true; // ローカルモード: 全員管理者
+        return currentUser === session.createdBy || session.admins?.includes(currentUser) || false;
       },
       updateSession: (updates) =>
         set((state) => ({
