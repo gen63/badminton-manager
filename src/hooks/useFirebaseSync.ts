@@ -24,6 +24,7 @@ export function useFirebaseSync() {
 
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSyncingFromRemote = useRef(false);
+  const lastPushTime = useRef<number>(0);
 
   const pushGameState = useCallback((sid: string) => {
     const { players } = usePlayerStore.getState();
@@ -31,6 +32,10 @@ export function useFirebaseSync() {
     const { reservations } = useReservationStore.getState();
     
     syncGameStateWithTransaction(sid, { players, courts, matchHistory, reservations })
+      .then(() => {
+        // push成功時、タイムスタンプを記録（1秒間はpullを無視）
+        lastPushTime.current = Date.now();
+      })
       .catch((err) => {
         if (err?.code === 'conflict') {
           // 競合検出（Transactionが最大5回リトライした後に失敗）
@@ -84,6 +89,13 @@ export function useFirebaseSync() {
 
     const unsub = subscribeToGameState(sessionId, (gameState) => {
       if (!gameState) return;
+
+      // push直後1秒間はpullを無視（自分の変更が反映されるのを待つ）
+      const timeSinceLastPush = Date.now() - lastPushTime.current;
+      if (timeSinceLastPush < 1000) {
+        console.log('[FirebaseSync] Ignoring pull (recently pushed)');
+        return;
+      }
 
       isSyncingFromRemote.current = true;
 
