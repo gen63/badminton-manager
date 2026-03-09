@@ -124,6 +124,14 @@ export function SessionJoinPage() {
 
       requestNotificationPermission();
 
+      // 古いlocalStorageデータをクリア（オンラインセッション参加時）
+      usePlayerStore.setState({ players: [] });
+      useGameStore.setState({
+        courts: [],
+        matchHistory: [],
+      });
+      useReservationStore.setState({ reservations: [] });
+
       initializeSession({
         id: sessionId,
         config: session.config,
@@ -137,7 +145,6 @@ export function SessionJoinPage() {
       setCurrentUser(selectedName);
 
       // Firestoreからゲーム状態を取得してローカルストアにセット
-      // （古いlocalStorageデータを上書き）
       const unsub = subscribeToGameState(sessionId, (gameState) => {
         if (gameState) {
           usePlayerStore.setState({ players: gameState.players });
