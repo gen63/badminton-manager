@@ -32,6 +32,17 @@ export function SettingsPage() {
   };
 
   const handleReset = async () => {
+    const confirmed = window.confirm(
+      'セッションをリセットしますか？\n\n' +
+      '・すべての参加者\n' +
+      '・試合履歴\n' +
+      '・会計記録\n' +
+      'がすべて削除されます。\n\n' +
+      '※オンラインモードの場合、他の参加者も影響を受けます'
+    );
+
+    if (!confirmed) return;
+
     // Firebase共有セッションの場合、Firestoreドキュメントを削除
     if (session.id && session.createdBy) {
       try {
