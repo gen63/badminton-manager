@@ -13,7 +13,7 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const { session, updateConfig, clearSession, isCreator } = useSessionStore();
 
-  // Phase 1: 権限判定
+  // 権限判定
   const isAdmin = isCreator();
   const { clearPlayers } = usePlayerStore();
   const { clearHistory } = useGameStore();
@@ -200,7 +200,7 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* セッション管理（Phase 1: 管理者のみ） */}
+        {/* セッション管理（オンラインモード: 管理者のみ） */}
         {isAdmin && session.createdBy && (
           <div className="card p-4">
             <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
@@ -229,7 +229,7 @@ export function SettingsPage() {
           </div>
         )}
 
-        {/* 一般ユーザー向け注意事項（Phase 1） */}
+        {/* 一般ユーザー向け注意事項（オンラインモード） */}
         {!isAdmin && session.createdBy && (
           <div className="card p-4 bg-blue-50 border border-blue-200">
             <p className="text-xs text-blue-800">

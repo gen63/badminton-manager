@@ -61,7 +61,7 @@ export function SessionCreate() {
   const setSession = useSessionStore((state) => state.setSession);
   const initializeSession = useSessionStore((state) => state.initialize);
 
-  // Phase 1 モード判定
+  // オンラインモード判定
   const isPhase1Mode = location.pathname === '/session/create';
   const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
   const [showCreatorSelect, setShowCreatorSelect] = useState(false);
@@ -214,13 +214,13 @@ export function SessionCreate() {
       gym: selectedGym || undefined,
     };
 
-    // Phase 1: 作成者名が未選択の場合は選択画面へ
+    // オンラインモード: 作成者名が未選択の場合は選択画面へ
     if (isPhase1Mode && !selectedCreatorName) {
       setShowCreatorSelect(true);
       return;
     }
 
-    // Phase 1: Firebaseにセッション作成
+    // オンラインモード: Firebaseにセッション作成
     if (isPhase1Mode) {
       try {
         const creatorName = selectedCreatorName;
@@ -259,7 +259,7 @@ export function SessionCreate() {
       return;
     }
 
-    // Phase 0: LocalStorageのみ
+    // ローカルモード: LocalStorageのみ
     const sessionId = generateSessionId();
     const session = {
       id: sessionId,
@@ -273,7 +273,7 @@ export function SessionCreate() {
     navigate('/main');
   };
 
-  // Phase 1: 作成者名選択画面（セッション作成前）
+  // オンラインモード: 作成者名選択画面（セッション作成前）
   if (showCreatorSelect) {
     const playerInputs = playerNames
       .split('\n')
@@ -337,7 +337,7 @@ export function SessionCreate() {
     );
   }
 
-  // Phase 1: URL表示画面
+  // オンラインモード: URL表示画面
   if (createdSessionId) {
     return (
       <div className="bg-app overflow-x-hidden min-h-screen flex items-center justify-center p-4">

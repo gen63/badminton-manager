@@ -22,7 +22,7 @@ export function MainPage() {
   const navigate = useNavigate();
   const { session, updateConfig, currentUser } = useSessionStore();
 
-  // Phase 1: セッション共有モード時のリアルタイム同期
+  // オンラインモード時のリアルタイム同期
   const isSharedSession = !!session?.createdBy;
   useRealtimeSession(isSharedSession ? session?.id ?? null : null);
   useFirebaseSync();

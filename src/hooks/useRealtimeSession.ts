@@ -4,7 +4,7 @@ import { useSessionStore } from '../stores/sessionStore';
 
 /**
  * セッションをリアルタイム監視するフック
- * Phase 1（Firebase）モード時のみ有効
+ * オンラインモード時のみ有効
  */
 export function useRealtimeSession(sessionId: string | null) {
   const updateSession = useSessionStore((state) => state.updateSession);

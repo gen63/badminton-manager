@@ -13,7 +13,7 @@ export interface Session {
   config: SessionConfig;
   createdAt: number;
   updatedAt: number;
-  // Phase 1: Firebase同期用フィールド
+  // オンラインモード用フィールド
   createdBy?: string;
   participants?: string[];
   registeredPlayers?: string[]; // セッション作成時に登録された選手名

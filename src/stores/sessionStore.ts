@@ -8,7 +8,7 @@ interface SessionState {
   setSession: (session: Session) => void;
   updateConfig: (config: Partial<SessionConfig>) => void;
   clearSession: () => void;
-  // Phase 1: Firebase同期用
+  // オンラインモード用
   setCurrentUser: (name: string) => void;
   initialize: (session: Session) => void;
   isCreator: () => boolean;
@@ -32,7 +32,7 @@ export const useSessionStore = create<SessionState>()(
             : null,
         })),
       clearSession: () => set({ session: null, currentUser: null }),
-      // Phase 1
+      // オンラインモード
       setCurrentUser: (name) => set({ currentUser: name }),
       initialize: (session) =>
         set({
@@ -41,7 +41,7 @@ export const useSessionStore = create<SessionState>()(
         }),
       isCreator: () => {
         const { session, currentUser } = get();
-        if (!session?.createdBy || !currentUser) return true; // Phase 0: 全員管理者
+        if (!session?.createdBy || !currentUser) return true; // ローカルモード: 全員管理者
         return currentUser === session.createdBy;
       },
       updateSession: (updates) =>
