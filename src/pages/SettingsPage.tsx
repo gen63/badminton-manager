@@ -7,7 +7,7 @@ import { useUndoStore } from '../stores/undoStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { deleteSession } from '../services/sessionService';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -211,6 +211,32 @@ export function SettingsPage() {
           </div>
         </div>
 
+        {/* モード表示 */}
+        <div className={`card p-4 ${session.createdBy ? 'bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200' : 'bg-gradient-to-br from-gray-50 to-slate-50 border-2 border-gray-200'}`}>
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${session.createdBy ? 'bg-blue-500' : 'bg-gray-500'}`}>
+              {session.createdBy ? (
+                <Wifi size={20} className="text-white" />
+              ) : (
+                <WifiOff size={20} className="text-white" />
+              )}
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-foreground">
+                  {session.createdBy ? 'オンラインモード' : 'ローカルモード'}
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {session.createdBy 
+                  ? 'リアルタイム同期中・複数デバイスで共有'
+                  : 'このデバイスのみで使用中'
+                }
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* セッション管理（オンラインモード: 管理者のみ） */}
         {isAdmin && session.createdBy && (
           <div className="card p-4">
@@ -218,7 +244,7 @@ export function SettingsPage() {
               <span className="w-6 h-6 rounded-lg bg-purple-100 flex items-center justify-center">
                 <Shield size={14} className="text-purple-600" />
               </span>
-              セッション管理
+              セッション情報
               <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">管理者</span>
             </h2>
             <div className="bg-muted rounded-xl p-3 text-xs space-y-1.5">
