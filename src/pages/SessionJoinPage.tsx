@@ -51,10 +51,9 @@ export function SessionJoinPage() {
     const trimmed = newPlayerName.trim();
     if (!trimmed) return;
 
-    // 既存メンバーと重複チェック
-    const joinedNames = new Set(session?.participants || []);
+    // 既存メンバーと重複チェック（入室済みかどうかに関係なく）
     const allPlayers = [
-      ...(session?.registeredPlayers || []).filter(name => !joinedNames.has(name)),
+      ...(session?.registeredPlayers || []),
       ...additionalPlayers
     ];
     
@@ -153,14 +152,12 @@ export function SessionJoinPage() {
     );
   }
 
-  // 参加済みの名前（選択肢から除外）
+  // 参加済みの名前（グレーアウト表示用）
   const joinedNames = new Set(session?.participants || []);
-  const availablePlayers = (session?.registeredPlayers || []).filter(
-    (name) => !joinedNames.has(name),
-  );
   
-  // 全ての選択可能なプレイヤー（既存 + 追加）
-  const allSelectablePlayers = [...availablePlayers, ...additionalPlayers];
+  // 全ての選択可能なプレイヤー（既存 + 追加）※入室済みも含む
+  const allRegisteredPlayers = session?.registeredPlayers || [];
+  const allSelectablePlayers = [...allRegisteredPlayers, ...additionalPlayers];
 
   return (
     <div className="min-h-screen bg-app p-4">
@@ -178,20 +175,30 @@ export function SessionJoinPage() {
           {/* 登録済みプレイヤー + 追加プレイヤーから選択 */}
           {allSelectablePlayers.length > 0 && (
             <div className="grid grid-cols-3 gap-2 mb-3">
-              {allSelectablePlayers.map((name) => (
-                <button
-                  key={name}
-                  onClick={() => setSelectedName(name)}
-                  className={`select-button text-sm px-2 py-2 ${
-                    selectedName === name
-                      ? 'select-button-active'
-                      : 'select-button-inactive'
-                  }`}
-                >
-                  {selectedName === name && <span className="mr-1">✓</span>}
-                  {name}
-                </button>
-              ))}
+              {allSelectablePlayers.map((name) => {
+                const isJoined = joinedNames.has(name);
+                return (
+                  <button
+                    key={name}
+                    onClick={() => setSelectedName(name)}
+                    className={`relative select-button text-sm px-2 py-2 ${
+                      selectedName === name
+                        ? 'select-button-active'
+                        : isJoined
+                        ? 'bg-muted/50 text-muted-foreground border border-border opacity-60'
+                        : 'select-button-inactive'
+                    }`}
+                  >
+                    {selectedName === name && <span className="mr-1">✓</span>}
+                    {name}
+                    {isJoined && (
+                      <span className="absolute -top-1 -right-1 bg-green-500 text-white text-[9px] px-1 py-0.5 rounded-full leading-none">
+                        入室済み
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
 
