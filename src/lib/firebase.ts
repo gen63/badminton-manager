@@ -15,13 +15,22 @@ let db: Firestore | null = null;
 
 const hasConfig = firebaseConfig.apiKey && firebaseConfig.projectId;
 
+console.log('[Firebase] Config check:', {
+  hasApiKey: !!firebaseConfig.apiKey,
+  hasProjectId: !!firebaseConfig.projectId,
+  projectId: firebaseConfig.projectId,
+});
+
 if (hasConfig) {
   try {
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
+    console.log('[Firebase] ✓ Initialized successfully');
   } catch (error) {
-    console.error('Firebase initialization failed:', error);
+    console.error('[Firebase] ✗ Initialization failed:', error);
   }
+} else {
+  console.warn('[Firebase] ✗ Configuration missing - online features disabled');
 }
 
 export function isFirebaseConfigured(): boolean {

@@ -64,10 +64,20 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
 
 /** セッションを作成 */
 export async function createSession(session: Partial<Session>): Promise<string> {
-  const sessionId = generateFirebaseSessionId();
+  console.log('[SessionService] createSession - useFirestore:', useFirestore, 'db:', !!db);
+  
+  // Firebaseが設定されていない場合はエラー
+  if (!useFirestore) {
+    throw new SessionError(
+      'オンラインセッション機能が利用できません。Firebase設定を確認してください。',
+      'firebase-not-configured'
+    );
+  }
 
-  if (useFirestore) {
-    const docRef = doc(db!, 'sessions', sessionId);
+  const sessionId = generateFirebaseSessionId();
+  const docRef = doc(db!, 'sessions', sessionId);
+  
+  try {
     await setDoc(docRef, {
       ...session,
       id: sessionId,
@@ -76,16 +86,12 @@ export async function createSession(session: Partial<Session>): Promise<string> 
       status: session.status || 'active',
       participants: session.participants || [],
     });
-  } else {
-    // フォールバック: localStorage
-    const sessionData = {
-      ...session,
-      id: sessionId,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      status: 'active',
-    };
-    localStorage.setItem(`firebase_session_${sessionId}`, JSON.stringify(sessionData));
+  } catch (error) {
+    console.error('Firebase write failed:', error);
+    throw new SessionError(
+      'セッションの作成に失敗しました。ネットワーク接続を確認してください。',
+      'firebase-write-failed'
+    );
   }
 
   return sessionId;
