@@ -67,7 +67,7 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="bg-app pb-20">
+    <div className="bg-app pb-6">
       {/* ヘッダー */}
       <div className="header-gradient text-foreground p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
