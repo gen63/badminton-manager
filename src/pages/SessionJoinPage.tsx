@@ -124,14 +124,6 @@ export function SessionJoinPage() {
 
       requestNotificationPermission();
 
-      // 古いlocalStorageデータをクリア（オンラインセッション参加時）
-      usePlayerStore.setState({ players: [] });
-      useGameStore.setState({
-        courts: [],
-        matchHistory: [],
-      });
-      useReservationStore.setState({ reservations: [] });
-
       initializeSession({
         id: sessionId,
         config: session.config,
@@ -147,6 +139,7 @@ export function SessionJoinPage() {
       // Firestoreからゲーム状態を取得してローカルストアにセット
       const unsub = subscribeToGameState(sessionId, (gameState) => {
         if (gameState) {
+          // Firebaseデータで上書き（古いlocalStorageデータをクリア）
           usePlayerStore.setState({ players: gameState.players });
           useGameStore.setState({
             courts: gameState.courts,
@@ -155,16 +148,24 @@ export function SessionJoinPage() {
           if (gameState.reservations) {
             useReservationStore.setState({ reservations: gameState.reservations });
           }
+          unsub();
+          navigate('/main');
+        } else {
+          // データがない場合（新規セッション）は空で初期化
+          usePlayerStore.setState({ players: [] });
+          useGameStore.setState({ courts: [], matchHistory: [] });
+          useReservationStore.setState({ reservations: [] });
+          unsub();
+          navigate('/main');
         }
-        unsub();
-        navigate('/main');
       });
 
-      // タイムアウト: 3秒以内にデータ取れなくても遷移
+      // タイムアウト: 5秒以内にデータ取れなかったらエラー
       setTimeout(() => {
         unsub();
-        navigate('/main');
-      }, 3000);
+        setError('セッションデータの取得に失敗しました。もう一度お試しください。');
+        setJoining(false);
+      }, 5000);
     } catch (err) {
       setError(getErrorMessage(err));
       setJoining(false);

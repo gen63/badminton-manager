@@ -3,7 +3,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
-import { useReservationStore } from '../stores/reservationStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { generateSessionId, parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
@@ -263,14 +262,6 @@ export function SessionCreate() {
           registeredPlayers,
         });
 
-        // 古いlocalStorageデータをクリア（オンラインセッション作成時）
-        usePlayerStore.setState({ players: [] });
-        useGameStore.setState({
-          courts: [],
-          matchHistory: [],
-        });
-        useReservationStore.setState({ reservations: [] });
-
         initializeSession({
           id: sessionId,
           config: sessionConfig,
@@ -305,14 +296,6 @@ export function SessionCreate() {
       createdAt: now,
       updatedAt: now,
     };
-
-    // 古いデータをクリア（ローカルモード作成時）
-    usePlayerStore.setState({ players: [] });
-    useGameStore.setState({
-      courts: [],
-      matchHistory: [],
-    });
-    useReservationStore.setState({ reservations: [] });
 
     setSession(session);
     initializeCourts(adjustedCourtCount);
