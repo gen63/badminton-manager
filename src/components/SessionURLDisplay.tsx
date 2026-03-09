@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Check, Copy, Share2 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface SessionURLDisplayProps {
   sessionId: string;
@@ -52,6 +53,18 @@ export function SessionURLDisplay({ sessionId, onClose }: SessionURLDisplayProps
       <div className="bg-muted rounded-xl p-4 mb-4 text-center">
         <p className="text-xs text-muted-foreground mb-1">セッションID</p>
         <p className="text-2xl font-bold text-foreground tracking-wider">{sessionId}</p>
+      </div>
+
+      {/* QRコード */}
+      <div className="flex justify-center mb-4">
+        <div className="bg-white p-3 rounded-xl shadow-sm border border-border">
+          <QRCodeSVG 
+            value={sessionUrl}
+            size={180}
+            level="M"
+            includeMargin={false}
+          />
+        </div>
       </div>
 
       {/* URL表示 */}
