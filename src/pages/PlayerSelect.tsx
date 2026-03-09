@@ -154,31 +154,6 @@ export function PlayerSelect() {
         </div>
 
         <div className="max-w-md mx-auto p-4 space-y-3">
-          {/* プレイヤー追加フォーム */}
-          <div className="card p-4">
-            <label className="label">
-              名前を入力（1行に1人、複数行で一度に追加できます）
-              <span className="block text-xs text-muted-foreground mt-0.5">例: 田中  男</span>
-            </label>
-            <div className="space-y-3">
-              <textarea
-                value={newPlayerNames}
-                onChange={(e) => setNewPlayerNames(e.target.value)}
-                placeholder="星野真吾  男&#10;佐野朋美  女&#10;山口裕史"
-                rows={4}
-                className="textarea-field"
-              />
-              <button
-                onClick={handleAddPlayers}
-                disabled={!newPlayerNames.trim()}
-                className="btn-primary w-full flex items-center justify-center gap-2"
-              >
-                <UserPlus size={18} />
-                追加
-              </button>
-            </div>
-          </div>
-
           {/* プレイヤーリスト */}
           <div className="card p-4">
             <h2 className="section-title mb-4">
