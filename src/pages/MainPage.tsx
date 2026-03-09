@@ -214,13 +214,12 @@ export function MainPage() {
     const player = players.find(p => p.id === playerId);
     if (!player) return;
 
-    // デフォルト金額を計算（会計設定から）
-    const matchCount = player.gamesPlayed;
+    // デフォルト金額（会計設定から）
     const defaultAmount = player.gender === 'M'
-      ? maleFee * matchCount
+      ? maleFee
       : player.gender === 'F'
-      ? femaleFee * matchCount
-      : maleFee * matchCount; // 性別不明の場合は男性料金
+      ? femaleFee
+      : maleFee; // 性別不明の場合は男性料金
 
     setPaymentModalPlayer({
       id: player.id,
