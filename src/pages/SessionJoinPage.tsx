@@ -52,6 +52,8 @@ export function SessionJoinPage() {
     try {
       await navigator.clipboard.writeText(sessionId);
       setClipboardCopied(true);
+      // 2秒後に元に戻す
+      setTimeout(() => setClipboardCopied(false), 2000);
     } catch {
       // フォールバック: 選択コピー
       const input = document.createElement('input');
@@ -61,6 +63,8 @@ export function SessionJoinPage() {
       document.execCommand('copy');
       document.body.removeChild(input);
       setClipboardCopied(true);
+      // 2秒後に元に戻す
+      setTimeout(() => setClipboardCopied(false), 2000);
     }
   };
 
@@ -245,7 +249,16 @@ export function SessionJoinPage() {
         {/* ヘッダー */}
         <div className="text-center">
           <h1 className="text-xl font-bold text-foreground mb-1">参加者入室</h1>
-          <p className="text-xs text-muted-foreground">セッションID: {sessionId}</p>
+          <div className="flex items-center justify-center gap-2">
+            <p className="text-xs text-muted-foreground">セッションID: {sessionId}</p>
+            <button
+              onClick={handleManualCopy}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title="セッションIDをコピー"
+            >
+              {clipboardCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+            </button>
+          </div>
         </div>
 
         {/* 名前選択 */}
