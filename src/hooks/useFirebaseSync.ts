@@ -153,6 +153,14 @@ function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
     // 自分がこのコートにいるか
     const allPlayerIds = [...newCourt.teamA, ...newCourt.teamB];
     if (allPlayerIds.includes(myPlayer.id)) {
+      // 2分以上経過している場合は通知しない
+      const now = Date.now();
+      const timeSinceStart = newCourt.startedAt ? now - newCourt.startedAt : 0;
+      if (timeSinceStart > 120000) { // 120秒 = 2分
+        console.log('[Notification] Skipped: match started more than 2 minutes ago');
+        continue;
+      }
+
       // プレイヤーIDから名前を取得
       const teamANames = newCourt.teamA.map(id => {
         const player = players.find(p => p.id === id);
