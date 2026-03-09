@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
@@ -27,9 +28,11 @@ export function useFirebaseSync() {
   const sessionId = session?.id;
   const isShared = !!session?.createdBy;
   const toast = useToast();
+  const navigate = useNavigate();
 
   const isSyncingFromRemote = useRef(false);
   const lastPushedHash = useRef<string>('');
+  const sessionDeletedNotified = useRef(false);
 
   const pushGameState = useCallback((sid: string) => {
     const { players } = usePlayerStore.getState();
@@ -94,7 +97,18 @@ export function useFirebaseSync() {
     if (!isShared || !sessionId) return;
 
     const unsub = subscribeToGameState(sessionId, (gameState) => {
-      if (!gameState) return;
+      // セッションが削除された場合
+      if (!gameState) {
+        if (!sessionDeletedNotified.current) {
+          sessionDeletedNotified.current = true;
+          toast.error('セッションが削除されました');
+          // セッション情報をクリア
+          useSessionStore.getState().clearSession();
+          // トップページに戻る
+          setTimeout(() => navigate('/'), 1000);
+        }
+        return;
+      }
 
       // 受信したデータのハッシュを計算
       const incomingHash = hashGameState(gameState);
