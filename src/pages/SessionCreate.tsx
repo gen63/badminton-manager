@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
@@ -10,6 +10,7 @@ import { createSession, syncGameStateWithTransaction } from '../services/session
 import { getErrorMessage } from '../lib/errorHandler';
 import { requestNotificationPermission } from '../lib/notifications';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
+import { db } from '../lib/firebase';
 import { Sparkles, Download, Loader2, Play, LogIn } from 'lucide-react';
 
 // 現在日時を取得（曜日に応じて時刻を設定）
@@ -57,12 +58,12 @@ const getInitialGym = () => {
 
 export function SessionCreate() {
   const navigate = useNavigate();
-  const location = useLocation();
   const setSession = useSessionStore((state) => state.setSession);
   const initializeSession = useSessionStore((state) => state.initialize);
 
-  // オンラインモード判定
-  const isPhase1Mode = location.pathname === '/session/create';
+  // オンラインモード判定：Firebaseが設定されていれば常にオンライン
+  const firebaseReady = !!db; // Firebaseが設定済みか
+  const isPhase1Mode = firebaseReady; // Firebase設定済みなら常にオンラインモード
   const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
   const [showCreatorSelect, setShowCreatorSelect] = useState(false);
   const [selectedCreatorName, setSelectedCreatorName] = useState('');
