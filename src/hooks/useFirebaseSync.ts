@@ -133,6 +133,9 @@ export function useFirebaseSync() {
   }, [isShared, sessionId]);
 }
 
+// 通知済みの試合を記録（重複防止）
+const notifiedMatches = new Set<string>();
+
 /** 試合開始を検知して通知を送る */
 function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
   const currentUser = useSessionStore.getState().currentUser;
@@ -151,6 +154,13 @@ function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
     // isPlaying: false → true に変わった（試合開始）
     const justStarted = newCourt.isPlaying && (!oldCourt || !oldCourt.isPlaying);
     if (!justStarted) continue;
+
+    // 既に通知済みか確認（startedAtをキーにする）
+    const matchKey = `${newCourt.id}-${newCourt.startedAt}`;
+    if (notifiedMatches.has(matchKey)) {
+      console.log('[Notification] Already notified:', matchKey);
+      continue;
+    }
 
     // 自分がこのコートにいるか
     const allPlayerIds = [...newCourt.teamA, ...newCourt.teamB];
@@ -183,6 +193,9 @@ function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
       });
       
       notifyMatchStart(newCourt.id, matchNumber, teamANames, teamBNames, newCourt.startedAt ?? undefined);
+      
+      // 通知済みとして記録
+      notifiedMatches.add(matchKey);
     }
   }
 }
