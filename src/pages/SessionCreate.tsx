@@ -8,6 +8,7 @@ import { generateSessionId, parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { createSession, syncGameStateWithTransaction } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
+import { isFirebaseConfigured } from '../lib/firebase';
 import { requestNotificationPermission } from '../lib/notifications';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { Sparkles, Download, Loader2, Play, LogIn } from 'lucide-react';
@@ -610,25 +611,29 @@ export function SessionCreate() {
               </button>
             </div>
 
-            {/* セッションIDで参加 */}
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-border"></div>
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="bg-card px-2 text-muted-foreground">または</span>
-              </div>
-            </div>
+            {/* セッションIDで参加（Firebase設定時のみ表示） */}
+            {isFirebaseConfigured() && (
+              <>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-border"></div>
+                  </div>
+                  <div className="relative flex justify-center text-xs">
+                    <span className="bg-card px-2 text-muted-foreground">または</span>
+                  </div>
+                </div>
 
-            <div className="flex justify-center">
-              <button
-                onClick={() => setShowJoinMode(true)}
-                className="btn-secondary text-sm flex items-center justify-center gap-2"
-              >
-                <LogIn size={16} />
-                セッションIDで参加
-              </button>
-            </div>
+                <div className="flex justify-center">
+                  <button
+                    onClick={() => setShowJoinMode(true)}
+                    className="btn-secondary text-sm flex items-center justify-center gap-2"
+                  >
+                    <LogIn size={16} />
+                    セッションIDで参加
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
