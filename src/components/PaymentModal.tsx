@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Plus, Minus } from 'lucide-react';
 
 interface PaymentModalProps {
   playerName: string;
@@ -20,6 +20,16 @@ export function PaymentModal({ playerName, defaultAmount, onConfirm, onCancel }:
     onConfirm(numAmount);
   };
 
+  const handleIncrement = (delta: number) => {
+    const current = parseInt(amount) || 0;
+    const newAmount = Math.max(0, current + delta);
+    setAmount(newAmount.toString());
+  };
+
+  const handleExempt = () => {
+    setAmount('0');
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="card p-6 max-w-sm w-full">
@@ -36,7 +46,9 @@ export function PaymentModal({ playerName, defaultAmount, onConfirm, onCancel }:
 
         <div className="mb-4">
           <p className="text-sm text-muted-foreground mb-2">{playerName}</p>
-          <div className="relative">
+          
+          {/* 金額入力フィールド */}
+          <div className="relative mb-3">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">¥</span>
             <input
               type="number"
@@ -50,9 +62,32 @@ export function PaymentModal({ playerName, defaultAmount, onConfirm, onCancel }:
               }}
             />
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            ※ 手伝い免除の場合は ¥0 を入力
-          </p>
+
+          {/* 100円増減ボタン */}
+          <div className="flex gap-2 mb-3">
+            <button
+              onClick={() => handleIncrement(-100)}
+              className="flex-1 bg-muted hover:bg-muted/80 text-foreground rounded-lg py-2 px-3 font-medium transition-colors flex items-center justify-center gap-1"
+            >
+              <Minus size={16} />
+              100円
+            </button>
+            <button
+              onClick={() => handleIncrement(100)}
+              className="flex-1 bg-muted hover:bg-muted/80 text-foreground rounded-lg py-2 px-3 font-medium transition-colors flex items-center justify-center gap-1"
+            >
+              <Plus size={16} />
+              100円
+            </button>
+          </div>
+
+          {/* 免除ボタン */}
+          <button
+            onClick={handleExempt}
+            className="w-full bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg py-2 px-3 font-medium transition-colors text-sm"
+          >
+            免除（¥0）
+          </button>
         </div>
 
         <div className="flex gap-2">
