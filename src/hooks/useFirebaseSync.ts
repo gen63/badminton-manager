@@ -8,6 +8,11 @@ import { notifyMatchStart } from '../lib/notifications';
 import { useToast } from './useToast';
 import type { Court } from '../types/court';
 
+/** データのハッシュを計算（簡易版） */
+function hashGameState(data: { players: unknown[]; courts: unknown[]; matchHistory: unknown[]; reservations: unknown[] }): string {
+  return JSON.stringify(data);
+}
+
 /**
  * Firebase双方向同期フック
  *
@@ -25,16 +30,22 @@ export function useFirebaseSync() {
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSyncingFromRemote = useRef(false);
   const lastPushTime = useRef<number>(0);
+  const lastPushedHash = useRef<string>('');
 
   const pushGameState = useCallback((sid: string) => {
     const { players } = usePlayerStore.getState();
     const { courts, matchHistory } = useGameStore.getState();
     const { reservations } = useReservationStore.getState();
     
-    syncGameStateWithTransaction(sid, { players, courts, matchHistory, reservations })
+    const gameState = { players, courts, matchHistory, reservations };
+    const hash = hashGameState(gameState);
+    
+    syncGameStateWithTransaction(sid, gameState)
       .then(() => {
-        // push成功時、タイムスタンプを記録（1秒間はpullを無視）
+        // push成功時、ハッシュとタイムスタンプを記録
+        lastPushedHash.current = hash;
         lastPushTime.current = Date.now();
+        console.log('[FirebaseSync] Pushed:', hash.substring(0, 50) + '...');
       })
       .catch((err) => {
         if (err?.code === 'conflict') {
@@ -90,13 +101,16 @@ export function useFirebaseSync() {
     const unsub = subscribeToGameState(sessionId, (gameState) => {
       if (!gameState) return;
 
-      // push直後1000ms間はpullを無視（自分の変更が反映されるのを待つ）
-      const timeSinceLastPush = Date.now() - lastPushTime.current;
-      if (timeSinceLastPush < 1000) {
-        console.log('[FirebaseSync] Ignoring pull (recently pushed)');
+      // 受信したデータのハッシュを計算
+      const incomingHash = hashGameState(gameState);
+      
+      // 自分が最後にpushしたデータと同じなら無視
+      if (incomingHash === lastPushedHash.current) {
+        console.log('[FirebaseSync] Ignoring pull (same as last push)');
         return;
       }
 
+      console.log('[FirebaseSync] Applying remote changes:', incomingHash.substring(0, 50) + '...');
       isSyncingFromRemote.current = true;
 
       // プレイヤーストアを更新
