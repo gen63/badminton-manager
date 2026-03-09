@@ -14,8 +14,9 @@ export function PlayerSelect() {
   const navigate = useNavigate();
   const { players, addPlayers, removePlayer, toggleOperationStatus } = usePlayerStore();
   const { matchHistory } = useGameStore();
-  const { session } = useSessionStore();
+  const { session, isCreator } = useSessionStore();
   const isTabMode = !!session;
+  const isAdmin = isCreator();
   const [newPlayerNames, setNewPlayerNames] = useState('');
   const toast = useToast();
 
@@ -88,7 +89,7 @@ export function PlayerSelect() {
                 {/* 名前 (40%) */}
                 <div className="flex-[2] flex items-center gap-2">
                   <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
-                  {!hasHistory && (
+                  {!hasHistory && (isTabMode ? isAdmin : true) && (
                     <button
                       onClick={() => handleDelete(player)}
                       aria-label={`${player.name}を削除`}
