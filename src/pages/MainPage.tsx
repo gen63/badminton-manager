@@ -18,13 +18,13 @@ import { BottomNav } from '../components/BottomNav';
 
 export function MainPage() {
   const navigate = useNavigate();
-  const { session, updateConfig } = useSessionStore();
+  const { session, updateConfig, currentUser } = useSessionStore();
 
   // Phase 1: セッション共有モード時のリアルタイム同期
   const isSharedSession = !!session?.createdBy;
   useRealtimeSession(isSharedSession ? session?.id ?? null : null);
   useFirebaseSync();
-  const { players, toggleRest, updatePlayer, addPlayers } = usePlayerStore();
+  const { players, toggleRest, updatePlayer, addPlayers, toggleOperationStatus } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeDiversity } = useSettingsStore();
@@ -539,6 +539,55 @@ export function MainPage() {
           </div>
         </div>
       </header>
+
+      {/* 運営タスク（自分の分だけ、全て完了で非表示） */}
+      {currentUser && (() => {
+        const currentPlayer = players.find(p => p.name === currentUser);
+        if (!currentPlayer) return null;
+        const status = currentPlayer.operationStatus || { payment: false, roster: false, checkin: false };
+        const allCompleted = status.payment && status.roster && status.checkin;
+        if (allCompleted) return null;
+
+        return (
+          <div className="bg-blue-50 border-b border-blue-200 px-4 py-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-blue-800">あなたの運営タスク</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => toggleOperationStatus(currentPlayer.id, 'payment')}
+                  className="text-xs py-1 px-3 rounded-lg font-medium transition-colors"
+                  style={{
+                    backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
+                    color: status.payment ? '#ffffff' : '#6b7280',
+                  }}
+                >
+                  {status.payment ? '✓' : ''}支払
+                </button>
+                <button
+                  onClick={() => toggleOperationStatus(currentPlayer.id, 'roster')}
+                  className="text-xs py-1 px-3 rounded-lg font-medium transition-colors"
+                  style={{
+                    backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
+                    color: status.roster ? '#ffffff' : '#6b7280',
+                  }}
+                >
+                  {status.roster ? '✓' : ''}名簿
+                </button>
+                <button
+                  onClick={() => toggleOperationStatus(currentPlayer.id, 'checkin')}
+                  className="text-xs py-1 px-3 rounded-lg font-medium transition-colors"
+                  style={{
+                    backgroundColor: status.checkin ? '#10b981' : '#e5e7eb',
+                    color: status.checkin ? '#ffffff' : '#6b7280',
+                  }}
+                >
+                  {status.checkin ? '✓' : ''}受付
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {shouldBlockAssignment && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-center gap-2">
