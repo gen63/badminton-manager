@@ -64,7 +64,7 @@ export function ReservationPage() {
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <div className="flex items-center gap-2">
             <CalendarCheck size={20} />
-            <h1 className="text-lg font-bold">予約一覧</h1>
+            <h1 className="text-lg font-bold">試合予約</h1>
           </div>
           {pendingReservations.length > 0 && (
             <span className="text-sm text-muted-foreground">
