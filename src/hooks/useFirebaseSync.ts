@@ -17,9 +17,10 @@ function hashGameState(data: { players: unknown[]; courts: unknown[]; matchHisto
  * Firebase双方向同期フック
  *
  * 全参加者がFirestoreのゲーム状態をリアルタイムで受信し、
- * ローカルの変更もFirestoreにpushする（双方向同期）
+ * ローカルの変更も即座にFirestoreにpushする（双方向同期）
  * 
  * Transaction使用により、同時更新時の競合を自動で解決します。
+ * データハッシュ比較により、自分がpushしたデータを無視します。
  */
 export function useFirebaseSync() {
   const session = useSessionStore((s) => s.session);
@@ -27,9 +28,7 @@ export function useFirebaseSync() {
   const isShared = !!session?.createdBy;
   const toast = useToast();
 
-  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSyncingFromRemote = useRef(false);
-  const lastPushTime = useRef<number>(0);
   const lastPushedHash = useRef<string>('');
 
   const pushGameState = useCallback((sid: string) => {
@@ -42,9 +41,8 @@ export function useFirebaseSync() {
     
     syncGameStateWithTransaction(sid, gameState)
       .then(() => {
-        // push成功時、ハッシュとタイムスタンプを記録
+        // push成功時、ハッシュを記録
         lastPushedHash.current = hash;
-        lastPushTime.current = Date.now();
         console.log('[FirebaseSync] Pushed:', hash.substring(0, 50) + '...');
       })
       .catch((err) => {
@@ -57,14 +55,12 @@ export function useFirebaseSync() {
       });
   }, [toast]);
 
+  // デバウンスなし：即座にpush
   const schedulePush = useCallback((sid: string) => {
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    syncTimerRef.current = setTimeout(() => {
-      pushGameState(sid);
-    }, 300); // 300msデバウンス（高速化）
+    pushGameState(sid);
   }, [pushGameState]);
 
-  // ローカル変更をFirestoreにpush（デバウンス）
+  // ローカル変更をFirestoreに即座にpush
   useEffect(() => {
     if (!isShared || !sessionId) return;
 
@@ -90,7 +86,6 @@ export function useFirebaseSync() {
       unsubPlayers();
       unsubGame();
       unsubReservations();
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
   }, [isShared, sessionId, schedulePush, pushGameState]);
 
