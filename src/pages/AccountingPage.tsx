@@ -532,11 +532,23 @@ export function AccountingPage() {
         <div className="max-w-md mx-auto p-3 space-y-3">
         {/* 日付・体育館・練習日時 */}
         <div className="card p-4 space-y-3">
-          {/* 日付・体育館・練習種別の表示 */}
-          <div className="bg-blue-50 rounded-lg p-3 text-center">
-            <div className="text-2xl font-bold text-foreground">
-              {formattedDate} {gymShortName} {practiceType}
-            </div>
+          {/* 練習開始日時 */}
+          <div>
+            <label className="text-xs font-semibold text-gray-700 mb-1.5 block flex items-center gap-1.5">
+              <Clock size={12} />
+              練習開始日時
+            </label>
+            <input
+              type="datetime-local"
+              value={new Date(session.config.practiceStartTime - new Date(session.config.practiceStartTime).getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+              onChange={(e) => {
+                const newTime = new Date(e.target.value).getTime();
+                if (!isNaN(newTime)) {
+                  updateConfig({ practiceStartTime: newTime });
+                }
+              }}
+              className="input-field min-h-[44px] w-full"
+            />
           </div>
 
           {/* 体育館選択 */}
@@ -558,25 +570,6 @@ export function AccountingPage() {
                 <option key={gym} value={gym} />
               ))}
             </datalist>
-          </div>
-
-          {/* 練習開始日時 */}
-          <div>
-            <label className="text-xs font-semibold text-gray-700 mb-1.5 block flex items-center gap-1.5">
-              <Clock size={12} />
-              練習開始日時
-            </label>
-            <input
-              type="datetime-local"
-              value={new Date(session.config.practiceStartTime - new Date(session.config.practiceStartTime).getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
-              onChange={(e) => {
-                const newTime = new Date(e.target.value).getTime();
-                if (!isNaN(newTime)) {
-                  updateConfig({ practiceStartTime: newTime });
-                }
-              }}
-              className="input-field min-h-[44px] w-full"
-            />
           </div>
         </div>
 
