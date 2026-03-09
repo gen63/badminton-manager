@@ -6,6 +6,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useUndoStore } from '../stores/undoStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
+import { deleteSession } from '../services/sessionService';
 import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield } from 'lucide-react';
 
 export function SettingsPage() {
@@ -30,7 +31,18 @@ export function SettingsPage() {
     updateConfig({ targetScore: score });
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
+    // Firebase共有セッションの場合、Firestoreドキュメントを削除
+    if (session.id && session.createdBy) {
+      try {
+        await deleteSession(session.id);
+      } catch (error) {
+        console.error('Failed to delete session from Firestore:', error);
+        // エラーが出てもローカルはクリアする
+      }
+    }
+
+    // ローカルストアをクリア
     clearHistory();
     clearPlayers();
     clearUndo();

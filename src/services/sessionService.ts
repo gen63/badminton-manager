@@ -13,6 +13,7 @@ import {
   arrayUnion,
   serverTimestamp,
   runTransaction,
+  deleteDoc,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { Session } from '../types/session';
@@ -305,4 +306,16 @@ export function subscribeToGameState(
       console.error('GameState subscription error:', error);
     },
   );
+}
+
+/** セッションを削除（Firestoreドキュメントを完全削除） */
+export async function deleteSession(sessionId: string): Promise<void> {
+  if (useFirestore) {
+    const docRef = doc(db!, 'sessions', sessionId);
+    await deleteDoc(docRef);
+    return;
+  }
+
+  // フォールバック: localStorage
+  localStorage.removeItem(`firebase_session_${sessionId}`);
 }
