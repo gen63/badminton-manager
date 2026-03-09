@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -7,11 +8,13 @@ import { useUndoStore } from '../stores/undoStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { deleteSession } from '../services/sessionService';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff } from 'lucide-react';
+import { SessionURLDisplay } from '../components/SessionURLDisplay';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrCode } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
   const { session, updateConfig, clearSession, isCreator } = useSessionStore();
+  const [showSessionInfo, setShowSessionInfo] = useState(false);
 
   // 権限判定
   const isAdmin = isCreator();
@@ -213,7 +216,7 @@ export function SettingsPage() {
 
         {/* モード表示 */}
         <div className={`card p-4 ${session.createdBy ? 'bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200' : 'bg-gradient-to-br from-gray-50 to-slate-50 border-2 border-gray-200'}`}>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 mb-3">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${session.createdBy ? 'bg-blue-500' : 'bg-gray-500'}`}>
               {session.createdBy ? (
                 <Wifi size={20} className="text-white" />
@@ -235,6 +238,17 @@ export function SettingsPage() {
               </p>
             </div>
           </div>
+          
+          {/* オンラインモード時のみセッション情報表示ボタン */}
+          {session.createdBy && (
+            <button
+              onClick={() => setShowSessionInfo(true)}
+              className="w-full btn-secondary flex items-center justify-center gap-2 text-sm"
+            >
+              <QrCode size={16} />
+              セッション情報を表示
+            </button>
+          )}
         </div>
 
         {/* セッション管理（オンラインモード: 管理者のみ） */}
@@ -290,6 +304,18 @@ export function SettingsPage() {
           </div>
         )}
       </div>
+
+      {/* セッション情報モーダル */}
+      {showSessionInfo && session.id && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="max-w-md w-full">
+            <SessionURLDisplay
+              sessionId={session.id}
+              onClose={() => setShowSessionInfo(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
