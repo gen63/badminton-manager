@@ -39,8 +39,8 @@ export function notifyMatchStart(
   const lagInfo = startedAt && lagSec > 0 ? `（${lagSec}秒前）` : '';
   
   const body = matchInfo
-    ? `第${matchNumber}試合 コート${courtNumber}: ${matchInfo} ${lagInfo}`.trim()
-    : `第${matchNumber}試合 コート${courtNumber}が始まりました ${lagInfo}`.trim();
+    ? `#${matchNumber} コート${courtNumber}: ${matchInfo} ${lagInfo}`.trim()
+    : `#${matchNumber} コート${courtNumber}が始まりました ${lagInfo}`.trim();
 
   new Notification('試合開始！', {
     body,
