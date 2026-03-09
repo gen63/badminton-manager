@@ -480,7 +480,7 @@ export function AccountingPage() {
 
       {activeTab === 'payments' && isAdmin ? (
         /* 支払い一覧タブ */
-        <div className="max-w-md mx-auto p-3 space-y-3">
+        <div className="max-w-md mx-auto px-4 py-4 space-y-3">
           {/* サマリー */}
           <div className="card p-4">
             <div className="space-y-2">
@@ -529,7 +529,7 @@ export function AccountingPage() {
       ) : (
         /* 入力タブ */
         <>
-        <div className="max-w-md mx-auto p-3 space-y-3">
+        <div className="max-w-md mx-auto px-4 py-4 space-y-3">
         {/* 日付・体育館・練習日時 */}
         <div className="card p-4 space-y-3">
           {/* 練習開始日時 */}
