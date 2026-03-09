@@ -868,7 +868,7 @@ export function MainPage() {
             
             {/* Add Member - Collapsible */}
             {showAddPlayer && (
-              <div className="bg-card p-3 rounded-2xl border border-border flex gap-2 shadow-sm">
+              <div className="bg-card p-6 rounded-2xl border border-border flex gap-2 shadow-sm">
                 <div className="flex-1 relative">
                   <input
                     type="text"

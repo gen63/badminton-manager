@@ -998,7 +998,7 @@ export function AccountingPage() {
         {/* プレビュー */}
         <div className="card p-4 bg-muted/50">
           <h2 className="text-xs font-bold mb-2 text-muted-foreground">コピー内容プレビュー</h2>
-          <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono bg-card p-3 rounded border border-border">
+          <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono bg-card p-6 rounded border border-border">
             {generateCopyText()}
           </pre>
         </div>

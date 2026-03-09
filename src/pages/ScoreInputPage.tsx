@@ -138,7 +138,7 @@ export function ScoreInputPage() {
   return (
     <div className="min-h-screen bg-muted">
       {/* ヘッダー */}
-      <div className="bg-card p-2 shadow-sm">
+      <div className="bg-card p-6 shadow-sm">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <h1 className="text-base font-medium text-muted-foreground">スコア入力</h1>
           <button
@@ -153,7 +153,7 @@ export function ScoreInputPage() {
 
       <div className="max-w-2xl mx-auto p-3 space-y-2 pb-[calc(80px+env(safe-area-inset-bottom)+1rem)]">
         {/* 対戦カード */}
-        <div className="bg-card rounded-2xl shadow-sm p-3">
+        <div className="bg-card rounded-2xl shadow-sm p-6">
           {selectedPlayer && (
             <div className="mb-2 p-2 bg-indigo-50 border border-indigo-200 rounded-xl text-sm text-indigo-700 text-center">
               メンバーを選択中 — 交換したい相手をタップ
@@ -219,7 +219,7 @@ export function ScoreInputPage() {
         </div>
 
         {/* スコア表示 */}
-        <div className="bg-card rounded-2xl shadow-sm p-3">
+        <div className="bg-card rounded-2xl shadow-sm p-6">
           <div className="text-center">
             <div className="text-3xl font-bold text-foreground">
               {inputHistory.length > 0 ? (
@@ -243,7 +243,7 @@ export function ScoreInputPage() {
         </div>
 
         {/* 点数ボタングリッド */}
-        <div className="bg-card rounded-2xl shadow-sm p-3">
+        <div className="bg-card rounded-2xl shadow-sm p-6">
           <div className="grid grid-cols-6 gap-1">
             {Array.from({ length: 31 }, (_, i) => i).map((num) => {
               // targetScore付近（±2）を目立たせる
