@@ -1,19 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <circle cx="50" cy="50" r="48" fill="#3B82F6"/>
-  <!-- シャトルコック（羽根） -->
-  <ellipse cx="50" cy="32" rx="10" ry="14" fill="white" opacity="0.95"/>
-  <ellipse cx="42" cy="36" rx="6" ry="12" fill="white" opacity="0.8" transform="rotate(-15 42 36)"/>
-  <ellipse cx="58" cy="36" rx="6" ry="12" fill="white" opacity="0.8" transform="rotate(15 58 36)"/>
-  <ellipse cx="36" cy="42" rx="5" ry="10" fill="white" opacity="0.65" transform="rotate(-30 36 42)"/>
-  <ellipse cx="64" cy="42" rx="5" ry="10" fill="white" opacity="0.65" transform="rotate(30 64 42)"/>
-  <!-- コルク部分 -->
+  <!-- 白背景 -->
+  <circle cx="50" cy="50" r="48" fill="#FFFFFF"/>
+  <!-- 薄いグレーの境界線（iOS風） -->
+  <circle cx="50" cy="50" r="48" fill="none" stroke="#E5E7EB" stroke-width="1"/>
+  
+  <!-- シャトルコック（羽根） - 濃い青 -->
+  <ellipse cx="50" cy="32" rx="10" ry="14" fill="#1E40AF" opacity="0.95"/>
+  <ellipse cx="42" cy="36" rx="6" ry="12" fill="#1E40AF" opacity="0.8" transform="rotate(-15 42 36)"/>
+  <ellipse cx="58" cy="36" rx="6" ry="12" fill="#1E40AF" opacity="0.8" transform="rotate(15 58 36)"/>
+  <ellipse cx="36" cy="42" rx="5" ry="10" fill="#1E40AF" opacity="0.65" transform="rotate(-30 36 42)"/>
+  <ellipse cx="64" cy="42" rx="5" ry="10" fill="#1E40AF" opacity="0.65" transform="rotate(30 64 42)"/>
+  
+  <!-- コルク部分（黄色のまま） -->
   <circle cx="50" cy="46" r="8" fill="#FDE68A"/>
   <circle cx="50" cy="46" r="8" fill="none" stroke="#D97706" stroke-width="1"/>
-  <!-- ラケット -->
-  <ellipse cx="50" cy="68" rx="12" ry="9" fill="none" stroke="white" stroke-width="2.5"/>
-  <!-- ラケットのガット（網） -->
-  <line x1="50" y1="59" x2="50" y2="77" stroke="white" stroke-width="0.7" opacity="0.6"/>
-  <line x1="38" y1="68" x2="62" y2="68" stroke="white" stroke-width="0.7" opacity="0.6"/>
-  <!-- グリップ -->
-  <line x1="50" y1="77" x2="50" y2="90" stroke="white" stroke-width="3" stroke-linecap="round"/>
+  
+  <!-- ラケット - 濃い青 -->
+  <ellipse cx="50" cy="68" rx="12" ry="9" fill="none" stroke="#1E40AF" stroke-width="2.5"/>
+  
+  <!-- ラケットのガット（網） - 濃い青 -->
+  <line x1="50" y1="59" x2="50" y2="77" stroke="#1E40AF" stroke-width="0.7" opacity="0.6"/>
+  <line x1="38" y1="68" x2="62" y2="68" stroke="#1E40AF" stroke-width="0.7" opacity="0.6"/>
+  
+  <!-- グリップ - 濃い青 -->
+  <line x1="50" y1="77" x2="50" y2="90" stroke="#1E40AF" stroke-width="3" stroke-linecap="round"/>
 </svg>
