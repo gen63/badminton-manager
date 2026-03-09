@@ -7,6 +7,11 @@ export interface Player {
   gamesPlayed: number;
   lastPlayedAt: number | null;
   activatedAt: number | null; // 休憩→待機になった時刻（チェックイン）
+  operationStatus?: {
+    payment: boolean;   // 支払完了
+    roster: boolean;    // 名簿確認完了
+    checkin: boolean;   // チェックイン完了
+  };
 }
 
 export interface PlayerStats {

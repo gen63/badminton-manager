@@ -12,7 +12,7 @@ import { BottomNav } from '../components/BottomNav';
 
 export function PlayerSelect() {
   const navigate = useNavigate();
-  const { players, addPlayers, removePlayer } = usePlayerStore();
+  const { players, addPlayers, removePlayer, toggleOperationStatus } = usePlayerStore();
   const { matchHistory } = useGameStore();
   const { session } = useSessionStore();
   const isTabMode = !!session;
@@ -76,40 +76,60 @@ export function PlayerSelect() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="space-y-2">
           {sortedPlayers.map((player) => {
             const hasHistory = playersInHistory.has(player.id);
+            const status = player.operationStatus || { payment: false, roster: false, checkin: false };
             return (
               <div
                 key={player.id}
-                className="relative bg-card border border-border rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm h-[58px]"
+                className="bg-card border border-border rounded-xl px-3 py-2 flex items-center gap-2 shadow-sm"
               >
-                <div className="absolute top-0.5 right-0.5">
-                  <button
-                    onClick={() => handleDelete(player)}
-                    aria-label={`${player.name}を削除`}
-                    disabled={hasHistory}
-                    className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors ${
-                      hasHistory
-                        ? 'bg-muted text-gray-300 cursor-not-allowed'
-                        : 'bg-red-100 text-red-600 hover:bg-red-200'
-                    }`}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                {/* 名前 (40%) */}
+                <div className="flex-[2] flex items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
+                  {!hasHistory && (
+                    <button
+                      onClick={() => handleDelete(player)}
+                      aria-label={`${player.name}を削除`}
+                      className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
-                <div className="w-full text-center">
-                  <div className="text-sm font-semibold truncate text-foreground leading-tight">{player.name}</div>
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold leading-tight ${
-                    player.gender === 'M'
-                      ? 'bg-blue-100 text-blue-700'
-                      : player.gender === 'F'
-                      ? 'bg-pink-100 text-pink-700'
-                      : 'bg-muted text-muted-foreground'
-                  }`}>
-                    {player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : '-'}
-                  </span>
-                </div>
+                
+                {/* チェックボックス (各20%) */}
+                <button
+                  onClick={() => toggleOperationStatus(player.id, 'payment')}
+                  className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1"
+                  style={{
+                    backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
+                    color: status.payment ? '#ffffff' : '#6b7280',
+                  }}
+                >
+                  {status.payment ? '✓' : ''}支払
+                </button>
+                <button
+                  onClick={() => toggleOperationStatus(player.id, 'roster')}
+                  className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1"
+                  style={{
+                    backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
+                    color: status.roster ? '#ffffff' : '#6b7280',
+                  }}
+                >
+                  {status.roster ? '✓' : ''}名簿
+                </button>
+                <button
+                  onClick={() => toggleOperationStatus(player.id, 'checkin')}
+                  className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1"
+                  style={{
+                    backgroundColor: status.checkin ? '#10b981' : '#e5e7eb',
+                    color: status.checkin ? '#ffffff' : '#6b7280',
+                  }}
+                >
+                  {status.checkin ? '✓' : ''}受付
+                </button>
               </div>
             );
           })}

@@ -15,6 +15,7 @@ interface PlayerState {
   toggleRest: (id: string) => void;
   updatePlayer: (id: string, updates: Partial<Player>) => void;
   clearPlayers: () => void;
+  toggleOperationStatus: (id: string, field: 'payment' | 'roster' | 'checkin') => void;
 }
 
 export const usePlayerStore = create<PlayerState>()(
@@ -89,6 +90,20 @@ export const usePlayerStore = create<PlayerState>()(
           ),
         })),
       clearPlayers: () => set({ players: [] }),
+      toggleOperationStatus: (id, field) =>
+        set((state) => ({
+          players: state.players.map((p) => {
+            if (p.id !== id) return p;
+            const current = p.operationStatus || { payment: false, roster: false, checkin: false };
+            return {
+              ...p,
+              operationStatus: {
+                ...current,
+                [field]: !current[field],
+              },
+            };
+          }),
+        })),
     }),
     {
       name: 'badminton-players',
