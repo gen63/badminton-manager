@@ -551,7 +551,7 @@ export function MainPage() {
         return (
           <div className="bg-blue-50 border-b border-blue-200 px-4 py-2.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-blue-800">あなたのタスク</span>
+              <span className="text-xs font-semibold text-blue-800">未完了タスク</span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => toggleOperationStatus(currentPlayer.id, 'payment')}
