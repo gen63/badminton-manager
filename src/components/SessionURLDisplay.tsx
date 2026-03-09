@@ -9,9 +9,28 @@ interface SessionURLDisplayProps {
 
 export function SessionURLDisplay({ sessionId, onClose }: SessionURLDisplayProps) {
   const [copied, setCopied] = useState(false);
+  const [idCopied, setIdCopied] = useState(false);
 
   const baseUrl = window.location.origin + '/badminton-manager';
   const sessionUrl = `${baseUrl}/session/${sessionId}`;
+
+  const handleCopyId = async () => {
+    try {
+      await navigator.clipboard.writeText(sessionId);
+      setIdCopied(true);
+      setTimeout(() => setIdCopied(false), 2000);
+    } catch {
+      // フォールバック
+      const input = document.createElement('input');
+      input.value = sessionId;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      setIdCopied(true);
+      setTimeout(() => setIdCopied(false), 2000);
+    }
+  };
 
   const handleCopy = async () => {
     try {
@@ -50,9 +69,21 @@ export function SessionURLDisplay({ sessionId, onClose }: SessionURLDisplayProps
       </div>
 
       {/* セッションID */}
-      <div className="bg-muted rounded-xl p-4 mb-4 text-center">
-        <p className="text-xs text-muted-foreground mb-1">セッションID</p>
-        <p className="text-2xl font-bold text-foreground tracking-wider">{sessionId}</p>
+      <div className="bg-muted rounded-xl p-4 mb-4">
+        <p className="text-xs text-muted-foreground mb-1 text-center">セッションID</p>
+        <div className="flex items-center justify-center gap-2">
+          <p className="text-2xl font-bold text-foreground tracking-wider">{sessionId}</p>
+          <button
+            onClick={handleCopyId}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+            title="セッションIDをコピー"
+          >
+            {idCopied ? <Check size={20} className="text-green-500" /> : <Copy size={20} />}
+          </button>
+        </div>
+        {idCopied && (
+          <p className="text-xs text-green-600 mt-1 text-center">セッションIDをコピーしました</p>
+        )}
       </div>
 
       {/* QRコード */}
