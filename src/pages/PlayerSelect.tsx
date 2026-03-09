@@ -189,7 +189,7 @@ export function PlayerSelect() {
           </div>
         </div>
 
-        <div className="max-w-md mx-auto p-4 space-y-3">
+        <div className="max-w-md mx-auto p-3 space-y-3">
           {/* プレイヤーリスト */}
           <div className="card p-4">
             <h2 className="section-title mb-4">

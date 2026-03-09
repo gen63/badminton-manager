@@ -363,7 +363,7 @@ export function SessionCreate() {
         </div>
       </div>
 
-      <div className="max-w-md mx-auto w-full px-4 py-6">
+      <div className="max-w-md mx-auto w-full p-3">
         <div className="card p-6 space-y-6 overflow-hidden">
 
           {/* 当日参加者 */}
