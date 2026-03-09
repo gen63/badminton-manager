@@ -16,7 +16,8 @@ export function HistoryPage() {
   const navigate = useNavigate();
   const { matchHistory, deleteMatch } = useGameStore();
   const { players } = usePlayerStore();
-  const session = useSessionStore((state) => state.session);
+  const { session, isCreator } = useSessionStore();
+  const isAdmin = isCreator();
   const { gasWebAppUrl } = useSettingsStore();
   const toast = useToast();
   const [isUploading, setIsUploading] = useState(false);
@@ -178,13 +179,15 @@ export function HistoryPage() {
                         >
                           <Edit3 size={13} />
                         </button>
-                        <button
-                          onClick={() => handleDelete(match.id)}
-                          aria-label="削除"
-                          className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleDelete(match.id)}
+                            aria-label="削除"
+                            className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
