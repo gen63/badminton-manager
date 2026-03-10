@@ -18,6 +18,7 @@ export function useRealtimeSession(sessionId: string | null) {
         updateSession({
           config: session.config,
           participants: session.participants,
+          admins: session.admins,
           status: session.status,
         });
       }

@@ -58,6 +58,7 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     createdBy: data.createdBy as string | undefined,
     participants: data.participants as string[] | undefined,
     registeredPlayers: data.registeredPlayers as string[] | undefined,
+    admins: data.admins as string[] | undefined,
     status: data.status as Session['status'],
   };
 }

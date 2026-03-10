@@ -233,10 +233,16 @@ export function useFirebaseSync() {
     
     // 作成者、またはプレイヤーが既にいる場合（ページリロード等）のみpush
     if (isCreator || (players && players.length > 0)) {
-      console.log('[FirebaseSync] Initial push', { isCreator, playerCount: players?.length || 0 });
+      console.log('[FirebaseSync] 🚀 Initial push', { 
+        isCreator, 
+        currentUser,
+        createdBy: currentSession?.createdBy,
+        playerCount: players?.length || 0,
+        hasPlayers: players && players.length > 0,
+      });
       pushGameStateRef.current(sessionId);
     } else {
-      console.log('[FirebaseSync] Skipping initial push (participant mode)');
+      console.log('[FirebaseSync] ⏭️  Skipping initial push (participant mode, will sync from remote)');
     }
 
     return () => {

@@ -6,7 +6,7 @@ interface SessionState {
   session: Session | null;
   currentUser: string | null;
   setSession: (session: Session) => void;
-  updateConfig: (config: Partial<SessionConfig>) => void;
+  updateConfig: (config: Partial<SessionConfig>) => Promise<void>;
   clearSession: () => void;
   // オンラインモード用
   setCurrentUser: (name: string) => void;
@@ -22,7 +22,8 @@ export const useSessionStore = create<SessionState>()(
       session: null,
       currentUser: null,
       setSession: (session) => set({ session }),
-      updateConfig: (config) =>
+      updateConfig: async (config) => {
+        // ローカル更新（即座に反映）
         set((state) => ({
           session: state.session
             ? {
@@ -31,7 +32,21 @@ export const useSessionStore = create<SessionState>()(
                 updatedAt: Date.now(),
               }
             : null,
-        })),
+        }));
+        
+        // オンラインモード: Firestoreにも反映
+        const { session } = get();
+        if (session?.id && session?.createdBy) {
+          const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
+          try {
+            const mergedConfig = { ...session.config, ...config };
+            await updateFirebaseSession(session.id, { config: mergedConfig });
+            console.log('[SessionStore] Config synced to Firestore:', config);
+          } catch (error) {
+            console.error('[SessionStore] Failed to sync config to Firestore:', error);
+          }
+        }
+      },
       clearSession: () => set({ session: null, currentUser: null }),
       // オンラインモード
       setCurrentUser: (name) => set({ currentUser: name }),
