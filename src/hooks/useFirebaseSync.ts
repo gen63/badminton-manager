@@ -32,6 +32,7 @@ export function useFirebaseSync() {
 
   const isSyncingFromRemote = useRef(false);
   const lastPushedHash = useRef<string>('');
+  const lastPushedTime = useRef<number>(0);
   const sessionDeletedNotified = useRef(false);
 
   const pushGameState = useCallback((sid: string) => {
@@ -44,8 +45,9 @@ export function useFirebaseSync() {
     
     syncGameStateWithTransaction(sid, gameState)
       .then(() => {
-        // push成功時、ハッシュを記録
+        // push成功時、ハッシュとタイムスタンプを記録
         lastPushedHash.current = hash;
+        lastPushedTime.current = Date.now();
         console.log('[FirebaseSync] Pushed:', hash.substring(0, 50) + '...');
       })
       .catch((err) => {
@@ -116,6 +118,13 @@ export function useFirebaseSync() {
       // 自分が最後にpushしたデータと同じなら無視
       if (incomingHash === lastPushedHash.current) {
         console.log('[FirebaseSync] Ignoring pull (same as last push)');
+        return;
+      }
+
+      // 最後のpush操作から500ms以内なら無視（自分の操作を優先）
+      const timeSinceLastPush = Date.now() - lastPushedTime.current;
+      if (timeSinceLastPush < 500) {
+        console.log('[FirebaseSync] Ignoring pull (too soon after push):', timeSinceLastPush + 'ms');
         return;
       }
 
