@@ -62,7 +62,13 @@ export function MainPage() {
   // モーダル表示中にsession.informationが更新されたら、informationTextも同期
   useEffect(() => {
     if (showInformationModal && session?.information?.text) {
+      console.log('[Information] useEffect同期:', {
+        newText: session.information.text,
+        textLength: session.information.text.length,
+      });
       setInformationText(session.information.text);
+    } else if (showInformationModal && !session?.information?.text) {
+      console.log('[Information] useEffect: text が空（同期しない）');
     }
   }, [session?.information?.text, showInformationModal]);
 
@@ -641,9 +647,18 @@ export function MainPage() {
             {session?.createdBy && (
               <button
                 onClick={() => {
+                  console.log('[Information] モーダル表示:', {
+                    isAdmin: isAdmin(),
+                    hasInformation: !!session?.information,
+                    text: session?.information?.text,
+                    textLength: session?.information?.text?.length || 0,
+                  });
+                  
                   // 管理者は周知事項がなくても編集モーダルを開ける
                   if (isAdmin()) {
-                    setInformationText(session?.information?.text || '');
+                    const currentText = session?.information?.text || '';
+                    console.log('[Information] 管理者モード、設定するテキスト:', currentText);
+                    setInformationText(currentText);
                     setShowInformationModal(true);
                   } else if (session?.information?.text) {
                     // メンバーは周知事項がある場合のみ閲覧＋既読化
