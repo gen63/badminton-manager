@@ -19,47 +19,33 @@ npm run test:ui
 npm run test:coverage
 ```
 
-## 同期ロジックのテスト
+## テスト対象ファイル一覧
 
-### テスト対象
+### 1. 配置アルゴリズム — `src/lib/algorithm.test.ts`（35ケース）
+- 待機時間優先・試合回数優先の配置ロジック
+- グルーピング（上位/中位/下位）
+- 性別バランス、ペア履歴・対戦履歴の考慮
 
-- **`src/lib/syncUtils.ts`** - テスト可能な純粋関数として抽出
-- **`src/lib/syncUtils.test.ts`** - 17個のテストケース
+### 2. ユーティリティ — `src/lib/utils.test.ts`（30ケース）
+- CSS class結合（cn）、日時フォーマット
+- セッションID生成、コート数推奨
+- 配置ブロック判定
 
-### テストケース
+### 3. 同期ロジック — `src/lib/syncUtils.test.ts`（17ケース）
+- Firestoreタイムスタンプ変換（getTimestampMillis）
+- データハッシュ計算（hashGameState）
+- リモートデータ適用判定（shouldApplyRemoteData）
 
-#### `getTimestampMillis()` - Firestoreタイムスタンプの変換（5ケース）
+### 4. セッション・お知らせ — `src/stores/sessionStore.test.ts`（17ケース）
+- お知らせ機能（テキスト保存、Firestore同期）
+- Information モーダル状態同期
+- 既読管理（readBy トラッキング）
 
-- ✅ 数値（ミリ秒）をそのまま返す
-- ✅ null/undefinedの場合はnullを返す
-- ✅ Firestore Timestamp型（toMillis）を変換
-- ✅ Firestore Timestamp型（seconds）を変換
-- ✅ 不明な形式の場合はnullを返す
+### 5. 同期シナリオ — `src/hooks/useFirebaseSync.test.ts`（4ケース）
+- 2クライアント同時更新、push完了後の受信
+- ネットワーク遅延、エコーバック
 
-#### `hashGameState()` - データのハッシュ計算（2ケース）
-
-- ✅ 同じデータは同じハッシュを返す
-- ✅ 異なるデータは異なるハッシュを返す
-
-#### `shouldApplyRemoteData()` - リモートデータ適用判定（10ケース）
-
-- ✅ 通常のケースでは適用する
-- ✅ 自分がpushしたデータと同じならスキップ
-- ✅ リモートデータが古い場合はスキップ
-- ✅ リモートデータが同じ時刻の場合もスキップ
-- ✅ 初回（lastAppliedRemoteUpdatedAt=0）の場合は適用する
-- ✅ push直後（500ms以内）はスキップ
-- ✅ push後500ms経過後は適用する
-- ✅ pushBlockMsをカスタマイズできる
-- ✅ 複数の条件が重なった場合、最初のスキップ条件が優先される
-- ✅ タイムスタンプが同じでハッシュが異なる場合はスキップ
-
-#### 同期シナリオのシミュレーション（4ケース）
-
-- ✅ シナリオ1: 2つのクライアントが同時に更新
-- ✅ シナリオ2: push完了後、新しいデータを受信
-- ✅ シナリオ3: ネットワーク遅延で古いデータが後から届く
-- ✅ シナリオ4: 自分がpushしたデータのエコーバック
+### 合計: 103テスト
 
 ### テストカバレッジ
 
@@ -67,29 +53,13 @@ npm run test:coverage
 npm run test:coverage
 ```
 
-主要なロジック部分は100%カバーされています。
+## E2Eテスト
 
-## テスト駆動開発（TDD）
-
-新しい同期ロジックを追加する場合：
-
-1. **テストを先に書く** (`*.test.ts`)
-2. **実装する** (`syncUtils.ts`)
-3. **テストを通す**
-4. **リファクタリング**
-
-## E2Eテスト（今後）
-
-現在は単体テストのみですが、以下のE2Eテストを追加予定：
-
-- [ ] 2つのブラウザで同時操作
-- [ ] ネットワーク遅延のシミュレーション
-- [ ] オフライン→オンライン復帰
-- [ ] 競合解決の動作確認
+E2Eテスト（Playwright）は既に実装済み。詳細は `README_E2E.md` を参照。
 
 ## CI/CD
 
-GitHub Actionsでのテスト自動化を検討中。
+GitHub Actionsでmasterへのpush時に自動ビルド＆デプロイを実行。
 
 ## 参考
 
