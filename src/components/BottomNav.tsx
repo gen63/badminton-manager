@@ -44,7 +44,7 @@ export function BottomNav({ activeTab }: BottomNavProps) {
         sessionCreatedBy: session.createdBy,
         isPWA,
       });
-      toast.warning('試合予約はPWAアプリ専用機能です');
+      toast.warning('試合予約はPWAアプリ専用機能です', 1000);
       return;
     }
 
@@ -90,6 +90,7 @@ export function BottomNav({ activeTab }: BottomNavProps) {
           key={t.id}
           message={t.message}
           type={t.type}
+          duration={t.duration}
           onClose={() => toast.hideToast(t.id)}
         />
       ))}
