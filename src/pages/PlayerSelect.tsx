@@ -157,16 +157,6 @@ export function PlayerSelect() {
                 >
                   {status.roster ? '✓' : ''}名簿
                 </button>
-                <button
-                  onClick={() => toggleOperationStatus(player.id, 'checkin')}
-                  className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1"
-                  style={{
-                    backgroundColor: status.checkin ? '#10b981' : '#e5e7eb',
-                    color: status.checkin ? '#ffffff' : '#6b7280',
-                  }}
-                >
-                  {status.checkin ? '✓ ' : ''}IN
-                </button>
               </div>
             );
           })}

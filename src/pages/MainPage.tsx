@@ -595,16 +595,6 @@ export function MainPage() {
                 >
                   {status.roster ? '✓' : ''}名簿
                 </button>
-                <button
-                  onClick={() => toggleOperationStatus(currentPlayer.id, 'checkin')}
-                  className="text-xs py-1 px-3 rounded-lg font-medium transition-colors"
-                  style={{
-                    backgroundColor: status.checkin ? '#10b981' : '#e5e7eb',
-                    color: status.checkin ? '#ffffff' : '#6b7280',
-                  }}
-                >
-                  {status.checkin ? '✓' : ''}チェックイン
-                </button>
               </div>
             </div>
           </div>
