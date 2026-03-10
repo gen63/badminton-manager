@@ -419,7 +419,7 @@ export function MainPage() {
     emptyCourts.length,
     waitingCount,
     totalActiveCount,
-    7,
+    isSingles ? 3 : 7,
     playersPerCourt
   );
   const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= playersPerCourt;
