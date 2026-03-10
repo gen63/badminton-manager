@@ -115,10 +115,10 @@ export function useFirebaseSync() {
       return;
     }
 
-    // 最後のpush操作から2000ms以内なら無視（自分の操作を優先）
+    // 最後のpush操作から500ms以内なら無視（自分の操作を優先）
     const timeSinceLastPush = Date.now() - lastPushedTime.current;
-    if (timeSinceLastPush < 2000) {
-      console.log('[FirebaseSync] ⏭️  SKIP: too soon after push (' + timeSinceLastPush + 'ms < 2000ms)');
+    if (timeSinceLastPush < 500) {
+      console.log('[FirebaseSync] ⏭️  SKIP: too soon after push (' + timeSinceLastPush + 'ms < 500ms)');
       return;
     }
 
@@ -227,14 +227,14 @@ export function useFirebaseSync() {
         
         if (!gameState) return;
 
-        // デバウンス: 500ms以内の連続pull通知をまとめる
+        // デバウンス: 100ms以内の連続pull通知をまとめる
         if (pullTimer.current) {
           clearTimeout(pullTimer.current);
         }
         pullTimer.current = setTimeout(() => {
           pullTimer.current = null;
           applyRemoteData(gameState, data as { updatedAt: unknown });
-        }, 500) as unknown as number;
+        }, 100) as unknown as number;
       },
       (error) => {
         console.error('GameState subscription error:', error);
