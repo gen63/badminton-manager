@@ -79,7 +79,11 @@ export function useFirebaseSync() {
     const gameState = { players, courts, matchHistory, reservations };
     const hash = hashGameState(gameState);
     
-    console.log('[FirebaseSync] 📤 PUSH starting...', {
+    // push開始時にタイムスタンプを記録（重要: 完了を待たない）
+    const pushStartTime = Date.now();
+    lastPushedTime.current = pushStartTime;
+    
+    console.log('[FirebaseSync] 📤 PUSH starting at', new Date(pushStartTime).toISOString(), {
       players: players.length,
       waitingPlayers: players.filter(p => !p.isResting).map(p => p.name),
       restPlayers: players.filter(p => p.isResting).map(p => p.name),
@@ -87,12 +91,18 @@ export function useFirebaseSync() {
     
     syncGameStateWithTransaction(sid, gameState)
       .then(() => {
-        // push成功時、ハッシュとタイムスタンプを記録
+        // push成功時、ハッシュを記録
         lastPushedHash.current = hash;
-        lastPushedTime.current = Date.now();
-        console.log('[FirebaseSync] ✅ PUSH SUCCESS at', new Date().toISOString(), 'hash:', hash.substring(0, 30));
+        console.log('[FirebaseSync] ✅ PUSH SUCCESS', {
+          startTime: new Date(pushStartTime).toISOString(),
+          duration: Date.now() - pushStartTime + 'ms',
+          hash: hash.substring(0, 30),
+        });
       })
       .catch((err) => {
+        // push失敗時はタイムスタンプをリセット（pullを受け付ける）
+        lastPushedTime.current = 0;
+        
         if (err?.code === 'conflict') {
           // 競合検出（Transactionが最大5回リトライした後に失敗）
           toast.warning('他のユーザーが更新しました。もう一度お試しください');
@@ -168,49 +178,52 @@ export function useFirebaseSync() {
     console.log('[FirebaseSync] ✅ APPLYING remote data');
     isSyncingFromRemote.current = true;
 
-    // プレイヤーストアを更新
-    const { players } = usePlayerStore.getState();
-    if (JSON.stringify(players) !== JSON.stringify(gameState.players)) {
-      // 変更されたプレイヤーをログ出力
-      const changes: string[] = [];
-      players.forEach((local) => {
-        const remote = gameState.players.find((p: { id: string }) => p.id === local.id);
-        if (remote && JSON.stringify(local) !== JSON.stringify(remote)) {
-          const remoteTyped = remote as { isResting: boolean };
-          const localStatus = local.isResting ? 'rest' : 'waiting';
-          const remoteStatus = remoteTyped.isResting ? 'rest' : 'waiting';
-          changes.push(`${local.name}: ${localStatus} → ${remoteStatus}`);
-        }
-      });
-      console.log('[FirebaseSync] 🔄 Player changes:', changes);
-      usePlayerStore.setState({ players: gameState.players });
-    }
+    try {
+      // プレイヤーストアを更新
+      const { players } = usePlayerStore.getState();
+      if (JSON.stringify(players) !== JSON.stringify(gameState.players)) {
+        // 変更されたプレイヤーをログ出力
+        const changes: string[] = [];
+        players.forEach((local) => {
+          const remote = gameState.players.find((p: { id: string }) => p.id === local.id);
+          if (remote && JSON.stringify(local) !== JSON.stringify(remote)) {
+            const remoteTyped = remote as { isResting: boolean };
+            const localStatus = local.isResting ? 'rest' : 'waiting';
+            const remoteStatus = remoteTyped.isResting ? 'rest' : 'waiting';
+            changes.push(`${local.name}: ${localStatus} → ${remoteStatus}`);
+          }
+        });
+        console.log('[FirebaseSync] 🔄 Player changes:', changes);
+        usePlayerStore.setState({ players: gameState.players });
+      }
 
-    // ゲームストアを更新
-    const { courts, matchHistory } = useGameStore.getState();
-    const gameUpdates: Record<string, unknown> = {};
-    if (JSON.stringify(courts) !== JSON.stringify(gameState.courts)) {
-      // 試合開始通知: コートが isPlaying: false → true に変わった場合
-      checkMatchStartNotifications(courts, gameState.courts);
-      gameUpdates.courts = gameState.courts;
-    }
-    if (JSON.stringify(matchHistory) !== JSON.stringify(gameState.matchHistory)) {
-      gameUpdates.matchHistory = gameState.matchHistory;
-    }
-    if (Object.keys(gameUpdates).length > 0) {
-      useGameStore.setState(gameUpdates as { courts: typeof courts; matchHistory: typeof matchHistory });
-    }
+      // ゲームストアを更新
+      const { courts, matchHistory } = useGameStore.getState();
+      const gameUpdates: Record<string, unknown> = {};
+      if (JSON.stringify(courts) !== JSON.stringify(gameState.courts)) {
+        // 試合開始通知: コートが isPlaying: false → true に変わった場合
+        checkMatchStartNotifications(courts, gameState.courts);
+        gameUpdates.courts = gameState.courts;
+      }
+      if (JSON.stringify(matchHistory) !== JSON.stringify(gameState.matchHistory)) {
+        gameUpdates.matchHistory = gameState.matchHistory;
+      }
+      if (Object.keys(gameUpdates).length > 0) {
+        useGameStore.setState(gameUpdates as { courts: typeof courts; matchHistory: typeof matchHistory });
+      }
 
-    // 予約ストアを更新
-    const { reservations } = useReservationStore.getState();
-    if (gameState.reservations && JSON.stringify(reservations) !== JSON.stringify(gameState.reservations)) {
-      useReservationStore.setState({ reservations: gameState.reservations });
+      // 予約ストアを更新
+      const { reservations } = useReservationStore.getState();
+      if (gameState.reservations && JSON.stringify(reservations) !== JSON.stringify(gameState.reservations)) {
+        useReservationStore.setState({ reservations: gameState.reservations });
+      }
+
+      // 適用したリモートデータの更新時刻を記録
+      lastAppliedRemoteUpdatedAt.current = remoteUpdatedAt;
+    } finally {
+      // すべてのストア更新が完了してから必ずフラグをリセット
+      isSyncingFromRemote.current = false;
     }
-
-    // 適用したリモートデータの更新時刻を記録
-    lastAppliedRemoteUpdatedAt.current = remoteUpdatedAt;
-
-    isSyncingFromRemote.current = false;
   }, []);
 
   // ローカル変更をFirestoreに即座にpush
@@ -232,8 +245,19 @@ export function useFirebaseSync() {
       schedulePush(sessionId);
     });
 
-    // 初回push
-    pushGameState(sessionId);
+    // 初回push（セッション作成者のみ）
+    // 参加者は初回pushをスキップ（リモートデータをpullして初期化）
+    const { players } = usePlayerStore.getState();
+    const currentUser = useSessionStore.getState().currentUser;
+    const isCreator = session?.createdBy === currentUser;
+    
+    // 作成者、またはプレイヤーが既にいる場合（ページリロード等）のみpush
+    if (isCreator || (players && players.length > 0)) {
+      console.log('[FirebaseSync] Initial push', { isCreator, playerCount: players?.length || 0 });
+      pushGameState(sessionId);
+    } else {
+      console.log('[FirebaseSync] Skipping initial push (participant mode)');
+    }
 
     return () => {
       unsubPlayers();
@@ -243,7 +267,7 @@ export function useFirebaseSync() {
         clearTimeout(pushTimer.current);
       }
     };
-  }, [isShared, sessionId, schedulePush, pushGameState]);
+  }, [isShared, sessionId, schedulePush, pushGameState, session]);
 
   // Firestoreからpull（リアルタイム監視）
   useEffect(() => {
