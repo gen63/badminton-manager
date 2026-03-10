@@ -188,7 +188,7 @@ describe('sessionStore - Information機能', () => {
           config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          information: oldInformation,
+          information: oldInformation as any, // 古いデータ構造をシミュレート
         },
         currentUser: 'Member1',
       });
