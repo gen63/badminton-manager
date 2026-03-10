@@ -120,6 +120,12 @@ export const useSessionStore = create<SessionState>()(
           readBy: currentUser ? [currentUser] : [], // 編集者は既読扱い
         };
 
+        console.log('[SessionStore] updateInformation:', {
+          currentUser,
+          newReadBy: newInformation.readBy,
+          textLength: newInformation.text.length,
+        });
+
         // ローカル更新
         set((state) => ({
           session: state.session
@@ -141,10 +147,13 @@ export const useSessionStore = create<SessionState>()(
         const { session, currentUser } = get();
         if (!session || !session.information || !currentUser) return;
 
-        // 既に既読の場合は何もしない
-        if (session.information.readBy.includes(currentUser)) return;
+        // readBy が未定義の場合は空配列として扱う
+        const currentReadBy = session.information.readBy || [];
 
-        const updatedReadBy = [...session.information.readBy, currentUser];
+        // 既に既読の場合は何もしない
+        if (currentReadBy.includes(currentUser)) return;
+
+        const updatedReadBy = [...currentReadBy, currentUser];
         const updatedInformation = { ...session.information, readBy: updatedReadBy };
 
         // ローカル更新

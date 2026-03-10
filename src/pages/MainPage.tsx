@@ -65,6 +65,20 @@ export function MainPage() {
       setInformationText(session.information.text);
     }
   }, [session?.information?.text, showInformationModal]);
+
+  // インフォメーションバッジのデバッグログ（開発時のみ）
+  useEffect(() => {
+    if (session?.information?.text && currentUser) {
+      const readBy = session.information.readBy || [];
+      const isUnread = !readBy.includes(currentUser);
+      console.log('[Information Badge]', {
+        currentUser,
+        readBy,
+        isUnread,
+        text: session.information.text.substring(0, 30) + '...',
+      });
+    }
+  }, [session?.information, currentUser]);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -647,7 +661,7 @@ export function MainPage() {
                 aria-label="お知らせ"
               >
                 <Info size={20} />
-                {session?.information?.text && currentUser && !session.information.readBy.includes(currentUser) && (
+                {session?.information?.text && currentUser && !session.information.readBy?.includes(currentUser) && (
                   <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" />
                 )}
               </button>
