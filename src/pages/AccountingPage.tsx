@@ -1012,7 +1012,7 @@ export function AccountingPage() {
             <Copy size={18} />
             コピー
           </button>
-          {accountingWebAppUrl && (
+          {accountingWebAppUrl && isAdmin && (
             <button
               onClick={handleUpload}
               disabled={isUploading}
