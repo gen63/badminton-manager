@@ -530,30 +530,21 @@ export function SettingsPage() {
               リセット
               <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">管理者</span>
             </h2>
-            <div className="space-y-2">
+            <div className="flex gap-2">
               <button
                 onClick={handleMatchReset}
-                className="w-full bg-orange-50 hover:bg-orange-100 text-orange-700 border-2 border-orange-200 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+                className="flex-1 bg-orange-50 hover:bg-orange-100 text-orange-700 border-2 border-orange-200 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
               >
                 <Trash2 size={16} />
                 試合リセット
               </button>
-              <p className="text-[10px] text-muted-foreground px-1">
-                試合履歴・コート・予約・会計をクリア。参加者リストは保持。
-              </p>
-              
-              <div className="pt-2 border-t border-border">
-                <button
-                  onClick={handleFullReset}
-                  className="w-full bg-red-50 hover:bg-red-100 text-red-700 border-2 border-red-300 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
-                >
-                  <Trash2 size={16} />
-                  全リセット
-                </button>
-                <p className="text-[10px] text-muted-foreground px-1 mt-1">
-                  すべてのデータを削除してセッション終了。
-                </p>
-              </div>
+              <button
+                onClick={handleFullReset}
+                className="flex-1 bg-red-50 hover:bg-red-100 text-red-700 border-2 border-red-300 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+              >
+                <Trash2 size={16} />
+                全リセット
+              </button>
             </div>
           </div>
         )}
