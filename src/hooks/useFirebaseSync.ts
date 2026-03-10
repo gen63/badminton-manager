@@ -277,18 +277,18 @@ export function useFirebaseSync() {
 
         const data = snap.data();
         
-        // 48時間経過判定（作成日時から48時間 = 172800000ms）
+        // 5日間経過判定（作成日時から5日 = 432000000ms）
         const createdAt = typeof data.createdAt === 'number'
           ? data.createdAt
           : (data.createdAt as { seconds?: number })?.seconds ? (data.createdAt as { seconds: number }).seconds * 1000 : 0;
         
         const now = Date.now();
         const age = now - createdAt;
-        const TTL = 48 * 60 * 60 * 1000; // 48時間
+        const TTL = 5 * 24 * 60 * 60 * 1000; // 5日間（120時間）
         
         if (createdAt > 0 && age > TTL) {
-          console.warn('[FirebaseSync] Session expired (>48h):', { sessionId, age: Math.round(age / 3600000) + 'h' });
-          toastRef.current.warning('セッションの有効期限（48時間）が切れました');
+          console.warn('[FirebaseSync] Session expired (>5days):', { sessionId, age: Math.round(age / 3600000) + 'h' });
+          toastRef.current.warning('セッションの有効期限（5日間）が切れました');
           
           // セッション削除（作成者のみ）
           const currentSession = useSessionStore.getState().session;
