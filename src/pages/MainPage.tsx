@@ -410,7 +410,8 @@ export function MainPage() {
     emptyCourts.length,
     waitingCount,
     totalActiveCount,
-    2
+    2,
+    playersPerCourt
   );
   const shouldBlockContinuous = shouldBlockForDiversity(
     prioritizeDiversity,
@@ -418,7 +419,8 @@ export function MainPage() {
     emptyCourts.length,
     waitingCount,
     totalActiveCount,
-    7
+    7,
+    playersPerCourt
   );
   const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= playersPerCourt;
   const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * playersPerCourt;
@@ -482,7 +484,7 @@ export function MainPage() {
     // 休憩に入る場合（toggleRest前のisResting=false）、コート数を自動縮小
     if (!player?.isResting) {
       const activeCount = players.filter(p => !p.isResting && p.id !== playerId).length;
-      const recommended = getRecommendedCourtCount(activeCount, courts.length);
+      const recommended = getRecommendedCourtCount(activeCount, courts.length, playersPerCourt);
       if (recommended < courts.length) {
         resizeCourts(recommended);
         updateConfig({ courtCount: recommended });
