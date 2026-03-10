@@ -75,7 +75,6 @@ export function SessionCreate() {
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
   const { addPlayers } = usePlayerStore();
   const initializeCourts = useGameStore((state) => state.initializeCourts);
-  const courts = useGameStore((state) => state.courts);
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
@@ -544,7 +543,10 @@ export function SessionCreate() {
               {(['単', '複', '楽'] as const).map((type) => (
                 <button
                   key={type}
-                  onClick={() => setPracticeType(type)}
+                  onClick={() => {
+                    setPracticeType(type);
+                    if (type === '単') setPrioritizeDiversity(false);
+                  }}
                   className={`flex-1 select-button text-xs px-2 ${
                     practiceType === type ? 'select-button-active' : 'select-button-inactive'
                   }`}
@@ -616,36 +618,43 @@ export function SessionCreate() {
           </div>
 
           {/* 配置タイミング */}
-          <div>
-            <label className="label">配置タイミング</label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPrioritizeDiversity(true)}
-                className={`flex-1 select-button text-xs px-2 ${
-                  prioritizeDiversity ? 'select-button-active' : 'select-button-inactive'
-                }`}
-              >
-                {prioritizeDiversity && <span className="mr-1">✓</span>}
-                多様性優先
-              </button>
-              <button
-                onClick={() => setPrioritizeDiversity(false)}
-                className={`flex-1 select-button text-xs px-2 ${
-                  !prioritizeDiversity ? 'select-button-active' : 'select-button-inactive'
-                }`}
-              >
-                {!prioritizeDiversity && <span className="mr-1">✓</span>}
-                回数優先
-              </button>
-            </div>
-            {courts.length > 1 && (
-              <p className="text-[10px] text-muted-foreground mt-1">
-                {prioritizeDiversity
-                  ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
-                  : '空きが出たら即座に配置'}
-              </p>
-            )}
-          </div>
+          {(() => {
+            const isSinglesMode = practiceType === '単';
+            return (
+              <div>
+                <label className="label">配置タイミング</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => !isSinglesMode && setPrioritizeDiversity(true)}
+                    disabled={isSinglesMode}
+                    className={`flex-1 select-button text-xs px-2 ${
+                      !isSinglesMode && prioritizeDiversity ? 'select-button-active' : 'select-button-inactive'
+                    } ${isSinglesMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {!isSinglesMode && prioritizeDiversity && <span className="mr-1">✓</span>}
+                    多様性優先
+                  </button>
+                  <button
+                    onClick={() => !isSinglesMode && setPrioritizeDiversity(false)}
+                    disabled={isSinglesMode}
+                    className={`flex-1 select-button text-xs px-2 ${
+                      isSinglesMode || !prioritizeDiversity ? 'select-button-active' : 'select-button-inactive'
+                    } ${isSinglesMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {(isSinglesMode || !prioritizeDiversity) && <span className="mr-1">✓</span>}
+                    回数優先
+                  </button>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {isSinglesMode
+                    ? 'シングルスでは回数優先が適用されます'
+                    : prioritizeDiversity
+                    ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
+                    : '空きが出たら即座に配置'}
+                </p>
+              </div>
+            );
+          })()}
 
           {/* 作成ボタン */}
           <div className="flex justify-center gap-3">

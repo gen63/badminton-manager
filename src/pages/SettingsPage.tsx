@@ -222,7 +222,12 @@ export function SettingsPage() {
                         return (
                           <button
                             key={type}
-                            onClick={() => !hasPlayersOnCourt && updateConfig({ gameMode: type === '単' ? 'singles' : 'doubles' })}
+                            onClick={() => {
+                              if (hasPlayersOnCourt) return;
+                              const newMode = type === '単' ? 'singles' : 'doubles';
+                              updateConfig({ gameMode: newMode });
+                              if (newMode === 'singles') setPrioritizeDiversity(false);
+                            }}
                             disabled={hasPlayersOnCourt}
                             className={`flex-1 select-button text-xs px-2 ${
                               isActive ? 'select-button-active' : 'select-button-inactive'
@@ -310,38 +315,47 @@ export function SettingsPage() {
               </p>
             </div>
 
-            <div>
-              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">配置タイミング</label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setPrioritizeDiversity(true)}
-                  className={`flex-1 select-button text-xs px-2 ${
-                    prioritizeDiversity
-                      ? 'select-button-active'
-                      : 'select-button-inactive'
-                  }`}
-                >
-                  {prioritizeDiversity && <span className="mr-1">✓</span>}
-                  多様性優先
-                </button>
-                <button
-                  onClick={() => setPrioritizeDiversity(false)}
-                  className={`flex-1 select-button text-xs px-2 ${
-                    !prioritizeDiversity
-                      ? 'select-button-active'
-                      : 'select-button-inactive'
-                  }`}
-                >
-                  {!prioritizeDiversity && <span className="mr-1">✓</span>}
-                  回数優先
-                </button>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-1">
-                {prioritizeDiversity
-                  ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
-                  : '空きが出たら即座に配置'}
-              </p>
-            </div>
+            {(() => {
+              const isSinglesMode = (session.config.gameMode || 'doubles') === 'singles';
+              return (
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">配置タイミング</label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => !isSinglesMode && setPrioritizeDiversity(true)}
+                      disabled={isSinglesMode}
+                      className={`flex-1 select-button text-xs px-2 ${
+                        !isSinglesMode && prioritizeDiversity
+                          ? 'select-button-active'
+                          : 'select-button-inactive'
+                      } ${isSinglesMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {!isSinglesMode && prioritizeDiversity && <span className="mr-1">✓</span>}
+                      多様性優先
+                    </button>
+                    <button
+                      onClick={() => !isSinglesMode && setPrioritizeDiversity(false)}
+                      disabled={isSinglesMode}
+                      className={`flex-1 select-button text-xs px-2 ${
+                        isSinglesMode || !prioritizeDiversity
+                          ? 'select-button-active'
+                          : 'select-button-inactive'
+                      } ${isSinglesMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {(isSinglesMode || !prioritizeDiversity) && <span className="mr-1">✓</span>}
+                      回数優先
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    {isSinglesMode
+                      ? 'シングルスでは回数優先が適用されます'
+                      : prioritizeDiversity
+                      ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
+                      : '空きが出たら即座に配置'}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
