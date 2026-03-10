@@ -20,7 +20,9 @@ export function WinnerSelectModal({
   onConfirm,
   onCancel,
 }: WinnerSelectModalProps) {
-  const allPlayers = [...teamA, ...teamB];
+  const allPlayers = [...teamA, ...teamB].filter(id => id);
+  const isSingles = teamA[1] === '' && teamB[1] === '';
+  const maxSelect = isSingles ? 1 : 2;
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
 
   const handlePlayerToggle = (playerId: string) => {
@@ -28,7 +30,7 @@ export function WinnerSelectModal({
     if (newSelected.has(playerId)) {
       newSelected.delete(playerId);
     } else {
-      if (newSelected.size < 2) {
+      if (newSelected.size < maxSelect) {
         newSelected.add(playerId);
       }
     }
@@ -36,7 +38,7 @@ export function WinnerSelectModal({
   };
 
   const handleConfirm = () => {
-    if (selectedPlayerIds.size === 2) {
+    if (selectedPlayerIds.size === maxSelect) {
       onConfirm(Array.from(selectedPlayerIds));
     }
   };
@@ -81,9 +83,9 @@ export function WinnerSelectModal({
         {/* Header */}
         <div className="sticky top-0 bg-background border-b border-border px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-foreground">勝ちペア2人を選択</h2>
+            <h2 className="text-lg font-bold text-foreground">{isSingles ? '勝者を選択' : '勝ちペア2人を選択'}</h2>
             <p className="text-xs text-muted-foreground mt-1">
-              コート {courtId} の試合 ({selectedPlayerIds.size}/2人選択中)
+              コート {courtId} の試合 ({selectedPlayerIds.size}/{maxSelect}人選択中)
             </p>
           </div>
           <button
@@ -109,7 +111,7 @@ export function WinnerSelectModal({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={selectedPlayerIds.size !== 2}
+            disabled={selectedPlayerIds.size !== maxSelect}
             className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl font-semibold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             確定

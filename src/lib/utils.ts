@@ -100,11 +100,11 @@ export function parsePlayerInput(
 
 /**
  * 参加人数に応じた推奨コート数を算出
- * ルール: 待機人数（参加人数 - コート数×4）が2人以上になる最大コート数
+ * ルール: 待機人数（参加人数 - コート数×playersPerCourt）が2人以上になる最大コート数
  */
-export function getRecommendedCourtCount(playerCount: number, maxCourts: number = 3): number {
+export function getRecommendedCourtCount(playerCount: number, maxCourts: number = 3, playersPerCourt: number = 4): number {
   for (let courts = maxCourts; courts >= 1; courts--) {
-    if (playerCount - courts * 4 >= 2) {
+    if (playerCount - courts * playersPerCourt >= 2) {
       return courts;
     }
   }
@@ -148,7 +148,8 @@ export function shouldBlockForDiversity(
   emptyCourts: number,
   waitingCount: number,
   _totalActiveCount: number,
-  baseThreshold: number
+  baseThreshold: number,
+  playersPerCourt: number = 4
 ): boolean {
   if (!prioritizeDiversity) return false;
 
@@ -160,8 +161,8 @@ export function shouldBlockForDiversity(
 
   // 空きコートがない場合は、仮に1コート空くとして計算
   const effectiveEmptyCourts = Math.max(emptyCourts, 1);
-  
-  const remainingAfterAssignment = Math.max(0, waitingCount - (effectiveEmptyCourts * 4));
+
+  const remainingAfterAssignment = Math.max(0, waitingCount - (effectiveEmptyCourts * playersPerCourt));
   if (remainingAfterAssignment <= baseThreshold) {
     return true;
   }

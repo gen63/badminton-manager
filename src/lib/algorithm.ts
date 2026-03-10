@@ -2,6 +2,7 @@ import type { Player } from '../types/player';
 import type { CourtAssignment } from '../types/court';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
+import type { GameMode } from '../types/session';
 
 type RatingGroup = 'upper' | 'middle' | 'lower';
 
@@ -793,6 +794,7 @@ export function assignCourts(
     allPlayers?: Player[];  // 全アクティブプレイヤー（他コートでプレイ中含む）。グループ分けに使用
     useStayDurationPriority?: boolean;
     reservations?: Reservation[];
+    gameMode?: GameMode;
   }
 ): CourtAssignment[] {
   const activePlayers = players.filter((p) => !p.isResting);
@@ -802,6 +804,12 @@ export function assignCourts(
   const practiceStartTime = options?.practiceStartTime ?? Date.now();
   const useStayDuration = options?.useStayDurationPriority ?? true;
   const pendingReservations = (options?.reservations ?? []).filter(r => r.status === 'pending');
+  const gameMode = options?.gameMode ?? 'doubles';
+
+  // シングルスモードの場合は専用ロジックを使用
+  if (gameMode === 'singles') {
+    return assignCourtsSingles(activePlayers, targetCourtIds, matchHistory, practiceStartTime, useStayDuration);
+  }
 
   // 予約配置を先に処理
   const reservationAssignments: CourtAssignment[] = [];
@@ -1137,6 +1145,85 @@ export function sortWaitingPlayers(
     calculatePriorityScore(a, practiceStartTime, useStayDuration) -
     calculatePriorityScore(b, practiceStartTime, useStayDuration)
   );
+}
+
+/**
+ * シングルス用の配置アルゴリズム
+ * - 総当たり優先: まだ対戦していない相手を優先的にマッチング
+ * - 試合回数が均等になるよう、試合数の少ないプレイヤーを優先
+ * - 予約等で変動した場合は総当たりの制約を緩和
+ */
+function assignCourtsSingles(
+  activePlayers: Player[],
+  targetCourtIds: number[],
+  matchHistory: Match[],
+  practiceStartTime: number,
+  useStayDuration: boolean
+): CourtAssignment[] {
+  const requiredPlayers = targetCourtIds.length * 2;
+  if (activePlayers.length < requiredPlayers) {
+    throw new Error(
+      `アクティブなプレイヤーが不足しています（必要: ${requiredPlayers}人、現在: ${activePlayers.length}人）`
+    );
+  }
+
+  // 対戦回数マップを構築 (p1Id-p2Id => 回数)
+  const matchCountMap = new Map<string, number>();
+  for (const match of matchHistory) {
+    const a = match.teamA[0];
+    const b = match.teamB[0];
+    if (!a || !b) continue;
+    const key = [a, b].sort().join('-');
+    matchCountMap.set(key, (matchCountMap.get(key) || 0) + 1);
+  }
+
+  const getMatchCount = (p1Id: string, p2Id: string): number => {
+    const key = [p1Id, p2Id].sort().join('-');
+    return matchCountMap.get(key) || 0;
+  };
+
+  // 優先度順にソート（試合回数が少ない人を優先）
+  const prioritySorted = [...activePlayers].sort((a, b) =>
+    calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+    calculatePriorityScore(b, practiceStartTime, useStayDuration)
+  );
+
+  // 多めに候補を選出（総当たり最適化のため）
+  const candidateCount = Math.min(activePlayers.length, requiredPlayers + 4);
+  const candidates = prioritySorted.slice(0, candidateCount);
+
+  const assignments: CourtAssignment[] = [];
+  const usedPlayers = new Set<string>();
+
+  for (const courtId of targetCourtIds) {
+    const available = candidates.filter(p => !usedPlayers.has(p.id));
+    if (available.length < 2) break;
+
+    // 最優先プレイヤーを選出
+    const first = available[0];
+    usedPlayers.add(first.id);
+
+    // 2人目: まだ対戦していない相手を優先（総当たり）
+    const remaining = available.filter(p => p.id !== first.id);
+    remaining.sort((a, b) => {
+      const countA = getMatchCount(first.id, a.id);
+      const countB = getMatchCount(first.id, b.id);
+      if (countA !== countB) return countA - countB; // 対戦回数が少ない方を優先
+      return calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+        calculatePriorityScore(b, practiceStartTime, useStayDuration);
+    });
+
+    const second = remaining[0];
+    usedPlayers.add(second.id);
+
+    assignments.push({
+      courtId,
+      teamA: [first.id, ''],
+      teamB: [second.id, ''],
+    });
+  }
+
+  return assignments;
 }
 
 /**

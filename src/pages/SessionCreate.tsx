@@ -15,6 +15,7 @@ import { isFirebaseConfigured } from '../lib/firebase';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
+import type { GameMode } from '../types/session';
 import { Sparkles, Download, Loader2, Play, LogIn } from 'lucide-react';
 
 // 現在日時を取得（曜日に応じて時刻を設定）
@@ -74,7 +75,6 @@ export function SessionCreate() {
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
   const { addPlayers } = usePlayerStore();
   const initializeCourts = useGameStore((state) => state.initializeCourts);
-  const courts = useGameStore((state) => state.courts);
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
@@ -83,6 +83,7 @@ export function SessionCreate() {
   const [selectedGym] = useState(getInitialGym);
   const [practiceDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
+  const [practiceType, setPracticeType] = useState<'単' | '複' | '楽'>('複');
   
   // Phase 1: セッションID参加機能
   const [showJoinMode, setShowJoinMode] = useState(false);
@@ -196,6 +197,7 @@ export function SessionCreate() {
         const sessionId = generateSessionId();
         const now = Date.now();
         const practiceTime = new Date(practiceDateTime).getTime();
+        const gameMode: GameMode = practiceType === '単' ? 'singles' : 'doubles';
         const session = {
           id: sessionId,
           config: {
@@ -204,6 +206,7 @@ export function SessionCreate() {
             practiceDate: practiceDateTime.split('T')[0],
             practiceStartTime: practiceTime,
             gym: selectedGym || undefined,
+            gameMode,
           },
           createdAt: now,
           updatedAt: now,
@@ -211,7 +214,7 @@ export function SessionCreate() {
 
         setSession(session);
         initializeCourts(adjustedCourtCount);
-        
+
         // ローディング状態を解除してから遷移
         setIsLoadingMembers(false);
         
@@ -254,12 +257,14 @@ export function SessionCreate() {
     const adjustedCourtCount = 1;
     const now = Date.now();
     const practiceTime = new Date(practiceDateTime).getTime();
+    const gameMode: GameMode = practiceType === '単' ? 'singles' : 'doubles';
     const sessionConfig = {
       courtCount: adjustedCourtCount,
       targetScore,
       practiceDate: practiceDateTime.split('T')[0],
       practiceStartTime: practiceTime,
       gym: selectedGym || undefined,
+      gameMode,
     };
 
     // オンラインモード: 作成者名が未選択の場合は選択画面へ
@@ -531,6 +536,31 @@ export function SessionCreate() {
             </div>
           </div>
 
+          {/* 練習種別 */}
+          <div>
+            <label className="label">練習種別</label>
+            <div className="flex gap-2">
+              {(['単', '複', '楽'] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    setPracticeType(type);
+                    if (type === '単') setPrioritizeDiversity(false);
+                  }}
+                  className={`flex-1 select-button text-xs px-2 ${
+                    practiceType === type ? 'select-button-active' : 'select-button-inactive'
+                  }`}
+                >
+                  {practiceType === type && <span className="mr-1">✓</span>}
+                  {type}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {practiceType === '単' ? 'シングルス（1対1）' : practiceType === '複' ? 'ダブルス（2対2）' : 'レクリエーション（2対2）'}
+            </p>
+          </div>
+
           {/* 配置モード */}
           <div>
             <label className="label">配置モード</label>
@@ -588,36 +618,43 @@ export function SessionCreate() {
           </div>
 
           {/* 配置タイミング */}
-          <div>
-            <label className="label">配置タイミング</label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPrioritizeDiversity(true)}
-                className={`flex-1 select-button text-xs px-2 ${
-                  prioritizeDiversity ? 'select-button-active' : 'select-button-inactive'
-                }`}
-              >
-                {prioritizeDiversity && <span className="mr-1">✓</span>}
-                多様性優先
-              </button>
-              <button
-                onClick={() => setPrioritizeDiversity(false)}
-                className={`flex-1 select-button text-xs px-2 ${
-                  !prioritizeDiversity ? 'select-button-active' : 'select-button-inactive'
-                }`}
-              >
-                {!prioritizeDiversity && <span className="mr-1">✓</span>}
-                回数優先
-              </button>
-            </div>
-            {courts.length > 1 && (
-              <p className="text-[10px] text-muted-foreground mt-1">
-                {prioritizeDiversity
-                  ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
-                  : '空きが出たら即座に配置'}
-              </p>
-            )}
-          </div>
+          {(() => {
+            const isSinglesMode = practiceType === '単';
+            return (
+              <div>
+                <label className="label">配置タイミング</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => !isSinglesMode && setPrioritizeDiversity(true)}
+                    disabled={isSinglesMode}
+                    className={`flex-1 select-button text-xs px-2 ${
+                      !isSinglesMode && prioritizeDiversity ? 'select-button-active' : 'select-button-inactive'
+                    } ${isSinglesMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {!isSinglesMode && prioritizeDiversity && <span className="mr-1">✓</span>}
+                    多様性優先
+                  </button>
+                  <button
+                    onClick={() => !isSinglesMode && setPrioritizeDiversity(false)}
+                    disabled={isSinglesMode}
+                    className={`flex-1 select-button text-xs px-2 ${
+                      isSinglesMode || !prioritizeDiversity ? 'select-button-active' : 'select-button-inactive'
+                    } ${isSinglesMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {(isSinglesMode || !prioritizeDiversity) && <span className="mr-1">✓</span>}
+                    回数優先
+                  </button>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {isSinglesMode
+                    ? 'シングルスでは回数優先が適用されます'
+                    : prioritizeDiversity
+                    ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
+                    : '空きが出たら即座に配置'}
+                </p>
+              </div>
+            );
+          })()}
 
           {/* 作成ボタン */}
           <div className="flex justify-center gap-3">

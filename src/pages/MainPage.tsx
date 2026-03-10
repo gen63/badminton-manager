@@ -33,6 +33,10 @@ export function MainPage() {
     useGameStore();
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeDiversity } = useSettingsStore();
 
+  // ゲームモード判定
+  const isSingles = session?.config.gameMode === 'singles';
+  const playersPerCourt = isSingles ? 2 : 4;
+
   // total active players cache used by flow-priority checks
   const totalActiveCount = players.filter(p => !p.isResting).length;
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
@@ -66,11 +70,13 @@ export function MainPage() {
     if (!prioritizeDiversity || !continuousMatchMode) return;
     const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
     const active = players.filter(p => !p.isResting);
-    const actualWaiting = active.length - occupied.length * 4;
-    if (occupied.length > 0 && actualWaiting < 7) {
+    const ppc = isSingles ? 2 : 4;
+    const actualWaiting = active.length - occupied.length * ppc;
+    const threshold = isSingles ? 3 : 7;
+    if (occupied.length > 0 && actualWaiting < threshold) {
       setContinuousMatchMode(false);
     }
-  }, [prioritizeDiversity, continuousMatchMode, courts, players, setContinuousMatchMode]);
+  }, [prioritizeDiversity, continuousMatchMode, courts, players, setContinuousMatchMode, isSingles]);
 
   // Ctrl+Z / Ctrl+Y キーボードショートカット
   useEffect(() => {
@@ -146,8 +152,8 @@ export function MainPage() {
       // コート増加後に待機人数が不足する場合、連続モードをOFF
       if (continuousMatchMode) {
         const activeCount = players.filter(p => !p.isResting).length;
-        const waitingAfter = activeCount - newCount * 4;
-        const threshold = prioritizeDiversity ? 7 : 2;
+        const waitingAfter = activeCount - newCount * playersPerCourt;
+        const threshold = prioritizeDiversity ? (isSingles ? 3 : 7) : 2;
         if (waitingAfter < threshold) {
           setContinuousMatchMode(false);
         }
@@ -229,6 +235,7 @@ export function MainPage() {
           allPlayers: allActivePlayers,
           useStayDurationPriority,
           reservations,
+          gameMode: session?.config.gameMode,
         }
       );
 
@@ -303,6 +310,8 @@ export function MainPage() {
     const { courts, matchHistory, updateCourt, startGame } = useGameStore.getState();
     const { players } = usePlayerStore.getState();
     const { useStayDurationPriority, prioritizeDiversity } = useSettingsStore.getState();
+    const currentGameMode = useSessionStore.getState().session?.config.gameMode;
+    const ppc = currentGameMode === 'singles' ? 2 : 4;
 
     // 最新の待機プレイヤーを計算
     const playersInCourts = new Set(
@@ -316,14 +325,16 @@ export function MainPage() {
     if (prioritizeDiversity) {
       const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
       const active = players.filter(p => !p.isResting);
-      const actualWaiting = active.length - occupied.length * 4;
-      if (occupied.length > 0 && actualWaiting < 7) {
+      const actualWaiting = active.length - occupied.length * ppc;
+      const threshold = currentGameMode === 'singles' ? 3 : 7;
+      if (occupied.length > 0 && actualWaiting < threshold) {
         setContinuousMatchMode(false);
         return;
       }
     }
 
-    if (waitingPlayers.length < 7) {
+    const minWaiting = currentGameMode === 'singles' ? 3 : 7;
+    if (waitingPlayers.length < minWaiting) {
       toast.error('待機中のプレイヤーが足りません');
       return;
     }
@@ -334,6 +345,7 @@ export function MainPage() {
       totalCourtCount: courts.length,
       useStayDurationPriority,
       reservations: reservations,
+      gameMode: currentGameMode,
     });
 
     if (assignments[0]) {
@@ -398,7 +410,8 @@ export function MainPage() {
     emptyCourts.length,
     waitingCount,
     totalActiveCount,
-    2
+    2,
+    playersPerCourt
   );
   const shouldBlockContinuous = shouldBlockForDiversity(
     prioritizeDiversity,
@@ -406,10 +419,11 @@ export function MainPage() {
     emptyCourts.length,
     waitingCount,
     totalActiveCount,
-    7
+    isSingles ? 3 : 7,
+    playersPerCourt
   );
-  const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= 4;
-  const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * 4;
+  const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= playersPerCourt;
+  const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * playersPerCourt;
 
   const handleSwapPlayer = (courtId: number, position: number, newPlayerId: string) => {
     const court = courts.find((c) => c.id === courtId);
@@ -470,7 +484,7 @@ export function MainPage() {
     // 休憩に入る場合（toggleRest前のisResting=false）、コート数を自動縮小
     if (!player?.isResting) {
       const activeCount = players.filter(p => !p.isResting && p.id !== playerId).length;
-      const recommended = getRecommendedCourtCount(activeCount, courts.length);
+      const recommended = getRecommendedCourtCount(activeCount, courts.length, playersPerCourt);
       if (recommended < courts.length) {
         resizeCourts(recommended);
         updateConfig({ courtCount: recommended });
@@ -722,7 +736,7 @@ export function MainPage() {
                   {hasPlayers ? (
                     <div className="p-2 flex flex-col gap-2 min-h-[220px]">
                       <div className="flex flex-col gap-1">
-                        {court.teamA.map((playerId, idx) => {
+                        {court.teamA.filter((id) => id).map((playerId, idx) => {
                           const playerGender = getPlayerGender(playerId);
                           const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
                           return (
@@ -745,13 +759,13 @@ export function MainPage() {
                           );
                         })}
                       </div>
-                      
+
                       <div className="flex items-center justify-center py-0.5">
                         <span className="text-[10px] font-black text-muted-foreground/50">VS</span>
                       </div>
-                      
+
                       <div className="flex flex-col gap-1">
-                        {court.teamB.map((playerId, idx) => {
+                        {court.teamB.filter((id) => id).map((playerId, idx) => {
                           const playerGender = getPlayerGender(playerId);
                           const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
                           return (
@@ -782,7 +796,7 @@ export function MainPage() {
                             if (!currentCourt) return;
                             pushUndo();
                             finishGame(court.id, 0, 0);
-                            [...court.teamA, ...court.teamB].forEach((playerId) => {
+                            [...court.teamA, ...court.teamB].filter(id => id).forEach((playerId) => {
                               const player = players.find((p) => p.id === playerId);
                               if (player) {
                                 updatePlayer(playerId, {

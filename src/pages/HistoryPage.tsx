@@ -39,8 +39,11 @@ export function HistoryPage() {
 
     let text = '日付,場所,A選手1,A選手2,B選手1,B選手2,スコアA,スコアB,試合時間\n';
     matchHistory.forEach((match) => {
-      const [a1, a2] = match.teamA.map(getPlayerName);
-      const [b1, b2] = match.teamB.map(getPlayerName);
+      const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
+      const a1 = getPlayerName(match.teamA[0]);
+      const a2 = isMatchSingles ? '' : getPlayerName(match.teamA[1]);
+      const b1 = getPlayerName(match.teamB[0]);
+      const b2 = isMatchSingles ? '' : getPlayerName(match.teamB[1]);
       const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
       text += `${dateStr},${gymName},${a1},${a2},${b1},${b2},${match.scoreA},${match.scoreB},${duration}\n`;
     });
@@ -124,8 +127,9 @@ export function HistoryPage() {
                 const leftScore = isTeamAWinner ? match.scoreA : match.scoreB;
                 const rightScore = isTeamAWinner ? match.scoreB : match.scoreA;
 
-                const leftNames = leftTeam.map(getPlayerName).join(' ');
-                const rightNames = rightTeam.map(getPlayerName).join(' ');
+                const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
+                const leftNames = isMatchSingles ? getPlayerName(leftTeam[0]) : leftTeam.map(getPlayerName).join(' ');
+                const rightNames = isMatchSingles ? getPlayerName(rightTeam[0]) : rightTeam.map(getPlayerName).join(' ');
 
                 return (
                   <div
