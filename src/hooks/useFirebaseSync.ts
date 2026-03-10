@@ -47,12 +47,18 @@ export function useFirebaseSync() {
     const gameState = { players, courts, matchHistory, reservations };
     const hash = hashGameState(gameState);
     
+    console.log('[FirebaseSync] 📤 PUSH starting...', {
+      players: players.length,
+      waitingPlayers: players.filter(p => !p.isResting).map(p => p.name),
+      restPlayers: players.filter(p => p.isResting).map(p => p.name),
+    });
+    
     syncGameStateWithTransaction(sid, gameState)
       .then(() => {
         // push成功時、ハッシュとタイムスタンプを記録
         lastPushedHash.current = hash;
         lastPushedTime.current = Date.now();
-        console.log('[FirebaseSync] Pushed:', hash.substring(0, 50) + '...');
+        console.log('[FirebaseSync] ✅ PUSH SUCCESS at', new Date().toISOString(), 'hash:', hash.substring(0, 30));
       })
       .catch((err) => {
         if (err?.code === 'conflict') {
@@ -131,31 +137,53 @@ export function useFirebaseSync() {
         // 受信したデータのハッシュを計算
         const incomingHash = hashGameState(gameState);
         
+        console.log('[FirebaseSync] 📥 PULL received', {
+          remoteUpdatedAt: new Date(remoteUpdatedAt).toISOString(),
+          lastApplied: new Date(lastAppliedRemoteUpdatedAt.current).toISOString(),
+          hash: incomingHash.substring(0, 30),
+          lastPushedHash: lastPushedHash.current.substring(0, 30),
+          timeSinceLastPush: Date.now() - lastPushedTime.current,
+          waitingPlayers: gameState.players.filter((p: { isResting: boolean }) => !p.isResting).map((p: { name: string }) => p.name),
+          restPlayers: gameState.players.filter((p: { isResting: boolean }) => p.isResting).map((p: { name: string }) => p.name),
+        });
+        
         // 自分が最後にpushしたデータと同じなら無視
         if (incomingHash === lastPushedHash.current) {
-          console.log('[FirebaseSync] Ignoring pull (same as last push)');
+          console.log('[FirebaseSync] ⏭️  SKIP: same as last push');
           return;
         }
 
         // リモートデータが古い（または同じ）なら無視
         if (remoteUpdatedAt <= lastAppliedRemoteUpdatedAt.current) {
-          console.log('[FirebaseSync] Ignoring pull (older or same remote data):', remoteUpdatedAt, '<=', lastAppliedRemoteUpdatedAt.current);
+          console.log('[FirebaseSync] ⏭️  SKIP: older remote data', remoteUpdatedAt, '<=', lastAppliedRemoteUpdatedAt.current);
           return;
         }
 
-        // 最後のpush操作から1000ms以内なら無視（自分の操作を優先）
+        // 最後のpush操作から2000ms以内なら無視（自分の操作を優先）
         const timeSinceLastPush = Date.now() - lastPushedTime.current;
-        if (timeSinceLastPush < 1000) {
-          console.log('[FirebaseSync] Ignoring pull (too soon after push):', timeSinceLastPush + 'ms');
+        if (timeSinceLastPush < 2000) {
+          console.log('[FirebaseSync] ⏭️  SKIP: too soon after push (' + timeSinceLastPush + 'ms < 2000ms)');
           return;
         }
 
-        console.log('[FirebaseSync] Applying remote changes:', incomingHash.substring(0, 50) + '...', 'updatedAt:', remoteUpdatedAt);
+        console.log('[FirebaseSync] ✅ APPLYING remote data');
       isSyncingFromRemote.current = true;
 
       // プレイヤーストアを更新
       const { players } = usePlayerStore.getState();
       if (JSON.stringify(players) !== JSON.stringify(gameState.players)) {
+        // 変更されたプレイヤーをログ出力
+        const changes: string[] = [];
+        players.forEach((local) => {
+          const remote = gameState.players.find((p: { id: string }) => p.id === local.id);
+          if (remote && JSON.stringify(local) !== JSON.stringify(remote)) {
+            const remoteTyped = remote as { isResting: boolean };
+            const localStatus = local.isResting ? 'rest' : 'waiting';
+            const remoteStatus = remoteTyped.isResting ? 'rest' : 'waiting';
+            changes.push(`${local.name}: ${localStatus} → ${remoteStatus}`);
+          }
+        });
+        console.log('[FirebaseSync] 🔄 Player changes:', changes);
         usePlayerStore.setState({ players: gameState.players });
       }
 
