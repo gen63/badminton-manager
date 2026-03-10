@@ -21,7 +21,7 @@ export function SettingsPage() {
   // 権限判定
   const isAdmin = checkIsAdmin();
   const isCreatorUser = isCreator();
-  const { clearPlayers } = usePlayerStore();
+  const { players, clearPlayers } = usePlayerStore();
   const { clearHistory } = useGameStore();
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
@@ -433,31 +433,31 @@ export function SettingsPage() {
       )}
 
       {/* 管理者追加モーダル */}
-      {showAddAdminModal && session.participants && (
+      {showAddAdminModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-card rounded-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-foreground mb-4">管理者を追加</h3>
             <p className="text-xs text-muted-foreground mb-4">
-              管理者にしたい参加者を選択してください
+              管理者にしたいプレイヤーを選択してください
             </p>
             
             <div className="space-y-2 mb-6">
-              {session.participants
-                .filter(name => name !== session.createdBy && !session.admins?.includes(name))
-                .map((name) => (
+              {players
+                .filter(player => player.name !== session.createdBy && !session.admins?.includes(player.name))
+                .map((player) => (
                   <button
-                    key={name}
-                    onClick={() => handleAddAdmin(name)}
+                    key={player.id}
+                    onClick={() => handleAddAdmin(player.name)}
                     className="w-full bg-muted hover:bg-muted/70 rounded-xl p-3 text-left text-sm font-medium text-foreground transition-colors flex items-center gap-2"
                   >
                     <span className="text-lg">👤</span>
-                    {name}
+                    {player.name}
                   </button>
                 ))}
               
-              {session.participants.filter(name => name !== session.createdBy && !session.admins?.includes(name)).length === 0 && (
+              {players.filter(player => player.name !== session.createdBy && !session.admins?.includes(player.name)).length === 0 && (
                 <p className="text-center text-sm text-muted-foreground py-8">
-                  管理者に追加できる参加者がいません
+                  管理者に追加できるプレイヤーがいません
                 </p>
               )}
             </div>
