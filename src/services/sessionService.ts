@@ -75,27 +75,49 @@ export async function createSession(session: Partial<Session>): Promise<string> 
     );
   }
 
-  const sessionId = generateFirebaseSessionId();
-  const docRef = doc(db!, 'sessions', sessionId);
-  
-  try {
-    await setDoc(docRef, {
-      ...session,
-      id: sessionId,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      status: session.status || 'active',
-      participants: session.participants || [],
-    });
-  } catch (error) {
-    console.error('Firebase write failed:', error);
-    throw new SessionError(
-      'セッションの作成に失敗しました。ネットワーク接続を確認してください。',
-      'firebase-write-failed'
-    );
+  // セッションID衝突を避けるため、最大3回リトライ
+  const maxRetries = 3;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const sessionId = generateFirebaseSessionId();
+    const docRef = doc(db!, 'sessions', sessionId);
+    
+    try {
+      // 既存のセッションIDをチェック
+      const existingDoc = await getDoc(docRef);
+      if (existingDoc.exists()) {
+        console.warn(`[SessionService] Session ID collision detected: ${sessionId}, retrying...`);
+        continue; // 次のIDで再試行
+      }
+
+      // IDが未使用なら作成
+      await setDoc(docRef, {
+        ...session,
+        id: sessionId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        status: session.status || 'active',
+        participants: session.participants || [],
+      });
+      
+      console.log(`[SessionService] Session created successfully: ${sessionId}`);
+      return sessionId;
+    } catch (error) {
+      if (attempt === maxRetries - 1) {
+        // 最後の試行で失敗
+        console.error('Firebase write failed:', error);
+        throw new SessionError(
+          'セッションの作成に失敗しました。ネットワーク接続を確認してください。',
+          'firebase-write-failed'
+        );
+      }
+    }
   }
 
-  return sessionId;
+  // 3回すべて衝突した場合（極めて低確率）
+  throw new SessionError(
+    'セッションIDの生成に失敗しました。もう一度お試しください。',
+    'id-generation-failed'
+  );
 }
 
 /** セッションを取得 */

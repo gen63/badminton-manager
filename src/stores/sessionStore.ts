@@ -44,6 +44,15 @@ export const useSessionStore = create<SessionState>()(
             console.log('[SessionStore] Config synced to Firestore:', config);
           } catch (error) {
             console.error('[SessionStore] Failed to sync config to Firestore:', error);
+            
+            // Toast通知を表示（動的インポートで循環依存を回避）
+            const toastModule = await import('../hooks/useToast');
+            if (toastModule && 'useToast' in toastModule) {
+              // useToastはhookなので、ここでは直接使えない
+              // 代わりに、グローバルToast関数を使う（後で実装）
+              // 今は警告のみログ出力
+              console.warn('[SessionStore] Config sync failed, but local update succeeded');
+            }
           }
         }
       },
