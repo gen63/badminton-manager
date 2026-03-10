@@ -58,6 +58,13 @@ export function MainPage() {
   const [informationText, setInformationText] = useState('');
 
   const playerCardRef = useRef<HTMLDivElement>(null);
+
+  // モーダル表示中にsession.informationが更新されたら、informationTextも同期
+  useEffect(() => {
+    if (showInformationModal && session?.information?.text) {
+      setInformationText(session.information.text);
+    }
+  }, [session?.information?.text, showInformationModal]);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -1134,7 +1141,10 @@ export function MainPage() {
                 お知らせ
               </h3>
               <button
-                onClick={() => setShowInformationModal(false)}
+                onClick={() => {
+                  setShowInformationModal(false);
+                  // 閉じる時、管理者の場合は編集内容を破棄（useEffectで元の値に戻る）
+                }}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 <X size={20} />
@@ -1144,18 +1154,19 @@ export function MainPage() {
             {isAdmin() ? (
               /* 管理者: 編集モード */
               <>
-                <textarea
-                  value={informationText}
-                  onChange={(e) => setInformationText(e.target.value)}
-                  className="flex-1 w-full p-3 bg-muted border border-border rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 mb-4"
-                  placeholder="メンバーへの周知事項を入力..."
-                  rows={8}
-                />
+                <div className="flex-1 overflow-y-auto mb-4">
+                  <textarea
+                    value={informationText}
+                    onChange={(e) => setInformationText(e.target.value)}
+                    className="w-full min-h-[200px] p-3 bg-muted border border-border rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    placeholder="メンバーへの周知事項を入力..."
+                  />
+                </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => {
                       setShowInformationModal(false);
-                      setInformationText('');
+                      // キャンセル時は元の値に戻す（useEffectで自動的に戻る）
                     }}
                     className="flex-1 btn-secondary"
                   >
