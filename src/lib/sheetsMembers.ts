@@ -43,6 +43,17 @@ async function attemptFetch(url: string): Promise<AttemptResult> {
     }
 
     const text = await response.text();
+
+    // HTMLが返ってくる場合はGASが無効（期限切れ・削除済み）
+    if (text.trimStart().startsWith('<!DOCTYPE') || text.trimStart().startsWith('<html')) {
+      return {
+        success: false,
+        message: 'GAS URLが無効です。GASを再デプロイしてURLを更新してください',
+        members: [],
+        retryable: false,
+      };
+    }
+
     let data: unknown;
     try {
       data = JSON.parse(text);
@@ -105,9 +116,11 @@ async function attemptFetch(url: string): Promise<AttemptResult> {
     if (error instanceof TypeError) {
       return {
         success: false,
-        message: 'ネットワークエラーが発生しました。接続を確認してください',
+        message: navigator.onLine
+          ? 'ネットワークエラーが発生しました。GAS URLが期限切れの可能性があります'
+          : 'オフラインです。インターネット接続を確認してください',
         members: [],
-        retryable: true,
+        retryable: navigator.onLine,
       };
     }
     return {

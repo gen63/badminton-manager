@@ -10,7 +10,8 @@ import { useReservationStore } from '../stores/reservationStore';
 import { deleteSession } from '../services/sessionService';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { clearAppBadge } from '../lib/badge';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrCode, Copy, Check } from 'lucide-react';
+import { testGasConnection } from '../lib/sheetsApi';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrCode, Copy, Check, FileSpreadsheet, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import type { GameMode } from '../types/session';
 
 export function SettingsPage() {
@@ -20,13 +21,14 @@ export function SettingsPage() {
   const [sessionIdCopied, setSessionIdCopied] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
   const [selectedAdmins, setSelectedAdmins] = useState<string[]>([]);
+  const [connectionTest, setConnectionTest] = useState<{ testing: boolean; result?: { success: boolean; message: string } }>({ testing: false });
 
   // 権限判定
   const isAdmin = checkIsAdmin();
   const isCreatorUser = isCreator();
   const { players, clearPlayers, setAllPlayersResting } = usePlayerStore();
   const { clearHistory, courts, resetAllCourts } = useGameStore();
-  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
+  const { gasWebAppUrl, setGasWebAppUrl, useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
   const { clearReservations } = useReservationStore();
@@ -180,9 +182,9 @@ export function SettingsPage() {
 
   const handleRemoveAdmin = async (name: string) => {
     if (!session.id || !session.createdBy) return;
-    
+
     const updatedAdmins = (session.admins || []).filter(admin => admin !== name);
-    
+
     // Firebase更新
     const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
     try {
@@ -192,6 +194,12 @@ export function SettingsPage() {
     } catch (error) {
       console.error('Failed to remove admin:', error);
     }
+  };
+
+  const handleTestConnection = async () => {
+    setConnectionTest({ testing: true });
+    const result = await testGasConnection(gasWebAppUrl);
+    setConnectionTest({ testing: false, result });
   };
 
   return (
@@ -392,6 +400,62 @@ export function SettingsPage() {
                 </div>
               );
             })()}
+          </div>
+        </div>
+
+        {/* Sheets接続 */}
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+            <span className="w-6 h-6 rounded-lg bg-green-100 flex items-center justify-center">
+              <FileSpreadsheet size={14} className="text-green-600" />
+            </span>
+            Sheets接続
+          </h2>
+          <div className="space-y-3">
+            <div>
+              <label className="label">GAS URL</label>
+              <input
+                type="url"
+                value={gasWebAppUrl}
+                onChange={(e) => {
+                  setGasWebAppUrl(e.target.value);
+                  setConnectionTest({ testing: false });
+                }}
+                placeholder="https://script.google.com/macros/s/.../exec"
+                className="w-full px-3 py-2 text-xs bg-muted rounded-xl border-2 border-transparent focus:border-blue-300 focus:outline-none transition-colors font-mono"
+              />
+            </div>
+            <button
+              onClick={handleTestConnection}
+              disabled={connectionTest.testing || !gasWebAppUrl}
+              className="w-full btn-secondary flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {connectionTest.testing ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  テスト中...
+                </>
+              ) : (
+                <>
+                  <Wifi size={16} />
+                  接続テスト
+                </>
+              )}
+            </button>
+            {connectionTest.result && (
+              <div className={`flex items-start gap-2 p-3 rounded-xl text-xs ${
+                connectionTest.result.success
+                  ? 'bg-green-50 text-green-700'
+                  : 'bg-red-50 text-red-700'
+              }`}>
+                {connectionTest.result.success ? (
+                  <CheckCircle size={16} className="flex-shrink-0 mt-0.5" />
+                ) : (
+                  <XCircle size={16} className="flex-shrink-0 mt-0.5" />
+                )}
+                <span>{connectionTest.result.message}</span>
+              </div>
+            )}
           </div>
         </div>
 

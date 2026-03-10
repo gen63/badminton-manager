@@ -17,6 +17,10 @@ interface SheetsPayload {
   matches: SheetMatch[];
 }
 
+const POST_TIMEOUT = 15000;
+const MAX_POST_ATTEMPTS = 2;
+const RETRY_DELAY = 1000;
+
 function resolvePlayerName(
   playerId: string,
   players: Player[]
@@ -57,6 +61,74 @@ function formatMatchesForSheets(
   };
 }
 
+function classifyError(error: unknown): { message: string; retryable: boolean } {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return { message: '送信がタイムアウトしました。再試行します...', retryable: true };
+  }
+  if (error instanceof TypeError) {
+    return {
+      message: navigator.onLine
+        ? 'ネットワークエラーが発生しました。GAS URLが無効か期限切れの可能性があります'
+        : 'オフラインです。インターネット接続を確認してください',
+      retryable: navigator.onLine,
+    };
+  }
+  return { message: '送信に失敗しました', retryable: false };
+}
+
+async function postWithRetry(
+  url: string,
+  body: string,
+  successMessage: string
+): Promise<{ success: boolean; message: string }> {
+  for (let attempt = 1; attempt <= MAX_POST_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), POST_TIMEOUT);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body,
+        signal: controller.signal,
+        mode: 'no-cors',
+      });
+
+      // no-cors ではレスポンスが opaque になるので status チェック不可
+      // エラーが投げられなければ成功とみなす
+      if (response.type === 'opaque') {
+        return { success: true, message: successMessage };
+      }
+
+      if (!response.ok) {
+        const retryable = response.status >= 500 && attempt < MAX_POST_ATTEMPTS;
+        if (retryable) {
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+          continue;
+        }
+        return { success: false, message: `送信エラー (${response.status})` };
+      }
+
+      return { success: true, message: successMessage };
+    } catch (error) {
+      const classified = classifyError(error);
+      if (classified.retryable && attempt < MAX_POST_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+        continue;
+      }
+      // 最終試行での失敗メッセージはリトライ表示を除去
+      return {
+        success: false,
+        message: classified.message.replace('再試行します...', '再度お試しください'),
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  return { success: false, message: '送信に失敗しました。しばらく待ってから再度お試しください' };
+}
+
 export async function sendMatchesToSheets(
   url: string,
   matches: Match[],
@@ -72,41 +144,7 @@ export async function sendMatchesToSheets(
   }
 
   const payload = formatMatchesForSheets(matches, players, session);
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-      mode: 'no-cors',
-    });
-
-    // no-cors ではレスポンスが opaque になるので status チェック不可
-    // エラーが投げられなければ成功とみなす
-    if (response.type === 'opaque') {
-      return { success: true, message: `${matches.length}件の試合を送信しました` };
-    }
-
-    if (!response.ok) {
-      return { success: false, message: `送信エラー (${response.status})` };
-    }
-
-    return { success: true, message: `${matches.length}件の試合を送信しました` };
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      return { success: false, message: '送信がタイムアウトしました' };
-    }
-    return {
-      success: false,
-      message: '送信に失敗しました。Wi-Fi接続を確認してください',
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  return postWithRetry(url, JSON.stringify(payload), `${matches.length}件の試合を送信しました`);
 }
 
 // 会計データをSheetsに送信
@@ -141,35 +179,71 @@ export async function sendAccountingToSheets(
     finalTotal: record.finalTotal,
   };
 
+  return postWithRetry(url, JSON.stringify(payload), '会計データを送信しました');
+}
+
+// GAS URLの接続テスト
+export async function testGasConnection(
+  url: string
+): Promise<{ success: boolean; message: string }> {
+  if (!url) {
+    return { success: false, message: 'URLが設定されていません' };
+  }
+
+  if (!url.startsWith('https://script.google.com/')) {
+    return { success: false, message: 'GAS URLの形式が正しくありません' };
+  }
+
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   try {
     const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(payload),
+      method: 'GET',
       signal: controller.signal,
-      mode: 'no-cors',
     });
 
-    if (response.type === 'opaque') {
-      return { success: true, message: '会計データを送信しました' };
-    }
-
     if (!response.ok) {
-      return { success: false, message: `送信エラー (${response.status})` };
+      if (response.status === 401 || response.status === 403) {
+        return { success: false, message: 'アクセス権限がありません。GASのデプロイ設定を確認してください' };
+      }
+      if (response.status >= 500) {
+        return { success: false, message: 'GASサーバーエラーです。しばらく待ってから再度お試しください' };
+      }
+      return { success: false, message: `接続エラー (${response.status})` };
     }
 
-    return { success: true, message: '会計データを送信しました' };
+    const text = await response.text();
+
+    // HTMLが返ってくる場合はGASが無効（期限切れ・削除済み）
+    if (text.trimStart().startsWith('<!DOCTYPE') || text.trimStart().startsWith('<html')) {
+      return { success: false, message: 'GAS URLが無効です。GASを再デプロイしてURLを更新してください' };
+    }
+
+    // JSONレスポンスをチェック
+    try {
+      const data = JSON.parse(text) as Record<string, unknown>;
+      if (data.status === 'error') {
+        return { success: false, message: (data.message as string) || 'GASからエラーが返されました' };
+      }
+      return { success: true, message: '接続成功' };
+    } catch {
+      // JSONでなくても接続自体は成功
+      return { success: true, message: '接続成功（レスポンス形式が想定外ですが接続は正常です）' };
+    }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      return { success: false, message: '送信がタイムアウトしました' };
+      return { success: false, message: '接続がタイムアウトしました' };
     }
-    return {
-      success: false,
-      message: '送信に失敗しました。Wi-Fi接続を確認してください',
-    };
+    if (error instanceof TypeError) {
+      return {
+        success: false,
+        message: navigator.onLine
+          ? 'GAS URLに接続できません。URLが期限切れの可能性があります。GASを再デプロイしてURLを更新してください'
+          : 'オフラインです。インターネット接続を確認してください',
+      };
+    }
+    return { success: false, message: '接続テストに失敗しました' };
   } finally {
     clearTimeout(timeoutId);
   }
