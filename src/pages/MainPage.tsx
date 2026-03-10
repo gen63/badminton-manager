@@ -15,6 +15,7 @@ import { useRealtimeSession } from '../hooks/useRealtimeSession';
 import { useFirebaseSync } from '../hooks/useFirebaseSync';
 import { useAccountingStore } from '../stores/accountingStore';
 import { PaymentModal } from '../components/PaymentModal';
+import { CourtTimer } from '../components/CourtTimer';
 
 import { BottomNav } from '../components/BottomNav';
 
@@ -51,19 +52,11 @@ export function MainPage() {
 
   const playerCardRef = useRef<HTMLDivElement>(null);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   useEffect(() => {
     return () => {
       if (heightLockTimer.current) clearTimeout(heightLockTimer.current);
     };
-  }, []);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(Date.now());
-    }, 1000);
-    return () => clearInterval(interval);
   }, []);
 
   // ブロック条件成立時に連続モードを強制OFF
@@ -515,13 +508,6 @@ export function MainPage() {
     redo();
   };
 
-  const formatElapsedTime = (startedAt: number) => {
-    const elapsed = Math.floor((currentTime - startedAt) / 1000);
-    const minutes = Math.floor(elapsed / 60);
-    const seconds = elapsed % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
-
   return (
     <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-y-auto scrollbar-hide text-foreground">
       <header className="sticky top-0 flex-none bg-background border-b border-border px-4 py-2.5 shadow-sm z-20">
@@ -662,7 +648,7 @@ export function MainPage() {
                           <circle cx="12" cy="12" r="10" strokeWidth="2"/>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
                         </svg>
-                        <span>{formatElapsedTime(court.startedAt)}</span>
+                        <CourtTimer startedAt={court.startedAt} />
                       </div>
                     ) : !hasPlayers && courts.length > 1 && (
                       <button
