@@ -4,7 +4,10 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useSessionStore } from '../stores/sessionStore';
-import { syncGameStateWithTransaction, subscribeToGameState } from '../services/sessionService';
+import { doc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { onSnapshot } from 'firebase/firestore';
+import { syncGameStateWithTransaction } from '../services/sessionService';
 import { notifyMatchStart } from '../lib/notifications';
 import { useToast } from './useToast';
 import type { Court } from '../types/court';
@@ -33,6 +36,7 @@ export function useFirebaseSync() {
   const isSyncingFromRemote = useRef(false);
   const lastPushedHash = useRef<string>('');
   const lastPushedTime = useRef<number>(0);
+  const lastAppliedRemoteUpdatedAt = useRef<number>(0);
   const sessionDeletedNotified = useRef(false);
 
   const pushGameState = useCallback((sid: string) => {
@@ -96,39 +100,57 @@ export function useFirebaseSync() {
 
   // Firestoreからpull（リアルタイム監視）
   useEffect(() => {
-    if (!isShared || !sessionId) return;
+    if (!isShared || !sessionId || !db) return;
 
-    const unsub = subscribeToGameState(sessionId, (gameState) => {
-      // セッションが削除された場合
-      if (!gameState) {
-        if (!sessionDeletedNotified.current) {
-          sessionDeletedNotified.current = true;
-          toast.error('セッションが削除されました');
-          // セッション情報をクリア
-          useSessionStore.getState().clearSession();
-          // トップページに戻る
-          setTimeout(() => navigate('/'), 1000);
+    const unsub = onSnapshot(
+      doc(db, 'sessions', sessionId),
+      (snap) => {
+        // セッションが削除された場合
+        if (!snap.exists()) {
+          if (!sessionDeletedNotified.current) {
+            sessionDeletedNotified.current = true;
+            toast.error('セッションが削除されました');
+            // セッション情報をクリア
+            useSessionStore.getState().clearSession();
+            // トップページに戻る
+            setTimeout(() => navigate('/'), 1000);
+          }
+          return;
         }
-        return;
-      }
 
-      // 受信したデータのハッシュを計算
-      const incomingHash = hashGameState(gameState);
-      
-      // 自分が最後にpushしたデータと同じなら無視
-      if (incomingHash === lastPushedHash.current) {
-        console.log('[FirebaseSync] Ignoring pull (same as last push)');
-        return;
-      }
+        const data = snap.data();
+        const gameState = data.gameState as typeof data.gameState & { players: unknown[]; courts: unknown[]; matchHistory: unknown[]; reservations: unknown[] } | undefined;
+        
+        if (!gameState) return;
 
-      // 最後のpush操作から500ms以内なら無視（自分の操作を優先）
-      const timeSinceLastPush = Date.now() - lastPushedTime.current;
-      if (timeSinceLastPush < 500) {
-        console.log('[FirebaseSync] Ignoring pull (too soon after push):', timeSinceLastPush + 'ms');
-        return;
-      }
+        // リモートの更新時刻を取得
+        const remoteUpdatedAt = typeof data.updatedAt === 'number'
+          ? data.updatedAt
+          : (data.updatedAt as { seconds: number })?.seconds * 1000 || 0;
 
-      console.log('[FirebaseSync] Applying remote changes:', incomingHash.substring(0, 50) + '...');
+        // 受信したデータのハッシュを計算
+        const incomingHash = hashGameState(gameState);
+        
+        // 自分が最後にpushしたデータと同じなら無視
+        if (incomingHash === lastPushedHash.current) {
+          console.log('[FirebaseSync] Ignoring pull (same as last push)');
+          return;
+        }
+
+        // リモートデータが古い（または同じ）なら無視
+        if (remoteUpdatedAt <= lastAppliedRemoteUpdatedAt.current) {
+          console.log('[FirebaseSync] Ignoring pull (older or same remote data):', remoteUpdatedAt, '<=', lastAppliedRemoteUpdatedAt.current);
+          return;
+        }
+
+        // 最後のpush操作から1000ms以内なら無視（自分の操作を優先）
+        const timeSinceLastPush = Date.now() - lastPushedTime.current;
+        if (timeSinceLastPush < 1000) {
+          console.log('[FirebaseSync] Ignoring pull (too soon after push):', timeSinceLastPush + 'ms');
+          return;
+        }
+
+        console.log('[FirebaseSync] Applying remote changes:', incomingHash.substring(0, 50) + '...', 'updatedAt:', remoteUpdatedAt);
       isSyncingFromRemote.current = true;
 
       // プレイヤーストアを更新
@@ -158,8 +180,15 @@ export function useFirebaseSync() {
         useReservationStore.setState({ reservations: gameState.reservations });
       }
 
+      // 適用したリモートデータの更新時刻を記録
+      lastAppliedRemoteUpdatedAt.current = remoteUpdatedAt;
+
       isSyncingFromRemote.current = false;
-    });
+      },
+      (error) => {
+        console.error('GameState subscription error:', error);
+      }
+    );
 
     return unsub;
   }, [isShared, sessionId]);
