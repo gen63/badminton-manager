@@ -58,21 +58,9 @@ export function useFirebaseSync() {
     const pushStartTime = Date.now();
     lastPushedTime.current = pushStartTime;
     
-    console.log('[FirebaseSync] 📤 PUSH starting at', new Date(pushStartTime).toISOString(), {
-      players: players.length,
-      waitingPlayers: players.filter(p => !p.isResting).map(p => p.name),
-      restPlayers: players.filter(p => p.isResting).map(p => p.name),
-    });
-    
     syncGameStateWithTransaction(sid, gameState)
       .then(() => {
-        // push成功時、ハッシュを記録
         lastPushedHash.current = hash;
-        console.log('[FirebaseSync] ✅ PUSH SUCCESS', {
-          startTime: new Date(pushStartTime).toISOString(),
-          duration: Date.now() - pushStartTime + 'ms',
-          hash: hash.substring(0, 30),
-        });
       })
       .catch((err) => {
         // push失敗時はタイムスタンプをリセット（pullを受け付ける）
@@ -135,42 +123,15 @@ export function useFirebaseSync() {
       pushBlockMs: 500,
     });
 
-    console.log('[FirebaseSync] 📥 PULL received', {
-      remoteUpdatedAt,
-      remoteUpdatedAtISO: new Date(remoteUpdatedAt).toISOString(),
-      lastApplied: lastAppliedRemoteUpdatedAt.current,
-      lastAppliedISO: lastAppliedRemoteUpdatedAt.current > 0 ? new Date(lastAppliedRemoteUpdatedAt.current).toISOString() : 'never',
-      hash: incomingHash.substring(0, 30),
-      lastPushedHash: lastPushedHash.current.substring(0, 30),
-      timeSinceLastPush: Date.now() - lastPushedTime.current,
-      decision: decision.shouldApply ? 'APPLY' : `SKIP (${decision.reason})`,
-      waitingPlayers: gameState.players.filter((p: { isResting: boolean }) => !p.isResting).map((p: { name: string }) => p.name),
-      restPlayers: gameState.players.filter((p: { isResting: boolean }) => p.isResting).map((p: { name: string }) => p.name),
-    });
-
     if (!decision.shouldApply) {
-      console.log('[FirebaseSync] ⏭️  SKIP:', decision.reason);
       return;
     }
 
-    console.log('[FirebaseSync] ✅ APPLYING remote data');
     isSyncingFromRemote.current = true;
 
     // プレイヤーストアを更新
     const { players } = usePlayerStore.getState();
     if (JSON.stringify(players) !== JSON.stringify(gameState.players)) {
-      // 変更されたプレイヤーをログ出力
-      const changes: string[] = [];
-      players.forEach((local) => {
-        const remote = gameState.players.find((p: { id: string }) => p.id === local.id);
-        if (remote && JSON.stringify(local) !== JSON.stringify(remote)) {
-          const remoteTyped = remote as { isResting: boolean };
-          const localStatus = local.isResting ? 'rest' : 'waiting';
-          const remoteStatus = remoteTyped.isResting ? 'rest' : 'waiting';
-          changes.push(`${local.name}: ${localStatus} → ${remoteStatus}`);
-        }
-      });
-      console.log('[FirebaseSync] 🔄 Player changes:', changes);
       usePlayerStore.setState({ players: gameState.players });
     }
 
@@ -233,16 +194,7 @@ export function useFirebaseSync() {
     
     // 作成者、またはプレイヤーが既にいる場合（ページリロード等）のみpush
     if (isCreator || (players && players.length > 0)) {
-      console.log('[FirebaseSync] 🚀 Initial push', { 
-        isCreator, 
-        currentUser,
-        createdBy: currentSession?.createdBy,
-        playerCount: players?.length || 0,
-        hasPlayers: players && players.length > 0,
-      });
       pushGameStateRef.current(sessionId);
-    } else {
-      console.log('[FirebaseSync] ⏭️  Skipping initial push (participant mode, will sync from remote)');
     }
 
     return () => {
@@ -287,7 +239,6 @@ export function useFirebaseSync() {
         const TTL = 5 * 24 * 60 * 60 * 1000; // 5日間（120時間）
         
         if (createdAt > 0 && age > TTL) {
-          console.warn('[FirebaseSync] Session expired (>5days):', { sessionId, age: Math.round(age / 3600000) + 'h' });
           toastRef.current.warning('セッションの有効期限（5日間）が切れました');
           
           // セッション削除（作成者のみ）
@@ -298,9 +249,7 @@ export function useFirebaseSync() {
           if (isCreator) {
             // 作成者がセッションを削除
             import('../services/sessionService').then(({ deleteSession }) => {
-              deleteSession(sessionId).then(() => {
-                console.log('[FirebaseSync] Expired session deleted by creator');
-              }).catch((err) => {
+              deleteSession(sessionId).catch((err) => {
                 console.error('[FirebaseSync] Failed to delete expired session:', err);
               });
             });
@@ -354,7 +303,6 @@ function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
     // 既に通知済みか確認（startedAtをキーにする）
     const matchKey = `${newCourt.id}-${newCourt.startedAt}`;
     if (notifiedMatches.has(matchKey)) {
-      console.log('[Notification] Already notified:', matchKey);
       continue;
     }
 
@@ -365,7 +313,6 @@ function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
       const now = Date.now();
       const timeSinceStart = newCourt.startedAt ? now - newCourt.startedAt : 0;
       if (timeSinceStart > 120000) { // 120秒 = 2分
-        console.log('[Notification] Skipped: match started more than 2 minutes ago');
         continue;
       }
 

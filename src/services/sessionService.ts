@@ -60,13 +60,12 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     registeredPlayers: data.registeredPlayers as string[] | undefined,
     admins: data.admins as string[] | undefined,
     status: data.status as Session['status'],
+    information: data.information as Session['information'],
   };
 }
 
 /** セッションを作成 */
 export async function createSession(session: Partial<Session>): Promise<string> {
-  console.log('[SessionService] createSession - useFirestore:', useFirestore, 'db:', !!db);
-  
   // Firebaseが設定されていない場合はエラー
   if (!useFirestore) {
     throw new SessionError(
@@ -99,7 +98,6 @@ export async function createSession(session: Partial<Session>): Promise<string> 
         participants: session.participants || [],
       });
       
-      console.log(`[SessionService] Session created successfully: ${sessionId}`);
       return sessionId;
     } catch (error) {
       if (attempt === maxRetries - 1) {

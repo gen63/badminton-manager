@@ -11,7 +11,6 @@ export async function setAppBadge(count: number): Promise<void> {
   
   try {
     await (navigator as Navigator & { setAppBadge: (count: number) => Promise<void> }).setAppBadge(count);
-    console.log('[Badge] Set badge:', count);
   } catch (error) {
     console.error('[Badge] Failed to set badge:', error);
   }
@@ -23,7 +22,6 @@ export async function clearAppBadge(): Promise<void> {
   
   try {
     await (navigator as Navigator & { clearAppBadge: () => Promise<void> }).clearAppBadge();
-    console.log('[Badge] Cleared badge');
   } catch (error) {
     console.error('[Badge] Failed to clear badge:', error);
   }

@@ -59,47 +59,15 @@ export function MainPage() {
 
   const playerCardRef = useRef<HTMLDivElement>(null);
 
-  // モーダル表示中にsession.informationが更新されたら、informationTextも同期
+  // モーダル表示中にsession.informationが更新されたら、メンバー閲覧時のみ同期
+  // 管理者の編集中テキストは上書きしない
   useEffect(() => {
-    if (showInformationModal && session?.information?.text) {
-      console.log('[Information] useEffect同期:', {
-        newText: session.information.text,
-        textLength: session.information.text.length,
-      });
+    if (showInformationModal && session?.information?.text && !isAdmin()) {
       setInformationText(session.information.text);
-    } else if (showInformationModal && !session?.information?.text) {
-      console.log('[Information] useEffect: text が空（同期しない）');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- isAdmin is a stable Zustand selector
   }, [session?.information?.text, showInformationModal]);
 
-  // インフォメーションバッジのデバッグログ（開発時のみ）
-  useEffect(() => {
-    if (session?.information) {
-      console.log('[Information] session.information変更検出:', {
-        hasText: !!session.information.text,
-        textLength: session.information.text?.length || 0,
-        text: session.information.text?.substring(0, 50) || '(空)',
-        readBy: session.information.readBy || [],
-        updatedBy: session.information.updatedBy,
-      });
-    } else {
-      console.log('[Information] session.information は undefined');
-    }
-  }, [session?.information]);
-
-  // バッジ表示判定のログ
-  useEffect(() => {
-    if (session?.information?.text && currentUser) {
-      const readBy = session.information.readBy || [];
-      const isUnread = !readBy.includes(currentUser);
-      console.log('[Information Badge]', {
-        currentUser,
-        readBy,
-        isUnread,
-        text: session.information.text.substring(0, 30) + '...',
-      });
-    }
-  }, [session?.information, currentUser]);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -143,7 +111,6 @@ export function MainPage() {
     if (!session?.createdBy) return; // ローカルモードでは不要
     const configCourtCount = session.config.courtCount || 1;
     if (courts.length !== configCourtCount) {
-      console.log('[MainPage] Auto-resizing courts:', { from: courts.length, to: configCourtCount });
       resizeCourts(configCourtCount);
     }
   }, [session?.config.courtCount, courts.length, session?.createdBy, resizeCourts]);
@@ -662,18 +629,9 @@ export function MainPage() {
             {session?.createdBy && (
               <button
                 onClick={() => {
-                  console.log('[Information] モーダル表示:', {
-                    isAdmin: isAdmin(),
-                    hasInformation: !!session?.information,
-                    text: session?.information?.text,
-                    textLength: session?.information?.text?.length || 0,
-                  });
-                  
                   // 管理者は周知事項がなくても編集モーダルを開ける
                   if (isAdmin()) {
-                    const currentText = session?.information?.text || '';
-                    console.log('[Information] 管理者モード、設定するテキスト:', currentText);
-                    setInformationText(currentText);
+                    setInformationText(session?.information?.text || '');
                     setShowInformationModal(true);
                   } else if (session?.information?.text) {
                     // メンバーは周知事項がある場合のみ閲覧＋既読化
@@ -1186,7 +1144,6 @@ export function MainPage() {
               <button
                 onClick={() => {
                   setShowInformationModal(false);
-                  // 閉じる時、管理者の場合は編集内容を破棄（useEffectで元の値に戻る）
                 }}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
@@ -1209,7 +1166,6 @@ export function MainPage() {
                   <button
                     onClick={() => {
                       setShowInformationModal(false);
-                      // キャンセル時は元の値に戻す（useEffectで自動的に戻る）
                     }}
                     className="flex-1 btn-secondary"
                   >
@@ -1218,11 +1174,6 @@ export function MainPage() {
                   <button
                     onClick={() => {
                       const trimmed = informationText.trim();
-                      console.log('[Information] 保存ボタンクリック:', {
-                        informationText,
-                        trimmed,
-                        textLength: informationText.length,
-                      });
                       updateInformation(informationText);
                       setShowInformationModal(false);
                       toast.success(trimmed ? 'お知らせを更新しました' : 'お知らせを削除しました');

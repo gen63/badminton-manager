@@ -75,10 +75,6 @@ export function BottomNav({ activeTab }: BottomNavProps) {
 
     // オンラインセッション + ブラウザの場合、試合予約はPWA専用
     if (tab.id === 'reservation' && session?.createdBy && !isPWA) {
-      console.log('[BottomNav] Blocking reservation access:', {
-        sessionCreatedBy: session.createdBy,
-        isPWA,
-      });
       toast.warning('試合予約はPWAアプリ専用機能です', 1000);
       return;
     }
