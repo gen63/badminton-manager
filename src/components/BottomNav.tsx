@@ -52,6 +52,12 @@ export function BottomNav({ activeTab }: BottomNavProps) {
     return 0;
   })();
 
+  // 参加者タブバッジ: タスク未完了の人数
+  const incompleteTaskCount = players.filter((p) => {
+    const status = p.operationStatus || { payment: false, roster: false };
+    return !status.payment || !status.roster;
+  }).length;
+
   // PWA判定
   const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
                 (navigator as Navigator & { standalone?: boolean }).standalone;
@@ -105,6 +111,11 @@ export function BottomNav({ activeTab }: BottomNavProps) {
                 {tab.id === 'history' && unrecordedMatchesCount > 0 && (
                   <span className="absolute top-0 right-0.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
                     {unrecordedMatchesCount}
+                  </span>
+                )}
+                {tab.id === 'players' && incompleteTaskCount > 0 && (
+                  <span className="absolute top-0 right-0.5 min-w-[18px] h-[18px] bg-blue-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                    {incompleteTaskCount}
                   </span>
                 )}
               </button>
