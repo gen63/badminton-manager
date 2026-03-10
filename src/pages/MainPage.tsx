@@ -589,7 +589,7 @@ export function MainPage() {
         const currentPlayer = players.find(p => p.name === currentUser);
         if (!currentPlayer) return null;
         const status = currentPlayer.operationStatus || { payment: false, roster: false, checkin: false };
-        const allCompleted = status.payment && status.roster && status.checkin;
+        const allCompleted = status.payment && status.roster;
         if (allCompleted) return null;
 
         return (
