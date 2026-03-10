@@ -66,12 +66,18 @@ export const useSessionStore = create<SessionState>()(
         }),
       isCreator: () => {
         const { session, currentUser } = get();
-        if (!session?.createdBy || !currentUser) return true; // ローカルモード: 全員管理者
+        // ローカルモード: 全員管理者
+        if (!session?.createdBy) return true;
+        // オンラインモード: currentUser が必要
+        if (!currentUser) return false;
         return currentUser === session.createdBy;
       },
       isAdmin: () => {
         const { session, currentUser } = get();
-        if (!session?.createdBy || !currentUser) return true; // ローカルモード: 全員管理者
+        // ローカルモード: 全員管理者
+        if (!session?.createdBy) return true;
+        // オンラインモード: currentUser が必要
+        if (!currentUser) return false;
         return currentUser === session.createdBy || session.admins?.includes(currentUser) || false;
       },
       updateSession: (updates) =>

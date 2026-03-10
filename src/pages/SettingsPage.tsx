@@ -14,7 +14,7 @@ import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrC
 
 export function SettingsPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, clearSession, isCreator, isAdmin: checkIsAdmin } = useSessionStore();
+  const { session, updateConfig, clearSession, isCreator, isAdmin: checkIsAdmin, currentUser } = useSessionStore();
   const [showSessionInfo, setShowSessionInfo] = useState(false);
   const [sessionIdCopied, setSessionIdCopied] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
@@ -29,9 +29,23 @@ export function SettingsPage() {
   const { clearRecords } = useAccountingStore();
   const { clearReservations } = useReservationStore();
 
+  // オンラインモードかどうか
+  const isOnlineMode = !!session?.createdBy;
+
   if (!session) {
     navigate('/');
     return null;
+  }
+
+  // オンラインモードで currentUser が未設定の場合はローディング
+  if (isOnlineMode && !currentUser) {
+    return (
+      <div className="bg-app h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">読み込み中...</p>
+        </div>
+      </div>
+    );
   }
 
   // 管理者権限チェック
@@ -403,15 +417,6 @@ export function SettingsPage() {
                 管理者を追加
               </button>
             </div>
-          </div>
-        )}
-
-        {/* 一般ユーザー向け注意事項（オンラインモード） */}
-        {!isAdmin && session.createdBy && (
-          <div className="card p-4 bg-blue-50 border border-blue-200">
-            <p className="text-xs text-blue-800">
-              セッション管理・リセットは管理者（{session.createdBy}）のみが実行できます。
-            </p>
           </div>
         )}
 
