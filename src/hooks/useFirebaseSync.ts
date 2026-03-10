@@ -148,52 +148,53 @@ export function useFirebaseSync() {
     console.log('[FirebaseSync] ✅ APPLYING remote data');
     isSyncingFromRemote.current = true;
 
-    try {
-      // プレイヤーストアを更新
-      const { players } = usePlayerStore.getState();
-      if (JSON.stringify(players) !== JSON.stringify(gameState.players)) {
-        // 変更されたプレイヤーをログ出力
-        const changes: string[] = [];
-        players.forEach((local) => {
-          const remote = gameState.players.find((p: { id: string }) => p.id === local.id);
-          if (remote && JSON.stringify(local) !== JSON.stringify(remote)) {
-            const remoteTyped = remote as { isResting: boolean };
-            const localStatus = local.isResting ? 'rest' : 'waiting';
-            const remoteStatus = remoteTyped.isResting ? 'rest' : 'waiting';
-            changes.push(`${local.name}: ${localStatus} → ${remoteStatus}`);
-          }
-        });
-        console.log('[FirebaseSync] 🔄 Player changes:', changes);
-        usePlayerStore.setState({ players: gameState.players });
-      }
-
-      // ゲームストアを更新
-      const { courts, matchHistory } = useGameStore.getState();
-      const gameUpdates: Record<string, unknown> = {};
-      if (JSON.stringify(courts) !== JSON.stringify(gameState.courts)) {
-        // 試合開始通知: コートが isPlaying: false → true に変わった場合
-        checkMatchStartNotifications(courts, gameState.courts);
-        gameUpdates.courts = gameState.courts;
-      }
-      if (JSON.stringify(matchHistory) !== JSON.stringify(gameState.matchHistory)) {
-        gameUpdates.matchHistory = gameState.matchHistory;
-      }
-      if (Object.keys(gameUpdates).length > 0) {
-        useGameStore.setState(gameUpdates as { courts: typeof courts; matchHistory: typeof matchHistory });
-      }
-
-      // 予約ストアを更新
-      const { reservations } = useReservationStore.getState();
-      if (gameState.reservations && JSON.stringify(reservations) !== JSON.stringify(gameState.reservations)) {
-        useReservationStore.setState({ reservations: gameState.reservations });
-      }
-
-      // 適用したリモートデータの更新時刻を記録
-      lastAppliedRemoteUpdatedAt.current = remoteUpdatedAt;
-    } finally {
-      // すべてのストア更新が完了してから必ずフラグをリセット
-      isSyncingFromRemote.current = false;
+    // プレイヤーストアを更新
+    const { players } = usePlayerStore.getState();
+    if (JSON.stringify(players) !== JSON.stringify(gameState.players)) {
+      // 変更されたプレイヤーをログ出力
+      const changes: string[] = [];
+      players.forEach((local) => {
+        const remote = gameState.players.find((p: { id: string }) => p.id === local.id);
+        if (remote && JSON.stringify(local) !== JSON.stringify(remote)) {
+          const remoteTyped = remote as { isResting: boolean };
+          const localStatus = local.isResting ? 'rest' : 'waiting';
+          const remoteStatus = remoteTyped.isResting ? 'rest' : 'waiting';
+          changes.push(`${local.name}: ${localStatus} → ${remoteStatus}`);
+        }
+      });
+      console.log('[FirebaseSync] 🔄 Player changes:', changes);
+      usePlayerStore.setState({ players: gameState.players });
     }
+
+    // ゲームストアを更新
+    const { courts, matchHistory } = useGameStore.getState();
+    const gameUpdates: Record<string, unknown> = {};
+    if (JSON.stringify(courts) !== JSON.stringify(gameState.courts)) {
+      // 試合開始通知: コートが isPlaying: false → true に変わった場合
+      checkMatchStartNotifications(courts, gameState.courts);
+      gameUpdates.courts = gameState.courts;
+    }
+    if (JSON.stringify(matchHistory) !== JSON.stringify(gameState.matchHistory)) {
+      gameUpdates.matchHistory = gameState.matchHistory;
+    }
+    if (Object.keys(gameUpdates).length > 0) {
+      useGameStore.setState(gameUpdates as { courts: typeof courts; matchHistory: typeof matchHistory });
+    }
+
+    // 予約ストアを更新
+    const { reservations } = useReservationStore.getState();
+    if (gameState.reservations && JSON.stringify(reservations) !== JSON.stringify(gameState.reservations)) {
+      useReservationStore.setState({ reservations: gameState.reservations });
+    }
+
+    // 適用したリモートデータの更新時刻を記録
+    lastAppliedRemoteUpdatedAt.current = remoteUpdatedAt;
+
+    // ストア更新が完全に反映されるまで少し待ってからフラグをリセット
+    // (setStateは同期的だが、subscribeコールバックは非同期的に呼ばれる可能性がある)
+    setTimeout(() => {
+      isSyncingFromRemote.current = false;
+    }, 100);
   }, []); // 依存なし: refとgetState()のみ使用、再生成不要
 
   // ローカル変更をFirestoreに即座にpush
