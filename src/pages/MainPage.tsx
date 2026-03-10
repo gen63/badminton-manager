@@ -1014,7 +1014,6 @@ export function MainPage() {
                     }}
                     className="w-full h-10 pl-3 pr-3 bg-input border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50"
                     placeholder="こば 男"
-                    autoFocus
                   />
                 </div>
                 <button

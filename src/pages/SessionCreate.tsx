@@ -429,7 +429,6 @@ export function SessionCreate() {
                 placeholder="ABC123"
                 maxLength={6}
                 className="input-field text-center text-2xl font-bold tracking-wider"
-                autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleJoinSession();
                 }}

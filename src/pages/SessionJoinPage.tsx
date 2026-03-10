@@ -326,7 +326,6 @@ export function SessionJoinPage() {
                   }}
                   placeholder="名前を入力"
                   className="flex-1 input-field"
-                  autoFocus
                 />
                 <button
                   onClick={handleAddPlayer}
