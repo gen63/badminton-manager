@@ -18,6 +18,37 @@ function hashGameState(data: { players: unknown[]; courts: unknown[]; matchHisto
 }
 
 /**
+ * Firestoreタイムスタンプをミリ秒に変換（堅牢版）
+ * @returns ミリ秒、または取得失敗時はnull
+ */
+function getTimestampMillis(timestamp: unknown): number | null {
+  if (!timestamp) {
+    console.warn('[FirebaseSync] Timestamp is null/undefined');
+    return null;
+  }
+  
+  // 数値（ミリ秒）の場合
+  if (typeof timestamp === 'number') {
+    return timestamp;
+  }
+  
+  // Firestore Timestamp型
+  if (typeof timestamp === 'object' && timestamp !== null) {
+    // toMillis()メソッドがあれば使用（推奨）
+    if ('toMillis' in timestamp && typeof timestamp.toMillis === 'function') {
+      return (timestamp as { toMillis(): number }).toMillis();
+    }
+    // secondsフィールドで変換（フォールバック）
+    if ('seconds' in timestamp && typeof timestamp.seconds === 'number') {
+      return (timestamp as { seconds: number }).seconds * 1000;
+    }
+  }
+  
+  console.error('[FirebaseSync] Unknown timestamp format:', timestamp);
+  return null;
+}
+
+/**
  * Firebase双方向同期フック
  *
  * 全参加者がFirestoreのゲーム状態をリアルタイムで受信し、
@@ -39,7 +70,6 @@ export function useFirebaseSync() {
   const lastAppliedRemoteUpdatedAt = useRef<number>(0);
   const sessionDeletedNotified = useRef(false);
   const pushTimer = useRef<number | null>(null);
-  const pullTimer = useRef<number | null>(null);
 
   const pushGameState = useCallback((sid: string) => {
     const { players } = usePlayerStore.getState();
@@ -85,17 +115,26 @@ export function useFirebaseSync() {
 
   // リモートデータを適用する処理（デバウンス後に実行）
   const applyRemoteData = useCallback((gameState: GameState, data: { updatedAt: unknown }) => {
-    // リモートの更新時刻を取得
-    const remoteUpdatedAt = typeof data.updatedAt === 'number'
-      ? data.updatedAt
-      : (data.updatedAt as { seconds: number })?.seconds * 1000 || 0;
+    // リモートの更新時刻を取得（堅牢版）
+    const remoteUpdatedAt = getTimestampMillis(data.updatedAt);
+    
+    // タイムスタンプ取得失敗時はエラーログを出して中断
+    if (remoteUpdatedAt === null) {
+      console.error('[FirebaseSync] ❌ Failed to parse updatedAt:', {
+        raw: data.updatedAt,
+        type: typeof data.updatedAt,
+      });
+      return;
+    }
 
     // 受信したデータのハッシュを計算
     const incomingHash = hashGameState(gameState);
     
-    console.log('[FirebaseSync] 📥 PULL received (debounced)', {
-      remoteUpdatedAt: new Date(remoteUpdatedAt).toISOString(),
-      lastApplied: new Date(lastAppliedRemoteUpdatedAt.current).toISOString(),
+    console.log('[FirebaseSync] 📥 PULL received', {
+      remoteUpdatedAt,
+      remoteUpdatedAtISO: new Date(remoteUpdatedAt).toISOString(),
+      lastApplied: lastAppliedRemoteUpdatedAt.current,
+      lastAppliedISO: lastAppliedRemoteUpdatedAt.current > 0 ? new Date(lastAppliedRemoteUpdatedAt.current).toISOString() : 'never',
       hash: incomingHash.substring(0, 30),
       lastPushedHash: lastPushedHash.current.substring(0, 30),
       timeSinceLastPush: Date.now() - lastPushedTime.current,
@@ -110,8 +149,12 @@ export function useFirebaseSync() {
     }
 
     // リモートデータが古い（または同じ）なら無視
-    if (remoteUpdatedAt <= lastAppliedRemoteUpdatedAt.current) {
-      console.log('[FirebaseSync] ⏭️  SKIP: older remote data', remoteUpdatedAt, '<=', lastAppliedRemoteUpdatedAt.current);
+    if (lastAppliedRemoteUpdatedAt.current > 0 && remoteUpdatedAt <= lastAppliedRemoteUpdatedAt.current) {
+      console.log('[FirebaseSync] ⏭️  SKIP: older remote data', {
+        remote: remoteUpdatedAt,
+        lastApplied: lastAppliedRemoteUpdatedAt.current,
+        diff: remoteUpdatedAt - lastAppliedRemoteUpdatedAt.current,
+      });
       return;
     }
 
@@ -227,26 +270,15 @@ export function useFirebaseSync() {
         
         if (!gameState) return;
 
-        // デバウンス: 100ms以内の連続pull通知をまとめる
-        if (pullTimer.current) {
-          clearTimeout(pullTimer.current);
-        }
-        pullTimer.current = setTimeout(() => {
-          pullTimer.current = null;
-          applyRemoteData(gameState, data as { updatedAt: unknown });
-        }, 100) as unknown as number;
+        // デバウンスなし：即座に判定・適用
+        applyRemoteData(gameState, data as { updatedAt: unknown });
       },
       (error) => {
         console.error('GameState subscription error:', error);
       }
     );
 
-    return () => {
-      unsub();
-      if (pullTimer.current) {
-        clearTimeout(pullTimer.current);
-      }
-    };
+    return unsub;
   }, [isShared, sessionId, toast, navigate, applyRemoteData]);
 }
 
