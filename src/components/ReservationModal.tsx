@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Plus, Trash2, ChevronDown, Users, Clock, CheckCircle2 } from 'lucide-react';
 import type { Reservation } from '../types/reservation';
 import type { Player } from '../types/player';
+import type { GameMode } from '../types/session';
 import { ReservationAddModal } from './ReservationAddModal';
 
 interface ReservationModalProps {
@@ -12,6 +13,7 @@ interface ReservationModalProps {
   onAdd: (playerIds: string[]) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
+  gameMode?: GameMode;
 }
 
 export function ReservationModal({
@@ -22,6 +24,7 @@ export function ReservationModal({
   onAdd,
   onRemove,
   onClose,
+  gameMode,
 }: ReservationModalProps) {
   const [showAdd, setShowAdd] = useState(false);
   const [showFulfilled, setShowFulfilled] = useState(false);
@@ -44,6 +47,7 @@ export function ReservationModal({
       <ReservationAddModal
         players={players}
         getPlayerName={getPlayerName}
+        gameMode={gameMode}
         onConfirm={(playerIds) => {
           onAdd(playerIds);
           onClose();
