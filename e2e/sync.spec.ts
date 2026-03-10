@@ -1,4 +1,4 @@
-import { test, expect, Browser, Page } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 
 /**
  * Firebase同期のE2Eテスト
@@ -86,8 +86,6 @@ async function joinSession(page: Page, sessionId: string, userName: string): Pro
 }
 
 test.describe('Firebase同期テスト', () => {
-  let browserA: Browser;
-  let browserB: Browser;
   let pageA: Page;
   let pageB: Page;
 

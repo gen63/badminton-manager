@@ -39,8 +39,12 @@ export function useFirebaseSync() {
   // toast と navigate を ref で保持（依存配列の安定化）
   const toastRef = useRef(toast);
   const navigateRef = useRef(navigate);
-  toastRef.current = toast;
-  navigateRef.current = navigate;
+  
+  // ref更新はuseEffectで行う（render中の更新はNG）
+  useEffect(() => {
+    toastRef.current = toast;
+    navigateRef.current = navigate;
+  }, [toast, navigate]);
 
   const pushGameState = useCallback((sid: string) => {
     const { players } = usePlayerStore.getState();
@@ -86,7 +90,11 @@ export function useFirebaseSync() {
 
   // pushGameStateをrefで保持（依存配列の安定化）
   const pushGameStateRef = useRef(pushGameState);
-  pushGameStateRef.current = pushGameState;
+  
+  // ref更新はuseEffectで行う（render中の更新はNG）
+  useEffect(() => {
+    pushGameStateRef.current = pushGameState;
+  }, [pushGameState]);
   
   // デバウンス付きpush：300ms以内の連続変更をまとめる
   const schedulePush = useCallback((sid: string) => {
@@ -239,7 +247,7 @@ export function useFirebaseSync() {
         clearTimeout(pushTimer.current);
       }
     };
-  }, [isShared, sessionId]); // sessionIdが変わった時のみ再実行
+  }, [isShared, sessionId, schedulePush]); // schedulePushを依存配列に追加
 
   // Firestoreからpull（リアルタイム監視）
   useEffect(() => {
@@ -275,7 +283,7 @@ export function useFirebaseSync() {
     );
 
     return unsub;
-  }, [isShared, sessionId]); // sessionIdが変わった時のみ再実行（ref経由で安定化）
+  }, [isShared, sessionId, applyRemoteData]); // applyRemoteDataを依存配列に追加
 }
 
 // 通知済みの試合を記録（重複防止）
