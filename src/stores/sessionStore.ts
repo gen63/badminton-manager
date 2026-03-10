@@ -124,6 +124,7 @@ export const useSessionStore = create<SessionState>()(
           currentUser,
           newReadBy: newInformation.readBy,
           textLength: newInformation.text.length,
+          text: newInformation.text,
         });
 
         // ローカル更新
@@ -133,11 +134,21 @@ export const useSessionStore = create<SessionState>()(
             : null,
         }));
 
+        // ローカル更新後の確認
+        const afterUpdate = get();
+        console.log('[SessionStore] 更新後の確認:', {
+          hasSession: !!afterUpdate.session,
+          hasInformation: !!afterUpdate.session?.information,
+          savedText: afterUpdate.session?.information?.text,
+          savedTextLength: afterUpdate.session?.information?.text?.length || 0,
+        });
+
         // オンラインモード: Firebaseにも反映
         if (session.id && session.createdBy) {
           const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
           try {
             await updateFirebaseSession(session.id, { information: newInformation });
+            console.log('[SessionStore] Firebase更新成功');
           } catch (error) {
             console.error('[SessionStore] Failed to update information:', error);
           }

@@ -74,6 +74,21 @@ export function MainPage() {
 
   // インフォメーションバッジのデバッグログ（開発時のみ）
   useEffect(() => {
+    if (session?.information) {
+      console.log('[Information] session.information変更検出:', {
+        hasText: !!session.information.text,
+        textLength: session.information.text?.length || 0,
+        text: session.information.text?.substring(0, 50) || '(空)',
+        readBy: session.information.readBy || [],
+        updatedBy: session.information.updatedBy,
+      });
+    } else {
+      console.log('[Information] session.information は undefined');
+    }
+  }, [session?.information]);
+
+  // バッジ表示判定のログ
+  useEffect(() => {
     if (session?.information?.text && currentUser) {
       const readBy = session.information.readBy || [];
       const isUnread = !readBy.includes(currentUser);
@@ -1203,6 +1218,11 @@ export function MainPage() {
                   <button
                     onClick={() => {
                       const trimmed = informationText.trim();
+                      console.log('[Information] 保存ボタンクリック:', {
+                        informationText,
+                        trimmed,
+                        textLength: informationText.length,
+                      });
                       updateInformation(informationText);
                       setShowInformationModal(false);
                       toast.success(trimmed ? 'お知らせを更新しました' : 'お知らせを削除しました');
