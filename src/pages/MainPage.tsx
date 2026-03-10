@@ -88,6 +88,16 @@ export function MainPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
 
+  // config.courtCount と courts.length を同期（オンラインモード時）
+  useEffect(() => {
+    if (!session?.createdBy) return; // ローカルモードでは不要
+    const configCourtCount = session.config.courtCount || 1;
+    if (courts.length !== configCourtCount) {
+      console.log('[MainPage] Auto-resizing courts:', { from: courts.length, to: configCourtCount });
+      resizeCourts(configCourtCount);
+    }
+  }, [session?.config.courtCount, courts.length, session?.createdBy, resizeCourts]);
+
   // PWAバッジ更新：支払い予定額を表示
   useEffect(() => {
     if (!session || !currentUser) {
@@ -127,7 +137,7 @@ export function MainPage() {
     });
   };
 
-  const handleAddCourt = () => {
+  const handleAddCourt = async () => {
     if (courts.length < 3) {
       const newCount = courts.length + 1;
       resizeCourts(newCount);
@@ -142,10 +152,27 @@ export function MainPage() {
           setContinuousMatchMode(false);
         }
       }
+
+      // コート数変更は重要な操作なので、即座にFirestoreにpush（デバウンスをスキップ）
+      if (session?.id && session?.createdBy) {
+        const { syncGameStateWithTransaction } = await import('../services/sessionService');
+        const { players: currentPlayers } = usePlayerStore.getState();
+        const { courts: currentCourts, matchHistory: currentHistory } = useGameStore.getState();
+        const { reservations: currentReservations } = useReservationStore.getState();
+        
+        syncGameStateWithTransaction(session.id, {
+          players: currentPlayers,
+          courts: currentCourts,
+          matchHistory: currentHistory,
+          reservations: currentReservations,
+        }).catch((err) => {
+          console.error('[handleAddCourt] Failed to sync:', err);
+        });
+      }
     }
   };
 
-  const handleRemoveCourt = (courtId: number) => {
+  const handleRemoveCourt = async (courtId: number) => {
     if (courts.length <= 1) return;
     const court = courts.find(c => c.id === courtId);
     if (!court) return;
@@ -153,6 +180,23 @@ export function MainPage() {
     if (hasPlayers || court.isPlaying) return;
     removeCourtById(courtId);
     updateConfig({ courtCount: courts.length - 1 });
+
+    // コート数変更は重要な操作なので、即座にFirestoreにpush（デバウンスをスキップ）
+    if (session?.id && session?.createdBy) {
+      const { syncGameStateWithTransaction } = await import('../services/sessionService');
+      const { players: currentPlayers } = usePlayerStore.getState();
+      const { courts: currentCourts, matchHistory: currentHistory } = useGameStore.getState();
+      const { reservations: currentReservations } = useReservationStore.getState();
+      
+      syncGameStateWithTransaction(session.id, {
+        players: currentPlayers,
+        courts: currentCourts,
+        matchHistory: currentHistory,
+        reservations: currentReservations,
+      }).catch((err) => {
+        console.error('[handleRemoveCourt] Failed to sync:', err);
+      });
+    }
   };
 
   const pendingReservations = reservations.filter(r => r.status === 'pending');
