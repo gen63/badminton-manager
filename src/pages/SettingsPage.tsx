@@ -18,6 +18,7 @@ export function SettingsPage() {
   const [showSessionInfo, setShowSessionInfo] = useState(false);
   const [sessionIdCopied, setSessionIdCopied] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
+  const [selectedAdmins, setSelectedAdmins] = useState<string[]>([]);
 
   // 権限判定
   const isAdmin = checkIsAdmin();
@@ -113,10 +114,10 @@ export function SettingsPage() {
     navigate('/');
   };
 
-  const handleAddAdmin = async (name: string) => {
-    if (!session.id || !session.createdBy) return;
+  const handleAddAdmins = async () => {
+    if (!session.id || !session.createdBy || selectedAdmins.length === 0) return;
     
-    const updatedAdmins = [...(session.admins || []), name];
+    const updatedAdmins = [...(session.admins || []), ...selectedAdmins];
     
     // Firebase更新
     const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
@@ -125,10 +126,19 @@ export function SettingsPage() {
       // ローカルストア更新
       useSessionStore.getState().updateSession({ admins: updatedAdmins });
     } catch (error) {
-      console.error('Failed to add admin:', error);
+      console.error('Failed to add admins:', error);
     }
     
+    setSelectedAdmins([]);
     setShowAddAdminModal(false);
+  };
+
+  const handleToggleAdmin = (name: string) => {
+    setSelectedAdmins(prev =>
+      prev.includes(name)
+        ? prev.filter(n => n !== name)
+        : [...prev, name]
+    );
   };
 
   const handleRemoveAdmin = async (name: string) => {
@@ -451,25 +461,37 @@ export function SettingsPage() {
       {/* 管理者追加モーダル */}
       {showAddAdminModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-card rounded-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
-            <h3 className="text-lg font-bold text-foreground mb-4">管理者を追加</h3>
+          <div className="bg-card rounded-2xl p-6 max-w-md w-full max-h-[80vh] flex flex-col">
+            <h3 className="text-lg font-bold text-foreground mb-2">管理者を追加</h3>
             <p className="text-xs text-muted-foreground mb-4">
-              管理者にしたいプレイヤーを選択してください
+              管理者にしたいプレイヤーを選択してください（複数選択可）
             </p>
             
-            <div className="space-y-2 mb-6">
+            <div className="space-y-2 mb-4 overflow-y-auto flex-1">
               {players
                 .filter(player => player.name !== session.createdBy && !session.admins?.includes(player.name))
-                .map((player) => (
-                  <button
-                    key={player.id}
-                    onClick={() => handleAddAdmin(player.name)}
-                    className="w-full bg-muted hover:bg-muted/70 rounded-xl p-3 text-left text-sm font-medium text-foreground transition-colors flex items-center gap-2"
-                  >
-                    <span className="text-lg">👤</span>
-                    {player.name}
-                  </button>
-                ))}
+                .map((player) => {
+                  const isSelected = selectedAdmins.includes(player.name);
+                  return (
+                    <button
+                      key={player.id}
+                      onClick={() => handleToggleAdmin(player.name)}
+                      className={`w-full rounded-xl p-3 text-left text-sm font-medium transition-colors flex items-center gap-3 ${
+                        isSelected
+                          ? 'bg-indigo-100 text-indigo-900 border-2 border-indigo-500'
+                          : 'bg-muted hover:bg-muted/70 text-foreground border-2 border-transparent'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${
+                        isSelected ? 'bg-indigo-500' : 'bg-muted-foreground/20'
+                      }`}>
+                        {isSelected && <Check size={14} className="text-white" />}
+                      </div>
+                      <span className="text-lg">👤</span>
+                      <span className="flex-1">{player.name}</span>
+                    </button>
+                  );
+                })}
               
               {players.filter(player => player.name !== session.createdBy && !session.admins?.includes(player.name)).length === 0 && (
                 <p className="text-center text-sm text-muted-foreground py-8">
@@ -478,12 +500,24 @@ export function SettingsPage() {
               )}
             </div>
 
-            <button
-              onClick={() => setShowAddAdminModal(false)}
-              className="w-full btn-secondary"
-            >
-              キャンセル
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setSelectedAdmins([]);
+                  setShowAddAdminModal(false);
+                }}
+                className="flex-1 btn-secondary"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleAddAdmins}
+                disabled={selectedAdmins.length === 0}
+                className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                追加 {selectedAdmins.length > 0 && `(${selectedAdmins.length})`}
+              </button>
+            </div>
           </div>
         </div>
       )}
