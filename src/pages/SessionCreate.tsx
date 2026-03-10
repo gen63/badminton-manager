@@ -15,6 +15,7 @@ import { isFirebaseConfigured } from '../lib/firebase';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
+import type { GameMode } from '../types/session';
 import { Sparkles, Download, Loader2, Play, LogIn } from 'lucide-react';
 
 // 現在日時を取得（曜日に応じて時刻を設定）
@@ -83,6 +84,7 @@ export function SessionCreate() {
   const [selectedGym] = useState(getInitialGym);
   const [practiceDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
+  const [practiceType, setPracticeType] = useState<'単' | '複' | '楽'>('複');
   
   // Phase 1: セッションID参加機能
   const [showJoinMode, setShowJoinMode] = useState(false);
@@ -196,6 +198,7 @@ export function SessionCreate() {
         const sessionId = generateSessionId();
         const now = Date.now();
         const practiceTime = new Date(practiceDateTime).getTime();
+        const gameMode: GameMode = practiceType === '単' ? 'singles' : 'doubles';
         const session = {
           id: sessionId,
           config: {
@@ -204,6 +207,7 @@ export function SessionCreate() {
             practiceDate: practiceDateTime.split('T')[0],
             practiceStartTime: practiceTime,
             gym: selectedGym || undefined,
+            gameMode,
           },
           createdAt: now,
           updatedAt: now,
@@ -211,7 +215,7 @@ export function SessionCreate() {
 
         setSession(session);
         initializeCourts(adjustedCourtCount);
-        
+
         // ローディング状態を解除してから遷移
         setIsLoadingMembers(false);
         
@@ -254,12 +258,14 @@ export function SessionCreate() {
     const adjustedCourtCount = 1;
     const now = Date.now();
     const practiceTime = new Date(practiceDateTime).getTime();
+    const gameMode: GameMode = practiceType === '単' ? 'singles' : 'doubles';
     const sessionConfig = {
       courtCount: adjustedCourtCount,
       targetScore,
       practiceDate: practiceDateTime.split('T')[0],
       practiceStartTime: practiceTime,
       gym: selectedGym || undefined,
+      gameMode,
     };
 
     // オンラインモード: 作成者名が未選択の場合は選択画面へ
@@ -529,6 +535,28 @@ export function SessionCreate() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* 練習種別 */}
+          <div>
+            <label className="label">練習種別</label>
+            <div className="flex gap-2">
+              {(['単', '複', '楽'] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setPracticeType(type)}
+                  className={`flex-1 select-button text-xs px-2 ${
+                    practiceType === type ? 'select-button-active' : 'select-button-inactive'
+                  }`}
+                >
+                  {practiceType === type && <span className="mr-1">✓</span>}
+                  {type}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {practiceType === '単' ? 'シングルス（1対1）' : practiceType === '複' ? 'ダブルス（2対2）' : 'レクリエーション（2対2）'}
+            </p>
           </div>
 
           {/* 配置モード */}

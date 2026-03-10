@@ -29,6 +29,8 @@ export function ScoreInputPage() {
     return null;
   }
 
+  const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
+
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '不明';
   };
@@ -39,22 +41,36 @@ export function ScoreInputPage() {
     } else if (selectedPlayer.position === position) {
       setSelectedPlayer(null);
     } else {
-      const allPlayers = [...match.teamA, ...match.teamB];
-      const temp = allPlayers[selectedPlayer.position];
-      allPlayers[selectedPlayer.position] = allPlayers[position];
-      allPlayers[position] = temp;
+      if (isMatchSingles) {
+        // シングルス: position 0 と 1 のみ (teamA[0] と teamB[0])
+        const p = [match.teamA[0], match.teamB[0]];
+        const temp = p[selectedPlayer.position];
+        p[selectedPlayer.position] = p[position];
+        p[position] = temp;
 
-      const updatedHistory = matchHistory.map((m) =>
-        m.id === matchId
-          ? {
-              ...m,
-              teamA: [allPlayers[0], allPlayers[1]] as [string, string],
-              teamB: [allPlayers[2], allPlayers[3]] as [string, string],
-            }
-          : m
-      );
+        const updatedHistory = matchHistory.map((m) =>
+          m.id === matchId
+            ? { ...m, teamA: [p[0], ''] as [string, string], teamB: [p[1], ''] as [string, string] }
+            : m
+        );
+        useGameStore.setState({ matchHistory: updatedHistory });
+      } else {
+        const allPlayers = [...match.teamA, ...match.teamB];
+        const temp = allPlayers[selectedPlayer.position];
+        allPlayers[selectedPlayer.position] = allPlayers[position];
+        allPlayers[position] = temp;
 
-      useGameStore.setState({ matchHistory: updatedHistory });
+        const updatedHistory = matchHistory.map((m) =>
+          m.id === matchId
+            ? {
+                ...m,
+                teamA: [allPlayers[0], allPlayers[1]] as [string, string],
+                teamB: [allPlayers[2], allPlayers[3]] as [string, string],
+              }
+            : m
+        );
+        useGameStore.setState({ matchHistory: updatedHistory });
+      }
       setSelectedPlayer(null);
     }
   };
@@ -160,62 +176,88 @@ export function ScoreInputPage() {
             </div>
           )}
 
-          {/* A  VS  C */}
-          {/* B      D */}
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3 gap-y-1.5">
-            {/* A */}
-            <button
-              onClick={() => handlePlayerTap(0)}
-              className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                selectedPlayer?.position === 0
-                  ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                  : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
-              }`}
-            >
-              {getPlayerName(match.teamA[0])}
-            </button>
+          {isMatchSingles ? (
+            /* シングルス: A vs B */
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3">
+              <button
+                onClick={() => handlePlayerTap(0)}
+                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                  selectedPlayer?.position === 0
+                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
+                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
+                }`}
+              >
+                {getPlayerName(match.teamA[0])}
+              </button>
 
-            {/* VS */}
-            <span className="text-muted-foreground font-bold text-xs row-span-2 self-center">VS</span>
+              <span className="text-muted-foreground font-bold text-xs self-center">VS</span>
 
-            {/* C */}
-            <button
-              onClick={() => handlePlayerTap(2)}
-              className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                selectedPlayer?.position === 2
-                  ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                  : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
-              }`}
-            >
-              {getPlayerName(match.teamB[0])}
-            </button>
+              <button
+                onClick={() => handlePlayerTap(1)}
+                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                  selectedPlayer?.position === 1
+                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
+                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
+                }`}
+              >
+                {getPlayerName(match.teamB[0])}
+              </button>
+            </div>
+          ) : (
+            /* ダブルス: A,B vs C,D */
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3 gap-y-1.5">
+              {/* A */}
+              <button
+                onClick={() => handlePlayerTap(0)}
+                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                  selectedPlayer?.position === 0
+                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
+                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
+                }`}
+              >
+                {getPlayerName(match.teamA[0])}
+              </button>
 
-            {/* B */}
-            <button
-              onClick={() => handlePlayerTap(1)}
-              className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                selectedPlayer?.position === 1
-                  ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                  : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
-              }`}
-            >
-              {getPlayerName(match.teamA[1])}
-            </button>
+              {/* VS */}
+              <span className="text-muted-foreground font-bold text-xs row-span-2 self-center">VS</span>
 
-            {/* (VSのrow-span-2で埋まる) */}
+              {/* C */}
+              <button
+                onClick={() => handlePlayerTap(2)}
+                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                  selectedPlayer?.position === 2
+                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
+                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
+                }`}
+              >
+                {getPlayerName(match.teamB[0])}
+              </button>
 
-            {/* D */}
-            <button
-              onClick={() => handlePlayerTap(3)}
-              className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                selectedPlayer?.position === 3
-                  ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                  : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
-              }`}
-            >
-              {getPlayerName(match.teamB[1])}
-            </button>
-          </div>
+              {/* B */}
+              <button
+                onClick={() => handlePlayerTap(1)}
+                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                  selectedPlayer?.position === 1
+                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
+                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
+                }`}
+              >
+                {getPlayerName(match.teamA[1])}
+              </button>
+
+              {/* D */}
+              <button
+                onClick={() => handlePlayerTap(3)}
+                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                  selectedPlayer?.position === 3
+                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
+                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
+                }`}
+              >
+                {getPlayerName(match.teamB[1])}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* スコア表示 */}
