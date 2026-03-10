@@ -6,7 +6,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { parsePlayerInput, getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, StopCircle, Trash2, ChevronDown, Minus, Settings } from 'lucide-react';
+import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, StopCircle, Trash2, ChevronDown, Minus, Settings, Info } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
@@ -22,7 +22,7 @@ import { BottomNav } from '../components/BottomNav';
 
 export function MainPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, currentUser, isAdmin } = useSessionStore();
+  const { session, updateConfig, currentUser, isAdmin, updateInformation, markInformationAsRead } = useSessionStore();
 
   // オンラインモード時のリアルタイム同期
   const isSharedSession = !!session?.createdBy;
@@ -54,6 +54,8 @@ export function MainPage() {
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
+  const [showInformationModal, setShowInformationModal] = useState(false);
+  const [informationText, setInformationText] = useState('');
 
   const playerCardRef = useRef<HTMLDivElement>(null);
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -614,6 +616,33 @@ export function MainPage() {
               <Users size={16} />
               <span>一括</span>
             </button>
+            {/* インフォメーションアイコン */}
+            <button
+              onClick={() => {
+                // 管理者は周知事項がなくても編集モーダルを開ける
+                if (isAdmin()) {
+                  setInformationText(session?.information?.text || '');
+                  setShowInformationModal(true);
+                } else if (session?.information?.text) {
+                  // メンバーは周知事項がある場合のみ閲覧＋既読化
+                  setInformationText(session.information.text);
+                  setShowInformationModal(true);
+                  markInformationAsRead();
+                }
+              }}
+              disabled={!isAdmin() && !session?.information?.text}
+              className={`relative flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full transition-colors ${
+                session?.information?.text || isAdmin()
+                  ? 'hover:bg-muted text-blue-600'
+                  : 'text-muted-foreground/30 cursor-not-allowed'
+              }`}
+              aria-label="お知らせ"
+            >
+              <Info size={20} />
+              {session?.information?.text && currentUser && !session.information.readBy.includes(currentUser) && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" />
+              )}
+            </button>
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -1091,6 +1120,82 @@ export function MainPage() {
           onConfirm={handlePaymentConfirm}
           onCancel={() => setPaymentModalPlayer(null)}
         />
+      )}
+
+      {/* インフォメーションモーダル */}
+      {showInformationModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-card rounded-2xl p-6 max-w-md w-full max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Info size={20} className="text-blue-600" />
+                お知らせ
+              </h3>
+              <button
+                onClick={() => setShowInformationModal(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            {isAdmin() ? (
+              /* 管理者: 編集モード */
+              <>
+                <textarea
+                  value={informationText}
+                  onChange={(e) => setInformationText(e.target.value)}
+                  className="flex-1 w-full p-3 bg-muted border border-border rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 mb-4"
+                  placeholder="メンバーへの周知事項を入力..."
+                  rows={8}
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setShowInformationModal(false);
+                      setInformationText('');
+                    }}
+                    className="flex-1 btn-secondary"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={() => {
+                      updateInformation(informationText);
+                      setShowInformationModal(false);
+                      toast.success('お知らせを更新しました');
+                    }}
+                    className="flex-1 btn-primary"
+                  >
+                    保存
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* メンバー: 閲覧モード */
+              <>
+                <div className="flex-1 overflow-y-auto mb-4">
+                  <div className="bg-muted/50 rounded-xl p-4">
+                    <p className="text-sm text-foreground whitespace-pre-wrap">
+                      {informationText}
+                    </p>
+                  </div>
+                  {session?.information?.updatedBy && (
+                    <p className="text-xs text-muted-foreground mt-2 text-right">
+                      更新: {session.information.updatedBy}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowInformationModal(false)}
+                  className="w-full btn-primary"
+                >
+                  閉じる
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       <BottomNav activeTab="court" />

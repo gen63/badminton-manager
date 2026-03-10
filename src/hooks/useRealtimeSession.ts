@@ -20,6 +20,7 @@ export function useRealtimeSession(sessionId: string | null) {
           participants: session.participants,
           admins: session.admins,
           status: session.status,
+          information: session.information,
         });
       }
     });

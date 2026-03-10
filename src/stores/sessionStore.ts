@@ -14,6 +14,8 @@ interface SessionState {
   isCreator: () => boolean;
   isAdmin: () => boolean;
   updateSession: (updates: Partial<Session>) => void;
+  updateInformation: (text: string) => Promise<void>;
+  markInformationAsRead: () => Promise<void>;
 }
 
 export const useSessionStore = create<SessionState>()(
@@ -86,6 +88,61 @@ export const useSessionStore = create<SessionState>()(
             ? { ...state.session, ...updates, updatedAt: Date.now() }
             : null,
         })),
+      updateInformation: async (text) => {
+        const { session, currentUser } = get();
+        if (!session) return;
+
+        const newInformation = {
+          text,
+          updatedAt: Date.now(),
+          updatedBy: currentUser || undefined,
+          readBy: currentUser ? [currentUser] : [], // 編集者は既読扱い
+        };
+
+        // ローカル更新
+        set((state) => ({
+          session: state.session
+            ? { ...state.session, information: newInformation, updatedAt: Date.now() }
+            : null,
+        }));
+
+        // オンラインモード: Firebaseにも反映
+        if (session.id && session.createdBy) {
+          const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
+          try {
+            await updateFirebaseSession(session.id, { information: newInformation });
+          } catch (error) {
+            console.error('[SessionStore] Failed to update information:', error);
+          }
+        }
+      },
+      markInformationAsRead: async () => {
+        const { session, currentUser } = get();
+        if (!session || !session.information || !currentUser) return;
+
+        // 既に既読の場合は何もしない
+        if (session.information.readBy.includes(currentUser)) return;
+
+        const updatedReadBy = [...session.information.readBy, currentUser];
+        const updatedInformation = { ...session.information, readBy: updatedReadBy };
+
+        // ローカル更新
+        set((state) => ({
+          session: state.session
+            ? { ...state.session, information: updatedInformation }
+            : null,
+        }));
+
+        // オンラインモード: Firebaseにも反映
+        if (session.id && session.createdBy) {
+          const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
+          try {
+            await updateFirebaseSession(session.id, { information: updatedInformation });
+          } catch (error) {
+            console.error('[SessionStore] Failed to mark information as read:', error);
+          }
+        }
+      },
     }),
     {
       name: 'badminton-session',
