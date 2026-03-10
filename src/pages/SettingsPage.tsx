@@ -11,6 +11,7 @@ import { deleteSession } from '../services/sessionService';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { clearAppBadge } from '../lib/badge';
 import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrCode, Copy, Check } from 'lucide-react';
+import type { GameMode } from '../types/session';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -202,6 +203,35 @@ export function SettingsPage() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">練習種別</label>
+              <div className="flex gap-2">
+                {(['単', '複', '楽'] as const).map((type) => {
+                  const currentMode: GameMode = session.config.gameMode || 'doubles';
+                  const isActive = type === '単'
+                    ? currentMode === 'singles'
+                    : type === '複'
+                    ? currentMode === 'doubles'
+                    : false;
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => updateConfig({ gameMode: type === '単' ? 'singles' : 'doubles' })}
+                      className={`flex-1 select-button text-xs px-2 ${
+                        isActive ? 'select-button-active' : 'select-button-inactive'
+                      }`}
+                    >
+                      {isActive && <span className="mr-1">✓</span>}
+                      {type}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {(session.config.gameMode || 'doubles') === 'singles' ? 'シングルス（1対1）' : 'ダブルス（2対2）'}
+              </p>
             </div>
 
             <div>
