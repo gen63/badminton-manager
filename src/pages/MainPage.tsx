@@ -1062,7 +1062,7 @@ export function MainPage() {
                   <button
                     key={player.id}
                     onClick={() => handlePlayerTap(player.id)}
-                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm transition-all text-left h-[58px] ${
+                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl px-2 pt-[3px] pb-2 flex flex-col items-center justify-end gap-0 shadow-sm transition-all text-left h-[58px] ${
                       isSelected
                         ? 'ring-2 ring-primary ring-offset-1 border-primary'
                         : isReserved
