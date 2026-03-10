@@ -7,7 +7,6 @@ export function PWAPrompt() {
     updateServiceWorker,
   } = useRegisterSW({
     onRegisteredSW(_swUrl, r) {
-      console.log('SW Registered:', r);
       if (r) {
         // 1分ごとにSWの更新をチェック
         setInterval(() => {
@@ -31,7 +30,7 @@ export function PWAPrompt() {
       }
     },
     onRegisterError(error) {
-      console.log('SW registration error', error);
+      console.error('SW registration error', error);
     },
   });
 

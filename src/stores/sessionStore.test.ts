@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useSessionStore } from './sessionStore';
+import type { SessionInformation } from '../types/session';
 
 // Firebase関連のモック
 vi.mock('../services/sessionService', () => ({
@@ -188,7 +189,7 @@ describe('sessionStore - Information機能', () => {
           config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          information: oldInformation as any, // 古いデータ構造をシミュレート
+          information: oldInformation as unknown as SessionInformation, // 古いデータ構造をシミュレート
         },
         currentUser: 'Member1',
       });

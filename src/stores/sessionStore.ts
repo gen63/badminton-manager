@@ -43,18 +43,8 @@ export const useSessionStore = create<SessionState>()(
           try {
             const mergedConfig = { ...session.config, ...config };
             await updateFirebaseSession(session.id, { config: mergedConfig });
-            console.log('[SessionStore] Config synced to Firestore:', config);
           } catch (error) {
             console.error('[SessionStore] Failed to sync config to Firestore:', error);
-            
-            // Toast通知を表示（動的インポートで循環依存を回避）
-            const toastModule = await import('../hooks/useToast');
-            if (toastModule && 'useToast' in toastModule) {
-              // useToastはhookなので、ここでは直接使えない
-              // 代わりに、グローバルToast関数を使う（後で実装）
-              // 今は警告のみログ出力
-              console.warn('[SessionStore] Config sync failed, but local update succeeded');
-            }
           }
         }
       },
@@ -101,11 +91,12 @@ export const useSessionStore = create<SessionState>()(
               : null,
           }));
 
-          // オンラインモード: Firebaseにも反映（undefinedを渡してフィールドを削除）
+          // オンラインモード: Firebaseにも反映（deleteField()でフィールドを削除）
           if (session.id && session.createdBy) {
             const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
+            const { deleteField } = await import('firebase/firestore');
             try {
-              await updateFirebaseSession(session.id, { information: undefined });
+              await updateFirebaseSession(session.id, { information: deleteField() } as unknown as Partial<Session>);
             } catch (error) {
               console.error('[SessionStore] Failed to delete information:', error);
             }
@@ -120,13 +111,6 @@ export const useSessionStore = create<SessionState>()(
           readBy: currentUser ? [currentUser] : [], // 編集者は既読扱い
         };
 
-        console.log('[SessionStore] updateInformation:', {
-          currentUser,
-          newReadBy: newInformation.readBy,
-          textLength: newInformation.text.length,
-          text: newInformation.text,
-        });
-
         // ローカル更新
         set((state) => ({
           session: state.session
@@ -134,21 +118,11 @@ export const useSessionStore = create<SessionState>()(
             : null,
         }));
 
-        // ローカル更新後の確認
-        const afterUpdate = get();
-        console.log('[SessionStore] 更新後の確認:', {
-          hasSession: !!afterUpdate.session,
-          hasInformation: !!afterUpdate.session?.information,
-          savedText: afterUpdate.session?.information?.text,
-          savedTextLength: afterUpdate.session?.information?.text?.length || 0,
-        });
-
         // オンラインモード: Firebaseにも反映
         if (session.id && session.createdBy) {
           const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
           try {
             await updateFirebaseSession(session.id, { information: newInformation });
-            console.log('[SessionStore] Firebase更新成功');
           } catch (error) {
             console.error('[SessionStore] Failed to update information:', error);
           }
@@ -174,11 +148,17 @@ export const useSessionStore = create<SessionState>()(
             : null,
         }));
 
-        // オンラインモード: Firebaseにも反映
+        // オンラインモード: arrayUnionでアトミックに既読追加（競合を防止）
         if (session.id && session.createdBy) {
-          const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
           try {
-            await updateFirebaseSession(session.id, { information: updatedInformation });
+            const { updateDoc, doc, arrayUnion } = await import('firebase/firestore');
+            const { db } = await import('../lib/firebase');
+            if (db) {
+              const docRef = doc(db, 'sessions', session.id);
+              await updateDoc(docRef, {
+                'information.readBy': arrayUnion(currentUser),
+              });
+            }
           } catch (error) {
             console.error('[SessionStore] Failed to mark information as read:', error);
           }

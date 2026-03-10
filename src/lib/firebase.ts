@@ -15,37 +15,20 @@ let db: Firestore | null = null;
 
 const hasConfig = firebaseConfig.apiKey && firebaseConfig.projectId;
 
-console.log('[Firebase] Config check:', {
-  hasApiKey: !!firebaseConfig.apiKey,
-  hasProjectId: !!firebaseConfig.projectId,
-  projectId: firebaseConfig.projectId,
-});
-
 if (hasConfig) {
   try {
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
-    console.log('[Firebase] ✓ Initialized successfully');
-    
+
     // オフライン対応：IndexedDBを使ってローカルキャッシュを有効化
-    enableIndexedDbPersistence(db).then(() => {
-      console.log('[Firebase] ✓ Offline persistence enabled');
-    }).catch((err) => {
-      if (err.code === 'failed-precondition') {
-        // 複数のタブが開いている場合は1つだけ有効
-        console.warn('[Firebase] Offline persistence failed: Multiple tabs open');
-      } else if (err.code === 'unimplemented') {
-        // ブラウザが非対応
-        console.warn('[Firebase] Offline persistence not available in this browser');
-      } else {
+    enableIndexedDbPersistence(db).catch((err) => {
+      if (err.code !== 'failed-precondition' && err.code !== 'unimplemented') {
         console.error('[Firebase] Offline persistence failed:', err);
       }
     });
   } catch (error) {
-    console.error('[Firebase] ✗ Initialization failed:', error);
+    console.error('[Firebase] Initialization failed:', error);
   }
-} else {
-  console.warn('[Firebase] ✗ Configuration missing - online features disabled');
 }
 
 export function isFirebaseConfigured(): boolean {
