@@ -70,6 +70,12 @@ export function useFirebaseSync() {
   const lastAppliedRemoteUpdatedAt = useRef<number>(0);
   const sessionDeletedNotified = useRef(false);
   const pushTimer = useRef<number | null>(null);
+  
+  // toast と navigate を ref で保持（依存配列の安定化）
+  const toastRef = useRef(toast);
+  const navigateRef = useRef(navigate);
+  toastRef.current = toast;
+  navigateRef.current = navigate;
 
   const pushGameState = useCallback((sid: string) => {
     const { players } = usePlayerStore.getState();
@@ -105,23 +111,28 @@ export function useFirebaseSync() {
         
         if (err?.code === 'conflict') {
           // 競合検出（Transactionが最大5回リトライした後に失敗）
-          toast.warning('他のユーザーが更新しました。もう一度お試しください');
+          console.warn('[FirebaseSync] Conflict detected:', err);
+          toastRef.current.warning('他のユーザーが更新しました。もう一度お試しください');
         } else {
-          console.error('Failed to sync game state:', err);
+          console.error('[FirebaseSync] Push failed:', err);
         }
       });
-  }, [toast]);
+  }, []); // 依存なし: refとgetState()のみ使用、再生成不要
 
+  // pushGameStateをrefで保持（依存配列の安定化）
+  const pushGameStateRef = useRef(pushGameState);
+  pushGameStateRef.current = pushGameState;
+  
   // デバウンス付きpush：300ms以内の連続変更をまとめる
   const schedulePush = useCallback((sid: string) => {
     if (pushTimer.current) {
       clearTimeout(pushTimer.current);
     }
     pushTimer.current = setTimeout(() => {
-      pushGameState(sid);
+      pushGameStateRef.current(sid);
       pushTimer.current = null;
     }, 300) as unknown as number;
-  }, [pushGameState]);
+  }, []); // 依存配列を空にして安定化
 
   // リモートデータを適用する処理（デバウンス後に実行）
   const applyRemoteData = useCallback((gameState: GameState, data: { updatedAt: unknown }) => {
@@ -224,7 +235,7 @@ export function useFirebaseSync() {
       // すべてのストア更新が完了してから必ずフラグをリセット
       isSyncingFromRemote.current = false;
     }
-  }, []);
+  }, []); // 依存なし: refとgetState()のみ使用、再生成不要
 
   // ローカル変更をFirestoreに即座にpush
   useEffect(() => {
@@ -249,12 +260,13 @@ export function useFirebaseSync() {
     // 参加者は初回pushをスキップ（リモートデータをpullして初期化）
     const { players } = usePlayerStore.getState();
     const currentUser = useSessionStore.getState().currentUser;
-    const isCreator = session?.createdBy === currentUser;
+    const currentSession = useSessionStore.getState().session;
+    const isCreator = currentSession?.createdBy === currentUser;
     
     // 作成者、またはプレイヤーが既にいる場合（ページリロード等）のみpush
     if (isCreator || (players && players.length > 0)) {
       console.log('[FirebaseSync] Initial push', { isCreator, playerCount: players?.length || 0 });
-      pushGameState(sessionId);
+      pushGameStateRef.current(sessionId);
     } else {
       console.log('[FirebaseSync] Skipping initial push (participant mode)');
     }
@@ -267,7 +279,7 @@ export function useFirebaseSync() {
         clearTimeout(pushTimer.current);
       }
     };
-  }, [isShared, sessionId, schedulePush, pushGameState, session]);
+  }, [isShared, sessionId]); // sessionIdが変わった時のみ再実行
 
   // Firestoreからpull（リアルタイム監視）
   useEffect(() => {
@@ -280,11 +292,11 @@ export function useFirebaseSync() {
         if (!snap.exists()) {
           if (!sessionDeletedNotified.current) {
             sessionDeletedNotified.current = true;
-            toast.error('セッションが削除されました');
+            toastRef.current.error('セッションが削除されました');
             // セッション情報をクリア
             useSessionStore.getState().clearSession();
             // トップページに戻る
-            setTimeout(() => navigate('/'), 1000);
+            setTimeout(() => navigateRef.current('/'), 1000);
           }
           return;
         }
@@ -303,7 +315,7 @@ export function useFirebaseSync() {
     );
 
     return unsub;
-  }, [isShared, sessionId, toast, navigate, applyRemoteData]);
+  }, [isShared, sessionId]); // sessionIdが変わった時のみ再実行（ref経由で安定化）
 }
 
 // 通知済みの試合を記録（重複防止）
