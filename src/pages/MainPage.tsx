@@ -239,9 +239,9 @@ export function MainPage() {
         }
       );
 
-      // 配置されたプレイヤーIDを集める
+      // 配置されたプレイヤーIDを集める（空文字を除外）
       const assignedPlayerIds = new Set(
-        assignments.flatMap(a => [...a.teamA, ...a.teamB])
+        assignments.flatMap(a => [...a.teamA, ...a.teamB]).filter(id => id && id.trim())
       );
 
       // 予約消化判定: 予約メンバー全員が配置されたら fulfilled

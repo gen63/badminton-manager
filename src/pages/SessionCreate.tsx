@@ -556,9 +556,6 @@ export function SessionCreate() {
                 </button>
               ))}
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1">
-              {practiceType === '単' ? 'シングルス（1対1）' : practiceType === '複' ? 'ダブルス（2対2）' : 'レクリエーション（2対2）'}
-            </p>
           </div>
 
           {/* 配置モード */}
@@ -647,7 +644,7 @@ export function SessionCreate() {
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-1">
                   {isSinglesMode
-                    ? 'シングルスでは回数優先が適用されます'
+                    ? ''
                     : prioritizeDiversity
                     ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
                     : '空きが出たら即座に配置'}

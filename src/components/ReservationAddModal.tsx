@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { X, Check } from 'lucide-react';
 import type { Player } from '../types/player';
+import type { GameMode } from '../types/session';
 
 interface ReservationAddModalProps {
   players: Player[];
   getPlayerName: (id: string) => string;
   onConfirm: (playerIds: string[]) => void;
   onCancel: () => void;
+  gameMode?: GameMode;
 }
 
 export function ReservationAddModal({
@@ -14,14 +16,16 @@ export function ReservationAddModal({
   getPlayerName,
   onConfirm,
   onCancel,
+  gameMode = 'doubles',
 }: ReservationAddModalProps) {
+  const maxPlayers = gameMode === 'singles' ? 2 : 4;
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const handleToggle = (id: string) => {
     const next = new Set(selectedIds);
     if (next.has(id)) {
       next.delete(id);
-    } else if (next.size < 4) {
+    } else if (next.size < maxPlayers) {
       next.add(id);
     }
     setSelectedIds(next);
@@ -47,7 +51,7 @@ export function ReservationAddModal({
           <div>
             <h2 className="text-lg font-bold text-foreground">予約追加</h2>
             <p className="text-xs text-muted-foreground mt-1">
-              メンバーを選択 ({selectedIds.size}/4人)
+              メンバーを選択 ({selectedIds.size}/{maxPlayers}人)
             </p>
           </div>
           <button

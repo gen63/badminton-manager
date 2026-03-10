@@ -806,9 +806,90 @@ export function assignCourts(
   const pendingReservations = (options?.reservations ?? []).filter(r => r.status === 'pending');
   const gameMode = options?.gameMode ?? 'doubles';
 
-  // シングルスモードの場合は専用ロジックを使用
+  // シングルスモードの場合
   if (gameMode === 'singles') {
-    return assignCourtsSingles(activePlayers, targetCourtIds, matchHistory, practiceStartTime, useStayDuration);
+    // 予約配置を先に処理
+    const singlesReservationAssignments: CourtAssignment[] = [];
+    const singlesUsedPlayers = new Set<string>();
+    const singlesFulfilledIds: string[] = [];
+    const singlesRemainingCourtIds = [...targetCourtIds];
+
+    for (const reservation of pendingReservations) {
+      if (singlesRemainingCourtIds.length === 0) break;
+
+      // 予約メンバー全員が待機中か確認
+      const reservedPlayers = reservation.playerIds
+        .map(id => activePlayers.find(p => p.id === id))
+        .filter((p): p is Player => p !== undefined);
+
+      if (reservedPlayers.length !== reservation.playerIds.length) continue;
+      if (reservation.playerIds.some(id => singlesUsedPlayers.has(id))) continue;
+
+      const rsvPlayerIds = reservation.playerIds;
+
+      if (rsvPlayerIds.length === 2) {
+        // 2人: そのまま対戦
+        const courtId = singlesRemainingCourtIds.shift()!;
+        singlesReservationAssignments.push({
+          courtId,
+          teamA: [rsvPlayerIds[0], ''],
+          teamB: [rsvPlayerIds[1], ''],
+        });
+        rsvPlayerIds.forEach(id => singlesUsedPlayers.add(id));
+        singlesFulfilledIds.push(reservation.id);
+      } else if (rsvPlayerIds.length === 1) {
+        // 1人: 相手を通常ロジックで選出
+        const nonReserved = activePlayers.filter(
+          p => !singlesUsedPlayers.has(p.id) && !rsvPlayerIds.includes(p.id)
+            && !isPlayerInPendingReservation(p.id, pendingReservations, [...singlesFulfilledIds, reservation.id])
+        );
+        if (nonReserved.length === 0) continue;
+        nonReserved.sort((a, b) =>
+          calculatePriorityScore(a, practiceStartTime, useStayDuration) -
+          calculatePriorityScore(b, practiceStartTime, useStayDuration)
+        );
+        const courtId = singlesRemainingCourtIds.shift()!;
+        singlesReservationAssignments.push({
+          courtId,
+          teamA: [rsvPlayerIds[0], ''],
+          teamB: [nonReserved[0].id, ''],
+        });
+        singlesUsedPlayers.add(nonReserved[0].id);
+        rsvPlayerIds.forEach(id => singlesUsedPlayers.add(id));
+        singlesFulfilledIds.push(reservation.id);
+      }
+      // 3人以上の予約はシングルスでは無効（スキップ）
+    }
+
+    // 残りコートを通常シングルスロジックで埋める
+    if (singlesRemainingCourtIds.length === 0) {
+      return singlesReservationAssignments;
+    }
+
+    // 未消化予約のプレイヤーを除外
+    const singlesReservedIds = new Set<string>();
+    for (const reservation of pendingReservations) {
+      if (singlesFulfilledIds.includes(reservation.id)) continue;
+      reservation.playerIds.forEach(id => singlesReservedIds.add(id));
+    }
+
+    const singlesNormalCandidates = activePlayers.filter(
+      p => !singlesUsedPlayers.has(p.id) && !singlesReservedIds.has(p.id)
+    );
+
+    if (singlesNormalCandidates.length < singlesRemainingCourtIds.length * 2) {
+      if (singlesReservationAssignments.length > 0) {
+        return singlesReservationAssignments;
+      }
+      throw new Error(
+        `アクティブなプレイヤーが不足しています（必要: ${singlesRemainingCourtIds.length * 2}人、現在: ${singlesNormalCandidates.length}人）`
+      );
+    }
+
+    const singlesAssignments = assignCourtsSingles(
+      singlesNormalCandidates, singlesRemainingCourtIds, matchHistory, practiceStartTime, useStayDuration
+    );
+    return [...singlesReservationAssignments, ...singlesAssignments];
   }
 
   // 予約配置を先に処理
