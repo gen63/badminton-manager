@@ -17,8 +17,7 @@ describe('useFirebaseSync - 同期シナリオ（簡易シミュレーション�
   it('シナリオ1: 2つのクライアントが同時に更新', () => {
     const now = Date.now();
 
-    // クライアントA: プレイヤーを休憩に変更 → push
-    const clientA_pushTime = now;
+    // クライアントA: プレイヤーを休憩に変更 → push (time: now)
     const clientA_hash = 'hash-A';
 
     // クライアントB: 別のプレイヤーを休憩に変更 → push
@@ -72,8 +71,7 @@ describe('useFirebaseSync - 同期シナリオ（簡易シミュレーション�
   it('シナリオ3: ネットワーク遅延で古いデータが後から届く', () => {
     const now = Date.now();
 
-    // 時刻1000: データAを受信・適用
-    const firstData_updatedAt = now + 1000;
+    // 時刻1000: データAを受信・適用（updatedAt: now + 1000）
     
     // 時刻2000: データBを受信・適用
     const secondData_updatedAt = now + 2000;

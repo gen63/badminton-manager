@@ -134,6 +134,11 @@
   - LocalStorage（Phase 0）
   - Firebase Firestore（オンラインモード用）
 
+- **テスト**
+  - Vitest（Unit Test） - 86テストケース
+  - @testing-library/react（Reactコンポーネントテスト）
+  - Playwright（E2E Test） - 5シナリオ（手動実行）
+
 - **デプロイ**
   - GitHub Pages
 
@@ -169,6 +174,57 @@ npm run build
 # ビルドしたファイルをプレビュー
 npm run preview
 ```
+
+### テスト
+
+#### Unit Test（Vitest）
+
+```bash
+# 全テスト実行（ウォッチモード）
+npm test
+
+# 1回だけ実行
+npm run test:run
+
+# UIモード
+npm run test:ui
+
+# カバレッジ
+npm run test:coverage
+```
+
+**テスト内容:**
+- ✅ 同期ロジック（17ケース） - `src/lib/syncUtils.test.ts`
+- ✅ 同期シナリオ（4ケース） - `src/hooks/useFirebaseSync.test.ts`
+- ✅ 配置アルゴリズム（35ケース） - `src/lib/algorithm.test.ts`
+- ✅ ユーティリティ（30ケース） - `src/lib/utils.test.ts`
+
+**合計: 86テスト**
+
+詳細: `README_TESTS.md`
+
+#### E2Eテスト（Playwright）
+
+**同期関連の修正後に手動実行**
+
+```bash
+# 初回セットアップ（1回だけ）
+npx playwright install chromium
+
+# テスト実行
+npm run test:e2e
+
+# UIモード（推奨）
+npm run test:e2e:ui
+```
+
+**テスト内容:**
+- ✅ 2つのブラウザで同期動作を検証（5ケース）
+- ✅ タイムスタンプによる古いデータ拒否
+- ✅ 同時操作の競合解決
+- ✅ PWAとブラウザ間の同期
+
+詳細: `README_E2E.md`
 
 ### デプロイ
 
@@ -255,14 +311,21 @@ badminton-manager/
 ├── src/
 │   ├── components/
 │   │   ├── CourtCard.tsx           # コートカード（タイマー付き）
+│   │   ├── CourtTimer.tsx          # コートタイマー（独立更新）
 │   │   ├── EmptyState.tsx          # 空状態表示
 │   │   └── Toast.tsx               # トースト通知（エラーのみ）
 │   ├── hooks/
 │   │   ├── useToast.ts             # トースト通知フック
-│   │   └── useGameTimer.ts         # ゲームタイマーフック
+│   │   ├── useGameTimer.ts         # ゲームタイマーフック
+│   │   ├── useFirebaseSync.ts      # Firebase同期フック
+│   │   └── useFirebaseSync.test.ts # 同期シナリオテスト（4ケース）
 │   ├── lib/
 │   │   ├── algorithm.ts            # 配置アルゴリズム
-│   │   └── utils.ts                # ユーティリティ関数
+│   │   ├── algorithm.test.ts       # アルゴリズムテスト（35ケース）
+│   │   ├── utils.ts                # ユーティリティ関数
+│   │   ├── utils.test.ts           # ユーティリティテスト（30ケース）
+│   │   ├── syncUtils.ts            # 同期ロジック（純粋関数）
+│   │   └── syncUtils.test.ts       # 同期ロジックテスト（17ケース）
 │   ├── pages/
 │   │   ├── SessionCreate.tsx       # セッション作成
 │   │   ├── MainPage.tsx            # メイン画面
@@ -278,7 +341,13 @@ badminton-manager/
 │       ├── court.ts                # Court型定義
 │       ├── match.ts                # Match型定義
 │       └── session.ts              # Session型定義
+├── e2e/
+│   └── sync.spec.ts                # Firebase同期E2Eテスト（5シナリオ）
 ├── doc/                            # 仕様書
+├── README_TESTS.md                 # Unit Testガイド
+├── README_E2E.md                   # E2E Testガイド
+├── playwright.config.ts            # Playwright設定
+├── vitest.config.ts                # Vitest設定
 └── public/
     ├── favicon.svg                 # カスタムアイコン
     └── manifest.json               # PWA設定
