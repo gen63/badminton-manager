@@ -16,6 +16,7 @@ import { useFirebaseSync } from '../hooks/useFirebaseSync';
 import { useAccountingStore } from '../stores/accountingStore';
 import { PaymentModal } from '../components/PaymentModal';
 import { CourtTimer } from '../components/CourtTimer';
+import { updatePaymentBadge } from '../lib/badge';
 
 import { BottomNav } from '../components/BottomNav';
 
@@ -86,6 +87,27 @@ export function MainPage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
+
+  // PWAバッジ更新：支払い予定額を表示
+  useEffect(() => {
+    if (!currentUser) {
+      // ログインしていない場合はバッジをクリア
+      updatePaymentBadge(true);
+      return;
+    }
+
+    const currentPlayer = players.find(p => p.name === currentUser);
+    if (!currentPlayer) {
+      // プレイヤー情報がない場合はバッジをクリア
+      updatePaymentBadge(true);
+      return;
+    }
+
+    const isPaid = currentPlayer.operationStatus?.payment ?? false;
+    const amount = currentPlayer.paymentAmount;
+
+    updatePaymentBadge(isPaid, amount);
+  }, [currentUser, players]);
 
   if (!session) {
     navigate('/');
