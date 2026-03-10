@@ -734,7 +734,7 @@ export function MainPage() {
                   {hasPlayers ? (
                     <div className="p-2 flex flex-col gap-2 min-h-[220px]">
                       <div className="flex flex-col gap-1">
-                        {court.teamA.filter((id) => !isSingles || id).map((playerId, idx) => {
+                        {court.teamA.filter((id) => id).map((playerId, idx) => {
                           const playerGender = getPlayerGender(playerId);
                           const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
                           return (
@@ -763,7 +763,7 @@ export function MainPage() {
                       </div>
 
                       <div className="flex flex-col gap-1">
-                        {court.teamB.filter((id) => !isSingles || id).map((playerId, idx) => {
+                        {court.teamB.filter((id) => id).map((playerId, idx) => {
                           const playerGender = getPlayerGender(playerId);
                           const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
                           return (
