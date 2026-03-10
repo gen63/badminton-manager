@@ -24,8 +24,8 @@ export function SettingsPage() {
   // 権限判定
   const isAdmin = checkIsAdmin();
   const isCreatorUser = isCreator();
-  const { players, clearPlayers } = usePlayerStore();
-  const { clearHistory, courts } = useGameStore();
+  const { players, clearPlayers, setAllPlayersResting } = usePlayerStore();
+  const { clearHistory, courts, resetAllCourts } = useGameStore();
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
@@ -79,13 +79,45 @@ export function SettingsPage() {
     }
   };
 
-  const handleReset = async () => {
+  const handleMatchReset = () => {
     const confirmed = window.confirm(
-      'セッションをリセットしますか？\n\n' +
+      '試合をリセットしますか？\n\n' +
+      '以下がリセットされます：\n' +
+      '・試合履歴\n' +
+      '・コート（すべてクリア）\n' +
+      '・全員を休憩状態に\n' +
+      '・試合予約\n\n' +
+      '参加者リストと会計記録は保持されます。\n\n' +
+      '※オンラインモードの場合、他の参加者も影響を受けます'
+    );
+
+    if (!confirmed) return;
+
+    // コートをすべてクリア
+    resetAllCourts();
+    
+    // 全員を休憩状態に
+    setAllPlayersResting();
+    
+    // 試合履歴をクリア
+    clearHistory();
+    
+    // 予約をクリア
+    clearReservations();
+    
+    // Undoスタックをクリア
+    clearUndo();
+  };
+
+  const handleFullReset = async () => {
+    const confirmed = window.confirm(
+      'セッションを全リセットしますか？\n\n' +
+      '以下がすべて削除されます：\n' +
       '・すべての参加者\n' +
       '・試合履歴\n' +
       '・会計記録\n' +
-      'がすべて削除されます。\n\n' +
+      '・試合予約\n\n' +
+      'この操作は取り消せません。\n\n' +
       '※オンラインモードの場合、他の参加者も影響を受けます'
     );
 
@@ -486,15 +518,38 @@ export function SettingsPage() {
 
         {/* アクション */}
         {isAdmin && (
-          <div className="space-y-3">
-            <div className="flex justify-center">
+          <div className="card p-4">
+            <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+              <span className="w-6 h-6 rounded-lg bg-red-100 flex items-center justify-center">
+                <Trash2 size={14} className="text-red-600" />
+              </span>
+              リセット
+              <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">管理者</span>
+            </h2>
+            <div className="space-y-2">
               <button
-                onClick={handleReset}
-                className="btn-danger flex items-center justify-center gap-2 py-3 px-6"
+                onClick={handleMatchReset}
+                className="w-full bg-orange-50 hover:bg-orange-100 text-orange-700 border-2 border-orange-200 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
               >
-                <Trash2 size={18} />
-                リセット
+                <Trash2 size={16} />
+                試合リセット
               </button>
+              <p className="text-[10px] text-muted-foreground px-1">
+                試合履歴・コート・予約をクリア。参加者と会計は保持。
+              </p>
+              
+              <div className="pt-2 border-t border-border">
+                <button
+                  onClick={handleFullReset}
+                  className="w-full bg-red-50 hover:bg-red-100 text-red-700 border-2 border-red-300 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Trash2 size={16} />
+                  全リセット
+                </button>
+                <p className="text-[10px] text-muted-foreground px-1 mt-1">
+                  すべてのデータを削除してセッション終了。
+                </p>
+              </div>
             </div>
           </div>
         )}

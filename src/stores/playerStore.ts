@@ -17,6 +17,7 @@ interface PlayerState {
   clearPlayers: () => void;
   toggleOperationStatus: (id: string, field: 'payment' | 'roster' | 'checkin') => void;
   setPaymentAmount: (id: string, amount: number) => void;
+  setAllPlayersResting: () => void;
 }
 
 export const usePlayerStore = create<PlayerState>()(
@@ -121,6 +122,13 @@ export const usePlayerStore = create<PlayerState>()(
           players: state.players.map((p) =>
             p.id === id ? { ...p, paymentAmount: amount } : p
           ),
+        })),
+      setAllPlayersResting: () =>
+        set((state) => ({
+          players: state.players.map((p) => ({
+            ...p,
+            isResting: true,
+          })),
         })),
     }),
     {
