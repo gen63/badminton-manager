@@ -439,7 +439,7 @@ export function AccountingPage() {
   };
 
   return (
-    <div className="bg-app pb-20">
+    <div className="bg-app pb-[calc(60px+env(safe-area-inset-bottom)+1rem)]">
       {/* ヘッダー */}
       <div className="header-gradient text-foreground p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
