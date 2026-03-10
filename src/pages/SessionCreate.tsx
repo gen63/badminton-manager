@@ -389,7 +389,7 @@ export function SessionCreate() {
                   クリップボードにセッションIDがあります
                 </p>
                 <button
-                  onClick={() => setJoinSessionId(clipboardDetected)}
+                  onClick={() => navigate(`/session/${clipboardDetected}`)}
                   className="text-sm text-blue-600 font-medium underline"
                 >
                   {clipboardDetected} を使用
