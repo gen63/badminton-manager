@@ -92,8 +92,29 @@ export const useSessionStore = create<SessionState>()(
         const { session, currentUser } = get();
         if (!session) return;
 
+        // 空文字列の場合は情報を削除
+        if (!text.trim()) {
+          // ローカル更新
+          set((state) => ({
+            session: state.session
+              ? { ...state.session, information: undefined, updatedAt: Date.now() }
+              : null,
+          }));
+
+          // オンラインモード: Firebaseにも反映（undefinedを渡してフィールドを削除）
+          if (session.id && session.createdBy) {
+            const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
+            try {
+              await updateFirebaseSession(session.id, { information: undefined });
+            } catch (error) {
+              console.error('[SessionStore] Failed to delete information:', error);
+            }
+          }
+          return;
+        }
+
         const newInformation = {
-          text,
+          text: text.trim(),
           updatedAt: Date.now(),
           updatedBy: currentUser || undefined,
           readBy: currentUser ? [currentUser] : [], // 編集者は既読扱い

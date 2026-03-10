@@ -616,33 +616,35 @@ export function MainPage() {
               <Users size={16} />
               <span>一括</span>
             </button>
-            {/* インフォメーションアイコン */}
-            <button
-              onClick={() => {
-                // 管理者は周知事項がなくても編集モーダルを開ける
-                if (isAdmin()) {
-                  setInformationText(session?.information?.text || '');
-                  setShowInformationModal(true);
-                } else if (session?.information?.text) {
-                  // メンバーは周知事項がある場合のみ閲覧＋既読化
-                  setInformationText(session.information.text);
-                  setShowInformationModal(true);
-                  markInformationAsRead();
-                }
-              }}
-              disabled={!isAdmin() && !session?.information?.text}
-              className={`relative flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full transition-colors ${
-                session?.information?.text || isAdmin()
-                  ? 'hover:bg-muted text-blue-600'
-                  : 'text-muted-foreground/30 cursor-not-allowed'
-              }`}
-              aria-label="お知らせ"
-            >
-              <Info size={20} />
-              {session?.information?.text && currentUser && !session.information.readBy.includes(currentUser) && (
-                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" />
-              )}
-            </button>
+            {/* インフォメーションアイコン（オンラインモードのみ） */}
+            {session?.createdBy && (
+              <button
+                onClick={() => {
+                  // 管理者は周知事項がなくても編集モーダルを開ける
+                  if (isAdmin()) {
+                    setInformationText(session?.information?.text || '');
+                    setShowInformationModal(true);
+                  } else if (session?.information?.text) {
+                    // メンバーは周知事項がある場合のみ閲覧＋既読化
+                    setInformationText(session.information.text);
+                    setShowInformationModal(true);
+                    markInformationAsRead();
+                  }
+                }}
+                disabled={!isAdmin() && !session?.information?.text}
+                className={`relative flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full transition-colors ${
+                  session?.information?.text || isAdmin()
+                    ? 'hover:bg-muted text-blue-600'
+                    : 'text-muted-foreground/30 cursor-not-allowed'
+                }`}
+                aria-label="お知らせ"
+              >
+                <Info size={20} />
+                {session?.information?.text && currentUser && !session.information.readBy.includes(currentUser) && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" />
+                )}
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -1161,9 +1163,10 @@ export function MainPage() {
                   </button>
                   <button
                     onClick={() => {
+                      const trimmed = informationText.trim();
                       updateInformation(informationText);
                       setShowInformationModal(false);
-                      toast.success('お知らせを更新しました');
+                      toast.success(trimmed ? 'お知らせを更新しました' : 'お知らせを削除しました');
                     }}
                     className="flex-1 btn-primary"
                   >
