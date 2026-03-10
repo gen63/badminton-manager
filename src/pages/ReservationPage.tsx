@@ -11,7 +11,7 @@ import { EmptyState } from '../components/EmptyState';
 
 export function ReservationPage() {
   const navigate = useNavigate();
-  const { session } = useSessionStore();
+  const { session, currentUser } = useSessionStore();
   const { players } = usePlayerStore();
   const { courts } = useGameStore();
   const { reservations, addReservation, removeReservation } = useReservationStore();
@@ -50,7 +50,7 @@ export function ReservationPage() {
         getPlayerName={getPlayerName}
         gameMode={session.config.gameMode}
         onConfirm={(playerIds) => {
-          addReservation(playerIds);
+          addReservation(playerIds, currentUser || undefined);
           setShowAdd(false);
         }}
         onCancel={() => setShowAdd(false)}
@@ -95,7 +95,14 @@ export function ReservationPage() {
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-muted-foreground">#{reservation.orderNumber ?? index + 1}</span>
+                  <span className="text-xs font-bold text-muted-foreground">
+                    #{reservation.orderNumber ?? index + 1}
+                    {reservation.createdBy && (
+                      <span className="text-[10px] text-muted-foreground/70 ml-1">
+                        追加:{reservation.createdBy}
+                      </span>
+                    )}
+                  </span>
                   {status === 'ready' ? (
                     <span className="flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">
                       <CheckCircle2 size={10} />
@@ -166,7 +173,14 @@ export function ReservationPage() {
                     className="bg-muted/30 border border-border rounded-xl p-3"
                   >
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-bold text-muted-foreground">#{reservation.orderNumber ?? '?'}</span>
+                      <span className="text-xs font-bold text-muted-foreground">
+                        #{reservation.orderNumber ?? '?'}
+                        {reservation.createdBy && (
+                          <span className="text-[10px] text-muted-foreground/70 ml-1">
+                            追加:{reservation.createdBy}
+                          </span>
+                        )}
+                      </span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {reservation.playerIds.map(id => (

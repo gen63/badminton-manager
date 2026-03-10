@@ -4,7 +4,7 @@ import type { Reservation } from '../types/reservation';
 
 interface ReservationState {
   reservations: Reservation[];
-  addReservation: (playerIds: string[]) => void;
+  addReservation: (playerIds: string[], createdBy?: string) => void;
   removeReservation: (id: string) => void;
   fulfillReservation: (id: string) => void;
   clearReservations: () => void;
@@ -15,7 +15,7 @@ export const useReservationStore = create<ReservationState>()(
     (set) => ({
       reservations: [],
 
-      addReservation: (playerIds) =>
+      addReservation: (playerIds, createdBy) =>
         set((state) => {
           const maxOrder = state.reservations.reduce((max, r) => Math.max(max, r.orderNumber ?? 0), 0);
           return {
@@ -28,6 +28,7 @@ export const useReservationStore = create<ReservationState>()(
                 status: 'pending',
                 createdAt: Date.now(),
                 fulfilledAt: null,
+                createdBy,
               },
             ],
           };

@@ -5,4 +5,5 @@ export interface Reservation {
   status: 'pending' | 'fulfilled';
   createdAt: number;
   fulfilledAt: number | null;
+  createdBy?: string;           // 追加者の名前（オンラインモード時）
 }
