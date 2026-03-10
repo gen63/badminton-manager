@@ -10,43 +10,8 @@ import { onSnapshot } from 'firebase/firestore';
 import { syncGameStateWithTransaction, type GameState } from '../services/sessionService';
 import { notifyMatchStart } from '../lib/notifications';
 import { useToast } from './useToast';
+import { getTimestampMillis, hashGameState, shouldApplyRemoteData } from '../lib/syncUtils';
 import type { Court } from '../types/court';
-
-/** データのハッシュを計算（簡易版） */
-function hashGameState(data: { players: unknown[]; courts: unknown[]; matchHistory: unknown[]; reservations: unknown[] }): string {
-  return JSON.stringify(data);
-}
-
-/**
- * Firestoreタイムスタンプをミリ秒に変換（堅牢版）
- * @returns ミリ秒、または取得失敗時はnull
- */
-function getTimestampMillis(timestamp: unknown): number | null {
-  if (!timestamp) {
-    console.warn('[FirebaseSync] Timestamp is null/undefined');
-    return null;
-  }
-  
-  // 数値（ミリ秒）の場合
-  if (typeof timestamp === 'number') {
-    return timestamp;
-  }
-  
-  // Firestore Timestamp型
-  if (typeof timestamp === 'object' && timestamp !== null) {
-    // toMillis()メソッドがあれば使用（推奨）
-    if ('toMillis' in timestamp && typeof timestamp.toMillis === 'function') {
-      return (timestamp as { toMillis(): number }).toMillis();
-    }
-    // secondsフィールドで変換（フォールバック）
-    if ('seconds' in timestamp && typeof timestamp.seconds === 'number') {
-      return (timestamp as { seconds: number }).seconds * 1000;
-    }
-  }
-  
-  console.error('[FirebaseSync] Unknown timestamp format:', timestamp);
-  return null;
-}
 
 /**
  * Firebase双方向同期フック
@@ -151,6 +116,17 @@ export function useFirebaseSync() {
     // 受信したデータのハッシュを計算
     const incomingHash = hashGameState(gameState);
     
+    // 適用すべきか判定
+    const decision = shouldApplyRemoteData({
+      incomingHash,
+      lastPushedHash: lastPushedHash.current,
+      remoteUpdatedAt,
+      lastAppliedRemoteUpdatedAt: lastAppliedRemoteUpdatedAt.current,
+      lastPushedTime: lastPushedTime.current,
+      currentTime: Date.now(),
+      pushBlockMs: 500,
+    });
+
     console.log('[FirebaseSync] 📥 PULL received', {
       remoteUpdatedAt,
       remoteUpdatedAtISO: new Date(remoteUpdatedAt).toISOString(),
@@ -159,30 +135,13 @@ export function useFirebaseSync() {
       hash: incomingHash.substring(0, 30),
       lastPushedHash: lastPushedHash.current.substring(0, 30),
       timeSinceLastPush: Date.now() - lastPushedTime.current,
+      decision: decision.shouldApply ? 'APPLY' : `SKIP (${decision.reason})`,
       waitingPlayers: gameState.players.filter((p: { isResting: boolean }) => !p.isResting).map((p: { name: string }) => p.name),
       restPlayers: gameState.players.filter((p: { isResting: boolean }) => p.isResting).map((p: { name: string }) => p.name),
     });
-    
-    // 自分が最後にpushしたデータと同じなら無視
-    if (incomingHash === lastPushedHash.current) {
-      console.log('[FirebaseSync] ⏭️  SKIP: same as last push');
-      return;
-    }
 
-    // リモートデータが古い（または同じ）なら無視
-    if (lastAppliedRemoteUpdatedAt.current > 0 && remoteUpdatedAt <= lastAppliedRemoteUpdatedAt.current) {
-      console.log('[FirebaseSync] ⏭️  SKIP: older remote data', {
-        remote: remoteUpdatedAt,
-        lastApplied: lastAppliedRemoteUpdatedAt.current,
-        diff: remoteUpdatedAt - lastAppliedRemoteUpdatedAt.current,
-      });
-      return;
-    }
-
-    // 最後のpush操作から500ms以内なら無視（自分の操作を優先）
-    const timeSinceLastPush = Date.now() - lastPushedTime.current;
-    if (timeSinceLastPush < 500) {
-      console.log('[FirebaseSync] ⏭️  SKIP: too soon after push (' + timeSinceLastPush + 'ms < 500ms)');
+    if (!decision.shouldApply) {
+      console.log('[FirebaseSync] ⏭️  SKIP:', decision.reason);
       return;
     }
 
