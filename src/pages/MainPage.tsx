@@ -1098,7 +1098,7 @@ export function MainPage() {
                       </div>
                     )}
                     {isReserved && (
-                      <div className="absolute top-0.5 left-0.5">
+                      <div className="absolute -top-1 left-0.5">
                         <span className="px-1 py-0.5 bg-orange-500 text-white text-[8px] font-bold rounded">予約</span>
                       </div>
                     )}
