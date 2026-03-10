@@ -7,7 +7,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { onSnapshot } from 'firebase/firestore';
-import { syncGameStateWithTransaction } from '../services/sessionService';
+import { syncGameStateWithTransaction, type GameState } from '../services/sessionService';
 import { notifyMatchStart } from '../lib/notifications';
 import { useToast } from './useToast';
 import type { Court } from '../types/court';
@@ -38,6 +38,8 @@ export function useFirebaseSync() {
   const lastPushedTime = useRef<number>(0);
   const lastAppliedRemoteUpdatedAt = useRef<number>(0);
   const sessionDeletedNotified = useRef(false);
+  const pushTimer = useRef<number | null>(null);
+  const pullTimer = useRef<number | null>(null);
 
   const pushGameState = useCallback((sid: string) => {
     const { players } = usePlayerStore.getState();
@@ -70,10 +72,103 @@ export function useFirebaseSync() {
       });
   }, [toast]);
 
-  // デバウンスなし：即座にpush
+  // デバウンス付きpush：300ms以内の連続変更をまとめる
   const schedulePush = useCallback((sid: string) => {
-    pushGameState(sid);
+    if (pushTimer.current) {
+      clearTimeout(pushTimer.current);
+    }
+    pushTimer.current = setTimeout(() => {
+      pushGameState(sid);
+      pushTimer.current = null;
+    }, 300) as unknown as number;
   }, [pushGameState]);
+
+  // リモートデータを適用する処理（デバウンス後に実行）
+  const applyRemoteData = useCallback((gameState: GameState, data: { updatedAt: unknown }) => {
+    // リモートの更新時刻を取得
+    const remoteUpdatedAt = typeof data.updatedAt === 'number'
+      ? data.updatedAt
+      : (data.updatedAt as { seconds: number })?.seconds * 1000 || 0;
+
+    // 受信したデータのハッシュを計算
+    const incomingHash = hashGameState(gameState);
+    
+    console.log('[FirebaseSync] 📥 PULL received (debounced)', {
+      remoteUpdatedAt: new Date(remoteUpdatedAt).toISOString(),
+      lastApplied: new Date(lastAppliedRemoteUpdatedAt.current).toISOString(),
+      hash: incomingHash.substring(0, 30),
+      lastPushedHash: lastPushedHash.current.substring(0, 30),
+      timeSinceLastPush: Date.now() - lastPushedTime.current,
+      waitingPlayers: gameState.players.filter((p: { isResting: boolean }) => !p.isResting).map((p: { name: string }) => p.name),
+      restPlayers: gameState.players.filter((p: { isResting: boolean }) => p.isResting).map((p: { name: string }) => p.name),
+    });
+    
+    // 自分が最後にpushしたデータと同じなら無視
+    if (incomingHash === lastPushedHash.current) {
+      console.log('[FirebaseSync] ⏭️  SKIP: same as last push');
+      return;
+    }
+
+    // リモートデータが古い（または同じ）なら無視
+    if (remoteUpdatedAt <= lastAppliedRemoteUpdatedAt.current) {
+      console.log('[FirebaseSync] ⏭️  SKIP: older remote data', remoteUpdatedAt, '<=', lastAppliedRemoteUpdatedAt.current);
+      return;
+    }
+
+    // 最後のpush操作から2000ms以内なら無視（自分の操作を優先）
+    const timeSinceLastPush = Date.now() - lastPushedTime.current;
+    if (timeSinceLastPush < 2000) {
+      console.log('[FirebaseSync] ⏭️  SKIP: too soon after push (' + timeSinceLastPush + 'ms < 2000ms)');
+      return;
+    }
+
+    console.log('[FirebaseSync] ✅ APPLYING remote data');
+    isSyncingFromRemote.current = true;
+
+    // プレイヤーストアを更新
+    const { players } = usePlayerStore.getState();
+    if (JSON.stringify(players) !== JSON.stringify(gameState.players)) {
+      // 変更されたプレイヤーをログ出力
+      const changes: string[] = [];
+      players.forEach((local) => {
+        const remote = gameState.players.find((p: { id: string }) => p.id === local.id);
+        if (remote && JSON.stringify(local) !== JSON.stringify(remote)) {
+          const remoteTyped = remote as { isResting: boolean };
+          const localStatus = local.isResting ? 'rest' : 'waiting';
+          const remoteStatus = remoteTyped.isResting ? 'rest' : 'waiting';
+          changes.push(`${local.name}: ${localStatus} → ${remoteStatus}`);
+        }
+      });
+      console.log('[FirebaseSync] 🔄 Player changes:', changes);
+      usePlayerStore.setState({ players: gameState.players });
+    }
+
+    // ゲームストアを更新
+    const { courts, matchHistory } = useGameStore.getState();
+    const gameUpdates: Record<string, unknown> = {};
+    if (JSON.stringify(courts) !== JSON.stringify(gameState.courts)) {
+      // 試合開始通知: コートが isPlaying: false → true に変わった場合
+      checkMatchStartNotifications(courts, gameState.courts);
+      gameUpdates.courts = gameState.courts;
+    }
+    if (JSON.stringify(matchHistory) !== JSON.stringify(gameState.matchHistory)) {
+      gameUpdates.matchHistory = gameState.matchHistory;
+    }
+    if (Object.keys(gameUpdates).length > 0) {
+      useGameStore.setState(gameUpdates as { courts: typeof courts; matchHistory: typeof matchHistory });
+    }
+
+    // 予約ストアを更新
+    const { reservations } = useReservationStore.getState();
+    if (gameState.reservations && JSON.stringify(reservations) !== JSON.stringify(gameState.reservations)) {
+      useReservationStore.setState({ reservations: gameState.reservations });
+    }
+
+    // 適用したリモートデータの更新時刻を記録
+    lastAppliedRemoteUpdatedAt.current = remoteUpdatedAt;
+
+    isSyncingFromRemote.current = false;
+  }, []);
 
   // ローカル変更をFirestoreに即座にpush
   useEffect(() => {
@@ -101,6 +196,9 @@ export function useFirebaseSync() {
       unsubPlayers();
       unsubGame();
       unsubReservations();
+      if (pushTimer.current) {
+        clearTimeout(pushTimer.current);
+      }
     };
   }, [isShared, sessionId, schedulePush, pushGameState]);
 
@@ -129,97 +227,27 @@ export function useFirebaseSync() {
         
         if (!gameState) return;
 
-        // リモートの更新時刻を取得
-        const remoteUpdatedAt = typeof data.updatedAt === 'number'
-          ? data.updatedAt
-          : (data.updatedAt as { seconds: number })?.seconds * 1000 || 0;
-
-        // 受信したデータのハッシュを計算
-        const incomingHash = hashGameState(gameState);
-        
-        console.log('[FirebaseSync] 📥 PULL received', {
-          remoteUpdatedAt: new Date(remoteUpdatedAt).toISOString(),
-          lastApplied: new Date(lastAppliedRemoteUpdatedAt.current).toISOString(),
-          hash: incomingHash.substring(0, 30),
-          lastPushedHash: lastPushedHash.current.substring(0, 30),
-          timeSinceLastPush: Date.now() - lastPushedTime.current,
-          waitingPlayers: gameState.players.filter((p: { isResting: boolean }) => !p.isResting).map((p: { name: string }) => p.name),
-          restPlayers: gameState.players.filter((p: { isResting: boolean }) => p.isResting).map((p: { name: string }) => p.name),
-        });
-        
-        // 自分が最後にpushしたデータと同じなら無視
-        if (incomingHash === lastPushedHash.current) {
-          console.log('[FirebaseSync] ⏭️  SKIP: same as last push');
-          return;
+        // デバウンス: 500ms以内の連続pull通知をまとめる
+        if (pullTimer.current) {
+          clearTimeout(pullTimer.current);
         }
-
-        // リモートデータが古い（または同じ）なら無視
-        if (remoteUpdatedAt <= lastAppliedRemoteUpdatedAt.current) {
-          console.log('[FirebaseSync] ⏭️  SKIP: older remote data', remoteUpdatedAt, '<=', lastAppliedRemoteUpdatedAt.current);
-          return;
-        }
-
-        // 最後のpush操作から2000ms以内なら無視（自分の操作を優先）
-        const timeSinceLastPush = Date.now() - lastPushedTime.current;
-        if (timeSinceLastPush < 2000) {
-          console.log('[FirebaseSync] ⏭️  SKIP: too soon after push (' + timeSinceLastPush + 'ms < 2000ms)');
-          return;
-        }
-
-        console.log('[FirebaseSync] ✅ APPLYING remote data');
-      isSyncingFromRemote.current = true;
-
-      // プレイヤーストアを更新
-      const { players } = usePlayerStore.getState();
-      if (JSON.stringify(players) !== JSON.stringify(gameState.players)) {
-        // 変更されたプレイヤーをログ出力
-        const changes: string[] = [];
-        players.forEach((local) => {
-          const remote = gameState.players.find((p: { id: string }) => p.id === local.id);
-          if (remote && JSON.stringify(local) !== JSON.stringify(remote)) {
-            const remoteTyped = remote as { isResting: boolean };
-            const localStatus = local.isResting ? 'rest' : 'waiting';
-            const remoteStatus = remoteTyped.isResting ? 'rest' : 'waiting';
-            changes.push(`${local.name}: ${localStatus} → ${remoteStatus}`);
-          }
-        });
-        console.log('[FirebaseSync] 🔄 Player changes:', changes);
-        usePlayerStore.setState({ players: gameState.players });
-      }
-
-      // ゲームストアを更新
-      const { courts, matchHistory } = useGameStore.getState();
-      const gameUpdates: Record<string, unknown> = {};
-      if (JSON.stringify(courts) !== JSON.stringify(gameState.courts)) {
-        // 試合開始通知: コートが isPlaying: false → true に変わった場合
-        checkMatchStartNotifications(courts, gameState.courts);
-        gameUpdates.courts = gameState.courts;
-      }
-      if (JSON.stringify(matchHistory) !== JSON.stringify(gameState.matchHistory)) {
-        gameUpdates.matchHistory = gameState.matchHistory;
-      }
-      if (Object.keys(gameUpdates).length > 0) {
-        useGameStore.setState(gameUpdates as { courts: typeof courts; matchHistory: typeof matchHistory });
-      }
-
-      // 予約ストアを更新
-      const { reservations } = useReservationStore.getState();
-      if (gameState.reservations && JSON.stringify(reservations) !== JSON.stringify(gameState.reservations)) {
-        useReservationStore.setState({ reservations: gameState.reservations });
-      }
-
-      // 適用したリモートデータの更新時刻を記録
-      lastAppliedRemoteUpdatedAt.current = remoteUpdatedAt;
-
-      isSyncingFromRemote.current = false;
+        pullTimer.current = setTimeout(() => {
+          pullTimer.current = null;
+          applyRemoteData(gameState, data as { updatedAt: unknown });
+        }, 500) as unknown as number;
       },
       (error) => {
         console.error('GameState subscription error:', error);
       }
     );
 
-    return unsub;
-  }, [isShared, sessionId]);
+    return () => {
+      unsub();
+      if (pullTimer.current) {
+        clearTimeout(pullTimer.current);
+      }
+    };
+  }, [isShared, sessionId, toast, navigate, applyRemoteData]);
 }
 
 // 通知済みの試合を記録（重複防止）
