@@ -17,7 +17,8 @@ describe('useFirebaseSync - 同期シナリオ（簡易シミュレーション�
   it('シナリオ1: 2つのクライアントが同時に更新', () => {
     const now = Date.now();
 
-    // クライアントA: プレイヤーを休憩に変更 → push (time: now)
+    // クライアントA: プレイヤーを休憩に変更 → push
+    const clientA_pushTime = now;
     const clientA_hash = 'hash-A';
 
     // クライアントB: 別のプレイヤーを休憩に変更 → push
@@ -25,7 +26,7 @@ describe('useFirebaseSync - 同期シナリオ（簡易シミュレーション�
     const clientB_hash = 'hash-B';
 
     // Firestoreで先にコミットされたのはクライアントA
-    const remote_updatedAt = now + 50;
+    const remote_updatedAt = clientA_pushTime + 50;
 
     // クライアントBがクライアントAのデータを受信
     const decision = shouldApplyRemoteData({
@@ -71,13 +72,14 @@ describe('useFirebaseSync - 同期シナリオ（簡易シミュレーション�
   it('シナリオ3: ネットワーク遅延で古いデータが後から届く', () => {
     const now = Date.now();
 
-    // 時刻1000: データAを受信・適用（updatedAt: now + 1000）
+    // 時刻1000: データAを受信・適用
+    const firstData_updatedAt = now + 1000;
     
     // 時刻2000: データBを受信・適用
     const secondData_updatedAt = now + 2000;
 
     // 時刻3000: データA（遅延）が再度届く
-    const lateData_updatedAt = now + 1000; // 時刻1000のデータ
+    const lateData_updatedAt = firstData_updatedAt; // 時刻1000のデータ
 
     const decision = shouldApplyRemoteData({
       incomingHash: 'hash-late',
