@@ -9,6 +9,7 @@ import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { deleteSession } from '../services/sessionService';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
+import { clearAppBadge } from '../lib/badge';
 import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrCode, Copy, Check } from 'lucide-react';
 
 export function SettingsPage() {
@@ -85,6 +86,10 @@ export function SettingsPage() {
     clearRecords();
     clearReservations();
     clearSession();
+    
+    // PWAバッジをクリア
+    await clearAppBadge();
+    
     navigate('/');
   };
 

@@ -4,6 +4,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { getSession, joinSession, subscribeToGameState } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
 import { requestNotificationPermission } from '../lib/notifications';
+import { clearAppBadge } from '../lib/badge';
 import { type Session } from '../types/session';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
@@ -32,6 +33,11 @@ export function SessionJoinPage() {
 
   const initializeSession = useSessionStore((state) => state.initialize);
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
+
+  // PWAバッジをクリア（セッション参加前）
+  useEffect(() => {
+    clearAppBadge();
+  }, []);
 
   // Safari検出時にセッションIDをクリップボードにコピー（試行）
   useEffect(() => {

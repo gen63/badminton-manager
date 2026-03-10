@@ -90,8 +90,8 @@ export function MainPage() {
 
   // PWAバッジ更新：支払い予定額を表示
   useEffect(() => {
-    if (!currentUser) {
-      // ログインしていない場合はバッジをクリア
+    if (!session || !currentUser) {
+      // セッションがない、またはログインしていない場合はバッジをクリア
       updatePaymentBadge(true);
       return;
     }
@@ -107,7 +107,7 @@ export function MainPage() {
     const amount = currentPlayer.paymentAmount;
 
     updatePaymentBadge(isPaid, amount);
-  }, [currentUser, players]);
+  }, [session, currentUser, players]);
 
   if (!session) {
     navigate('/');

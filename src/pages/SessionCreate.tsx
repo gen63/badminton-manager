@@ -10,6 +10,7 @@ import { createSession, syncGameStateWithTransaction } from '../services/session
 import { getErrorMessage } from '../lib/errorHandler';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { requestNotificationPermission } from '../lib/notifications';
+import { clearAppBadge } from '../lib/badge';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { Sparkles, Download, Loader2, Play, LogIn } from 'lucide-react';
 
@@ -87,6 +88,11 @@ export function SessionCreate() {
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [allRated, setAllRated] = useState(false);
+
+  // PWAバッジをクリア（セッションがない状態）
+  useEffect(() => {
+    clearAppBadge();
+  }, []);
 
   // クリップボード自動検出（Phase 1）
   useEffect(() => {
