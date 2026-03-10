@@ -28,7 +28,7 @@ npm run test:coverage
 
 ### テストケース
 
-#### `getTimestampMillis()` - Firestoreタイムスタンプの変換
+#### `getTimestampMillis()` - Firestoreタイムスタンプの変換（5ケース）
 
 - ✅ 数値（ミリ秒）をそのまま返す
 - ✅ null/undefinedの場合はnullを返す
@@ -36,12 +36,12 @@ npm run test:coverage
 - ✅ Firestore Timestamp型（seconds）を変換
 - ✅ 不明な形式の場合はnullを返す
 
-#### `hashGameState()` - データのハッシュ計算
+#### `hashGameState()` - データのハッシュ計算（2ケース）
 
 - ✅ 同じデータは同じハッシュを返す
 - ✅ 異なるデータは異なるハッシュを返す
 
-#### `shouldApplyRemoteData()` - リモートデータ適用判定
+#### `shouldApplyRemoteData()` - リモートデータ適用判定（10ケース）
 
 - ✅ 通常のケースでは適用する
 - ✅ 自分がpushしたデータと同じならスキップ
@@ -53,6 +53,13 @@ npm run test:coverage
 - ✅ pushBlockMsをカスタマイズできる
 - ✅ 複数の条件が重なった場合、最初のスキップ条件が優先される
 - ✅ タイムスタンプが同じでハッシュが異なる場合はスキップ
+
+#### 同期シナリオのシミュレーション（4ケース）
+
+- ✅ シナリオ1: 2つのクライアントが同時に更新
+- ✅ シナリオ2: push完了後、新しいデータを受信
+- ✅ シナリオ3: ネットワーク遅延で古いデータが後から届く
+- ✅ シナリオ4: 自分がpushしたデータのエコーバック
 
 ### テストカバレッジ
 
