@@ -34,6 +34,12 @@ export function SettingsPage() {
     return null;
   }
 
+  // 管理者権限チェック
+  if (!isAdmin) {
+    navigate('/main');
+    return null;
+  }
+
   const handleTargetScoreChange = (score: number) => {
     updateConfig({ targetScore: score });
   };

@@ -22,7 +22,7 @@ import { BottomNav } from '../components/BottomNav';
 
 export function MainPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, currentUser } = useSessionStore();
+  const { session, updateConfig, currentUser, isAdmin } = useSessionStore();
 
   // オンラインモード時のリアルタイム同期
   const isSharedSession = !!session?.createdBy;
@@ -618,12 +618,14 @@ export function MainPage() {
             >
               <Redo2 size={18} />
             </button>
-            <button
-              onClick={() => navigate('/settings')}
-              className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-muted-foreground transition-colors"
-            >
-              <Settings size={18} />
-            </button>
+            {isAdmin() && (
+              <button
+                onClick={() => navigate('/settings')}
+                className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-muted-foreground transition-colors"
+              >
+                <Settings size={18} />
+              </button>
+            )}
           </div>
         </div>
       </header>
