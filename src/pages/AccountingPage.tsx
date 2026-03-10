@@ -175,7 +175,14 @@ export function AccountingPage() {
         name: p.name,
         amount: p.paymentAmount || 0,
         gamesPlayed: p.gamesPlayed,
-      })).sort((a, b) => b.amount - a.amount), // 金額順
+        paymentTimestamp: p.paymentTimestamp,
+      })).sort((a, b) => {
+        // 支払い時刻の新しい順でソート（時刻がない場合は金額順）
+        if (a.paymentTimestamp && b.paymentTimestamp) {
+          return b.paymentTimestamp - a.paymentTimestamp;
+        }
+        return b.amount - a.amount;
+      }),
     };
   }, [players]);
 
@@ -508,20 +515,33 @@ export function AccountingPage() {
               </p>
             ) : (
               <div className="space-y-2">
-                {paymentStats.players.map((player) => (
-                  <div
-                    key={player.id}
-                    className="flex items-center justify-between py-2 border-b border-border last:border-0"
-                  >
-                    <div>
-                      <div className="text-sm font-medium text-foreground">{player.name}</div>
-                      <div className="text-xs text-muted-foreground">{player.gamesPlayed}試合</div>
+                {paymentStats.players.map((player) => {
+                  const paymentTime = player.paymentTimestamp
+                    ? new Date(player.paymentTimestamp).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+                    : null;
+                  
+                  return (
+                    <div
+                      key={player.id}
+                      className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                    >
+                      <div>
+                        <div className="text-sm font-medium text-foreground">{player.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {player.gamesPlayed}試合
+                          {paymentTime && (
+                            <span className="ml-2 text-[10px]">
+                              🕐 {paymentTime}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-base font-bold text-foreground">
+                        ¥{player.amount.toLocaleString()}
+                      </div>
                     </div>
-                    <div className="text-base font-bold text-foreground">
-                      ¥{player.amount.toLocaleString()}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

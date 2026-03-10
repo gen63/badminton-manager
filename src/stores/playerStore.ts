@@ -96,12 +96,23 @@ export const usePlayerStore = create<PlayerState>()(
           players: state.players.map((p) => {
             if (p.id !== id) return p;
             const current = p.operationStatus || { payment: false, roster: false, checkin: false };
-            return {
-              ...p,
+            const newValue = !current[field];
+            
+            // 支払い完了時に時刻を記録
+            const updates: Partial<Player> = {
               operationStatus: {
                 ...current,
-                [field]: !current[field],
+                [field]: newValue,
               },
+            };
+            
+            if (field === 'payment' && newValue) {
+              updates.paymentTimestamp = Date.now();
+            }
+            
+            return {
+              ...p,
+              ...updates,
             };
           }),
         })),
