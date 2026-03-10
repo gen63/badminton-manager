@@ -623,7 +623,7 @@ export function MainPage() {
         );
       })()}
 
-      {shouldBlockAssignment && (
+      {shouldBlockAssignment && courts.length > 1 && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-center gap-2">
           <span className="text-xs text-amber-800 font-medium text-center">
             💡 組み合わせの多様性を確保するため、一括配置を推奨
@@ -795,7 +795,7 @@ export function MainPage() {
                         <p className="text-xs text-muted-foreground font-medium">空き</p>
                       </div>
                       <div className="flex flex-col gap-1 items-center">
-                        {shouldBlockAssignment && (
+                        {shouldBlockAssignment && courts.length > 1 && (
                           <p className="text-[10px] text-amber-700">⚠️ 一括配置推奨</p>
                         )}
                         <button
