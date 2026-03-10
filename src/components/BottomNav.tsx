@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { CalendarCheck, History, Users, DollarSign, LayoutGrid } from 'lucide-react';
 import { useReservationStore } from '../stores/reservationStore';
 import { useGameStore } from '../stores/gameStore';
+import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useToast } from '../hooks/useToast';
 import { Toast } from './Toast';
@@ -16,12 +17,40 @@ export function BottomNav({ activeTab }: BottomNavProps) {
   const navigate = useNavigate();
   const toast = useToast();
   const session = useSessionStore((s) => s.session);
+  const currentUser = useSessionStore((s) => s.currentUser);
+  const isAdmin = useSessionStore((s) => s.isAdmin);
   const reservationCount = useReservationStore(
     (s) => s.reservations.filter((r) => r.status === 'pending').length
   );
-  const unrecordedMatchesCount = useGameStore(
-    (s) => s.matchHistory.filter((m) => m.winner === undefined).length
-  );
+  
+  // 履歴バッジ: オンラインモードでは権限により表示内容を変える
+  const matchHistory = useGameStore((s) => s.matchHistory);
+  const players = usePlayerStore((s) => s.players);
+  
+  const unrecordedMatchesCount = (() => {
+    const unrecordedMatches = matchHistory.filter((m) => m.winner === undefined);
+    
+    // ローカルモード or 管理者: 全件表示
+    if (!session?.createdBy || isAdmin()) {
+      return unrecordedMatches.length;
+    }
+    
+    // オンラインモード & 一般ユーザー: 自分が参加した試合のみ
+    if (currentUser) {
+      return unrecordedMatches.filter((match) => {
+        // matchに含まれるplayerIdから名前を取得
+        const playerIds = [...match.teamA, ...match.teamB];
+        const playerNames = playerIds
+          .map((id) => players.find((p) => p.id === id)?.name)
+          .filter(Boolean);
+        
+        // 自分が参加しているかチェック
+        return playerNames.includes(currentUser);
+      }).length;
+    }
+    
+    return 0;
+  })();
 
   // PWA判定
   const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
