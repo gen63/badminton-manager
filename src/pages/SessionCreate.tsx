@@ -4,6 +4,9 @@ import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useReservationStore } from '../stores/reservationStore';
+import { useAccountingStore } from '../stores/accountingStore';
+import { useUndoStore } from '../stores/undoStore';
 import { generateSessionId, parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { createSession, syncGameStateWithTransaction } from '../services/sessionService';
@@ -228,6 +231,14 @@ export function SessionCreate() {
   };
 
   const handleCreate = async () => {
+    // 重要: 新規セッション作成前に古いデータを完全クリア
+    // （前のセッションのデータが残らないように）
+    usePlayerStore.getState().clearPlayers();
+    useGameStore.getState().clearHistory();
+    useReservationStore.getState().clearReservations();
+    useAccountingStore.getState().clearRecords();
+    useUndoStore.getState().clearAll();
+
     // プレイヤー名をパース
     const playerInputs = playerNames.trim()
       ? playerNames

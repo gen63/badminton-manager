@@ -9,6 +9,8 @@ import { type Session } from '../types/session';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
+import { useAccountingStore } from '../stores/accountingStore';
+import { useUndoStore } from '../stores/undoStore';
 import { Loader2, Plus, Copy, Check } from 'lucide-react';
 
 export function SessionJoinPage() {
@@ -133,6 +135,14 @@ export function SessionJoinPage() {
       }
 
       requestNotificationPermission();
+
+      // 重要: セッション参加前に古いデータを完全クリア
+      // （前のセッションやローカルモードのデータが残らないように）
+      usePlayerStore.getState().clearPlayers();
+      useGameStore.getState().clearHistory();
+      useReservationStore.getState().clearReservations();
+      useAccountingStore.getState().clearRecords();
+      useUndoStore.getState().clearAll();
 
       initializeSession({
         id: sessionId,
