@@ -497,7 +497,7 @@ export function SessionCreate() {
                   value={playerNames}
                   onChange={(e) => setPlayerNames(e.target.value)}
                   placeholder="星野真吾  男&#10;山口裕史  男&#10;佐野朋美  女"
-                  rows={5}
+                  rows={3}
                   className="textarea-field w-full pr-12"
                   style={{ WebkitAppearance: 'none' }}
                 />
@@ -620,39 +620,24 @@ export function SessionCreate() {
           </div>
 
           {/* 作成ボタン */}
-          <div className="space-y-3">
-            <div className="flex justify-center">
-              <button
-                onClick={handleCreate}
-                className="btn-primary text-base flex items-center justify-center gap-2"
-              >
-                <Sparkles size={18} />
-                開始
-              </button>
-            </div>
+          <div className="flex justify-center gap-3">
+            <button
+              onClick={handleCreate}
+              className="btn-primary text-base flex items-center justify-center gap-2"
+            >
+              <Sparkles size={18} />
+              開始
+            </button>
 
             {/* セッションIDで参加（Firebase設定時のみ表示） */}
             {isFirebaseConfigured() && (
-              <>
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-border"></div>
-                  </div>
-                  <div className="relative flex justify-center text-xs">
-                    <span className="bg-card px-2 text-muted-foreground">または</span>
-                  </div>
-                </div>
-
-                <div className="flex justify-center">
-                  <button
-                    onClick={() => setShowJoinMode(true)}
-                    className="btn-secondary text-sm flex items-center justify-center gap-2"
-                  >
-                    <LogIn size={16} />
-                    セッションIDで参加
-                  </button>
-                </div>
-              </>
+              <button
+                onClick={() => setShowJoinMode(true)}
+                className="btn-secondary text-sm flex items-center justify-center gap-2"
+              >
+                <LogIn size={16} />
+                セッションIDで参加
+              </button>
             )}
           </div>
         </div>
