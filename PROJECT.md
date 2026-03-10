@@ -81,12 +81,15 @@ git push origin master
 badminton-manager/
 ├── docs/
 │   └── plans/          # 設計ドキュメント・計画書
+├── doc/                # 初期設計仕様書（アーカイブ）
+├── e2e/                # E2Eテスト（Playwright）
 ├── src/
 │   ├── components/     # 再利用可能なUIコンポーネント
 │   ├── pages/          # ページコンポーネント
 │   ├── stores/         # Zustand ストア
 │   ├── hooks/          # カスタムフック
 │   ├── lib/            # ユーティリティ・アルゴリズム
+│   ├── services/       # Firebase等の外部サービス連携
 │   └── types/          # TypeScript型定義
 ├── CLAUDE.md           # AI向けワークフロー指示
 ├── PROJECT.md          # プロジェクト設定（このファイル）
