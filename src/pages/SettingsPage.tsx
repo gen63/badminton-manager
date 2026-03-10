@@ -86,8 +86,9 @@ export function SettingsPage() {
       '・試合履歴\n' +
       '・コート（すべてクリア）\n' +
       '・全員を休憩状態に\n' +
-      '・試合予約\n\n' +
-      '参加者リストと会計記録は保持されます。\n\n' +
+      '・試合予約\n' +
+      '・会計記録\n\n' +
+      '参加者リストは保持されます。\n\n' +
       '※オンラインモードの場合、他の参加者も影響を受けます'
     );
 
@@ -104,6 +105,9 @@ export function SettingsPage() {
     
     // 予約をクリア
     clearReservations();
+    
+    // 会計記録をクリア
+    clearRecords();
     
     // Undoスタックをクリア
     clearUndo();
@@ -535,7 +539,7 @@ export function SettingsPage() {
                 試合リセット
               </button>
               <p className="text-[10px] text-muted-foreground px-1">
-                試合履歴・コート・予約をクリア。参加者と会計は保持。
+                試合履歴・コート・予約・会計をクリア。参加者リストは保持。
               </p>
               
               <div className="pt-2 border-t border-border">
