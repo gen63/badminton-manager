@@ -419,7 +419,7 @@ export function SessionCreate() {
               <label className="label">セッションID</label>
               <input
                 type="text"
-                inputMode="latin"
+                inputMode="text"
                 autoCapitalize="characters"
                 autoComplete="off"
                 autoCorrect="off"
