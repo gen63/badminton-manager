@@ -248,6 +248,7 @@ export function MainPage() {
           allPlayers: allActivePlayers,
           useStayDurationPriority,
           reservations,
+          gameMode: session?.config.gameMode ?? 'doubles',
         }
       );
 
@@ -357,6 +358,7 @@ export function MainPage() {
       totalCourtCount: courts.length,
       useStayDurationPriority,
       reservations: reservations,
+      gameMode: session?.config.gameMode ?? 'doubles',
     });
 
     if (assignments[0]) {
