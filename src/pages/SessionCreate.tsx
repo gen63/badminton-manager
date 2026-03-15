@@ -85,7 +85,9 @@ export function SessionCreate() {
   const [practiceType, setPracticeType] = useState<'単' | '複' | '楽'>(defaultPracticeType);
   
   // Phase 1: セッションID参加機能
-  const [showJoinMode, setShowJoinMode] = useState(false);
+  const [showJoinMode, setShowJoinMode] = useState(
+    !!(location.state as { showJoinMode?: boolean })?.showJoinMode
+  );
   const [joinSessionId, setJoinSessionId] = useState('');
   const [clipboardDetected, setClipboardDetected] = useState<string | null>(null);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
@@ -96,6 +98,13 @@ export function SessionCreate() {
   useEffect(() => {
     clearAppBadge();
   }, []);
+
+  // 404リダイレクト時のstateをクリア（ブラウザバック時に再表示されないように）
+  useEffect(() => {
+    if ((location.state as { showJoinMode?: boolean })?.showJoinMode) {
+      window.history.replaceState({}, '');
+    }
+  }, [location.state]);
 
   // クリップボード自動検出（Phase 1）
   useEffect(() => {

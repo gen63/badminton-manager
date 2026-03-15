@@ -24,7 +24,7 @@ function App() {
         <Route path="/accounting" element={<AccountingPage />} />
         <Route path="/reservation" element={<ReservationPage />} />
         <Route path="/score/:matchId" element={<ScoreInputPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/" replace state={{ showJoinMode: true }} />} />
       </Routes>
       <PWAPrompt />
     </BrowserRouter>
