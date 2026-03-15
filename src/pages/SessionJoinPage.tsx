@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { getSession, joinSession, subscribeToGameState } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
-import { parsePlayerInput } from '../lib/utils';
+import { PlayerAddInput } from '../components/PlayerAddInput';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
 import { type Session } from '../types/session';
@@ -26,7 +26,6 @@ export function SessionJoinPage() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [selectedName, setSelectedName] = useState('');
-  const [newPlayerName, setNewPlayerName] = useState('');
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [additionalPlayers, setAdditionalPlayers] = useState<string[]>([]);
   const [loading, setLoading] = useState(!!sessionId);
@@ -97,15 +96,7 @@ export function SessionJoinPage() {
   }, [sessionId]);
 
   // プレイヤー追加処理
-  const handleAddPlayer = () => {
-    const trimmed = newPlayerName.trim();
-    if (!trimmed) return;
-
-    const parsed = parsePlayerInput(trimmed);
-    if (!parsed) return;
-
-    const name = parsed.name;
-
+  const handleAddPlayer = (name: string) => {
     // 既存メンバーと重複チェック（入室済みかどうかに関係なく）
     const allPlayers = [
       ...(session?.registeredPlayers || []),
@@ -119,7 +110,6 @@ export function SessionJoinPage() {
 
     setAdditionalPlayers([...additionalPlayers, name]);
     setSelectedName(name); // 追加したメンバーを自動選択
-    setNewPlayerName('');
     setShowAddPlayer(false);
     setError('');
   };
@@ -320,29 +310,10 @@ export function SessionJoinPage() {
 
             {/* 追加フォーム（折りたたみ式） */}
             {showAddPlayer && (
-              <div className="mt-3 bg-muted/30 rounded-xl p-3 flex gap-2">
-                <input
-                  type="text"
-                  value={newPlayerName}
-                  onChange={(e) => setNewPlayerName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && newPlayerName.trim()) {
-                      handleAddPlayer();
-                    }
-                  }}
-                  placeholder="こば 男"
-                  className="flex-1 input-field"
+              <div className="mt-3 bg-muted/30 rounded-xl p-3">
+                <PlayerAddInput
+                  onAdd={(name) => handleAddPlayer(name)}
                 />
-                <button
-                  onClick={handleAddPlayer}
-                  disabled={!newPlayerName.trim()}
-                  className="bg-primary text-primary-foreground rounded-xl px-4 py-2 text-sm font-medium
-                           hover:bg-primary/90 active:bg-primary/80 active:scale-[0.98]
-                           disabled:opacity-50 disabled:cursor-not-allowed
-                           transition-all duration-150 flex items-center justify-center"
-                >
-                  <Plus size={16} />
-                </button>
               </div>
             )}
           </div>
