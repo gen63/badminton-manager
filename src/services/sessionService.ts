@@ -313,6 +313,63 @@ export async function syncGameStateWithTransaction(
   }
 }
 
+/**
+ * べき等な試合終了Transaction
+ *
+ * startedAt をべき等キーとして使用し、同じ試合の二重終了を防ぐ。
+ * 2人が同時に「終了」をタップしても、1人目のみ成功し、
+ * 2人目は 'already_finished' を受け取る。
+ *
+ * @param computeNewState リモート状態を受け取り、新しい状態を返す純粋関数
+ * @returns 'success' | 'already_finished'
+ */
+export async function finishGameTransaction(
+  sessionId: string,
+  courtId: number,
+  matchStartedAt: number,
+  computeNewState: (remoteState: GameState) => GameState,
+): Promise<'success' | 'already_finished'> {
+  if (!useFirestore) return 'success';
+
+  const docRef = doc(db!, 'sessions', sessionId);
+
+  try {
+    return await runTransaction(db!, async (transaction) => {
+      const snap = await transaction.get(docRef);
+      if (!snap.exists()) {
+        throw new Error('Session not found');
+      }
+
+      const data = snap.data();
+      const remoteState = data.gameState as GameState;
+      const remoteCourt = remoteState.courts.find(c => c.id === courtId);
+
+      // べき等チェック: この試合がまだ進行中か？
+      if (!remoteCourt?.isPlaying || remoteCourt.startedAt !== matchStartedAt) {
+        return 'already_finished';
+      }
+
+      // リモート状態に対して新しい状態を計算
+      const newState = computeNewState(remoteState);
+
+      transaction.update(docRef, {
+        gameState: sanitize(newState),
+        updatedAt: serverTimestamp(),
+      });
+
+      return 'success';
+    });
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === 'aborted') {
+      throw new SessionError(
+        '他のユーザーが更新しました。もう一度お試しください',
+        'conflict'
+      );
+    }
+    throw error;
+  }
+}
+
 /** ゲーム状態をリアルタイム監視（参加者が呼ぶ） */
 export function subscribeToGameState(
   sessionId: string,

@@ -28,7 +28,7 @@ export function MainPage() {
   // オンラインモード時のリアルタイム同期
   const isSharedSession = !!session?.createdBy;
   useRealtimeSession(isSharedSession ? session?.id ?? null : null);
-  useFirebaseSync();
+  const { prepareDirectTransaction, completeDirectTransaction } = useFirebaseSync();
   const { players, toggleRest, updatePlayer, addPlayers, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();
@@ -833,9 +833,20 @@ export function MainPage() {
                       
                       {court.isPlaying ? (
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             const currentCourt = courts.find((c) => c.id === court.id);
                             if (!currentCourt) return;
+
+                            // べき等キーをキャプチャ（この試合の一意識別子）
+                            const matchStartedAt = currentCourt.startedAt;
+
+                            // オンラインモード: push抑止してからローカル更新
+                            const isOnline = session?.id && session?.createdBy;
+                            if (isOnline) {
+                              prepareDirectTransaction();
+                            }
+
+                            // 楽観的ローカル更新（即座にUIに反映）
                             pushUndo();
                             finishGame(court.id, 0, 0);
                             [...court.teamA, ...court.teamB].filter(id => id).forEach((playerId) => {
@@ -864,6 +875,37 @@ export function MainPage() {
                             });
                             if (continuousMatchMode) {
                               handleContinuousNext(court.id);
+                            }
+
+                            // オンラインモード: べき等Transaction実行
+                            if (isOnline) {
+                              try {
+                                const { finishGameTransaction } = await import('../services/sessionService');
+                                const { computeFinishAndContinue } = await import('../lib/gameOperations');
+                                const gameMode = session?.config.gameMode ?? 'doubles';
+
+                                const result = await finishGameTransaction(
+                                  session!.id,
+                                  court.id,
+                                  matchStartedAt,
+                                  (remoteState) =>
+                                    computeFinishAndContinue(remoteState, court.id, {
+                                      continuousMatchMode,
+                                      useStayDurationPriority,
+                                      prioritizeDiversity,
+                                      gameMode,
+                                    }).newState
+                                );
+
+                                if (result === 'already_finished') {
+                                  toast.info('他のユーザーが既に終了しました');
+                                }
+                              } catch (err) {
+                                console.error('[FinishGame] Transaction failed:', err);
+                              } finally {
+                                // onSnapshotを受け入れ可能にする
+                                completeDirectTransaction();
+                              }
                             }
                           }}
                           className="w-full min-h-[44px] bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
