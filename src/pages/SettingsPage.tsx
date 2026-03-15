@@ -25,7 +25,7 @@ export function SettingsPage() {
   const isCreatorUser = isCreator();
   const { players, clearPlayers, setAllPlayersResting } = usePlayerStore();
   const { clearHistory, resetAllCourts } = useGameStore();
-  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
+  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType, setPracticeType } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
   const { clearReservations } = useReservationStore();
@@ -243,17 +243,19 @@ export function SettingsPage() {
             <div>
               <label className="text-xs font-semibold text-gray-700 mb-1.5 block">練習種別</label>
               <div className="flex gap-2">
-                <button
-                  className="flex-1 select-button text-xs px-2 select-button-active"
-                  disabled
-                >
-                  <span className="mr-1">✓</span>
-                  複
-                </button>
+                {(['単', '複', '楽'] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setPracticeType(type)}
+                    className={`flex-1 select-button text-xs px-2 ${
+                      practiceType === type ? 'select-button-active' : 'select-button-inactive'
+                    }`}
+                  >
+                    {practiceType === type && <span className="mr-1">✓</span>}
+                    {type}
+                  </button>
+                ))}
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">
-                ダブルス（2対2）専用
-              </p>
             </div>
 
             <div>
