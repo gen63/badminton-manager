@@ -18,9 +18,12 @@ import type { Court } from '../types/court';
  *
  * 全参加者がFirestoreのゲーム状態をリアルタイムで受信し、
  * ローカルの変更も即座にFirestoreにpushする（双方向同期）
- * 
+ *
  * Transaction使用により、同時更新時の競合を自動で解決します。
  * データハッシュ比較により、自分がpushしたデータを無視します。
+ *
+ * @returns prepareDirectTransaction / completeDirectTransaction
+ *          外部から直接Transactionを実行する場合に使用（finishGameTransaction等）
  */
 export function useFirebaseSync() {
   const session = useSessionStore((s) => s.session);
@@ -276,6 +279,42 @@ export function useFirebaseSync() {
 
     return unsub;
   }, [isShared, sessionId, applyRemoteData]); // applyRemoteDataを依存配列に追加
+
+  /**
+   * 外部から直接Transactionを実行する前に呼ぶ。
+   * - pending pushをキャンセル
+   * - isSyncingFromRemote=true でストア変更によるpushを抑止
+   *
+   * 楽観的ローカル更新 → finishGameTransaction の順で使う。
+   */
+  const prepareDirectTransaction = useCallback(() => {
+    if (pushTimer.current) {
+      clearTimeout(pushTimer.current);
+      pushTimer.current = null;
+    }
+    isSyncingFromRemote.current = true;
+  }, []);
+
+  /**
+   * 外部Transactionの完了後に呼ぶ（成功・already_finished 共通）。
+   * - lastPushedHash/Time をリセットして次の onSnapshot を受け入れ可能にする
+   * - isSyncingFromRemote=false にしてpull適用を許可
+   *
+   * Transaction成功時: onSnapshot でリモート状態が届き、ローカルの楽観的更新が修正される
+   * already_finished時: 他ユーザーの結果が onSnapshot で届き、ローカルが正しい状態に上書きされる
+   */
+  const completeDirectTransaction = useCallback(() => {
+    if (pushTimer.current) {
+      clearTimeout(pushTimer.current);
+      pushTimer.current = null;
+    }
+    // ハッシュとタイムスタンプをリセットして、次の onSnapshot を確実に適用
+    lastPushedHash.current = '';
+    lastPushedTime.current = 0;
+    isSyncingFromRemote.current = false;
+  }, []);
+
+  return { prepareDirectTransaction, completeDirectTransaction };
 }
 
 // 通知済みの試合を記録（重複防止）
