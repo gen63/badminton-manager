@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
-import { getSession, joinSession, subscribeToGameState } from '../services/sessionService';
+import { getSession, joinSession, subscribeToGameState, subscribeToSession } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { requestNotificationPermission } from '../lib/notifications';
@@ -79,6 +79,7 @@ export function SessionJoinPage() {
   useEffect(() => {
     if (!sessionId) return;
 
+    // 初回取得
     getSession(sessionId)
       .then((data) => {
         if (!data) {
@@ -93,6 +94,15 @@ export function SessionJoinPage() {
       })
       .catch((err) => setError(getErrorMessage(err)))
       .finally(() => setLoading(false));
+
+    // リアルタイム監視（メンバー追加・名前変更をリアルタイムに反映）
+    const unsub = subscribeToSession(sessionId, (data) => {
+      if (data) {
+        setSession(data);
+      }
+    });
+
+    return unsub;
   }, [sessionId]);
 
   // プレイヤー追加処理
