@@ -68,7 +68,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  */
 export function parsePlayerInput(
   line: string,
-  delimiter: RegExp = /\t|\s{2,}/
+  delimiter: RegExp = /\t|\s+/
 ): { name: string; rating?: number; gender?: 'M' | 'F' } | null {
   const trimmed = line.trim();
   if (!trimmed) return null;

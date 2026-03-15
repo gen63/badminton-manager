@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { getSession, joinSession, subscribeToGameState } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
+import { parsePlayerInput } from '../lib/utils';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
 import { type Session } from '../types/session';
@@ -100,19 +101,24 @@ export function SessionJoinPage() {
     const trimmed = newPlayerName.trim();
     if (!trimmed) return;
 
+    const parsed = parsePlayerInput(trimmed);
+    if (!parsed) return;
+
+    const name = parsed.name;
+
     // 既存メンバーと重複チェック（入室済みかどうかに関係なく）
     const allPlayers = [
       ...(session?.registeredPlayers || []),
       ...additionalPlayers
     ];
-    
-    if (allPlayers.includes(trimmed)) {
+
+    if (allPlayers.includes(name)) {
       setError('その名前は既に登録されています');
       return;
     }
 
-    setAdditionalPlayers([...additionalPlayers, trimmed]);
-    setSelectedName(trimmed); // 追加したメンバーを自動選択
+    setAdditionalPlayers([...additionalPlayers, name]);
+    setSelectedName(name); // 追加したメンバーを自動選択
     setNewPlayerName('');
     setShowAddPlayer(false);
     setError('');
@@ -324,7 +330,7 @@ export function SessionJoinPage() {
                       handleAddPlayer();
                     }
                   }}
-                  placeholder="名前を入力"
+                  placeholder="こば 男"
                   className="flex-1 input-field"
                 />
                 <button

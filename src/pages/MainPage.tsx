@@ -972,7 +972,7 @@ export function MainPage() {
                     onChange={(e) => setNewPlayerName(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newPlayerName.trim()) {
-                        const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
+                        const parsed = parsePlayerInput(newPlayerName.trim());
                         if (parsed) {
                           const result = addPlayers([parsed]);
                           if (result.skipped.length > 0) {
@@ -990,7 +990,7 @@ export function MainPage() {
                 <button
                   onClick={() => {
                     if (newPlayerName.trim()) {
-                      const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
+                      const parsed = parsePlayerInput(newPlayerName.trim());
                       if (parsed) {
                         const result = addPlayers([parsed]);
                         if (result.skipped.length > 0) {
