@@ -229,17 +229,17 @@ export function useFirebaseSync() {
 
         const data = snap.data();
         
-        // 5日間経過判定（作成日時から5日 = 432000000ms）
-        const createdAt = typeof data.createdAt === 'number'
-          ? data.createdAt
-          : (data.createdAt as { seconds?: number })?.seconds ? (data.createdAt as { seconds: number }).seconds * 1000 : 0;
-        
+        // 5日間経過判定（最終アクセスから5日 = 432000000ms）
+        const updatedAt = typeof data.updatedAt === 'number'
+          ? data.updatedAt
+          : (data.updatedAt as { seconds?: number })?.seconds ? (data.updatedAt as { seconds: number }).seconds * 1000 : 0;
+
         const now = Date.now();
-        const age = now - createdAt;
+        const age = now - updatedAt;
         const TTL = 5 * 24 * 60 * 60 * 1000; // 5日間（120時間）
-        
-        if (createdAt > 0 && age > TTL) {
-          toastRef.current.warning('セッションの有効期限（5日間）が切れました');
+
+        if (updatedAt > 0 && age > TTL) {
+          toastRef.current.warning('セッションの有効期限（最終アクセスから5日間）が切れました');
           
           // セッション削除（作成者のみ）
           const currentSession = useSessionStore.getState().session;
