@@ -198,6 +198,13 @@ export function AccountingPage() {
 
     if (changed) {
       saveAllInputs(overrides);
+
+      // 変更内容をトーストで通知
+      const parts: string[] = [];
+      if (overrides.exemptCount !== undefined) parts.push(`免除${overrides.exemptCount}人`);
+      if (overrides.maleCount !== undefined) parts.push(`男${overrides.maleCount}人`);
+      if (overrides.femaleCount !== undefined) parts.push(`女${overrides.femaleCount}人`);
+      toast.info(`支払いデータから人数を更新: ${parts.join(', ')}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [players, initialized]);
