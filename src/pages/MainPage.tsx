@@ -35,7 +35,8 @@ export function MainPage() {
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeDiversity } = useSettingsStore();
 
   // ゲームモード判定
-  const isSingles = false; // ダブルス専用
+  // TODO: シングルス対応時にpracticeTypeから動的に判定する（アルゴリズム改修が必要）
+  const isSingles = false;
   const playersPerCourt = isSingles ? 2 : 4;
 
   // total active players cache used by flow-priority checks

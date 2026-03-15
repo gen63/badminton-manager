@@ -13,6 +13,8 @@ interface SettingsState {
   setRecordScores: (value: boolean) => void;
   prioritizeDiversity: boolean;
   setPrioritizeDiversity: (value: boolean) => void;
+  practiceType: '単' | '複' | '楽';
+  setPracticeType: (value: '単' | '複' | '楽') => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -29,6 +31,8 @@ export const useSettingsStore = create<SettingsState>()(
       setRecordScores: (value) => set({ recordScores: value }),
       prioritizeDiversity: false,
       setPrioritizeDiversity: (value) => set({ prioritizeDiversity: value }),
+      practiceType: '複',
+      setPracticeType: (value) => set({ practiceType: value }),
     }),
     {
       name: 'badminton-settings',
