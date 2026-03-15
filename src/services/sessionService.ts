@@ -261,8 +261,10 @@ export async function syncGameState(
   if (!useFirestore) return;
 
   const docRef = doc(db!, 'sessions', sessionId);
+  const registeredPlayers = gameState.players.map((p) => p.name);
   await updateDoc(docRef, {
     gameState: sanitize(gameState),
+    registeredPlayers,
     updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
   });
 }
@@ -290,8 +292,11 @@ export async function syncGameStateWithTransaction(
       }
       
       // 更新（競合があればFirestoreが自動リトライ）
+      // registeredPlayersも同期（メンバー追加・名前変更をジョイン画面に反映）
+      const registeredPlayers = gameState.players.map((p) => p.name);
       transaction.update(docRef, {
         gameState: sanitize(gameState),
+        registeredPlayers,
         updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
       });
     });
