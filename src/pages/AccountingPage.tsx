@@ -197,15 +197,19 @@ export function AccountingPage() {
         paidTotal: 0,
         unpaidTotal: maleCount * maleFee + femaleCount * femaleFee,
         paidCount: 0,
+        unpaidMaleCount: maleCount,
+        unpaidFemaleCount: femaleCount,
       };
     }
 
     // 入力済みメンバーの合計
     const paidTotal = paidPlayers.reduce((sum, p) => sum + (p.paymentAmount ?? 0), 0);
 
-    // 入力済みの男女内訳を計算（性別不明は男性扱い）
-    const paidMaleCount = paidPlayers.filter(p => p.gender === 'M' || !p.gender).length;
-    const paidFemaleCount = paidPlayers.filter(p => p.gender === 'F').length;
+    // 免除(¥0)の支払いは exemptCount に含まれているため、
+    // maleCount/femaleCount からの差し引きは有料支払者のみで行う
+    const nonExemptPaidPlayers = paidPlayers.filter(p => (p.paymentAmount ?? 0) > 0);
+    const paidMaleCount = nonExemptPaidPlayers.filter(p => p.gender === 'M' || !p.gender).length;
+    const paidFemaleCount = nonExemptPaidPlayers.filter(p => p.gender === 'F').length;
 
     // 未入力メンバーの推定
     const unpaidMaleCount = Math.max(0, maleCount - paidMaleCount);
@@ -218,6 +222,8 @@ export function AccountingPage() {
       paidTotal,
       unpaidTotal,
       paidCount: paidPlayers.length,
+      unpaidMaleCount,
+      unpaidFemaleCount,
     };
   }, [players, maleCount, femaleCount, maleFee, femaleFee]);
 
@@ -314,16 +320,13 @@ export function AccountingPage() {
     if (hybridIncome.useHybrid) {
       lines.push(`支払い入力済み(${hybridIncome.paidCount}人) = ${hybridIncome.paidTotal.toLocaleString()}`);
       if (hybridIncome.unpaidTotal > 0) {
-        // 未入力分の内訳
-        const paidPlayers = players.filter(p => p.operationStatus?.payment);
-        const paidMaleCount = paidPlayers.filter(p => p.gender === 'M' || !p.gender).length;
-        const paidFemaleCount = paidPlayers.filter(p => p.gender === 'F').length;
-        const unpaidMaleCount = Math.max(0, maleCount - paidMaleCount);
-        const unpaidFemaleCount = Math.max(0, femaleCount - paidFemaleCount);
         const unpaidParts: string[] = [];
-        if (unpaidMaleCount > 0) unpaidParts.push(`男${maleFee}×${unpaidMaleCount}`);
-        if (unpaidFemaleCount > 0) unpaidParts.push(`女${femaleFee}×${unpaidFemaleCount}`);
+        if (hybridIncome.unpaidMaleCount > 0) unpaidParts.push(`男${maleFee}×${hybridIncome.unpaidMaleCount}`);
+        if (hybridIncome.unpaidFemaleCount > 0) unpaidParts.push(`女${femaleFee}×${hybridIncome.unpaidFemaleCount}`);
         lines.push(`未入力分 ${unpaidParts.join(' + ')} = ${hybridIncome.unpaidTotal.toLocaleString()}`);
+      }
+      if (exemptCount > 0) {
+        lines.push(`免除 ${exemptCount}×0 = 0`);
       }
     } else {
       lines.push(
