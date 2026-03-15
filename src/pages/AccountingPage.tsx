@@ -563,6 +563,14 @@ export function AccountingPage() {
                   ¥{paymentStats.totalAmount.toLocaleString()}
                 </span>
               </div>
+              {paymentStats.players.filter(p => p.amount === 0).length > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">うち免除</span>
+                  <span className="text-sm font-medium text-amber-600">
+                    {paymentStats.players.filter(p => p.amount === 0).length}人
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -596,8 +604,8 @@ export function AccountingPage() {
                           )}
                         </div>
                       </div>
-                      <div className="text-base font-bold text-foreground">
-                        ¥{player.amount.toLocaleString()}
+                      <div className={`text-base font-bold ${player.amount === 0 ? 'text-amber-600' : 'text-foreground'}`}>
+                        {player.amount === 0 ? '免除' : `¥${player.amount.toLocaleString()}`}
                       </div>
                     </div>
                   );
