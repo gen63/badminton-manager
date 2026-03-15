@@ -419,11 +419,17 @@ export function SessionCreate() {
               <label className="label">セッションID</label>
               <input
                 type="text"
+                inputMode="latin"
+                autoCapitalize="characters"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
                 value={joinSessionId}
-                onChange={(e) => setJoinSessionId(e.target.value.toUpperCase())}
+                onChange={(e) => setJoinSessionId(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                 placeholder="ABC123"
                 maxLength={6}
-                className="input-field text-center text-2xl font-bold tracking-wider"
+                className="input-field text-center text-2xl font-bold tracking-wider uppercase"
+                style={{ imeMode: 'disabled' }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleJoinSession();
                 }}
