@@ -246,7 +246,10 @@ export function SettingsPage() {
                 {(['単', '複', '楽'] as const).map((type) => (
                   <button
                     key={type}
-                    onClick={() => setPracticeType(type)}
+                    onClick={() => {
+                      setPracticeType(type);
+                      if (type === '単') setPrioritizeDiversity(false);
+                    }}
                     className={`flex-1 select-button text-xs px-2 ${
                       practiceType === type ? 'select-button-active' : 'select-button-inactive'
                     }`}
@@ -325,7 +328,7 @@ export function SettingsPage() {
             </div>
 
             {(() => {
-              const isSinglesMode = false; // ダブルス専用
+              const isSinglesMode = practiceType === '単';
               return (
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">配置タイミング</label>
