@@ -241,7 +241,7 @@ export function PlayerSelect() {
             <textarea
               value={newPlayerNames}
               onChange={(e) => setNewPlayerNames(e.target.value)}
-              placeholder="星野真吾  男&#10;佐野朋美  女&#10;山口裕史"
+              placeholder="星野真吾 男&#10;佐野朋美 女&#10;山口裕史"
               rows={6}
               className="textarea-field"
             />

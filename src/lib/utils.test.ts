@@ -217,16 +217,20 @@ describe('parsePlayerInput', () => {
   });
 
   it('名前とレーティングのパース', () => {
-    expect(parsePlayerInput('Alice  1500', /\s+/)).toEqual({ name: 'Alice', rating: 1500 });
+    expect(parsePlayerInput('Alice 1500')).toEqual({ name: 'Alice', rating: 1500 });
   });
 
   it('名前と性別のパース', () => {
-    expect(parsePlayerInput('Alice  M', /\s+/)).toEqual({ name: 'Alice', gender: 'M' });
-    expect(parsePlayerInput('Alice  女', /\s+/)).toEqual({ name: 'Alice', gender: 'F' });
+    expect(parsePlayerInput('Alice M')).toEqual({ name: 'Alice', gender: 'M' });
+    expect(parsePlayerInput('Alice 女')).toEqual({ name: 'Alice', gender: 'F' });
+  });
+
+  it('名前と性別のパース（スペース複数）', () => {
+    expect(parsePlayerInput('Alice  M')).toEqual({ name: 'Alice', gender: 'M' });
   });
 
   it('名前、レーティング、性別のパース', () => {
-    expect(parsePlayerInput('Alice  1500  M', /\s+/)).toEqual({ name: 'Alice', rating: 1500, gender: 'M' });
+    expect(parsePlayerInput('Alice 1500 M')).toEqual({ name: 'Alice', rating: 1500, gender: 'M' });
   });
 
   it('タブ区切りのパース', () => {

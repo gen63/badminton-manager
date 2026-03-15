@@ -4,7 +4,8 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
-import { parsePlayerInput, getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
+import { getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
+import { PlayerAddInput } from '../components/PlayerAddInput';
 import { useSettingsStore } from '../stores/settingsStore';
 import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, StopCircle, Trash2, ChevronDown, Minus, Settings, Info } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -50,7 +51,7 @@ export function MainPage() {
     courtId?: number;
     position?: number;
   } | null>(null);
-  const [newPlayerName, setNewPlayerName] = useState('');
+
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
@@ -964,48 +965,15 @@ export function MainPage() {
             
             {/* Add Member - Collapsible */}
             {showAddPlayer && (
-              <div className="bg-card p-6 rounded-2xl border border-border flex gap-2 shadow-sm">
-                <div className="flex-1 relative">
-                  <input
-                    type="text"
-                    value={newPlayerName}
-                    onChange={(e) => setNewPlayerName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newPlayerName.trim()) {
-                        const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
-                        if (parsed) {
-                          const result = addPlayers([parsed]);
-                          if (result.skipped.length > 0) {
-                            toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
-                          } else {
-                            setNewPlayerName('');
-                          }
-                        }
-                      }
-                    }}
-                    className="w-full h-10 pl-3 pr-3 bg-input border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    placeholder="こば 男"
-                  />
-                </div>
-                <button
-                  onClick={() => {
-                    if (newPlayerName.trim()) {
-                      const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
-                      if (parsed) {
-                        const result = addPlayers([parsed]);
-                        if (result.skipped.length > 0) {
-                          toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
-                        } else {
-                          setNewPlayerName('');
-                        }
-                      }
+              <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
+                <PlayerAddInput
+                  onAdd={(name, gender) => {
+                    const result = addPlayers([{ name, gender }]);
+                    if (result.skipped.length > 0) {
+                      toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
                     }
                   }}
-                  disabled={!newPlayerName.trim()}
-                  className="h-10 px-4 bg-secondary text-secondary-foreground rounded-xl font-semibold text-sm flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary/80 transition-colors whitespace-nowrap"
-                >
-                  追加
-                </button>
+                />
               </div>
             )}
 
