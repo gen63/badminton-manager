@@ -25,13 +25,13 @@ export const useSessionStore = create<SessionState>()(
       currentUser: null,
       setSession: (session) => set({ session }),
       updateConfig: async (config) => {
-        // ローカル更新（即座に反映）
+        // ローカル更新（即座に反映、クライアント時刻）
         set((state) => ({
           session: state.session
             ? {
                 ...state.session,
                 config: { ...state.session.config, ...config },
-                updatedAt: Date.now(),
+                updatedAt: Date.now(), // ローカルクライアント時刻
               }
             : null,
         }));
@@ -75,7 +75,7 @@ export const useSessionStore = create<SessionState>()(
       updateSession: (updates) =>
         set((state) => ({
           session: state.session
-            ? { ...state.session, ...updates, updatedAt: Date.now() }
+            ? { ...state.session, ...updates, updatedAt: Date.now() } // ローカルクライアント時刻
             : null,
         })),
       updateInformation: async (text) => {
@@ -106,7 +106,7 @@ export const useSessionStore = create<SessionState>()(
 
         const newInformation = {
           text: text.trim(),
-          updatedAt: Date.now(),
+          updatedAt: Date.now(), // ローカルクライアント時刻
           updatedBy: currentUser || undefined,
           readBy: currentUser ? [currentUser] : [], // 編集者は既読扱い
         };
@@ -133,7 +133,7 @@ export const useSessionStore = create<SessionState>()(
         if (!session || !session.information || !currentUser) return;
 
         // readBy が未定義の場合は空配列として扱う
-        const currentReadBy = session.information.readBy || [];
+        const currentReadBy = session.information.readBy ?? [];
 
         // 既に既読の場合は何もしない
         if (currentReadBy.includes(currentUser)) return;

@@ -92,10 +92,10 @@ export async function createSession(session: Partial<Session>): Promise<string> 
       await setDoc(docRef, {
         ...session,
         id: sessionId,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
+        updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
         status: session.status || 'active',
-        participants: session.participants || [],
+        participants: session.participants ?? [],
       });
       
       return sessionId;
@@ -173,7 +173,7 @@ export async function updateSession(
     const docRef = doc(db!, 'sessions', sessionId);
     await updateDoc(docRef, {
       ...updates,
-      updatedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
     });
     return;
   }
@@ -192,7 +192,7 @@ export async function joinSession(
   sessionId: string,
   playerName: string,
   options?: { force?: boolean }
-): Promise<{ alreadyJoined: boolean }> {
+): Promise<{ isAlreadyJoined: boolean }> {
   if (!playerName.trim()) {
     throw new SessionError('参加者名を入力してください', 'invalid-name');
   }
@@ -204,27 +204,27 @@ export async function joinSession(
       throw new SessionError(`セッション ${sessionId} が見つかりません`, 'not-found');
     }
     const data = docSnap.data();
-    const participants = (data.participants as string[] || []);
-    const alreadyJoined = participants.includes(playerName);
+    const participants = (data.participants as string[] | undefined) ?? [];
+    const isAlreadyJoined = participants.includes(playerName);
 
-    if (alreadyJoined && !options?.force) {
-      return { alreadyJoined: true };
+    if (isAlreadyJoined && !options?.force) {
+      return { isAlreadyJoined: true };
     }
 
     // force=trueの場合、既存の参加を削除してから追加（追い出し）
-    if (alreadyJoined && options?.force) {
+    if (isAlreadyJoined && options?.force) {
       const newParticipants = participants.filter((name) => name !== playerName);
       await updateDoc(docRef, {
         participants: [...newParticipants, playerName],
-        updatedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
       });
     } else {
       await updateDoc(docRef, {
         participants: arrayUnion(playerName),
-        updatedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
       });
     }
-    return { alreadyJoined: false };
+    return { isAlreadyJoined: false };
   }
 
   // フォールバック: localStorage
@@ -233,19 +233,19 @@ export async function joinSession(
     throw new SessionError(`セッション ${sessionId} が見つかりません`, 'not-found');
   }
 
-  const alreadyJoined = session.participants?.includes(playerName) || false;
-  if (alreadyJoined && !options?.force) {
-    return { alreadyJoined: true };
+  const isAlreadyJoined = session.participants?.includes(playerName) ?? false;
+  if (isAlreadyJoined && !options?.force) {
+    return { isAlreadyJoined: true };
   }
 
-  let participants = session.participants || [];
-  if (alreadyJoined && options?.force) {
+  let participants = session.participants ?? [];
+  if (isAlreadyJoined && options?.force) {
     participants = participants.filter((name) => name !== playerName);
   }
   participants = [...participants, playerName];
 
   await updateSession(sessionId, { participants });
-  return { alreadyJoined: false };
+  return { isAlreadyJoined: false };
 }
 
 /** undefinedをnullに変換（Firestoreはundefinedを受け付けない） */
@@ -263,7 +263,7 @@ export async function syncGameState(
   const docRef = doc(db!, 'sessions', sessionId);
   await updateDoc(docRef, {
     gameState: sanitize(gameState),
-    updatedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
   });
 }
 
@@ -292,7 +292,7 @@ export async function syncGameStateWithTransaction(
       // 更新（競合があればFirestoreが自動リトライ）
       transaction.update(docRef, {
         gameState: sanitize(gameState),
-        updatedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
       });
     });
   } catch (error: unknown) {

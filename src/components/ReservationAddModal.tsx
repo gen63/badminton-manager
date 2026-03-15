@@ -1,14 +1,12 @@
 import { useState } from 'react';
 import { X, Check } from 'lucide-react';
 import type { Player } from '../types/player';
-import type { GameMode } from '../types/session';
 
 interface ReservationAddModalProps {
   players: Player[];
   getPlayerName: (id: string) => string;
   onConfirm: (playerIds: string[]) => void;
   onCancel: () => void;
-  gameMode?: GameMode;
 }
 
 export function ReservationAddModal({
@@ -16,9 +14,8 @@ export function ReservationAddModal({
   getPlayerName,
   onConfirm,
   onCancel,
-  gameMode = 'doubles',
 }: ReservationAddModalProps) {
-  const maxPlayers = gameMode === 'singles' ? 2 : 4;
+  const maxPlayers = 4; // ダブルス専用
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const handleToggle = (id: string) => {

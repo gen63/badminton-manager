@@ -5,7 +5,7 @@
 
 /**
  * Firestoreタイムスタンプをミリ秒に変換（堅牢版）
- * @returns ミリ秒、または取得失敗時はnull
+ * @returns ミリ秒、または取得失敗時は0
  */
 export function getTimestampMillis(timestamp: unknown): number | null {
   if (!timestamp) {

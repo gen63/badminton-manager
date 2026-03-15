@@ -15,7 +15,7 @@ interface GameState {
   resetAllCourts: () => void;
   addToHistory: (match: Match) => void;
   clearHistory: () => void;
-  deleteMatch: (matchId: string) => void;
+  removeMatch: (matchId: string) => void;
 }
 
 export const useGameStore = create<GameState>()(
@@ -32,8 +32,8 @@ export const useGameStore = create<GameState>()(
             scoreA: 0,
             scoreB: 0,
             isPlaying: false,
-            startedAt: null,
-            finishedAt: null,
+            startedAt: 0,
+            finishedAt: 0,
           })),
         }),
       resizeCourts: (count) =>
@@ -48,8 +48,8 @@ export const useGameStore = create<GameState>()(
               scoreA: 0,
               scoreB: 0,
               isPlaying: false,
-              startedAt: null as number | null,
-              finishedAt: null as number | null,
+              startedAt: 0,
+              finishedAt: 0,
             }));
             return { courts: [...existing, ...newCourts] };
           }
@@ -101,13 +101,13 @@ export const useGameStore = create<GameState>()(
           if (!court) return state;
 
           const match: Match = {
-            id: `match-${Date.now()}-${courtId}`,
+            id: crypto.randomUUID(),
             courtId,
             teamA: court.teamA,
             teamB: court.teamB,
             scoreA,
             scoreB,
-            startedAt: court.startedAt || Date.now(),
+            startedAt: court.startedAt > 0 ? court.startedAt : Date.now(),
             finishedAt: Date.now(),
             // winner is not set here, will be set later
           };
@@ -136,8 +136,8 @@ export const useGameStore = create<GameState>()(
             scoreA: 0,
             scoreB: 0,
             isPlaying: false,
-            startedAt: null,
-            finishedAt: null,
+            startedAt: 0,
+            finishedAt: 0,
           })),
         })),
       addToHistory: (match) =>
@@ -145,7 +145,7 @@ export const useGameStore = create<GameState>()(
           matchHistory: [...state.matchHistory, match],
         })),
       clearHistory: () => set({ matchHistory: [] }),
-      deleteMatch: (matchId) =>
+      removeMatch: (matchId) =>
         set((state) => ({
           matchHistory: state.matchHistory.filter((m) => m.id !== matchId),
         })),

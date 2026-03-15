@@ -14,8 +14,8 @@ describe('calculatePlayerStats', () => {
     gamesPlayed: 0,
     rating: 1500,
     isResting: false,
-    lastPlayedAt: null,
-    activatedAt: null,
+    lastPlayedAt: 0,
+    activatedAt: 0,
   });
 
   const createMatch = (
@@ -151,8 +151,8 @@ const createPlayer = (id: string, name: string, rating: number = 1500): Player =
   gamesPlayed: 0,
   rating,
   isResting: false,
-  lastPlayedAt: null,
-  activatedAt: null,
+  lastPlayedAt: 0,
+  activatedAt: 0,
 });
 
 const createMatch = (
@@ -397,7 +397,7 @@ describe('assignCourts - 2コートホリスティック配置', () => {
     gamesPlayed,
     rating,
     isResting: false,
-    lastPlayedAt: null,
+    lastPlayedAt: 0,
     activatedAt: now - 60 * 60 * 1000, // 1時間前
   });
 
@@ -571,7 +571,7 @@ describe('formTeams - MIXペアリング', () => {
     id: string, name: string, rating: number, gender: 'M' | 'F'
   ): Player => ({
     id, name, rating, gender,
-    gamesPlayed: 0, isResting: false, lastPlayedAt: null, activatedAt: null,
+    gamesPlayed: 0, isResting: false, lastPlayedAt: 0, activatedAt: 0,
   });
 
   it('2M+2Fでデフォルト（1+4 vs 2+3）がMF → そのまま', () => {
@@ -625,7 +625,7 @@ describe('formTeams - MIXペアリング', () => {
     const players: Player[] = [
       createGenderedPlayer('p1', 'P1', 2000, 'M'),
       createGenderedPlayer('p2', 'P2', 1800, 'F'),
-      { id: 'p3', name: 'P3', rating: 1600, gamesPlayed: 0, isResting: false, lastPlayedAt: null, activatedAt: null },
+      { id: 'p3', name: 'P3', rating: 1600, gamesPlayed: 0, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
       createGenderedPlayer('p4', 'P4', 1400, 'M'),
     ];
     const order = ['p1', 'p2', 'p3', 'p4'];
@@ -649,7 +649,7 @@ describe('assignCourts - 性別ペナルティ', () => {
     gamesPlayed: number = 1
   ): Player => ({
     id, name, rating, gender, gamesPlayed,
-    isResting: false, lastPlayedAt: null,
+    isResting: false, lastPlayedAt: 0,
     activatedAt: now - 60 * 60 * 1000,
   });
 

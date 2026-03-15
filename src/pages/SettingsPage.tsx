@@ -11,7 +11,6 @@ import { deleteSession } from '../services/sessionService';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { clearAppBadge } from '../lib/badge';
 import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrCode, Copy, Check } from 'lucide-react';
-import type { GameMode } from '../types/session';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -25,7 +24,7 @@ export function SettingsPage() {
   const isAdmin = checkIsAdmin();
   const isCreatorUser = isCreator();
   const { players, clearPlayers, setAllPlayersResting } = usePlayerStore();
-  const { clearHistory, courts, resetAllCourts } = useGameStore();
+  const { clearHistory, resetAllCourts } = useGameStore();
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
@@ -243,46 +242,18 @@ export function SettingsPage() {
 
             <div>
               <label className="text-xs font-semibold text-gray-700 mb-1.5 block">練習種別</label>
-              {(() => {
-                const hasPlayersOnCourt = courts.some(c => c.teamA[0] !== '');
-                const currentMode: GameMode = session.config.gameMode || 'doubles';
-                return (
-                  <>
-                    <div className="flex gap-2">
-                      {(['単', '複', '楽'] as const).map((type) => {
-                        const isActive = type === '単'
-                          ? currentMode === 'singles'
-                          : type === '複'
-                          ? currentMode === 'doubles'
-                          : false;
-                        return (
-                          <button
-                            key={type}
-                            onClick={() => {
-                              if (hasPlayersOnCourt) return;
-                              const newMode = type === '単' ? 'singles' : 'doubles';
-                              updateConfig({ gameMode: newMode });
-                              if (newMode === 'singles') setPrioritizeDiversity(false);
-                            }}
-                            disabled={hasPlayersOnCourt}
-                            className={`flex-1 select-button text-xs px-2 ${
-                              isActive ? 'select-button-active' : 'select-button-inactive'
-                            } ${hasPlayersOnCourt ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          >
-                            {isActive && <span className="mr-1">✓</span>}
-                            {type}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      {hasPlayersOnCourt
-                        ? 'コートにメンバーがいる間は変更できません'
-                        : currentMode === 'singles' ? 'シングルス（1対1）' : 'ダブルス（2対2）'}
-                    </p>
-                  </>
-                );
-              })()}
+              <div className="flex gap-2">
+                <button
+                  className="flex-1 select-button text-xs px-2 select-button-active"
+                  disabled
+                >
+                  <span className="mr-1">✓</span>
+                  複
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                ダブルス（2対2）専用
+              </p>
             </div>
 
             <div>
@@ -352,7 +323,7 @@ export function SettingsPage() {
             </div>
 
             {(() => {
-              const isSinglesMode = (session.config.gameMode || 'doubles') === 'singles';
+              const isSinglesMode = false; // ダブルス専用
               return (
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">配置タイミング</label>

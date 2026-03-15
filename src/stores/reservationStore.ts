@@ -22,12 +22,12 @@ export const useReservationStore = create<ReservationState>()(
             reservations: [
               ...state.reservations,
               {
-                id: `rsv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                id: crypto.randomUUID(),
                 orderNumber: maxOrder + 1,
                 playerIds,
                 status: 'pending',
                 createdAt: Date.now(),
-                fulfilledAt: null,
+                fulfilledAt: 0, // 未完了時は0
                 createdBy,
               },
             ],

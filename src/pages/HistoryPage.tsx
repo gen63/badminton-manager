@@ -14,7 +14,7 @@ import { BottomNav } from '../components/BottomNav';
 
 export function HistoryPage() {
   const navigate = useNavigate();
-  const { matchHistory, deleteMatch } = useGameStore();
+  const { matchHistory, removeMatch } = useGameStore();
   const { players } = usePlayerStore();
   const { session, isCreator } = useSessionStore();
   const isAdmin = isCreator();
@@ -30,7 +30,7 @@ export function HistoryPage() {
   };
 
   const handleDelete = (matchId: string) => {
-    deleteMatch(matchId);
+    removeMatch(matchId);
   };
 
   const handleCopyHistory = async () => {

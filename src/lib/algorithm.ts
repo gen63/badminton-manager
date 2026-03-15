@@ -2,7 +2,7 @@ import type { Player } from '../types/player';
 import type { CourtAssignment } from '../types/court';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
-import type { GameMode } from '../types/session';
+import { SessionError } from './errorHandler';
 
 type RatingGroup = 'upper' | 'middle' | 'lower';
 
@@ -794,7 +794,6 @@ export function assignCourts(
     allPlayers?: Player[];  // 全アクティブプレイヤー（他コートでプレイ中含む）。グループ分けに使用
     useStayDurationPriority?: boolean;
     reservations?: Reservation[];
-    gameMode?: GameMode;
   }
 ): CourtAssignment[] {
   const activePlayers = players.filter((p) => !p.isResting);
@@ -804,10 +803,9 @@ export function assignCourts(
   const practiceStartTime = options?.practiceStartTime ?? Date.now();
   const useStayDuration = options?.useStayDurationPriority ?? true;
   const pendingReservations = (options?.reservations ?? []).filter(r => r.status === 'pending');
-  const gameMode = options?.gameMode ?? 'doubles';
 
-  // シングルスモードの場合
-  if (gameMode === 'singles') {
+  // ダブルス専用（シングルスモードは削除）
+  if (false) {
     // 予約配置を先に処理
     const singlesReservationAssignments: CourtAssignment[] = [];
     const singlesUsedPlayers = new Set<string>();
@@ -881,8 +879,9 @@ export function assignCourts(
       if (singlesReservationAssignments.length > 0) {
         return singlesReservationAssignments;
       }
-      throw new Error(
-        `アクティブなプレイヤーが不足しています（必要: ${singlesRemainingCourtIds.length * 2}人、現在: ${singlesNormalCandidates.length}人）`
+      throw new SessionError(
+        `アクティブなプレイヤーが不足しています（必要: ${singlesRemainingCourtIds.length * 2}人、現在: ${singlesNormalCandidates.length}人）`,
+        'insufficient-players'
       );
     }
 
@@ -1016,8 +1015,9 @@ export function assignCourts(
       // 予約配置分だけ返す（残りのコートは人数不足で配置できない）
       return reservationAssignments;
     }
-    throw new Error(
-      `アクティブなプレイヤーが不足しています（必要: ${requiredPlayers}人、現在: ${normalCandidates.length}人）`
+    throw new SessionError(
+      `アクティブなプレイヤーが不足しています（必要: ${requiredPlayers}人、現在: ${normalCandidates.length}人）`,
+      'insufficient-players'
     );
   }
 
@@ -1153,7 +1153,7 @@ export function assignCourts(
       }
 
       if (selected.length < 4) {
-        throw new Error('プレイヤーの割り当てに失敗しました');
+        throw new SessionError('プレイヤーの割り当てに失敗しました', 'assignment-failed');
       }
 
       selected.forEach(p => usedPlayers.add(p.id));
@@ -1192,7 +1192,7 @@ export function assignCourts(
     );
 
     if (selected.length < 4) {
-      throw new Error('プレイヤーの割り当てに失敗しました');
+      throw new SessionError('プレイヤーの割り当てに失敗しました', 'assignment-failed');
     }
 
     selected.forEach(p => usedPlayers.add(p.id));
@@ -1243,8 +1243,9 @@ function assignCourtsSingles(
 ): CourtAssignment[] {
   const requiredPlayers = targetCourtIds.length * 2;
   if (activePlayers.length < requiredPlayers) {
-    throw new Error(
-      `アクティブなプレイヤーが不足しています（必要: ${requiredPlayers}人、現在: ${activePlayers.length}人）`
+    throw new SessionError(
+      `アクティブなプレイヤーが不足しています（必要: ${requiredPlayers}人、現在: ${activePlayers.length}人）`,
+      'insufficient-players'
     );
   }
 

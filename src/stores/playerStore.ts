@@ -46,14 +46,14 @@ export const usePlayerStore = create<PlayerState>()(
             players: [
               ...state.players,
               ...toAdd.map((input) => ({
-                id: `player-${Date.now()}-${Math.random()}`,
+                id: crypto.randomUUID(),
                 name: input.name.trim(),
                 rating: input.rating,
                 gender: input.gender,
                 isResting: true, // 全員休憩で開始（チェックイン待ち）
                 gamesPlayed: 0,
-                lastPlayedAt: null,
-                activatedAt: null, // 休憩解除時に設定
+                lastPlayedAt: 0, // 未プレイ時は0
+                activatedAt: 0, // 休憩解除時に設定
               })),
             ],
           }));
@@ -72,9 +72,9 @@ export const usePlayerStore = create<PlayerState>()(
             
             const newIsResting = !p.isResting;
             
-            // 休憩→待機の場合、activatedAtを記録（既に設定済みなら上書きしない）
+            // 休憩→待機の場合、activatedAtを記録（既に設定済み（>0）なら上書きしない）
             const newActivatedAt = 
-              !newIsResting && p.activatedAt === null
+              !newIsResting && p.activatedAt === 0
                 ? Date.now()
                 : p.activatedAt;
             

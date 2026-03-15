@@ -48,7 +48,6 @@ export function ReservationPage() {
       <ReservationAddModal
         players={players}
         getPlayerName={getPlayerName}
-        gameMode={session.config.gameMode}
         onConfirm={(playerIds) => {
           addReservation(playerIds, currentUser || undefined);
           setShowAdd(false);

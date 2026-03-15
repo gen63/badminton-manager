@@ -128,7 +128,7 @@ export function SessionJoinPage() {
       const result = await joinSession(sessionId, selectedName, { force });
       
       // 既に参加している場合は確認ダイアログを表示
-      if (result.alreadyJoined && !force) {
+      if (result.isAlreadyJoined && !force) {
         setShowForceConfirm(true);
         setJoining(false);
         return;

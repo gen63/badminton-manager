@@ -15,7 +15,6 @@ import { isFirebaseConfigured } from '../lib/firebase';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
-import type { GameMode } from '../types/session';
 import { Sparkles, Download, Loader2, Play, LogIn } from 'lucide-react';
 
 // 現在日時を取得（曜日に応じて時刻を設定）
@@ -197,7 +196,6 @@ export function SessionCreate() {
         const sessionId = generateSessionId();
         const now = Date.now();
         const practiceTime = new Date(practiceDateTime).getTime();
-        const gameMode: GameMode = practiceType === '単' ? 'singles' : 'doubles';
         const session = {
           id: sessionId,
           config: {
@@ -206,7 +204,6 @@ export function SessionCreate() {
             practiceDate: practiceDateTime.split('T')[0],
             practiceStartTime: practiceTime,
             gym: selectedGym || undefined,
-            gameMode,
           },
           createdAt: now,
           updatedAt: now,
@@ -257,14 +254,12 @@ export function SessionCreate() {
     const adjustedCourtCount = 1;
     const now = Date.now();
     const practiceTime = new Date(practiceDateTime).getTime();
-    const gameMode: GameMode = practiceType === '単' ? 'singles' : 'doubles';
     const sessionConfig = {
       courtCount: adjustedCourtCount,
       targetScore,
       practiceDate: practiceDateTime.split('T')[0],
       practiceStartTime: practiceTime,
       gym: selectedGym || undefined,
-      gameMode,
     };
 
     // オンラインモード: 作成者名が未選択の場合は選択画面へ

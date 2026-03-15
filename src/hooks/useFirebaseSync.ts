@@ -54,7 +54,7 @@ export function useFirebaseSync() {
     const gameState = { players, courts, matchHistory, reservations };
     const hash = hashGameState(gameState);
     
-    // push開始時にタイムスタンプを記録（重要: 完了を待たない）
+    // push開始時にタイムスタンプを記録（ローカルクライアント時刻、完了を待たない）
     const pushStartTime = Date.now();
     lastPushedTime.current = pushStartTime;
     
