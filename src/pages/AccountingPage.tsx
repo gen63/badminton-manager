@@ -165,7 +165,7 @@ export function AccountingPage() {
   // 支払い済みプレイヤーの集計
   const paymentStats = useMemo(() => {
     const paidPlayers = players.filter(p => p.operationStatus?.payment);
-    const totalAmount = paidPlayers.reduce((sum, p) => sum + (p.paymentAmount || 0), 0);
+    const totalAmount = paidPlayers.reduce((sum, p) => sum + (p.paymentAmount ?? 0), 0);
     return {
       paidCount: paidPlayers.length,
       totalPlayers: players.length,
@@ -173,7 +173,7 @@ export function AccountingPage() {
       players: paidPlayers.map(p => ({
         id: p.id,
         name: p.name,
-        amount: p.paymentAmount || 0,
+        amount: p.paymentAmount ?? 0,
         gamesPlayed: p.gamesPlayed,
         paymentTimestamp: p.paymentTimestamp,
       })).sort((a, b) => {
@@ -185,6 +185,47 @@ export function AccountingPage() {
       }),
     };
   }, [players]);
+
+  // ハイブリッド収入計算（入力済みメンバーは実金額、未入力は計算式）
+  const hybridIncome = useMemo(() => {
+    const paidPlayers = players.filter(p => p.operationStatus?.payment);
+
+    if (paidPlayers.length === 0) {
+      return {
+        useHybrid: false,
+        total: maleCount * maleFee + femaleCount * femaleFee,
+        paidTotal: 0,
+        unpaidTotal: maleCount * maleFee + femaleCount * femaleFee,
+        paidCount: 0,
+        unpaidMaleCount: maleCount,
+        unpaidFemaleCount: femaleCount,
+      };
+    }
+
+    // 入力済みメンバーの合計
+    const paidTotal = paidPlayers.reduce((sum, p) => sum + (p.paymentAmount ?? 0), 0);
+
+    // 免除(¥0)の支払いは exemptCount に含まれているため、
+    // maleCount/femaleCount からの差し引きは有料支払者のみで行う
+    const nonExemptPaidPlayers = paidPlayers.filter(p => (p.paymentAmount ?? 0) > 0);
+    const paidMaleCount = nonExemptPaidPlayers.filter(p => p.gender === 'M' || !p.gender).length;
+    const paidFemaleCount = nonExemptPaidPlayers.filter(p => p.gender === 'F').length;
+
+    // 未入力メンバーの推定
+    const unpaidMaleCount = Math.max(0, maleCount - paidMaleCount);
+    const unpaidFemaleCount = Math.max(0, femaleCount - paidFemaleCount);
+    const unpaidTotal = unpaidMaleCount * maleFee + unpaidFemaleCount * femaleFee;
+
+    return {
+      useHybrid: true,
+      total: paidTotal + unpaidTotal,
+      paidTotal,
+      unpaidTotal,
+      paidCount: paidPlayers.length,
+      unpaidMaleCount,
+      unpaidFemaleCount,
+    };
+  }, [players, maleCount, femaleCount, maleFee, femaleFee]);
 
   // すべての入力値を保存するヘルパー関数
   const saveAllInputs = (overrides: Partial<{
@@ -226,7 +267,8 @@ export function AccountingPage() {
   const maleTotal = maleCount * maleFee;
   const femaleTotal = femaleCount * femaleFee;
   const shuttleTotal = shuttleCount * shuttlePrice;
-  const finalTotal = maleTotal + femaleTotal - gymCost - shuttleTotal + otherAmount;
+  const incomeForTotal = hybridIncome.total;
+  const finalTotal = incomeForTotal - gymCost - shuttleTotal + otherAmount;
 
   // 適正会費の計算（最小黒字 + 100円）
   const calculateAppropriateFee = () => {
@@ -273,10 +315,26 @@ export function AccountingPage() {
       `参加合計 ${participantCount}人(免除${exemptCount} 男${maleCount} 女${femaleCount})`,
       '',
       '【収入】',
-      `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
-      `女 ${femaleFee}×${femaleCount} = ${femaleTotal.toLocaleString()}`,
-      `免除 ${exemptCount}×0 = 0`,
     ];
+
+    if (hybridIncome.useHybrid) {
+      lines.push(`支払い入力済み(${hybridIncome.paidCount}人) = ${hybridIncome.paidTotal.toLocaleString()}`);
+      if (hybridIncome.unpaidTotal > 0) {
+        const unpaidParts: string[] = [];
+        if (hybridIncome.unpaidMaleCount > 0) unpaidParts.push(`男${maleFee}×${hybridIncome.unpaidMaleCount}`);
+        if (hybridIncome.unpaidFemaleCount > 0) unpaidParts.push(`女${femaleFee}×${hybridIncome.unpaidFemaleCount}`);
+        lines.push(`未入力分 ${unpaidParts.join(' + ')} = ${hybridIncome.unpaidTotal.toLocaleString()}`);
+      }
+      if (exemptCount > 0) {
+        lines.push(`免除 ${exemptCount}×0 = 0`);
+      }
+    } else {
+      lines.push(
+        `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
+        `女 ${femaleFee}×${femaleCount} = ${femaleTotal.toLocaleString()}`,
+        `免除 ${exemptCount}×0 = 0`,
+      );
+    }
 
     // その他欄（プラスの場合は収入に追加）
     if ((otherDescription || otherAmount !== 0) && otherAmount > 0) {
@@ -296,11 +354,16 @@ export function AccountingPage() {
     }
 
     // 合計の計算式を生成
-    let totalFormula = `${maleTotal.toLocaleString()}+${femaleTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
+    let totalFormula: string;
+    if (hybridIncome.useHybrid) {
+      totalFormula = `${hybridIncome.paidTotal.toLocaleString()}+${hybridIncome.unpaidTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
+    } else {
+      totalFormula = `${maleTotal.toLocaleString()}+${femaleTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
+    }
     if (otherAmount !== 0) {
       totalFormula += otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`;
     }
-    
+
     lines.push(
       '',
       '【合計】',
@@ -382,8 +445,8 @@ export function AccountingPage() {
       }))
     );
     
-    // 収入合計と支出合計を計算
-    const incomeTotal = maleTotal + femaleTotal;
+    // 収入合計と支出合計を計算（ハイブリッド収入を使用）
+    const incomeTotal = hybridIncome.total;
     const expenseTotal = gymCost + shuttleTotal + (otherAmount < 0 ? Math.abs(otherAmount) : 0);
     
     const record = {
@@ -503,6 +566,14 @@ export function AccountingPage() {
                   ¥{paymentStats.totalAmount.toLocaleString()}
                 </span>
               </div>
+              {paymentStats.players.filter(p => p.amount === 0).length > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">うち免除</span>
+                  <span className="text-sm font-medium text-amber-600">
+                    {paymentStats.players.filter(p => p.amount === 0).length}人
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -536,8 +607,8 @@ export function AccountingPage() {
                           )}
                         </div>
                       </div>
-                      <div className="text-base font-bold text-foreground">
-                        ¥{player.amount.toLocaleString()}
+                      <div className={`text-base font-bold ${player.amount === 0 ? 'text-amber-600' : 'text-foreground'}`}>
+                        {player.amount === 0 ? '免除' : `¥${player.amount.toLocaleString()}`}
                       </div>
                     </div>
                   );
@@ -1005,10 +1076,26 @@ export function AccountingPage() {
 
         {/* 合計 */}
         <div className="card p-4 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200">
-          <h2 className="text-sm font-bold mb-3 text-gray-700">合計</h2>
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-sm font-bold text-gray-700">合計</h2>
+            {hybridIncome.useHybrid && (
+              <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">
+                支払い入力反映中（{hybridIncome.paidCount}人）
+              </span>
+            )}
+          </div>
           <div className="text-xs text-muted-foreground mb-2 font-mono">
-            {maleTotal.toLocaleString()}+{femaleTotal.toLocaleString()}-{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
-            {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
+            {hybridIncome.useHybrid ? (
+              <>
+                入力済{hybridIncome.paidTotal.toLocaleString()}+未入力{hybridIncome.unpaidTotal.toLocaleString()}-{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
+                {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
+              </>
+            ) : (
+              <>
+                {maleTotal.toLocaleString()}+{femaleTotal.toLocaleString()}-{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
+                {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
+              </>
+            )}
           </div>
           <div className={`text-4xl font-bold text-center ${finalTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {finalTotal >= 0 ? '+' : ''}{finalTotal.toLocaleString()}円
