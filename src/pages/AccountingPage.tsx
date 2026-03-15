@@ -159,6 +159,49 @@ export function AccountingPage() {
     setInitialized(true);
   }, [matchHistory, players, records, gymShortName, initialized, session, lastInput]);
 
+  // プレイヤーの支払いデータから免除・男女人数を自動同期
+  useEffect(() => {
+    if (!initialized) return;
+
+    const paidPlayers = players.filter(p => p.operationStatus?.payment);
+    if (paidPlayers.length === 0) return;
+
+    // 免除プレイヤー数（支払い確定済みで金額0）
+    const actualExemptCount = paidPlayers.filter(p => (p.paymentAmount ?? 0) === 0).length;
+
+    // 有料支払い済みプレイヤーの男女別カウント
+    const nonExemptPaid = paidPlayers.filter(p => (p.paymentAmount ?? 0) > 0);
+    const paidMales = nonExemptPaid.filter(p => p.gender === 'M' || !p.gender).length;
+    const paidFemales = nonExemptPaid.filter(p => p.gender === 'F').length;
+
+    let changed = false;
+    const overrides: Record<string, number> = {};
+
+    // 免除数を同期
+    if (actualExemptCount !== exemptCount) {
+      setExemptCount(actualExemptCount);
+      overrides.exemptCount = actualExemptCount;
+      changed = true;
+    }
+
+    // 有料支払い済みの人数が入力タブの人数を超えている場合のみ自動調整
+    if (paidMales > maleCount) {
+      setMaleCount(paidMales);
+      overrides.maleCount = paidMales;
+      changed = true;
+    }
+    if (paidFemales > femaleCount) {
+      setFemaleCount(paidFemales);
+      overrides.femaleCount = paidFemales;
+      changed = true;
+    }
+
+    if (changed) {
+      saveAllInputs(overrides);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [players, initialized]);
+
   // 参加人数の合計（免除+男+女）
   const participantCount = exemptCount + maleCount + femaleCount;
 
@@ -269,6 +312,11 @@ export function AccountingPage() {
   const shuttleTotal = shuttleCount * shuttlePrice;
   const incomeForTotal = hybridIncome.total;
   const finalTotal = incomeForTotal - gymCost - shuttleTotal + otherAmount;
+
+  // シャトル使用可能数（参加費から体育館代を引いた残りで買える数）
+  const shuttleUsableCount = shuttlePrice > 0
+    ? Math.floor((hybridIncome.total - gymCost + otherAmount) / shuttlePrice)
+    : 0;
 
   // 適正会費の計算（最小黒字 + 100円）
   const calculateAppropriateFee = () => {
@@ -1010,6 +1058,13 @@ export function AccountingPage() {
                     +
                   </button>
                 </div>
+              </div>
+              {/* シャトル使用可能数（参考値） */}
+              <div className="flex items-center justify-between mt-1 pt-1 border-t border-red-200">
+                <span className="text-xs text-muted-foreground">シャトル使用可能数</span>
+                <span className="text-sm font-semibold text-red-700">
+                  {shuttleUsableCount}個
+                </span>
               </div>
             </div>
           </div>
