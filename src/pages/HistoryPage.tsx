@@ -138,7 +138,7 @@ export function HistoryPage() {
                   >
                     <div className="flex items-center gap-2">
                       {/* 試合番号 */}
-                      <span className="text-xs font-bold text-indigo-600 bg-indigo-100 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
                         {matchNumber}
                       </span>
 
@@ -174,12 +174,12 @@ export function HistoryPage() {
                         </div>
                       </div>
 
-                      {/* 編集・削除ボタン（横並び） */}
-                      <div className="flex gap-0.5 flex-shrink-0">
+                      {/* 編集・削除ボタン（縦並び） */}
+                      <div className="flex flex-col gap-0.5 flex-shrink-0">
                         <button
                           onClick={() => handleEdit(match.id)}
                           aria-label="編集"
-                          className="p-1.5 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                          className="p-1 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
                         >
                           <Edit3 size={13} />
                         </button>
@@ -187,7 +187,7 @@ export function HistoryPage() {
                           <button
                             onClick={() => handleDelete(match.id)}
                             aria-label="削除"
-                            className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                            className="p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
                           >
                             <Trash2 size={13} />
                           </button>
