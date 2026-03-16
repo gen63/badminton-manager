@@ -146,11 +146,11 @@ export function HistoryPage() {
                       <div className="flex-1 min-w-0 space-y-0.5">
                         {/* 名前（横一列・改行なし） */}
                         <div className="flex items-center text-sm gap-1.5 leading-tight">
-                          <span className="font-bold text-foreground whitespace-nowrap flex-shrink-0">
+                          <span className="font-bold text-foreground truncate flex-1 min-w-0">
                             {leftNames}
                           </span>
                           <span className="text-muted-foreground font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
-                          <span className="text-muted-foreground truncate">
+                          <span className="text-muted-foreground truncate flex-1 min-w-0">
                             {rightNames}
                           </span>
                         </div>
