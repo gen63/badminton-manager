@@ -138,7 +138,7 @@ export function HistoryPage() {
                   >
                     <div className="flex items-center gap-2">
                       {/* 試合番号 */}
-                      <span className="text-xs font-bold text-indigo-600 bg-indigo-100 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
                         {matchNumber}
                       </span>
 
