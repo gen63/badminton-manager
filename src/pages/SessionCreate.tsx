@@ -15,6 +15,7 @@ import { isFirebaseConfigured } from '../lib/firebase';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
+import { PlayerAddInput } from '../components/PlayerAddInput';
 import { Sparkles, Download, Loader2, Play, LogIn } from 'lucide-react';
 
 // 現在日時を取得（曜日に応じて時刻を設定）
@@ -344,6 +345,13 @@ export function SessionCreate() {
       handleCreate();
     };
 
+    const handleAddCreatorName = (name: string, gender: 'M' | 'F') => {
+      const genderText = gender === 'M' ? '男' : '女';
+      const newLine = `${name} ${genderText}`;
+      setPlayerNames((prev) => prev ? `${prev}\n${newLine}` : newLine);
+      setSelectedCreatorName(name);
+    };
+
     return (
       <div className="bg-app overflow-x-hidden min-h-screen flex items-center justify-center p-4">
         <div className="max-w-md w-full space-y-4">
@@ -353,21 +361,33 @@ export function SessionCreate() {
               <p className="text-sm text-muted-foreground">セッション管理者として登録されます</p>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 mb-4">
-              {playerInputs.map((input) => (
-                <button
-                  key={input.name}
-                  onClick={() => setSelectedCreatorName(input.name)}
-                  className={`select-button text-sm px-2 py-2 ${
-                    selectedCreatorName === input.name
-                      ? 'select-button-active'
-                      : 'select-button-inactive'
-                  }`}
-                >
-                  {selectedCreatorName === input.name && <span className="mr-1">✓</span>}
-                  {input.name}
-                </button>
-              ))}
+            {playerInputs.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                {playerInputs.map((input) => (
+                  <button
+                    key={input.name}
+                    onClick={() => setSelectedCreatorName(input.name)}
+                    className={`select-button text-sm px-2 py-2 ${
+                      selectedCreatorName === input.name
+                        ? 'select-button-active'
+                        : 'select-button-inactive'
+                    }`}
+                  >
+                    {selectedCreatorName === input.name && <span className="mr-1">✓</span>}
+                    {input.name}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-2">
+                下の入力欄から名前を追加してください
+              </p>
+            )}
+
+            {/* 名前入力 */}
+            <div className="border-t border-border pt-3 mb-4">
+              <p className="text-xs text-muted-foreground mb-2">名前を入力して追加</p>
+              <PlayerAddInput onAdd={handleAddCreatorName} />
             </div>
 
             <div className="flex gap-2">
