@@ -125,8 +125,10 @@ export function AccountingPage() {
       // 性別不明者は男性として扱う（デフォルト）
       maleParticipants += unknownGender;
 
-      // シャトル使用数の推定（1試合あたり約1.5個）
-      const estimatedShuttles = Math.ceil(matchHistory.length * 1.5);
+      // シャトル使用数の推定（楽は1個4試合、それ以外は1試合1.5個）
+      const estimatedShuttles = practiceType === '楽'
+        ? Math.ceil(matchHistory.length / 4)
+        : Math.ceil(matchHistory.length * 1.5);
 
       setMaleCount(maleParticipants);
       setFemaleCount(femaleParticipants);
@@ -736,14 +738,24 @@ export function AccountingPage() {
               <button
                 key={type.value}
                 onClick={() => {
-                  setPracticeType(type.value);
-                  setMaleFee(type.maleFee);
-                  setFemaleFee(type.femaleFee);
-                  saveAllInputs({ 
+                  if (practiceType === type.value) return; // 同じ種別は何もしない
+                  const overrides: Record<string, number | string> = {
                     practiceType: type.value,
                     maleFee: type.maleFee,
                     femaleFee: type.femaleFee,
-                  });
+                  };
+                  setPracticeType(type.value);
+                  setMaleFee(type.maleFee);
+                  setFemaleFee(type.femaleFee);
+                  // 楽は1個4試合、それ以外は1試合1.5個でシャトル数を再推定
+                  if (matchCount > 0) {
+                    const newShuttleCount = type.value === '楽'
+                      ? Math.ceil(matchCount / 4)
+                      : Math.ceil(matchCount * 1.5);
+                    setShuttleCount(newShuttleCount);
+                    overrides.shuttleCount = newShuttleCount;
+                  }
+                  saveAllInputs(overrides);
                 }}
                 className={`flex-1 select-button text-sm px-3 py-2 ${
                   practiceType === type.value
