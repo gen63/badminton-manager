@@ -152,10 +152,10 @@ export function ScoreInputPage() {
   };
 
   return (
-    <div className="min-h-screen bg-muted">
-      <div className="max-w-2xl mx-auto p-3 space-y-2 pb-[calc(80px+env(safe-area-inset-bottom)+1rem)]">
+    <div className="h-[100dvh] bg-muted flex flex-col">
+      <div className="max-w-2xl mx-auto w-full flex-1 flex flex-col p-2 gap-1.5 min-h-0">
         {/* 対戦カード */}
-        <div className="bg-card rounded-2xl shadow-sm p-4 relative">
+        <div className="bg-card rounded-2xl shadow-sm p-3 relative">
           {/* 閉じるボタン - カード右上 */}
           <button
             onClick={() => navigate(fromPage)}
@@ -255,9 +255,9 @@ export function ScoreInputPage() {
         </div>
 
         {/* スコア表示 */}
-        <div className="bg-card rounded-2xl shadow-sm p-4">
+        <div className="bg-card rounded-2xl shadow-sm px-4 py-2">
           <div className="text-center">
-            <div className="text-3xl font-bold text-foreground">
+            <div className="text-2xl font-bold text-foreground">
               {inputHistory.length > 0 ? (
                 <>
                   <span className="text-indigo-500">{scoreA}</span>
@@ -279,8 +279,8 @@ export function ScoreInputPage() {
         </div>
 
         {/* 点数ボタングリッド */}
-        <div className="bg-card rounded-2xl shadow-sm p-4">
-          <div className="grid grid-cols-6 gap-1">
+        <div className="bg-card rounded-2xl shadow-sm p-3 flex-1 min-h-0 flex flex-col">
+          <div className="grid grid-cols-6 gap-1 flex-1 min-h-0">
             {Array.from({ length: 31 }, (_, i) => i).map((num) => {
               // targetScore付近（±2）を目立たせる
               const isHighlighted = Math.abs(num - targetScore) <= 2;
@@ -290,7 +290,7 @@ export function ScoreInputPage() {
                   key={num}
                   onClick={() => handleNumberClick(num)}
                   disabled={inputHistory.length >= 2}
-                  className={`min-h-[36px] rounded-lg text-sm font-semibold transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  className={`rounded-lg text-sm font-semibold transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed ${
                     isHighlighted
                       ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 active:bg-indigo-300 active:scale-[0.95]'
                       : 'bg-muted text-foreground hover:bg-muted active:bg-gray-300 active:scale-[0.95]'
@@ -304,8 +304,8 @@ export function ScoreInputPage() {
         </div>
       </div>
 
-      {/* アクションボタン - 画面下部に固定 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-card p-3 pb-safe">
+      {/* アクションボタン - 画面下部 */}
+      <div className="bg-card p-2 pb-safe">
         <div className="max-w-2xl mx-auto grid grid-cols-2 gap-3">
           <button
             onClick={handleClear}
