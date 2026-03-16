@@ -375,25 +375,61 @@ export function AccountingPage() {
       '【収入】',
     ];
 
-    if (hybridIncome.useHybrid) {
-      lines.push(`支払い入力済み(${hybridIncome.paidCount}人) = ${hybridIncome.paidTotal.toLocaleString()}`);
-      if (hybridIncome.unpaidTotal > 0) {
-        const unpaidParts: string[] = [];
-        if (hybridIncome.unpaidMaleCount > 0) unpaidParts.push(`男${maleFee}×${hybridIncome.unpaidMaleCount}`);
-        if (hybridIncome.unpaidFemaleCount > 0) unpaidParts.push(`女${femaleFee}×${hybridIncome.unpaidFemaleCount}`);
-        lines.push(`未入力分 ${unpaidParts.join(' + ')} = ${hybridIncome.unpaidTotal.toLocaleString()}`);
+    // 性別ごとの金額グループを構築
+    const buildGenderLine = (gender: 'M' | 'F') => {
+      const defaultFee = gender === 'M' ? maleFee : femaleFee;
+      const totalCount = gender === 'M' ? maleCount : femaleCount;
+      const label = gender === 'M' ? '男' : '女';
+
+      // 金額ごとの人数を集計
+      const amountMap = new Map<number, number>();
+
+      if (hybridIncome.useHybrid) {
+        // 支払い済み（免除以外）の実金額を集計
+        const paidPlayers = players.filter(p =>
+          p.operationStatus?.payment &&
+          (p.paymentAmount ?? 0) > 0 &&
+          (gender === 'M' ? (p.gender === 'M' || !p.gender) : p.gender === 'F')
+        );
+        paidPlayers.forEach(p => {
+          const amount = p.paymentAmount ?? 0;
+          amountMap.set(amount, (amountMap.get(amount) ?? 0) + 1);
+        });
+
+        // 未入力者をデフォルト会費で追加
+        const paidCount = paidPlayers.length;
+        const unpaidCount = Math.max(0, totalCount - paidCount);
+        if (unpaidCount > 0) {
+          amountMap.set(defaultFee, (amountMap.get(defaultFee) ?? 0) + unpaidCount);
+        }
+      } else {
+        // 非ハイブリッド: 全員デフォルト会費
+        if (totalCount > 0) {
+          amountMap.set(defaultFee, totalCount);
+        }
       }
-      if (exemptCount > 0) {
-        lines.push(`免除 ${exemptCount}×0 = 0`);
+
+      if (amountMap.size === 0) return null;
+
+      // 金額の降順でソート
+      const entries = [...amountMap.entries()].sort((a, b) => b[0] - a[0]);
+      const total = entries.reduce((sum, [amount, count]) => sum + amount * count, 0);
+
+      if (entries.length === 1) {
+        const [amount, count] = entries[0];
+        return `${label} ${amount.toLocaleString()}×${count} = ${total.toLocaleString()}`;
+      } else {
+        const parts = entries.map(([amount, count]) => `(${amount.toLocaleString()}×${count})`);
+        return `${label} ${parts.join(' + ')} = ${total.toLocaleString()}`;
       }
-    } else {
-      lines.push(
-        `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
-        `女 ${femaleFee}×${femaleCount} = ${femaleTotal.toLocaleString()}`,
-      );
-      if (exemptCount > 0) {
-        lines.push(`免除 ${exemptCount}×0 = 0`);
-      }
+    };
+
+    const maleLine = buildGenderLine('M');
+    const femaleLine = buildGenderLine('F');
+    if (maleLine) lines.push(maleLine);
+    if (femaleLine) lines.push(femaleLine);
+    if (exemptCount > 0) {
+      lines.push(`免除 ${exemptCount}×0 = 0`);
     }
 
     // その他欄（プラスの場合は収入に追加）
@@ -414,12 +450,7 @@ export function AccountingPage() {
     }
 
     // 合計の計算式を生成
-    let totalFormula: string;
-    if (hybridIncome.useHybrid) {
-      totalFormula = `${hybridIncome.paidTotal.toLocaleString()}+${hybridIncome.unpaidTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
-    } else {
-      totalFormula = `${maleTotal.toLocaleString()}+${femaleTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
-    }
+    let totalFormula = `${incomeForTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
     if (otherAmount !== 0) {
       totalFormula += otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`;
     }
