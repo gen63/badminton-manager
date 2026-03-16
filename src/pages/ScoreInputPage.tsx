@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
-import { X, Trash2 } from 'lucide-react';
+import { X, Trash2, LogOut } from 'lucide-react';
 
 export function ScoreInputPage() {
   const navigate = useNavigate();
@@ -314,13 +314,23 @@ export function ScoreInputPage() {
             <Trash2 size={18} />
             クリア
           </button>
-          <button
-            onClick={handleConfirm}
-            disabled={inputHistory.length !== 2}
-            className="btn-primary min-h-[44px] py-2 font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            確定
-          </button>
+          {inputHistory.length === 0 ? (
+            <button
+              onClick={() => navigate(fromPage)}
+              className="btn-secondary min-h-[44px] py-2 flex items-center justify-center gap-2"
+            >
+              <LogOut size={18} />
+              閉じる
+            </button>
+          ) : (
+            <button
+              onClick={handleConfirm}
+              disabled={inputHistory.length !== 2}
+              className="btn-primary min-h-[44px] py-2 font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              確定
+            </button>
+          )}
         </div>
       </div>
     </div>
