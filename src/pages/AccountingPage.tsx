@@ -11,6 +11,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { BottomNav } from '../components/BottomNav';
+import { calculateAppropriateFee, toGymShortName, PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 
 export function AccountingPage() {
   const navigate = useNavigate();
@@ -55,12 +56,7 @@ export function AccountingPage() {
   // 体育館名（略称に変換）
   const gymShortName = useMemo(() => {
     if (!session) return '';
-    const gym = session.config.gym || '';
-    if (gym.includes('目白')) return '目白';
-    if (gym.includes('千早')) return '千早';
-    if (gym.includes('南長崎')) return '南長崎';
-    if (gym.includes('巣鴨')) return '巣鴨';
-    return gym;
+    return toGymShortName(session.config.gym || '');
   }, [session]);
 
   // 試合履歴・過去の会計データから初期値を自動設定
@@ -328,46 +324,9 @@ export function AccountingPage() {
     ? Math.max(0, Math.floor((hybridIncome.total - gymCost + otherAmount) / shuttlePrice))
     : 0;
 
-  // 適正会費の計算（最小黒字 + 100円）
-  const calculateAppropriateFee = () => {
-    const totalExpense = gymCost + shuttleTotal - otherAmount; // その他を含める
-    if (maleCount + femaleCount === 0) return { male: 0, female: 0 };
-
-    // 練習種別に応じた男女差額
-    const genderDiff = practiceType === '単' ? 400 : 200; // 単は400円差、複/楽は200円差
-
-    let minProfitMale = 0;
-    let minProfit = Infinity;
-
-    // 探索上限を動的に計算（総支出を全員で割った額 + 余裕分、100円単位に切り上げ）
-    const maxFee = Math.max(1500, Math.ceil(totalExpense / Math.max(1, maleCount + femaleCount) / 100) * 100 + 500);
-
-    // 男子の会費を100円刻みで探索
-    for (let male = genderDiff; male <= maxFee; male += 100) {
-      const female = male - genderDiff;
-      if (female < 0) continue;
-
-      const income = male * maleCount + female * femaleCount;
-      const profit = income - totalExpense;
-
-      // 赤字にならず、最も黒字が少ないものを選ぶ
-      if (profit >= 0 && profit < minProfit) {
-        minProfit = profit;
-        minProfitMale = male;
-      }
-    }
-
-    // 適正会費 = 最小黒字会費 + 100円
-    const appropriateMale = minProfitMale + 100;
-    const appropriateFemale = appropriateMale - genderDiff;
-
-    return {
-      male: appropriateMale,
-      female: appropriateFemale,
-    };
-  };
-
-  const appropriateFee = calculateAppropriateFee();
+  const appropriateFee = calculateAppropriateFee({
+    gymCost, shuttleTotal, otherAmount, maleCount, femaleCount, practiceType,
+  });
 
   // コピー用テキスト生成
   const generateCopyText = () => {
@@ -771,11 +730,7 @@ export function AccountingPage() {
         <div className="card p-4">
           <h2 className="text-sm font-bold mb-3 text-gray-700">練習種別</h2>
           <div className="flex gap-2">
-            {[
-              { value: '複', maleFee: 800, femaleFee: 600 },
-              { value: '単', maleFee: 1200, femaleFee: 800 },
-              { value: '楽', maleFee: 600, femaleFee: 400 },
-            ].map((type) => (
+            {PRACTICE_TYPE_OPTIONS.map((type) => (
               <button
                 key={type.value}
                 onClick={() => {
