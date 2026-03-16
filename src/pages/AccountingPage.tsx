@@ -452,6 +452,11 @@ export function AccountingPage() {
       }
     }
 
+    // シャトル使用可能数
+    if (shuttlePrice > 0) {
+      referenceLines.push(`シャトル使用可能数 ${shuttleUsableCount}個`);
+    }
+
     // 適正会費（千川館以外）
     if (gymShortName !== '千川館') {
       referenceLines.push(`適正会費: 男${appropriateFee.male}円 女${appropriateFee.female}円`);
@@ -1065,13 +1070,6 @@ export function AccountingPage() {
                     +
                   </button>
                 </div>
-              </div>
-              {/* シャトル使用可能数（参考値） */}
-              <div className="flex items-center justify-between mt-1 pt-1 border-t border-red-200">
-                <span className="text-xs text-muted-foreground">シャトル使用可能数</span>
-                <span className="text-sm font-semibold text-red-700">
-                  {shuttleUsableCount}個
-                </span>
               </div>
             </div>
           </div>
