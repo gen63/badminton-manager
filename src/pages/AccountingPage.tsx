@@ -125,8 +125,10 @@ export function AccountingPage() {
       // 性別不明者は男性として扱う（デフォルト）
       maleParticipants += unknownGender;
 
-      // シャトル使用数の推定（1試合あたり約1.5個）
-      const estimatedShuttles = Math.ceil(matchHistory.length * 1.5);
+      // シャトル使用数の推定（楽は1個4試合、それ以外は1試合1.5個）
+      const estimatedShuttles = practiceType === '楽'
+        ? Math.ceil(matchHistory.length / 4)
+        : Math.ceil(matchHistory.length * 1.5);
 
       setMaleCount(maleParticipants);
       setFemaleCount(femaleParticipants);
@@ -157,6 +159,7 @@ export function AccountingPage() {
     }
 
     setInitialized(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchHistory, players, records, gymShortName, initialized, session, lastInput]);
 
   // プレイヤーの支払いデータから免除・男女人数を自動同期
@@ -198,6 +201,13 @@ export function AccountingPage() {
 
     if (changed) {
       saveAllInputs(overrides);
+
+      // 変更内容をトーストで通知
+      const parts: string[] = [];
+      if (overrides.exemptCount !== undefined) parts.push(`免除${overrides.exemptCount}人`);
+      if (overrides.maleCount !== undefined) parts.push(`男${overrides.maleCount}人`);
+      if (overrides.femaleCount !== undefined) parts.push(`女${overrides.femaleCount}人`);
+      toast.info(`支払いデータから人数を更新: ${parts.join(', ')}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [players, initialized]);
@@ -315,13 +325,13 @@ export function AccountingPage() {
 
   // シャトル使用可能数（参加費から体育館代を引いた残りで買える数）
   const shuttleUsableCount = shuttlePrice > 0
-    ? Math.floor((hybridIncome.total - gymCost + otherAmount) / shuttlePrice)
+    ? Math.max(0, Math.floor((hybridIncome.total - gymCost + otherAmount) / shuttlePrice))
     : 0;
 
   // 適正会費の計算（最小黒字 + 100円）
   const calculateAppropriateFee = () => {
     const totalExpense = gymCost + shuttleTotal - otherAmount; // その他を含める
-    if (participantCount === 0) return { male: 0, female: 0 };
+    if (maleCount + femaleCount === 0) return { male: 0, female: 0 };
 
     // 練習種別に応じた男女差額
     const genderDiff = practiceType === '単' ? 400 : 200; // 単は400円差、複/楽は200円差
@@ -365,23 +375,61 @@ export function AccountingPage() {
       '【収入】',
     ];
 
-    if (hybridIncome.useHybrid) {
-      lines.push(`支払い入力済み(${hybridIncome.paidCount}人) = ${hybridIncome.paidTotal.toLocaleString()}`);
-      if (hybridIncome.unpaidTotal > 0) {
-        const unpaidParts: string[] = [];
-        if (hybridIncome.unpaidMaleCount > 0) unpaidParts.push(`男${maleFee}×${hybridIncome.unpaidMaleCount}`);
-        if (hybridIncome.unpaidFemaleCount > 0) unpaidParts.push(`女${femaleFee}×${hybridIncome.unpaidFemaleCount}`);
-        lines.push(`未入力分 ${unpaidParts.join(' + ')} = ${hybridIncome.unpaidTotal.toLocaleString()}`);
+    // 性別ごとの金額グループを構築
+    const buildGenderLine = (gender: 'M' | 'F') => {
+      const defaultFee = gender === 'M' ? maleFee : femaleFee;
+      const totalCount = gender === 'M' ? maleCount : femaleCount;
+      const label = gender === 'M' ? '男' : '女';
+
+      // 金額ごとの人数を集計
+      const amountMap = new Map<number, number>();
+
+      if (hybridIncome.useHybrid) {
+        // 支払い済み（免除以外）の実金額を集計
+        const paidPlayers = players.filter(p =>
+          p.operationStatus?.payment &&
+          (p.paymentAmount ?? 0) > 0 &&
+          (gender === 'M' ? (p.gender === 'M' || !p.gender) : p.gender === 'F')
+        );
+        paidPlayers.forEach(p => {
+          const amount = p.paymentAmount ?? 0;
+          amountMap.set(amount, (amountMap.get(amount) ?? 0) + 1);
+        });
+
+        // 未入力者をデフォルト会費で追加
+        const paidCount = paidPlayers.length;
+        const unpaidCount = Math.max(0, totalCount - paidCount);
+        if (unpaidCount > 0) {
+          amountMap.set(defaultFee, (amountMap.get(defaultFee) ?? 0) + unpaidCount);
+        }
+      } else {
+        // 非ハイブリッド: 全員デフォルト会費
+        if (totalCount > 0) {
+          amountMap.set(defaultFee, totalCount);
+        }
       }
-      if (exemptCount > 0) {
-        lines.push(`免除 ${exemptCount}×0 = 0`);
+
+      if (amountMap.size === 0) return null;
+
+      // 金額の降順でソート
+      const entries = [...amountMap.entries()].sort((a, b) => b[0] - a[0]);
+      const total = entries.reduce((sum, [amount, count]) => sum + amount * count, 0);
+
+      if (entries.length === 1) {
+        const [amount, count] = entries[0];
+        return `${label} ${amount.toLocaleString()}×${count} = ${total.toLocaleString()}`;
+      } else {
+        const parts = entries.map(([amount, count]) => `(${amount.toLocaleString()}×${count})`);
+        return `${label} ${parts.join(' + ')} = ${total.toLocaleString()}`;
       }
-    } else {
-      lines.push(
-        `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
-        `女 ${femaleFee}×${femaleCount} = ${femaleTotal.toLocaleString()}`,
-        `免除 ${exemptCount}×0 = 0`,
-      );
+    };
+
+    const maleLine = buildGenderLine('M');
+    const femaleLine = buildGenderLine('F');
+    if (maleLine) lines.push(maleLine);
+    if (femaleLine) lines.push(femaleLine);
+    if (exemptCount > 0) {
+      lines.push(`免除 ${exemptCount}×0 = 0`);
     }
 
     // その他欄（プラスの場合は収入に追加）
@@ -402,12 +450,7 @@ export function AccountingPage() {
     }
 
     // 合計の計算式を生成
-    let totalFormula: string;
-    if (hybridIncome.useHybrid) {
-      totalFormula = `${hybridIncome.paidTotal.toLocaleString()}+${hybridIncome.unpaidTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
-    } else {
-      totalFormula = `${maleTotal.toLocaleString()}+${femaleTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
-    }
+    let totalFormula = `${incomeForTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
     if (otherAmount !== 0) {
       totalFormula += otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`;
     }
@@ -443,6 +486,11 @@ export function AccountingPage() {
       } else {
         referenceLines.push(`試合数 ${matchCount}試合 (平均${avgMatches}試合/人)`);
       }
+    }
+
+    // シャトル使用可能数
+    if (shuttlePrice > 0) {
+      referenceLines.push(`シャトル使用可能数 ${shuttleUsableCount}個`);
     }
 
     // 適正会費（千川館以外）
@@ -493,8 +541,8 @@ export function AccountingPage() {
       }))
     );
     
-    // 収入合計と支出合計を計算（ハイブリッド収入を使用）
-    const incomeTotal = hybridIncome.total;
+    // 収入合計と支出合計を計算（ハイブリッド収入を使用、その他を振り分け）
+    const incomeTotal = hybridIncome.total + (otherAmount > 0 ? otherAmount : 0);
     const expenseTotal = gymCost + shuttleTotal + (otherAmount < 0 ? Math.abs(otherAmount) : 0);
     
     const record = {
@@ -724,14 +772,24 @@ export function AccountingPage() {
               <button
                 key={type.value}
                 onClick={() => {
-                  setPracticeType(type.value);
-                  setMaleFee(type.maleFee);
-                  setFemaleFee(type.femaleFee);
-                  saveAllInputs({ 
+                  if (practiceType === type.value) return; // 同じ種別は何もしない
+                  const overrides: Record<string, number | string> = {
                     practiceType: type.value,
                     maleFee: type.maleFee,
                     femaleFee: type.femaleFee,
-                  });
+                  };
+                  setPracticeType(type.value);
+                  setMaleFee(type.maleFee);
+                  setFemaleFee(type.femaleFee);
+                  // 楽は1個4試合、それ以外は1試合1.5個でシャトル数を再推定
+                  if (matchCount > 0) {
+                    const newShuttleCount = type.value === '楽'
+                      ? Math.ceil(matchCount / 4)
+                      : Math.ceil(matchCount * 1.5);
+                    setShuttleCount(newShuttleCount);
+                    overrides.shuttleCount = newShuttleCount;
+                  }
+                  saveAllInputs(overrides);
                 }}
                 className={`flex-1 select-button text-sm px-3 py-2 ${
                   practiceType === type.value
@@ -1058,13 +1116,6 @@ export function AccountingPage() {
                     +
                   </button>
                 </div>
-              </div>
-              {/* シャトル使用可能数（参考値） */}
-              <div className="flex items-center justify-between mt-1 pt-1 border-t border-red-200">
-                <span className="text-xs text-muted-foreground">シャトル使用可能数</span>
-                <span className="text-sm font-semibold text-red-700">
-                  {shuttleUsableCount}個
-                </span>
               </div>
             </div>
           </div>
