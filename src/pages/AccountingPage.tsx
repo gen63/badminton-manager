@@ -339,8 +339,11 @@ export function AccountingPage() {
     let minProfitMale = 0;
     let minProfit = Infinity;
 
-    // 男子の会費を100円刻みで探索（0円〜1500円の範囲）
-    for (let male = genderDiff; male <= 1500; male += 100) {
+    // 探索上限を動的に計算（総支出を全員で割った額 + 余裕分、100円単位に切り上げ）
+    const maxFee = Math.max(1500, Math.ceil(totalExpense / Math.max(1, maleCount + femaleCount) / 100) * 100 + 500);
+
+    // 男子の会費を100円刻みで探索
+    for (let male = genderDiff; male <= maxFee; male += 100) {
       const female = male - genderDiff;
       if (female < 0) continue;
 
