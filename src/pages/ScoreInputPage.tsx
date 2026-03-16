@@ -314,21 +314,20 @@ export function ScoreInputPage() {
             <Trash2 size={18} />
             クリア
           </button>
-          {inputHistory.length === 0 ? (
+          {inputHistory.length === 2 ? (
+            <button
+              onClick={handleConfirm}
+              className="btn-primary min-h-[44px] py-2 font-semibold"
+            >
+              確定
+            </button>
+          ) : (
             <button
               onClick={() => navigate(fromPage)}
               className="btn-secondary min-h-[44px] py-2 flex items-center justify-center gap-2"
             >
               <LogOut size={18} />
               閉じる
-            </button>
-          ) : (
-            <button
-              onClick={handleConfirm}
-              disabled={inputHistory.length !== 2}
-              className="btn-primary min-h-[44px] py-2 font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed"
-            >
-              確定
             </button>
           )}
         </div>
