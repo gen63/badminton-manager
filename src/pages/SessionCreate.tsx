@@ -346,6 +346,11 @@ export function SessionCreate() {
     };
 
     const handleAddCreatorName = (name: string, gender: 'M' | 'F') => {
+      // 重複チェック
+      if (playerInputs.some((p) => p.name === name)) {
+        setSelectedCreatorName(name);
+        return;
+      }
       const genderText = gender === 'M' ? '男' : '女';
       const newLine = `${name} ${genderText}`;
       setPlayerNames((prev) => prev ? `${prev}\n${newLine}` : newLine);
