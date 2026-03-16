@@ -617,7 +617,11 @@ export function MainPage() {
             >
               <Repeat size={16} />
               <span>連続</span>
-              {continuousMatchMode && <span className="text-[10px] bg-green-200 px-1.5 py-0.5 rounded-full font-bold">ON</span>}
+              <span className={`text-[10px] bg-green-200 py-0.5 rounded-full font-bold transition-all duration-150 ${
+                continuousMatchMode
+                  ? 'opacity-100 max-w-[2rem] px-1.5'
+                  : 'opacity-0 max-w-0 overflow-hidden px-0'
+              }`}>ON</span>
             </button>
             <button
               onClick={() => handleAutoAssign()}
@@ -752,27 +756,29 @@ export function MainPage() {
                       }`}>
                         {court.id}
                       </span>
-                      <span className={`text-xs font-semibold ${!court.isPlaying && !hasPlayers ? 'text-muted-foreground' : ''}`}>
+                      <span className={`text-xs font-semibold min-w-[2.5em] ${!court.isPlaying && !hasPlayers ? 'text-muted-foreground' : ''}`}>
                         {court.isPlaying && matchNumber ? `#${matchNumber}` : hasPlayers ? '準備中' : '空き'}
                       </span>
                     </div>
-                    {court.isPlaying && court.startedAt ? (
-                      <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <circle cx="12" cy="12" r="10" strokeWidth="2"/>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
-                        </svg>
-                        <CourtTimer startedAt={court.startedAt} />
-                      </div>
-                    ) : !hasPlayers && courts.length > 1 && (
-                      <button
-                        onClick={() => handleRemoveCourt(court.id)}
-                        className="w-6 h-6 rounded-full bg-muted text-muted-foreground flex items-center justify-center hover:bg-destructive/20 hover:text-destructive transition-colors"
-                        aria-label="コート削除"
-                      >
-                        <Minus size={12} />
-                      </button>
-                    )}
+                    <div className="min-w-[56px] flex justify-end">
+                      {court.isPlaying && court.startedAt ? (
+                        <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tabular-nums">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" strokeWidth="2"/>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
+                          </svg>
+                          <CourtTimer startedAt={court.startedAt} />
+                        </div>
+                      ) : !hasPlayers && courts.length > 1 && (
+                        <button
+                          onClick={() => handleRemoveCourt(court.id)}
+                          className="w-6 h-6 rounded-full bg-muted text-muted-foreground flex items-center justify-center hover:bg-destructive/20 hover:text-destructive transition-colors"
+                          aria-label="コート削除"
+                        >
+                          <Minus size={12} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   {hasPlayers ? (
