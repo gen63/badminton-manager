@@ -467,6 +467,7 @@ export function AccountingPage() {
     // 試合数の情報（試合数がある場合のみ）
     if (matchCount > 0) {
       // 試合履歴から参加者数を計算（平均試合数用）
+      // 試合履歴がない場合（手動入力時）は参加人数をフォールバックとして使用
       let activePlayerCount = 0;
       if (matchHistory.length > 0) {
         const participantIds = new Set<string>();
@@ -475,9 +476,12 @@ export function AccountingPage() {
           match.teamB.forEach((id) => participantIds.add(id));
         });
         activePlayerCount = participantIds.size;
+      } else {
+        activePlayerCount = participantCount;
       }
 
-      const avgMatches = activePlayerCount > 0 ? (matchCount * 4 / activePlayerCount).toFixed(1) : '0.0';
+      const playersPerMatch = practiceType === '単' ? 2 : 4;
+      const avgMatches = activePlayerCount > 0 ? (matchCount * playersPerMatch / activePlayerCount).toFixed(1) : '0.0';
 
       // シャトル効率の計算
       if (shuttleCount > 0) {
