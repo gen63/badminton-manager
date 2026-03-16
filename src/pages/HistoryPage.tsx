@@ -21,6 +21,12 @@ export function HistoryPage() {
   const { gasWebAppUrl } = useSettingsStore();
   const toast = useToast();
   const [isUploading, setIsUploading] = useState(false);
+
+  if (!session) {
+    navigate('/');
+    return null;
+  }
+
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '不明';
   };
