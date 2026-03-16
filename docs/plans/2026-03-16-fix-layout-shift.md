@@ -9,59 +9,39 @@
 ## 修正対象
 
 ### 修正ファイル
-- **`src/pages/MainPage.tsx`** — 2箇所
+- **`src/pages/MainPage.tsx`** — 4箇所（ONバッジ、コートステータスラベル、タイマーラッパー、tabular-nums）
+- **`src/pages/ReservationPage.tsx`** — 1箇所（ステータスバッジ幅安定化）
+- **`src/components/ReservationModal.tsx`** — 1箇所（同上）
 
 ---
 
 ## 実装手順
 
-### Step 1: 「連続」ボタンのONバッジ幅安定化（MainPage 行620）
+### Step 1: 「連続」ボタンのONバッジ幅安定化（MainPage）
 
 **問題:** `{continuousMatchMode && <span>ON</span>}` でONバッジが出現/消滅し、ボタン全体の幅が変動する。
 
-**修正:** ONバッジを常にレンダリングし、非表示時は `opacity-0 max-w-0 overflow-hidden px-0` で幅ゼロに折りたたむ。表示時は `opacity-100 max-w-[2rem]` で展開。`transition-all duration-150` で滑らかに切り替え。
+**修正:** ONバッジを常にレンダリングし、非表示時は `opacity-0 max-w-0 overflow-hidden px-0` で幅ゼロに折りたたむ。
 
-```tsx
-// Before
-{continuousMatchMode && <span className="text-[10px] bg-green-200 px-1.5 py-0.5 rounded-full font-bold">ON</span>}
+### Step 2: コートヘッダー右側の幅安定化（MainPage）
 
-// After
-<span className={`text-[10px] bg-green-200 py-0.5 rounded-full font-bold transition-all duration-150 ${
-  continuousMatchMode
-    ? 'opacity-100 max-w-[2rem] px-1.5'
-    : 'opacity-0 max-w-0 overflow-hidden px-0'
-}`}>ON</span>
-```
-
-### Step 2: コートヘッダー右側の幅安定化（MainPage 行759-775）
-
-**問題:** タイマーバッジ / 削除ボタン / 空の3状態で右側の幅が変わり、コート番号やステータスラベルが水平にずれる。タイマーの数字も桁数変化で幅が変わる（"0:00" → "10:59"）。
+**問題:** タイマーバッジ / 削除ボタン / 空の3状態で右側の幅が変動。
 
 **修正:**
-1. 右側要素をラッパーで包み `min-w-[48px] flex justify-end` で最小幅を確保
+1. 右側要素をラッパーで包み `min-w-[56px] flex justify-end` で最小幅を確保（10分超え対応）
 2. タイマー表示に `tabular-nums` を追加し数字幅を一定に
 
-```tsx
-// Before
-{court.isPlaying && court.startedAt ? (
-  <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium">
-    ...
-  </div>
-) : !hasPlayers && courts.length > 1 && (
-  <button ...>...</button>
-)}
+### Step 3: コートステータスラベルの幅安定化（MainPage）
 
-// After
-<div className="min-w-[48px] flex justify-end">
-  {court.isPlaying && court.startedAt ? (
-    <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tabular-nums">
-      ...
-    </div>
-  ) : !hasPlayers && courts.length > 1 && (
-    <button ...>...</button>
-  )}
-</div>
-```
+**問題:** 「空き」(2文字) / 「準備中」(3文字) / 「#N」(2-3文字) でラベル幅が変動。連続モードの自動遷移やFirebase同期で発生。
+
+**修正:** `min-w-[2.5em]` を追加して最小幅を確保。
+
+### Step 4: 予約ステータスバッジの幅安定化（ReservationPage + ReservationModal）
+
+**問題:** 「準備完了」(4文字) vs 「メンバー不足」(5文字) でバッジ幅が変動。Firebase同期でプレイヤーの試合/休憩状態が変わると発生。
+
+**修正:** 2つのspanを1つに統合し、`min-w-[70px] justify-center` で幅を安定化。
 
 ---
 
@@ -84,6 +64,9 @@
 | SessionJoinPage フォーム/エラー | 現状維持 | ユーザー操作起因 |
 | ScoreInputPage 選択バナー | 現状維持 | ユーザー操作起因 |
 | ReservationPage/Modal アコーディオン | 現状維持 | ユーザー操作起因 |
+| ReservationPage プレイヤーpill補足テキスト | 現状維持 | flex-wrapコンテキストで自然なリフロー |
+| HistoryPage 試合番号バッジ | 対策済み | `w-5 h-5` 固定サイズ |
+| MainPage 待機中カウント表示 | 対策済み | 右寄せで左側要素に影響なし |
 
 ---
 
@@ -91,8 +74,10 @@
 
 1. `npm run build` — TypeScript + Viteビルド成功
 2. `npm run lint` — ESLintパス
-3. `npm run test:run` — 全テストパス
+3. `npm run test:run` — 全115テストパス
 4. 手動確認:
    - 連続モードON/OFF → ボタン幅が安定していること
    - ゲーム開始/終了 → コートヘッダー右側が安定していること
    - タイマーが桁変わり（9:59→10:00等）で幅が変わらないこと
+   - コートステータス変化（空き→準備中→#N）でラベル幅が安定していること
+   - 予約ステータス変化（メンバー不足→準備完了）でバッジ幅が安定していること

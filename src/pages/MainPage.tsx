@@ -756,11 +756,11 @@ export function MainPage() {
                       }`}>
                         {court.id}
                       </span>
-                      <span className={`text-xs font-semibold ${!court.isPlaying && !hasPlayers ? 'text-muted-foreground' : ''}`}>
+                      <span className={`text-xs font-semibold min-w-[2.5em] ${!court.isPlaying && !hasPlayers ? 'text-muted-foreground' : ''}`}>
                         {court.isPlaying && matchNumber ? `#${matchNumber}` : hasPlayers ? '準備中' : '空き'}
                       </span>
                     </div>
-                    <div className="min-w-[48px] flex justify-end">
+                    <div className="min-w-[56px] flex justify-end">
                       {court.isPlaying && court.startedAt ? (
                         <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tabular-nums">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
