@@ -159,6 +159,7 @@ export function AccountingPage() {
     }
 
     setInitialized(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchHistory, players, records, gymShortName, initialized, session, lastInput]);
 
   // プレイヤーの支払いデータから免除・男女人数を自動同期
@@ -330,7 +331,7 @@ export function AccountingPage() {
   // 適正会費の計算（最小黒字 + 100円）
   const calculateAppropriateFee = () => {
     const totalExpense = gymCost + shuttleTotal - otherAmount; // その他を含める
-    if (participantCount === 0) return { male: 0, female: 0 };
+    if (maleCount + femaleCount === 0) return { male: 0, female: 0 };
 
     // 練習種別に応じた男女差額
     const genderDiff = practiceType === '単' ? 400 : 200; // 単は400円差、複/楽は200円差
@@ -389,8 +390,10 @@ export function AccountingPage() {
       lines.push(
         `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
         `女 ${femaleFee}×${femaleCount} = ${femaleTotal.toLocaleString()}`,
-        `免除 ${exemptCount}×0 = 0`,
       );
+      if (exemptCount > 0) {
+        lines.push(`免除 ${exemptCount}×0 = 0`);
+      }
     }
 
     // その他欄（プラスの場合は収入に追加）
