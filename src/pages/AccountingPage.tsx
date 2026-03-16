@@ -325,7 +325,7 @@ export function AccountingPage() {
 
   // シャトル使用可能数（参加費から体育館代を引いた残りで買える数）
   const shuttleUsableCount = shuttlePrice > 0
-    ? Math.floor((hybridIncome.total - gymCost + otherAmount) / shuttlePrice)
+    ? Math.max(0, Math.floor((hybridIncome.total - gymCost + otherAmount) / shuttlePrice))
     : 0;
 
   // 適正会費の計算（最小黒字 + 100円）
@@ -510,8 +510,8 @@ export function AccountingPage() {
       }))
     );
     
-    // 収入合計と支出合計を計算（ハイブリッド収入を使用）
-    const incomeTotal = hybridIncome.total;
+    // 収入合計と支出合計を計算（ハイブリッド収入を使用、その他を振り分け）
+    const incomeTotal = hybridIncome.total + (otherAmount > 0 ? otherAmount : 0);
     const expenseTotal = gymCost + shuttleTotal + (otherAmount < 0 ? Math.abs(otherAmount) : 0);
     
     const record = {
