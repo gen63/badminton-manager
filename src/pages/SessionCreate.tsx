@@ -701,8 +701,7 @@ export function SessionCreate() {
             {isFirebaseConfigured() && (
               <button
                 onClick={() => setShowJoinMode(true)}
-                onContextMenu={(e) => e.preventDefault()}
-                className="btn-secondary text-sm flex items-center justify-center gap-2 select-none"
+                className="btn-secondary text-sm flex items-center justify-center gap-2"
               >
                 <LogIn size={16} />
                 セッションIDで参加
