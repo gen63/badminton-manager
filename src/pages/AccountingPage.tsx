@@ -196,7 +196,13 @@ export function AccountingPage() {
     }
 
     if (changed) {
-      saveAllInputs(overrides);
+      // stale closure回避: Zustand storeから最新の永続化済み値を直接取得してマージ
+      const currentInput = useAccountingStore.getState().lastInput;
+      if (currentInput) {
+        saveLastInput({ ...currentInput, ...overrides });
+      } else {
+        saveAllInputs(overrides);
+      }
 
       // 変更内容をトーストで通知
       const parts: string[] = [];
