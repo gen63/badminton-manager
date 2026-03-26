@@ -130,6 +130,7 @@ export async function sendAccountingToSheets(
     femaleFee: record.femaleFee,
     exemptCount: record.exemptCount,
     participantCount: record.participantCount,
+    matchCount: record.matchCount,
     members: record.members,
     incomeTotal: record.incomeTotal,
     gymCost: record.gymCost,
