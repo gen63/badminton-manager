@@ -15,13 +15,13 @@ import { calculateAppropriateFee, toGymShortName, PRACTICE_TYPE_OPTIONS } from '
 
 export function AccountingPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, isCreator } = useSessionStore();
+  const { session, updateConfig, isAdmin: isAdminFn } = useSessionStore();
   const { players } = usePlayerStore();
   const { matchHistory } = useGameStore();
   const { records, addRecord, lastInput, saveLastInput } = useAccountingStore();
   const { accountingWebAppUrl } = useSettingsStore();
   const toast = useToast();
-  const isAdmin = isCreator();
+  const isAdmin = isAdminFn();
 
   // タブ状態
   const [activeTab, setActiveTab] = useState<'input' | 'payments'>('input');
@@ -173,31 +173,36 @@ export function AccountingPage() {
     const paidMales = nonExemptPaid.filter(p => p.gender === 'M' || !p.gender).length;
     const paidFemales = nonExemptPaid.filter(p => p.gender === 'F').length;
 
+    // stale closure回避: Zustand storeから最新の永続化済み値で比較
+    const currentInput = useAccountingStore.getState().lastInput;
+    const currentExemptCount = currentInput?.exemptCount ?? exemptCount;
+    const currentMaleCount = currentInput?.maleCount ?? maleCount;
+    const currentFemaleCount = currentInput?.femaleCount ?? femaleCount;
+
     let changed = false;
     const overrides: Record<string, number> = {};
 
     // 免除数を同期
-    if (actualExemptCount !== exemptCount) {
+    if (actualExemptCount !== currentExemptCount) {
       setExemptCount(actualExemptCount);
       overrides.exemptCount = actualExemptCount;
       changed = true;
     }
 
     // 有料支払い済みの人数が入力タブの人数を超えている場合のみ自動調整
-    if (paidMales > maleCount) {
+    if (paidMales > currentMaleCount) {
       setMaleCount(paidMales);
       overrides.maleCount = paidMales;
       changed = true;
     }
-    if (paidFemales > femaleCount) {
+    if (paidFemales > currentFemaleCount) {
       setFemaleCount(paidFemales);
       overrides.femaleCount = paidFemales;
       changed = true;
     }
 
     if (changed) {
-      // stale closure回避: Zustand storeから最新の永続化済み値を直接取得してマージ
-      const currentInput = useAccountingStore.getState().lastInput;
+      // currentInputは上で取得済み（stale closure回避）
       if (currentInput) {
         saveLastInput({ ...currentInput, ...overrides });
       } else {
