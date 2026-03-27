@@ -289,13 +289,13 @@ export async function syncGameStateWithTransaction(
   sessionId: string,
   gameState: GameState,
   baseState?: GameState | null,
-): Promise<void> {
-  if (!useFirestore) return;
+): Promise<GameState> {
+  if (!useFirestore) return gameState;
 
   const docRef = doc(db!, 'sessions', sessionId);
 
   try {
-    await runTransaction(db!, async (transaction) => {
+    return await runTransaction(db!, async (transaction) => {
       const snap = await transaction.get(docRef);
       if (!snap.exists()) {
         throw new Error('Session not found');
@@ -319,6 +319,8 @@ export async function syncGameStateWithTransaction(
         registeredPlayers,
         updatedAt: serverTimestamp(),
       });
+
+      return finalState;
     });
   } catch (error: unknown) {
     if ((error as { code?: string })?.code === 'aborted') {

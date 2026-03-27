@@ -71,9 +71,15 @@ export function useFirebaseSync() {
     const baseState = lastSyncedState.current;
 
     syncGameStateWithTransaction(sid, gameState, baseState)
-      .then(() => {
-        lastPushedHash.current = hash;
-        lastSyncedState.current = gameState;
+      .then((finalState) => {
+        const finalHash = hashGameState(finalState);
+        lastPushedHash.current = finalHash;
+        lastSyncedState.current = finalState;
+        // マージにより状態が変わった場合、push-blockを解除して
+        // onSnapshotでマージ結果を受信できるようにする
+        if (finalHash !== hash) {
+          lastPushedTime.current = 0;
+        }
       })
       .catch((err) => {
         // push失敗時はタイムスタンプをリセット（pullを受け付ける）
@@ -215,9 +221,27 @@ export function useFirebaseSync() {
       schedulePush(sessionId);
     });
 
-    const unsubSettings = useSettingsStore.subscribe(() => {
+    // settingsStoreの同期対象フィールドのみ監視（gasWebAppUrl等の変更では発火しない）
+    let prevSyncSettings = {
+      recordScores: useSettingsStore.getState().recordScores,
+      continuousMatchMode: useSettingsStore.getState().continuousMatchMode,
+      practiceType: useSettingsStore.getState().practiceType,
+    };
+    const unsubSettings = useSettingsStore.subscribe((state) => {
       if (isSyncingFromRemote.current) return;
-      schedulePush(sessionId);
+      const curr = {
+        recordScores: state.recordScores,
+        continuousMatchMode: state.continuousMatchMode,
+        practiceType: state.practiceType,
+      };
+      if (
+        curr.recordScores !== prevSyncSettings.recordScores ||
+        curr.continuousMatchMode !== prevSyncSettings.continuousMatchMode ||
+        curr.practiceType !== prevSyncSettings.practiceType
+      ) {
+        prevSyncSettings = curr;
+        schedulePush(sessionId);
+      }
     });
 
     // 初回push（セッション作成者のみ）
