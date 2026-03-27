@@ -22,6 +22,14 @@ import type { Court } from '../types/court';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import { SessionError } from '../lib/errorHandler';
+import { mergeGameState, type SyncGameState } from '../lib/syncUtils';
+
+/** セッションレベルの設定（Firebase同期対象） */
+export interface SyncSettings {
+  recordScores?: boolean;
+  continuousMatchMode?: boolean;
+  practiceType?: '単' | '複' | '楽';
+}
 
 /** ゲーム状態の型（Firestore同期用） */
 export interface GameState {
@@ -29,6 +37,7 @@ export interface GameState {
   courts: Court[];
   matchHistory: Match[];
   reservations: Reservation[];
+  settings?: SyncSettings;
 }
 
 /** Firestoreが使えるかどうか */
@@ -270,45 +279,54 @@ export async function syncGameState(
 }
 
 /**
- * ゲーム状態をFirestoreに同期（Transaction使用）
- * 
+ * ゲーム状態をFirestoreに同期（Transaction使用 + 3-wayマージ）
+ *
  * 競合時に自動リトライ（最大5回）し、同時更新を安全に処理します。
- * すべての操作（配置、メンバー交換、ゲーム開始など）で使用されます。
+ * baseStateが指定されている場合、リモート状態との3-wayマージを行い、
+ * 他クライアントの変更を保持しつつローカル変更を適用します。
  */
 export async function syncGameStateWithTransaction(
   sessionId: string,
   gameState: GameState,
+  baseState?: GameState | null,
 ): Promise<void> {
   if (!useFirestore) return;
 
   const docRef = doc(db!, 'sessions', sessionId);
-  
+
   try {
     await runTransaction(db!, async (transaction) => {
-      // Firestoreが競合検出に使用（読み取り必須）
       const snap = await transaction.get(docRef);
       if (!snap.exists()) {
         throw new Error('Session not found');
       }
-      
-      // 更新（競合があればFirestoreが自動リトライ）
-      // registeredPlayersも同期（メンバー追加・名前変更をジョイン画面に反映）
-      const registeredPlayers = gameState.players.map((p) => p.name);
+
+      const data = snap.data();
+      const remoteState = data?.gameState as GameState | undefined;
+
+      // リモート状態とbaseがある場合は3-wayマージ、なければ従来通り上書き
+      const finalState = (remoteState && baseState)
+        ? mergeGameState(
+            baseState as unknown as SyncGameState,
+            gameState as unknown as SyncGameState,
+            remoteState as unknown as SyncGameState,
+          ) as unknown as GameState
+        : gameState;
+
+      const registeredPlayers = finalState.players.map((p) => p.name);
       transaction.update(docRef, {
-        gameState: sanitize(gameState),
+        gameState: sanitize(finalState),
         registeredPlayers,
-        updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
+        updatedAt: serverTimestamp(),
       });
     });
   } catch (error: unknown) {
-    // Firestoreが最大5回リトライした後に失敗
     if ((error as { code?: string })?.code === 'aborted') {
       throw new SessionError(
         '他のユーザーが更新しました。もう一度お試しください',
         'conflict'
       );
     }
-    // その他のエラー
     throw error;
   }
 }
