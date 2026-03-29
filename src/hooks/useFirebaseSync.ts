@@ -26,6 +26,18 @@ import type { Court } from '../types/court';
  * @returns prepareDirectTransaction / completeDirectTransaction
  *          外部から直接Transactionを実行する場合に使用（finishGameTransaction等）
  */
+/** 全ストアから現在のGameStateを構築 */
+function getCurrentGameState(): GameState {
+  const { players } = usePlayerStore.getState();
+  const { courts, matchHistory } = useGameStore.getState();
+  const { reservations } = useReservationStore.getState();
+  const { recordScores, continuousMatchMode, practiceType } = useSettingsStore.getState();
+  return {
+    players, courts, matchHistory, reservations,
+    settings: { recordScores, continuousMatchMode, practiceType },
+  };
+}
+
 export function useFirebaseSync() {
   const session = useSessionStore((s) => s.session);
   const sessionId = session?.id;
@@ -40,6 +52,7 @@ export function useFirebaseSync() {
   const sessionDeletedNotified = useRef(false);
   const pushTimer = useRef<number | null>(null);
   const lastSyncedState = useRef<GameState | null>(null);
+  const pushInFlight = useRef<Promise<void> | null>(null);
   
   // toast と navigate を ref で保持（依存配列の安定化）
   const toastRef = useRef(toast);
@@ -52,35 +65,26 @@ export function useFirebaseSync() {
   }, [toast, navigate]);
 
   const pushGameState = useCallback((sid: string) => {
-    const { players } = usePlayerStore.getState();
-    const { courts, matchHistory } = useGameStore.getState();
-    const { reservations } = useReservationStore.getState();
-    const { recordScores, continuousMatchMode, practiceType } = useSettingsStore.getState();
+    const doPush = async () => {
+      // フレッシュな状態を取得（前のpush完了後に呼ばれるので最新）
+      const gameState = getCurrentGameState();
 
-    const gameState: GameState = {
-      players, courts, matchHistory, reservations,
-      settings: { recordScores, continuousMatchMode, practiceType },
+      // push開始時にタイムスタンプを記録
+      lastPushedTime.current = Date.now();
+
+      const mergedState = await syncGameStateWithTransaction(sid, gameState, lastSyncedState.current);
+      lastPushedHash.current = hashGameState(mergedState);
+      lastSyncedState.current = mergedState;
     };
-    const hash = hashGameState(gameState);
 
-    // push開始時にタイムスタンプを記録（ローカルクライアント時刻、完了を待たない）
-    const pushStartTime = Date.now();
-    lastPushedTime.current = pushStartTime;
-
-    // 3-wayマージ用のbaseStateを渡す
-    const baseState = lastSyncedState.current;
-
-    syncGameStateWithTransaction(sid, gameState, baseState)
-      .then(() => {
-        lastPushedHash.current = hash;
-        lastSyncedState.current = gameState;
-      })
+    // Promise chainingで直列化（前のpush完了を待ってから次を実行）
+    pushInFlight.current = (pushInFlight.current || Promise.resolve())
+      .then(() => doPush())
       .catch((err) => {
         // push失敗時はタイムスタンプをリセット（pullを受け付ける）
         lastPushedTime.current = 0;
 
         if (err?.code === 'conflict') {
-          // 競合検出（Transactionが最大5回リトライした後に失敗）
           console.warn('[FirebaseSync] Conflict detected:', err);
           toastRef.current.warning('他のユーザーが更新しました。もう一度お試しください');
         } else {
@@ -336,7 +340,7 @@ export function useFirebaseSync() {
    * Transaction成功時: onSnapshot でリモート状態が届き、ローカルの楽観的更新が修正される
    * already_finished時: 他ユーザーの結果が onSnapshot で届き、ローカルが正しい状態に上書きされる
    */
-  const completeDirectTransaction = useCallback(() => {
+  const completeDirectTransaction = useCallback((writtenState?: GameState) => {
     if (pushTimer.current) {
       clearTimeout(pushTimer.current);
       pushTimer.current = null;
@@ -345,17 +349,9 @@ export function useFirebaseSync() {
     lastPushedHash.current = '';
     lastPushedTime.current = 0;
 
-    // lastSyncedStateを現在のローカル状態に更新
-    // （finishGameTransactionは独自のマージを持つため、
-    //   次の通常pushで二重適用されないようにする）
-    const { players } = usePlayerStore.getState();
-    const { courts, matchHistory } = useGameStore.getState();
-    const { reservations } = useReservationStore.getState();
-    const { recordScores, continuousMatchMode, practiceType } = useSettingsStore.getState();
-    lastSyncedState.current = {
-      players, courts, matchHistory, reservations,
-      settings: { recordScores, continuousMatchMode, practiceType },
-    };
+    // writtenStateが渡された場合はそれを使用（トランザクションが実際に書き込んだ状態）
+    // 渡されない場合はローカル状態から取得（フォールバック）
+    lastSyncedState.current = writtenState || getCurrentGameState();
 
     isSyncingFromRemote.current = false;
   }, []);
