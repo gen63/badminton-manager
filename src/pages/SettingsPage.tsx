@@ -7,20 +7,19 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useUndoStore } from '../stores/undoStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
-import { deleteSession } from '../services/sessionService';
+import { deleteSession, updateSession as updateFirebaseSession } from '../services/sessionService';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrCode, Copy, Check } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, clearSession, isCreator, isAdmin: checkIsAdmin } = useSessionStore();
+  const { session, updateConfig, clearSession, isCreator, isAdmin } = useSessionStore();
   const [showSessionInfo, setShowSessionInfo] = useState(false);
   const [sessionIdCopied, setSessionIdCopied] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
 
-  // 権限判定
-  const isAdmin = checkIsAdmin();
-  const isCreatorUser = isCreator();
+  const userIsAdmin = isAdmin();
+  const userIsCreator = isCreator();
   const { clearPlayers } = usePlayerStore();
   const { clearHistory } = useGameStore();
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
@@ -88,39 +87,28 @@ export function SettingsPage() {
     navigate('/');
   };
 
-  const handleAddAdmin = async (name: string) => {
+  const updateAdmins = async (updatedAdmins: string[]) => {
     if (!session.id || !session.createdBy) return;
-    
-    const updatedAdmins = [...(session.admins || []), name];
-    
-    // Firebase更新
-    const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
     try {
       await updateFirebaseSession(session.id, { admins: updatedAdmins });
-      // ローカルストア更新
       useSessionStore.getState().updateSession({ admins: updatedAdmins });
     } catch (error) {
-      console.error('Failed to add admin:', error);
+      console.error('Failed to update admins:', error);
     }
-    
+  };
+
+  const handleAddAdmin = async (name: string) => {
+    await updateAdmins([...(session.admins || []), name]);
     setShowAddAdminModal(false);
   };
 
-  const handleRemoveAdmin = async (name: string) => {
-    if (!session.id || !session.createdBy) return;
-    
-    const updatedAdmins = (session.admins || []).filter(admin => admin !== name);
-    
-    // Firebase更新
-    const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
-    try {
-      await updateFirebaseSession(session.id, { admins: updatedAdmins });
-      // ローカルストア更新
-      useSessionStore.getState().updateSession({ admins: updatedAdmins });
-    } catch (error) {
-      console.error('Failed to remove admin:', error);
-    }
+  const handleRemoveAdmin = (name: string) => {
+    updateAdmins((session.admins || []).filter(admin => admin !== name));
   };
+
+  const availableParticipants = (session.participants || []).filter(
+    name => name !== session.createdBy && !session.admins?.includes(name)
+  );
 
   return (
     <div className="bg-app pb-6">
@@ -308,7 +296,7 @@ export function SettingsPage() {
         </div>
 
         {/* セッション管理（オンラインモード: 管理者のみ） */}
-        {isAdmin && session.createdBy && (
+        {userIsAdmin && session.createdBy && (
           <div className="card p-4">
             <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
               <span className="w-6 h-6 rounded-lg bg-purple-100 flex items-center justify-center">
@@ -346,7 +334,7 @@ export function SettingsPage() {
         )}
 
         {/* 管理者管理（オンラインモード: 作成者のみ） */}
-        {isCreatorUser && session.createdBy && (
+        {userIsCreator && session.createdBy && (
           <div className="card p-4">
             <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
               <span className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center">
@@ -396,7 +384,7 @@ export function SettingsPage() {
         )}
 
         {/* 一般ユーザー向け注意事項（オンラインモード） */}
-        {!isAdmin && session.createdBy && (
+        {!userIsAdmin && session.createdBy && (
           <div className="card p-4 bg-blue-50 border border-blue-200">
             <p className="text-xs text-blue-800">
               セッション管理・リセットは管理者（{session.createdBy}）のみが実行できます。
@@ -405,7 +393,7 @@ export function SettingsPage() {
         )}
 
         {/* アクション */}
-        {isAdmin && (
+        {userIsAdmin && (
           <div className="space-y-3">
             <div className="flex justify-center">
               <button
@@ -440,11 +428,9 @@ export function SettingsPage() {
             <p className="text-xs text-muted-foreground mb-4">
               管理者にしたい参加者を選択してください
             </p>
-            
+
             <div className="space-y-2 mb-6">
-              {session.participants
-                .filter(name => name !== session.createdBy && !session.admins?.includes(name))
-                .map((name) => (
+              {availableParticipants.map((name) => (
                   <button
                     key={name}
                     onClick={() => handleAddAdmin(name)}
@@ -454,8 +440,8 @@ export function SettingsPage() {
                     {name}
                   </button>
                 ))}
-              
-              {session.participants.filter(name => name !== session.createdBy && !session.admins?.includes(name)).length === 0 && (
+
+              {availableParticipants.length === 0 && (
                 <p className="text-center text-sm text-muted-foreground py-8">
                   管理者に追加できる参加者がいません
                 </p>
