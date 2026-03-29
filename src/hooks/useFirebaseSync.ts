@@ -81,7 +81,8 @@ export function useFirebaseSync() {
     pushInFlight.current = (pushInFlight.current || Promise.resolve())
       .then(() => doPush())
       .catch((err) => {
-        // push失敗時はタイムスタンプをリセット（pullを受け付ける）
+        // push失敗時はハッシュとタイムスタンプをリセット（pullを受け付ける）
+        lastPushedHash.current = '';
         lastPushedTime.current = 0;
 
         if (err?.code === 'conflict') {
@@ -140,7 +141,7 @@ export function useFirebaseSync() {
       pushBlockMs: 500,
     });
 
-    if (!decision.shouldApply) {
+    if (!decision.shouldApply || isSyncingFromRemote.current) {
       return;
     }
 
@@ -193,11 +194,10 @@ export function useFirebaseSync() {
     // lastSyncedStateを更新（次のpushで3-wayマージのbaseとして使用）
     lastSyncedState.current = gameState;
 
-    // ストア更新が完全に反映されるまで少し待ってからフラグをリセット
-    // (setStateは同期的だが、subscribeコールバックは非同期的に呼ばれる可能性がある)
-    setTimeout(() => {
-      isSyncingFromRemote.current = false;
-    }, 100);
+    // Zustand setStateとsubscribeコールバックはともに同期的。
+    // ストア更新→subscribe発火→isSyncingFromRemoteチェック の順で同期的に完了するため、
+    // ここで即座にフラグをリセットしても安全。
+    isSyncingFromRemote.current = false;
   }, []); // 依存なし: refとgetState()のみ使用、再生成不要
 
   // ローカル変更をFirestoreに即座にpush
@@ -243,7 +243,10 @@ export function useFirebaseSync() {
       unsubSettings();
       if (pushTimer.current) {
         clearTimeout(pushTimer.current);
+        pushTimer.current = null;
       }
+      // セッション切替時にin-flightのpushチェーンを断ち切る
+      pushInFlight.current = null;
     };
   }, [isShared, sessionId, schedulePush]); // schedulePushを依存配列に追加
 
@@ -349,9 +352,11 @@ export function useFirebaseSync() {
     lastPushedHash.current = '';
     lastPushedTime.current = 0;
 
-    // writtenStateが渡された場合はそれを使用（トランザクションが実際に書き込んだ状態）
-    // 渡されない場合はローカル状態から取得（フォールバック）
-    lastSyncedState.current = writtenState || getCurrentGameState();
+    // writtenStateが渡された場合のみlastSyncedStateを更新
+    // （エラー時はwrittenState未指定 → 更新しない。次のonSnapshotで正しい状態に復元される）
+    if (writtenState) {
+      lastSyncedState.current = writtenState;
+    }
 
     isSyncingFromRemote.current = false;
   }, []);

@@ -6,6 +6,7 @@ import { getErrorMessage } from '../lib/errorHandler';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
+import { copyToClipboard } from '../lib/utils';
 import { type Session } from '../types/session';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
@@ -45,35 +46,16 @@ export function SessionJoinPage() {
   useEffect(() => {
     if (!sessionId || isPWA) return;
 
-    // Safari（非PWA）の場合、自動コピーを試行
-    navigator.clipboard.writeText(sessionId)
-      .then(() => {
-        setClipboardCopied(true);
-      })
-      .catch(() => {
-        // コピー失敗時も無視（手動ボタンで対応）
-      });
+    copyToClipboard(sessionId).then((ok) => {
+      if (ok) setClipboardCopied(true);
+    });
   }, [sessionId, isPWA]);
 
   const handleManualCopy = async () => {
     if (!sessionId) return;
-    try {
-      await navigator.clipboard.writeText(sessionId);
-      setClipboardCopied(true);
-      // 2秒後に元に戻す
-      setTimeout(() => setClipboardCopied(false), 2000);
-    } catch {
-      // フォールバック: 選択コピー
-      const input = document.createElement('input');
-      input.value = sessionId;
-      document.body.appendChild(input);
-      input.select();
-      document.execCommand('copy');
-      document.body.removeChild(input);
-      setClipboardCopied(true);
-      // 2秒後に元に戻す
-      setTimeout(() => setClipboardCopied(false), 2000);
-    }
+    await copyToClipboard(sessionId);
+    setClipboardCopied(true);
+    setTimeout(() => setClipboardCopied(false), 2000);
   };
 
   useEffect(() => {
@@ -344,12 +326,16 @@ export function SessionJoinPage() {
         {showForceConfirm && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
             <div className="card p-6 max-w-sm w-full">
-              <h3 className="text-lg font-bold text-foreground mb-2">確認</h3>
+              <h3 className="text-lg font-bold text-foreground mb-2">再入室の確認</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                「{selectedName}」は既に入室しています。
+                「{selectedName}」は別のブラウザ・端末で入室中です。
                 <br />
                 <span className="text-amber-600 font-medium">
-                  この名前で入室すると、既に入室している人が退出します。
+                  こちらから入室し直しますか？
+                </span>
+                <br />
+                <span className="text-xs text-muted-foreground">
+                  ※以前のブラウザ・端末でのセッションは自動的に切断されます
                 </span>
               </p>
               <div className="flex gap-2">

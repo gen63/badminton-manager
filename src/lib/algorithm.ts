@@ -1084,7 +1084,8 @@ export function assignCourts(
 
       // 隣接グループの借用候補を準備（制約を満たすため）
       const adjacentCandidates: Player[] = [];
-      const available = normalCandidates.filter(p => !usedPlayers.has(p.id) && !groupMembers.includes(p));
+      const groupMemberIds = new Set(groupMembers.map(p => p.id));
+      const available = normalCandidates.filter(p => !usedPlayers.has(p.id) && !groupMemberIds.has(p.id));
 
       if (targetGroup === 'upper') {
         const middlePlayers = available.filter(p => groups3.get('middle')!.has(p.id));

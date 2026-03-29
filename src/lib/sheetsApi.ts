@@ -21,7 +21,7 @@ function resolvePlayerName(
   playerId: string,
   players: Player[]
 ): string {
-  return players.find((p) => p.id === playerId)?.name || '不明';
+  return players.find((p) => p.id === playerId)?.name || '未設定';
 }
 
 function formatMatchesForSheets(

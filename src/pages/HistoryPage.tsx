@@ -28,7 +28,7 @@ export function HistoryPage() {
   }
 
   const getPlayerName = (playerId: string) => {
-    return players.find((p) => p.id === playerId)?.name || '不明';
+    return players.find((p) => p.id === playerId)?.name || '未設定';
   };
 
   const handleEdit = (matchId: string) => {

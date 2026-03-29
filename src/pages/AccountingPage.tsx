@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { copyToClipboard } from '../lib/utils';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAccountingStore } from '../stores/accountingStore';
@@ -490,11 +491,10 @@ export function AccountingPage() {
 
   const handleCopy = async () => {
     const text = generateCopyText();
-    try {
-      await navigator.clipboard.writeText(text);
+    const ok = await copyToClipboard(text);
+    if (ok) {
       toast.success('コピーしました');
-    } catch (err) {
-      console.error('Failed to copy:', err);
+    } else {
       toast.error('コピーに失敗しました');
     }
   };
