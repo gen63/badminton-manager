@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
@@ -120,14 +120,12 @@ export function MainPage() {
   // PWAバッジ更新：支払い予定額を表示
   useEffect(() => {
     if (!session || !currentUser) {
-      // セッションがない、またはログインしていない場合はバッジをクリア
       updatePaymentBadge(true);
       return;
     }
 
     const currentPlayer = players.find(p => p.name === currentUser);
     if (!currentPlayer) {
-      // プレイヤー情報がない場合はバッジをクリア
       updatePaymentBadge(true);
       return;
     }
@@ -137,6 +135,46 @@ export function MainPage() {
 
     updatePaymentBadge(isPaid, amount);
   }, [session, currentUser, players]);
+
+  const playersInCourts = useMemo(() => new Set(
+    courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
+  ), [courts]);
+
+  const { sortedWaitingPlayers, restingPlayers, emptyCourts, occupiedCourts } = useMemo(() => {
+    const waitingPlayersUnsorted = players.filter((p) => !p.isResting && !playersInCourts.has(p.id));
+    const sorted = sortWaitingPlayers(waitingPlayersUnsorted, {
+      emptyCourtIds: courts.filter(c => !c.teamA[0] || c.teamA[0] === '').map(c => c.id),
+      totalCourtCount: courts.length,
+      matchHistory,
+      allActivePlayers: players.filter(p => !p.isResting),
+      practiceStartTime: session?.config.practiceStartTime ?? 0,
+      useStayDuration: useStayDurationPriority,
+    });
+    return {
+      sortedWaitingPlayers: sorted,
+      restingPlayers: players.filter((p) => p.isResting),
+      emptyCourts: courts.filter(c => !c.teamA[0] || c.teamA[0] === ''),
+      occupiedCourts: courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== '')),
+    };
+  }, [players, courts, matchHistory, playersInCourts, session?.config.practiceStartTime, useStayDurationPriority]);
+
+  const restingAndPlaceholderPlayers = useMemo(() => players.filter(
+    p => p.isResting || recentlyRestoredIds.has(p.id)
+  ), [players, recentlyRestoredIds]);
+
+  const playerMap = useMemo(() => new Map(players.map(p => [p.id, p])), [players]);
+
+  const getPlayerName = useCallback((playerId: string) => {
+    return playerMap.get(playerId)?.name || '未設定';
+  }, [playerMap]);
+
+  const getPlayerGender = useCallback((playerId: string): 'M' | 'F' | undefined => {
+    return playerMap.get(playerId)?.gender;
+  }, [playerMap]);
+
+  const getPlayerGamesPlayed = useCallback((playerId: string) => {
+    return playerMap.get(playerId)?.gamesPlayed || 0;
+  }, [playerMap]);
 
   if (!session) {
     navigate('/');
@@ -380,42 +418,6 @@ export function MainPage() {
 
 
 
-  const getPlayerName = (playerId: string) => {
-    return players.find((p) => p.id === playerId)?.name || '未設定';
-  };
-
-  const getPlayerGender = (playerId: string): 'M' | 'F' | undefined => {
-    return players.find((p) => p.id === playerId)?.gender;
-  };
-
-  const getPlayerGamesPlayed = (playerId: string) => {
-    return players.find((p) => p.id === playerId)?.gamesPlayed || 0;
-  };
-
-  const playersInCourts = new Set(
-    courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
-  );
-
-  const waitingPlayersUnsorted = players
-    .filter((p) => !p.isResting && !playersInCourts.has(p.id));
-
-  const sortedWaitingPlayers = sortWaitingPlayers(waitingPlayersUnsorted, {
-    emptyCourtIds: courts
-      .filter(c => !c.teamA[0] || c.teamA[0] === '')
-      .map(c => c.id),
-    totalCourtCount: courts.length,
-    matchHistory,
-    allActivePlayers: players.filter(p => !p.isResting),
-    practiceStartTime: session?.config.practiceStartTime ?? 0,
-    useStayDuration: useStayDurationPriority,
-  });
-  const restingPlayers = players.filter((p) => p.isResting);
-  const restingAndPlaceholderPlayers = players.filter(
-    p => p.isResting || recentlyRestoredIds.has(p.id)
-  );
-
-  const emptyCourts = courts.filter(c => !c.teamA[0] || c.teamA[0] === '');
-  const occupiedCourts = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
   const waitingCount = sortedWaitingPlayers.length;
   const shouldBlockAssignment = shouldBlockForDiversity(
     prioritizeDiversity,
