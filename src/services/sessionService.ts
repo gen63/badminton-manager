@@ -289,10 +289,12 @@ export async function syncGameStateWithTransaction(
   sessionId: string,
   gameState: GameState,
   baseState?: GameState | null,
-): Promise<void> {
-  if (!useFirestore) return;
+): Promise<GameState> {
+  if (!useFirestore) return gameState;
 
   const docRef = doc(db!, 'sessions', sessionId);
+
+  let writtenState: GameState = gameState;
 
   try {
     await runTransaction(db!, async (transaction) => {
@@ -313,6 +315,8 @@ export async function syncGameStateWithTransaction(
           ) as unknown as GameState
         : gameState;
 
+      writtenState = finalState;
+
       const registeredPlayers = finalState.players.map((p) => p.name);
       transaction.update(docRef, {
         gameState: sanitize(finalState),
@@ -329,6 +333,8 @@ export async function syncGameStateWithTransaction(
     }
     throw error;
   }
+
+  return writtenState;
 }
 
 /**
@@ -346,8 +352,8 @@ export async function finishGameTransaction(
   courtId: number,
   matchStartedAt: number,
   computeNewState: (remoteState: GameState) => GameState,
-): Promise<'success' | 'already_finished'> {
-  if (!useFirestore) return 'success';
+): Promise<{ result: 'success' | 'already_finished'; writtenState?: GameState }> {
+  if (!useFirestore) return { result: 'success' };
 
   const docRef = doc(db!, 'sessions', sessionId);
 
@@ -364,7 +370,7 @@ export async function finishGameTransaction(
 
       // べき等チェック: この試合がまだ進行中か？
       if (!remoteCourt?.isPlaying || remoteCourt.startedAt !== matchStartedAt) {
-        return 'already_finished';
+        return { result: 'already_finished' };
       }
 
       // リモート状態に対して新しい状態を計算
@@ -375,7 +381,7 @@ export async function finishGameTransaction(
         updatedAt: serverTimestamp(),
       });
 
-      return 'success';
+      return { result: 'success', writtenState: newState };
     });
   } catch (error: unknown) {
     if ((error as { code?: string })?.code === 'aborted') {

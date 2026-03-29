@@ -892,7 +892,7 @@ export function MainPage() {
                                 const { computeFinishAndContinue } = await import('../lib/gameOperations');
                                 const gameMode = session?.config.gameMode ?? 'doubles';
 
-                                const result = await finishGameTransaction(
+                                const { result, writtenState } = await finishGameTransaction(
                                   session!.id,
                                   court.id,
                                   matchStartedAt,
@@ -908,10 +908,11 @@ export function MainPage() {
                                 if (result === 'already_finished') {
                                   toast.info('他のユーザーが既に終了しました');
                                 }
+                                // トランザクションが書き込んだ状態を渡す
+                                completeDirectTransaction(writtenState);
                               } catch (err) {
                                 console.error('[FinishGame] Transaction failed:', err);
-                              } finally {
-                                // onSnapshotを受け入れ可能にする
+                                // エラー時はフォールバック（ローカル状態から取得）
                                 completeDirectTransaction();
                               }
                             }
