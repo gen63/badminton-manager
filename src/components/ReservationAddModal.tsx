@@ -15,13 +15,14 @@ export function ReservationAddModal({
   onConfirm,
   onCancel,
 }: ReservationAddModalProps) {
+  const maxPlayers = 4; // ダブルス専用
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const handleToggle = (id: string) => {
     const next = new Set(selectedIds);
     if (next.has(id)) {
       next.delete(id);
-    } else if (next.size < 4) {
+    } else if (next.size < maxPlayers) {
       next.add(id);
     }
     setSelectedIds(next);
@@ -47,7 +48,7 @@ export function ReservationAddModal({
           <div>
             <h2 className="text-lg font-bold text-foreground">予約追加</h2>
             <p className="text-xs text-muted-foreground mt-1">
-              メンバーを選択 ({selectedIds.size}/4人)
+              メンバーを選択 ({selectedIds.size}/{maxPlayers}人)
             </p>
           </div>
           <button

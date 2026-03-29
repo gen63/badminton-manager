@@ -4,7 +4,7 @@ import type { Reservation } from '../types/reservation';
 
 interface ReservationState {
   reservations: Reservation[];
-  addReservation: (playerIds: string[]) => void;
+  addReservation: (playerIds: string[], createdBy?: string) => void;
   removeReservation: (id: string) => void;
   fulfillReservation: (id: string) => void;
   clearReservations: () => void;
@@ -15,19 +15,20 @@ export const useReservationStore = create<ReservationState>()(
     (set) => ({
       reservations: [],
 
-      addReservation: (playerIds) =>
+      addReservation: (playerIds, createdBy) =>
         set((state) => {
           const maxOrder = state.reservations.reduce((max, r) => Math.max(max, r.orderNumber ?? 0), 0);
           return {
             reservations: [
               ...state.reservations,
               {
-                id: `rsv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                id: crypto.randomUUID(),
                 orderNumber: maxOrder + 1,
                 playerIds,
                 status: 'pending',
                 createdAt: Date.now(),
-                fulfilledAt: null,
+                fulfilledAt: 0, // 未完了時は0
+                createdBy,
               },
             ],
           };

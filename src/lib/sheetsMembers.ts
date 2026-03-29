@@ -153,7 +153,7 @@ export function membersToText(members: MemberFromSheet[]): string {
         parts.push(isMale ? '男' : '女');
       }
       parts.push(String(m.rating ?? 0));
-      return parts.join('  ');
+      return parts.join(' ');
     })
     .join('\n');
 }

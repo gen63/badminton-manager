@@ -7,14 +7,15 @@ import { buildInitialOrder, applyStreakSwaps } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
-import { Trash2, UserPlus, Users, ArrowRight } from 'lucide-react';
+import { Trash2, Pencil, UserPlus, Users, ArrowRight } from 'lucide-react';
 import { useSessionStore } from '../stores/sessionStore';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
+import { PlayerEditModal } from '../components/PlayerEditModal';
 
 export function PlayerSelect() {
   const navigate = useNavigate();
-  const { players, addPlayers, removePlayer, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
+  const { players, addPlayers, removePlayer, updatePlayer, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
   const { matchHistory } = useGameStore();
   const { session, isCreator } = useSessionStore();
   const isTabMode = !!session;
@@ -22,6 +23,7 @@ export function PlayerSelect() {
   const [newPlayerNames, setNewPlayerNames] = useState('');
   const toast = useToast();
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
+  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F' } | null>(null);
   const accountingStore = useAccountingStore();
   const maleFee = accountingStore.lastInput?.maleFee || 800;
   const femaleFee = accountingStore.lastInput?.femaleFee || 600;
@@ -69,6 +71,16 @@ export function PlayerSelect() {
       return;
     }
     removePlayer(player.id);
+  };
+
+  const handleEdit = (player: { id: string; name: string; gender?: 'M' | 'F' }) => {
+    setEditModalPlayer({ id: player.id, name: player.name, gender: player.gender });
+  };
+
+  const handleEditSave = (name: string, gender?: 'M' | 'F') => {
+    if (!editModalPlayer) return;
+    updatePlayer(editModalPlayer.id, { name, gender });
+    setEditModalPlayer(null);
   };
 
   const handlePaymentClick = (playerId: string) => {
@@ -125,6 +137,15 @@ export function PlayerSelect() {
                 {/* 名前 (40%) */}
                 <div className="flex-[2] flex items-center gap-2">
                   <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
+                  {(isTabMode ? isAdmin : true) && (
+                    <button
+                      onClick={() => handleEdit(player)}
+                      aria-label={`${player.name}を編集`}
+                      className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  )}
                   {!hasHistory && (isTabMode ? isAdmin : true) && (
                     <button
                       onClick={() => handleDelete(player)}
@@ -156,16 +177,6 @@ export function PlayerSelect() {
                   }}
                 >
                   {status.roster ? '✓' : ''}名簿
-                </button>
-                <button
-                  onClick={() => toggleOperationStatus(player.id, 'checkin')}
-                  className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1"
-                  style={{
-                    backgroundColor: status.checkin ? '#10b981' : '#e5e7eb',
-                    color: status.checkin ? '#ffffff' : '#6b7280',
-                  }}
-                >
-                  {status.checkin ? '✓ ' : ''}IN
                 </button>
               </div>
             );
@@ -219,6 +230,17 @@ export function PlayerSelect() {
           />
         )}
 
+        {/* 編集モーダル */}
+        {editModalPlayer && (
+          <PlayerEditModal
+            playerName={editModalPlayer.name}
+            playerGender={editModalPlayer.gender}
+            existingNames={players.filter(p => p.id !== editModalPlayer.id).map(p => p.name)}
+            onSave={handleEditSave}
+            onCancel={() => setEditModalPlayer(null)}
+          />
+        )}
+
         <BottomNav activeTab="players" />
       </div>
     );
@@ -251,7 +273,7 @@ export function PlayerSelect() {
             <textarea
               value={newPlayerNames}
               onChange={(e) => setNewPlayerNames(e.target.value)}
-              placeholder="星野真吾  男&#10;佐野朋美  女&#10;山口裕史"
+              placeholder="星野真吾 男&#10;佐野朋美 女&#10;山口裕史"
               rows={6}
               className="textarea-field"
             />
@@ -292,6 +314,17 @@ export function PlayerSelect() {
           <Toast key={t.id} message={t.message} type={t.type} onClose={() => toast.hideToast(t.id)} />
         ))}
       </div>
+
+      {/* 編集モーダル */}
+      {editModalPlayer && (
+        <PlayerEditModal
+          playerName={editModalPlayer.name}
+          playerGender={editModalPlayer.gender}
+          existingNames={players.filter(p => p.id !== editModalPlayer.id).map(p => p.name)}
+          onSave={handleEditSave}
+          onCancel={() => setEditModalPlayer(null)}
+        />
+      )}
     </div>
   );
 }

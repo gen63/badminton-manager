@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
-import { getSession, joinSession, subscribeToGameState } from '../services/sessionService';
+import { getSession, joinSession, subscribeToGameState, subscribeToSession } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
+import { PlayerAddInput } from '../components/PlayerAddInput';
 import { requestNotificationPermission } from '../lib/notifications';
+import { clearAppBadge } from '../lib/badge';
 import { type Session } from '../types/session';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
+import { useAccountingStore } from '../stores/accountingStore';
+import { useUndoStore } from '../stores/undoStore';
 import { Loader2, Plus, Copy, Check } from 'lucide-react';
 
 export function SessionJoinPage() {
@@ -22,7 +26,6 @@ export function SessionJoinPage() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [selectedName, setSelectedName] = useState('');
-  const [newPlayerName, setNewPlayerName] = useState('');
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [additionalPlayers, setAdditionalPlayers] = useState<string[]>([]);
   const [loading, setLoading] = useState(!!sessionId);
@@ -32,6 +35,11 @@ export function SessionJoinPage() {
 
   const initializeSession = useSessionStore((state) => state.initialize);
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
+
+  // PWAバッジをクリア（セッション参加前）
+  useEffect(() => {
+    clearAppBadge();
+  }, []);
 
   // Safari検出時にセッションIDをクリップボードにコピー（試行）
   useEffect(() => {
@@ -71,6 +79,7 @@ export function SessionJoinPage() {
   useEffect(() => {
     if (!sessionId) return;
 
+    // 初回取得
     getSession(sessionId)
       .then((data) => {
         if (!data) {
@@ -85,27 +94,32 @@ export function SessionJoinPage() {
       })
       .catch((err) => setError(getErrorMessage(err)))
       .finally(() => setLoading(false));
+
+    // リアルタイム監視（メンバー追加・名前変更をリアルタイムに反映）
+    const unsub = subscribeToSession(sessionId, (data) => {
+      if (data) {
+        setSession(data);
+      }
+    });
+
+    return unsub;
   }, [sessionId]);
 
   // プレイヤー追加処理
-  const handleAddPlayer = () => {
-    const trimmed = newPlayerName.trim();
-    if (!trimmed) return;
-
+  const handleAddPlayer = (name: string) => {
     // 既存メンバーと重複チェック（入室済みかどうかに関係なく）
     const allPlayers = [
       ...(session?.registeredPlayers || []),
       ...additionalPlayers
     ];
-    
-    if (allPlayers.includes(trimmed)) {
+
+    if (allPlayers.includes(name)) {
       setError('その名前は既に登録されています');
       return;
     }
 
-    setAdditionalPlayers([...additionalPlayers, trimmed]);
-    setSelectedName(trimmed); // 追加したメンバーを自動選択
-    setNewPlayerName('');
+    setAdditionalPlayers([...additionalPlayers, name]);
+    setSelectedName(name); // 追加したメンバーを自動選択
     setShowAddPlayer(false);
     setError('');
   };
@@ -120,13 +134,21 @@ export function SessionJoinPage() {
       const result = await joinSession(sessionId, selectedName, { force });
       
       // 既に参加している場合は確認ダイアログを表示
-      if (result.alreadyJoined && !force) {
+      if (result.isAlreadyJoined && !force) {
         setShowForceConfirm(true);
         setJoining(false);
         return;
       }
 
       requestNotificationPermission();
+
+      // 重要: セッション参加前に古いデータを完全クリア
+      // （前のセッションやローカルモードのデータが残らないように）
+      usePlayerStore.getState().clearPlayers();
+      useGameStore.getState().clearHistory();
+      useReservationStore.getState().clearReservations();
+      useAccountingStore.getState().clearRecords();
+      useUndoStore.getState().clearAll();
 
       initializeSession({
         id: sessionId,
@@ -298,30 +320,10 @@ export function SessionJoinPage() {
 
             {/* 追加フォーム（折りたたみ式） */}
             {showAddPlayer && (
-              <div className="mt-3 bg-muted/30 rounded-xl p-3 flex gap-2">
-                <input
-                  type="text"
-                  value={newPlayerName}
-                  onChange={(e) => setNewPlayerName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && newPlayerName.trim()) {
-                      handleAddPlayer();
-                    }
-                  }}
-                  placeholder="名前を入力"
-                  className="flex-1 input-field"
-                  autoFocus
+              <div className="mt-3 bg-muted/30 rounded-xl p-3">
+                <PlayerAddInput
+                  onAdd={(name) => handleAddPlayer(name)}
                 />
-                <button
-                  onClick={handleAddPlayer}
-                  disabled={!newPlayerName.trim()}
-                  className="bg-primary text-primary-foreground rounded-xl px-4 py-2 text-sm font-medium
-                           hover:bg-primary/90 active:bg-primary/80 active:scale-[0.98]
-                           disabled:opacity-50 disabled:cursor-not-allowed
-                           transition-all duration-150 flex items-center justify-center"
-                >
-                  <Plus size={16} />
-                </button>
               </div>
             )}
           </div>

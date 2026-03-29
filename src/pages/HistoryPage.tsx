@@ -14,13 +14,19 @@ import { BottomNav } from '../components/BottomNav';
 
 export function HistoryPage() {
   const navigate = useNavigate();
-  const { matchHistory, deleteMatch } = useGameStore();
+  const { matchHistory, removeMatch } = useGameStore();
   const { players } = usePlayerStore();
   const { session, isCreator } = useSessionStore();
   const isAdmin = isCreator();
   const { gasWebAppUrl } = useSettingsStore();
   const toast = useToast();
   const [isUploading, setIsUploading] = useState(false);
+
+  if (!session) {
+    navigate('/');
+    return null;
+  }
+
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '不明';
   };
@@ -30,7 +36,7 @@ export function HistoryPage() {
   };
 
   const handleDelete = (matchId: string) => {
-    deleteMatch(matchId);
+    removeMatch(matchId);
   };
 
   const handleCopyHistory = async () => {
@@ -39,8 +45,11 @@ export function HistoryPage() {
 
     let text = '日付,場所,A選手1,A選手2,B選手1,B選手2,スコアA,スコアB,試合時間\n';
     matchHistory.forEach((match) => {
-      const [a1, a2] = match.teamA.map(getPlayerName);
-      const [b1, b2] = match.teamB.map(getPlayerName);
+      const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
+      const a1 = getPlayerName(match.teamA[0]);
+      const a2 = isMatchSingles ? '' : getPlayerName(match.teamA[1]);
+      const b1 = getPlayerName(match.teamB[0]);
+      const b2 = isMatchSingles ? '' : getPlayerName(match.teamB[1]);
       const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
       text += `${dateStr},${gymName},${a1},${a2},${b1},${b2},${match.scoreA},${match.scoreB},${duration}\n`;
     });
@@ -72,7 +81,7 @@ export function HistoryPage() {
   };
 
   return (
-    <div className="bg-app pb-20">
+    <div className="bg-app pb-[calc(60px+env(safe-area-inset-bottom)+1rem)]">
       {/* ヘッダー */}
       <div className="header-gradient text-foreground p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
@@ -124,8 +133,9 @@ export function HistoryPage() {
                 const leftScore = isTeamAWinner ? match.scoreA : match.scoreB;
                 const rightScore = isTeamAWinner ? match.scoreB : match.scoreA;
 
-                const leftNames = leftTeam.map(getPlayerName).join(' ');
-                const rightNames = rightTeam.map(getPlayerName).join(' ');
+                const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
+                const leftNames = isMatchSingles ? getPlayerName(leftTeam[0]) : leftTeam.map(getPlayerName).join(' ');
+                const rightNames = isMatchSingles ? getPlayerName(rightTeam[0]) : rightTeam.map(getPlayerName).join(' ');
 
                 return (
                   <div
@@ -134,7 +144,7 @@ export function HistoryPage() {
                   >
                     <div className="flex items-center gap-2">
                       {/* 試合番号 */}
-                      <span className="text-xs font-bold text-indigo-600 bg-indigo-100 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
                         {matchNumber}
                       </span>
 
@@ -142,11 +152,11 @@ export function HistoryPage() {
                       <div className="flex-1 min-w-0 space-y-0.5">
                         {/* 名前（横一列・改行なし） */}
                         <div className="flex items-center text-sm gap-1.5 leading-tight">
-                          <span className="font-bold text-foreground whitespace-nowrap flex-shrink-0">
+                          <span className="font-bold text-foreground truncate flex-1 min-w-0">
                             {leftNames}
                           </span>
                           <span className="text-muted-foreground font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
-                          <span className="text-muted-foreground truncate">
+                          <span className="text-muted-foreground truncate flex-1 min-w-0">
                             {rightNames}
                           </span>
                         </div>
@@ -170,12 +180,12 @@ export function HistoryPage() {
                         </div>
                       </div>
 
-                      {/* 編集・削除ボタン（横並び） */}
-                      <div className="flex gap-0.5 flex-shrink-0">
+                      {/* 編集・削除ボタン（縦並び） */}
+                      <div className="flex flex-col gap-0.5 flex-shrink-0">
                         <button
                           onClick={() => handleEdit(match.id)}
                           aria-label="編集"
-                          className="p-1.5 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                          className="p-1 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
                         >
                           <Edit3 size={13} />
                         </button>
@@ -183,7 +193,7 @@ export function HistoryPage() {
                           <button
                             onClick={() => handleDelete(match.id)}
                             aria-label="削除"
-                            className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                            className="p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
                           >
                             <Trash2 size={13} />
                           </button>

@@ -21,7 +21,7 @@ interface AccountingState {
   records: AccountingRecord[];
   lastInput: LastInput | null;
   addRecord: (record: Omit<AccountingRecord, 'id' | 'timestamp'>) => void;
-  deleteRecord: (id: string) => void;
+  removeRecord: (id: string) => void;
   clearRecords: () => void;
   saveLastInput: (input: LastInput) => void;
 }
@@ -44,7 +44,7 @@ export const useAccountingStore = create<AccountingState>()(
           ],
         })),
 
-      deleteRecord: (id) =>
+      removeRecord: (id) =>
         set((state) => ({
           records: state.records.filter((r) => r.id !== id),
         })),

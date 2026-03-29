@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { CalendarCheck, History, Users, DollarSign, LayoutGrid } from 'lucide-react';
 import { useReservationStore } from '../stores/reservationStore';
 import { useGameStore } from '../stores/gameStore';
+import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useToast } from '../hooks/useToast';
 import { Toast } from './Toast';
@@ -16,12 +17,46 @@ export function BottomNav({ activeTab }: BottomNavProps) {
   const navigate = useNavigate();
   const toast = useToast();
   const session = useSessionStore((s) => s.session);
+  const currentUser = useSessionStore((s) => s.currentUser);
+  const isAdmin = useSessionStore((s) => s.isAdmin);
   const reservationCount = useReservationStore(
     (s) => s.reservations.filter((r) => r.status === 'pending').length
   );
-  const unrecordedMatchesCount = useGameStore(
-    (s) => s.matchHistory.filter((m) => m.winner === undefined).length
-  );
+  
+  // 履歴バッジ: オンラインモードでは権限により表示内容を変える
+  const matchHistory = useGameStore((s) => s.matchHistory);
+  const players = usePlayerStore((s) => s.players);
+  
+  const unrecordedMatchesCount = (() => {
+    const unrecordedMatches = matchHistory.filter((m) => m.winner === undefined);
+    
+    // ローカルモード or 管理者: 全件表示
+    if (!session?.createdBy || isAdmin()) {
+      return unrecordedMatches.length;
+    }
+    
+    // オンラインモード & 一般ユーザー: 自分が参加した試合のみ
+    if (currentUser) {
+      return unrecordedMatches.filter((match) => {
+        // matchに含まれるplayerIdから名前を取得
+        const playerIds = [...match.teamA, ...match.teamB];
+        const playerNames = playerIds
+          .map((id) => players.find((p) => p.id === id)?.name)
+          .filter(Boolean);
+        
+        // 自分が参加しているかチェック
+        return playerNames.includes(currentUser);
+      }).length;
+    }
+    
+    return 0;
+  })();
+
+  // 参加者タブバッジ: タスク未完了の人数
+  const incompleteTaskCount = players.filter((p) => {
+    const status = p.operationStatus || { payment: false, roster: false };
+    return !status.payment || !status.roster;
+  }).length;
 
   // PWA判定
   const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
@@ -40,11 +75,7 @@ export function BottomNav({ activeTab }: BottomNavProps) {
 
     // オンラインセッション + ブラウザの場合、試合予約はPWA専用
     if (tab.id === 'reservation' && session?.createdBy && !isPWA) {
-      console.log('[BottomNav] Blocking reservation access:', {
-        sessionCreatedBy: session.createdBy,
-        isPWA,
-      });
-      toast.warning('試合予約はPWAアプリ専用機能です');
+      toast.warning('試合予約はPWAアプリ専用機能です', 1000);
       return;
     }
 
@@ -78,6 +109,11 @@ export function BottomNav({ activeTab }: BottomNavProps) {
                     {unrecordedMatchesCount}
                   </span>
                 )}
+                {tab.id === 'players' && incompleteTaskCount > 0 && (
+                  <span className="absolute top-0 right-0.5 min-w-[18px] h-[18px] bg-blue-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                    {incompleteTaskCount}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -90,6 +126,7 @@ export function BottomNav({ activeTab }: BottomNavProps) {
           key={t.id}
           message={t.message}
           type={t.type}
+          duration={t.duration}
           onClose={() => toast.hideToast(t.id)}
         />
       ))}

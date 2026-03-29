@@ -5,8 +5,8 @@ export interface Court {
   scoreA: number;
   scoreB: number;
   isPlaying: boolean;
-  startedAt: number | null;
-  finishedAt: number | null;
+  startedAt: number; // 試合開始時刻（Unix timestamp、未設定時は0）
+  finishedAt: number; // 試合終了時刻（Unix timestamp、未設定時は0）
   restingPlayerIds?: string[]; // 元々休憩中だったプレイヤーID
 }
 

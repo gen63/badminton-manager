@@ -5,14 +5,15 @@ interface ToastState {
   id: string;
   message: string;
   type: ToastType;
+  duration?: number;
 }
 
 export function useToast() {
   const [toasts, setToasts] = useState<ToastState[]>([]);
 
-  const showToast = useCallback((message: string, type: ToastType = 'info') => {
+  const showToast = useCallback((message: string, type: ToastType = 'info', duration?: number) => {
     const id = `toast-${Date.now()}-${Math.random()}`;
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => [...prev, { id, message, type, duration }]);
   }, []);
 
   const hideToast = useCallback((id: string) => {
@@ -23,9 +24,9 @@ export function useToast() {
     toasts,
     showToast,
     hideToast,
-    success: (message: string) => showToast(message, 'success'),
-    error: (message: string) => showToast(message, 'error'),
-    info: (message: string) => showToast(message, 'info'),
-    warning: (message: string) => showToast(message, 'warning'),
+    success: (message: string, duration?: number) => showToast(message, 'success', duration),
+    error: (message: string, duration?: number) => showToast(message, 'error', duration),
+    info: (message: string, duration?: number) => showToast(message, 'info', duration),
+    warning: (message: string, duration?: number) => showToast(message, 'warning', duration),
   };
 }

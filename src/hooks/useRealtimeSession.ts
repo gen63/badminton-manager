@@ -15,10 +15,21 @@ export function useRealtimeSession(sessionId: string | null) {
 
     unsubscribeRef.current = subscribeToSession(sessionId, (session) => {
       if (session) {
+        // information の readBy が undefined の場合は空配列にフォールバック
+        const information = session.information
+          ? {
+              ...session.information,
+              readBy: session.information.readBy || [],
+            }
+          : undefined;
+
         updateSession({
           config: session.config,
           participants: session.participants,
+          registeredPlayers: session.registeredPlayers,
+          admins: session.admins,
           status: session.status,
+          information,
         });
       }
     });

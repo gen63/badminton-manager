@@ -9,26 +9,48 @@ import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { deleteSession, updateSession as updateFirebaseSession } from '../services/sessionService';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
+import { clearAppBadge } from '../lib/badge';
 import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrCode, Copy, Check } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, clearSession, isCreator, isAdmin } = useSessionStore();
+  const { session, updateConfig, clearSession, isCreator, isAdmin, currentUser } = useSessionStore();
   const [showSessionInfo, setShowSessionInfo] = useState(false);
   const [sessionIdCopied, setSessionIdCopied] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
+  const [selectedAdmins, setSelectedAdmins] = useState<string[]>([]);
 
   const userIsAdmin = isAdmin();
   const userIsCreator = isCreator();
-  const { clearPlayers } = usePlayerStore();
-  const { clearHistory } = useGameStore();
-  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
+  const { players, clearPlayers, setAllPlayersResting } = usePlayerStore();
+  const { clearHistory, resetAllCourts } = useGameStore();
+  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType, setPracticeType } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
   const { clearReservations } = useReservationStore();
 
+  // オンラインモードかどうか
+  const isOnlineMode = !!session?.createdBy;
+
   if (!session) {
     navigate('/');
+    return null;
+  }
+
+  // オンラインモードで currentUser が未設定の場合はローディング
+  if (isOnlineMode && !currentUser) {
+    return (
+      <div className="bg-app h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">読み込み中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 管理者権限チェック
+  if (!isAdmin) {
+    navigate('/main');
     return null;
   }
 
@@ -55,13 +77,49 @@ export function SettingsPage() {
     }
   };
 
-  const handleReset = async () => {
+  const handleMatchReset = () => {
     const confirmed = window.confirm(
-      'セッションをリセットしますか？\n\n' +
+      '試合をリセットしますか？\n\n' +
+      '以下がリセットされます：\n' +
+      '・試合履歴\n' +
+      '・コート（すべてクリア）\n' +
+      '・全員を休憩状態に\n' +
+      '・試合予約\n' +
+      '・会計記録\n\n' +
+      '参加者リストは保持されます。\n\n' +
+      '※オンラインモードの場合、他の参加者も影響を受けます'
+    );
+
+    if (!confirmed) return;
+
+    // コートをすべてクリア
+    resetAllCourts();
+    
+    // 全員を休憩状態に
+    setAllPlayersResting();
+    
+    // 試合履歴をクリア
+    clearHistory();
+    
+    // 予約をクリア
+    clearReservations();
+    
+    // 会計記録をクリア
+    clearRecords();
+    
+    // Undoスタックをクリア
+    clearUndo();
+  };
+
+  const handleFullReset = async () => {
+    const confirmed = window.confirm(
+      'セッションを全リセットしますか？\n\n' +
+      '以下がすべて削除されます：\n' +
       '・すべての参加者\n' +
       '・試合履歴\n' +
       '・会計記録\n' +
-      'がすべて削除されます。\n\n' +
+      '・試合予約\n\n' +
+      'この操作は取り消せません。\n\n' +
       '※オンラインモードの場合、他の参加者も影響を受けます'
     );
 
@@ -84,6 +142,10 @@ export function SettingsPage() {
     clearRecords();
     clearReservations();
     clearSession();
+    
+    // PWAバッジをクリア
+    await clearAppBadge();
+    
     navigate('/');
   };
 
@@ -97,17 +159,27 @@ export function SettingsPage() {
     }
   };
 
-  const handleAddAdmin = async (name: string) => {
-    await updateAdmins([...(session.admins || []), name]);
+  const handleAddAdmins = async () => {
+    if (selectedAdmins.length === 0) return;
+    await updateAdmins([...(session.admins || []), ...selectedAdmins]);
+    setSelectedAdmins([]);
     setShowAddAdminModal(false);
+  };
+
+  const handleToggleAdmin = (name: string) => {
+    setSelectedAdmins(prev =>
+      prev.includes(name)
+        ? prev.filter(n => n !== name)
+        : [...prev, name]
+    );
   };
 
   const handleRemoveAdmin = (name: string) => {
     updateAdmins((session.admins || []).filter(admin => admin !== name));
   };
 
-  const availableParticipants = (session.participants || []).filter(
-    name => name !== session.createdBy && !session.admins?.includes(name)
+  const availableParticipants = players.filter(
+    player => player.name !== session.createdBy && !session.admins?.includes(player.name)
   );
 
   return (
@@ -152,6 +224,27 @@ export function SettingsPage() {
                   >
                     {session.config.targetScore === score && <span className="mr-1">✓</span>}
                     {score}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">練習種別</label>
+              <div className="flex gap-2">
+                {(['単', '複', '楽'] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => {
+                      setPracticeType(type);
+                      if (type === '単') setPrioritizeDiversity(false);
+                    }}
+                    className={`flex-1 select-button text-xs px-2 ${
+                      practiceType === type ? 'select-button-active' : 'select-button-inactive'
+                    }`}
+                  >
+                    {practiceType === type && <span className="mr-1">✓</span>}
+                    {type}
                   </button>
                 ))}
               </div>
@@ -223,38 +316,47 @@ export function SettingsPage() {
               </p>
             </div>
 
-            <div>
-              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">配置タイミング</label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setPrioritizeDiversity(true)}
-                  className={`flex-1 select-button text-xs px-2 ${
-                    prioritizeDiversity
-                      ? 'select-button-active'
-                      : 'select-button-inactive'
-                  }`}
-                >
-                  {prioritizeDiversity && <span className="mr-1">✓</span>}
-                  多様性優先
-                </button>
-                <button
-                  onClick={() => setPrioritizeDiversity(false)}
-                  className={`flex-1 select-button text-xs px-2 ${
-                    !prioritizeDiversity
-                      ? 'select-button-active'
-                      : 'select-button-inactive'
-                  }`}
-                >
-                  {!prioritizeDiversity && <span className="mr-1">✓</span>}
-                  回数優先
-                </button>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-1">
-                {prioritizeDiversity
-                  ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
-                  : '空きが出たら即座に配置'}
-              </p>
-            </div>
+            {(() => {
+              const isSinglesMode = practiceType === '単';
+              return (
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">配置タイミング</label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => !isSinglesMode && setPrioritizeDiversity(true)}
+                      disabled={isSinglesMode}
+                      className={`flex-1 select-button text-xs px-2 ${
+                        !isSinglesMode && prioritizeDiversity
+                          ? 'select-button-active'
+                          : 'select-button-inactive'
+                      } ${isSinglesMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {!isSinglesMode && prioritizeDiversity && <span className="mr-1">✓</span>}
+                      多様性優先
+                    </button>
+                    <button
+                      onClick={() => !isSinglesMode && setPrioritizeDiversity(false)}
+                      disabled={isSinglesMode}
+                      className={`flex-1 select-button text-xs px-2 ${
+                        isSinglesMode || !prioritizeDiversity
+                          ? 'select-button-active'
+                          : 'select-button-inactive'
+                      } ${isSinglesMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {(isSinglesMode || !prioritizeDiversity) && <span className="mr-1">✓</span>}
+                      回数優先
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    {isSinglesMode
+                      ? 'シングルスでは回数優先が適用されます'
+                      : prioritizeDiversity
+                      ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
+                      : '空きが出たら即座に配置'}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -383,25 +485,30 @@ export function SettingsPage() {
           </div>
         )}
 
-        {/* 一般ユーザー向け注意事項（オンラインモード） */}
-        {!userIsAdmin && session.createdBy && (
-          <div className="card p-4 bg-blue-50 border border-blue-200">
-            <p className="text-xs text-blue-800">
-              セッション管理・リセットは管理者（{session.createdBy}）のみが実行できます。
-            </p>
-          </div>
-        )}
-
         {/* アクション */}
         {userIsAdmin && (
-          <div className="space-y-3">
-            <div className="flex justify-center">
+          <div className="card p-4">
+            <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+              <span className="w-6 h-6 rounded-lg bg-red-100 flex items-center justify-center">
+                <Trash2 size={14} className="text-red-600" />
+              </span>
+              リセット
+              <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">管理者</span>
+            </h2>
+            <div className="flex gap-2">
               <button
-                onClick={handleReset}
-                className="btn-danger flex items-center justify-center gap-2 py-3 px-6"
+                onClick={handleMatchReset}
+                className="flex-1 bg-orange-50 hover:bg-orange-100 text-orange-700 border-2 border-orange-200 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
               >
-                <Trash2 size={18} />
-                リセット
+                <Trash2 size={16} />
+                試合リセット
+              </button>
+              <button
+                onClick={handleFullReset}
+                className="flex-1 bg-red-50 hover:bg-red-100 text-red-700 border-2 border-red-300 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+              >
+                <Trash2 size={16} />
+                全リセット
               </button>
             </div>
           </div>
@@ -421,39 +528,63 @@ export function SettingsPage() {
       )}
 
       {/* 管理者追加モーダル */}
-      {showAddAdminModal && session.participants && (
+      {showAddAdminModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-card rounded-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
-            <h3 className="text-lg font-bold text-foreground mb-4">管理者を追加</h3>
+          <div className="bg-card rounded-2xl p-6 max-w-md w-full max-h-[80vh] flex flex-col">
+            <h3 className="text-lg font-bold text-foreground mb-2">管理者を追加</h3>
             <p className="text-xs text-muted-foreground mb-4">
-              管理者にしたい参加者を選択してください
+              管理者にしたいプレイヤーを選択してください（複数選択可）
             </p>
 
-            <div className="space-y-2 mb-6">
-              {availableParticipants.map((name) => (
-                  <button
-                    key={name}
-                    onClick={() => handleAddAdmin(name)}
-                    className="w-full bg-muted hover:bg-muted/70 rounded-xl p-3 text-left text-sm font-medium text-foreground transition-colors flex items-center gap-2"
-                  >
-                    <span className="text-lg">👤</span>
-                    {name}
-                  </button>
-                ))}
+            <div className="space-y-2 mb-4 overflow-y-auto flex-1">
+              {availableParticipants.map((player) => {
+                  const isSelected = selectedAdmins.includes(player.name);
+                  return (
+                    <button
+                      key={player.id}
+                      onClick={() => handleToggleAdmin(player.name)}
+                      className={`w-full rounded-xl p-3 text-left text-sm font-medium transition-colors flex items-center gap-3 ${
+                        isSelected
+                          ? 'bg-indigo-100 text-indigo-900 border-2 border-indigo-500'
+                          : 'bg-muted hover:bg-muted/70 text-foreground border-2 border-transparent'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${
+                        isSelected ? 'bg-indigo-500' : 'bg-muted-foreground/20'
+                      }`}>
+                        {isSelected && <Check size={14} className="text-white" />}
+                      </div>
+                      <span className="text-lg">👤</span>
+                      <span className="flex-1">{player.name}</span>
+                    </button>
+                  );
+                })}
 
               {availableParticipants.length === 0 && (
                 <p className="text-center text-sm text-muted-foreground py-8">
-                  管理者に追加できる参加者がいません
+                  管理者に追加できるプレイヤーがいません
                 </p>
               )}
             </div>
 
-            <button
-              onClick={() => setShowAddAdminModal(false)}
-              className="w-full btn-secondary"
-            >
-              キャンセル
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setSelectedAdmins([]);
+                  setShowAddAdminModal(false);
+                }}
+                className="flex-1 btn-secondary"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleAddAdmins}
+                disabled={selectedAdmins.length === 0}
+                className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                追加 {selectedAdmins.length > 0 && `(${selectedAdmins.length})`}
+              </button>
+            </div>
           </div>
         </div>
       )}

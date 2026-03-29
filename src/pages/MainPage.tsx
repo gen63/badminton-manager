@@ -4,9 +4,10 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
-import { parsePlayerInput, getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
+import { getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
+import { PlayerAddInput } from '../components/PlayerAddInput';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, StopCircle, Trash2, ChevronDown, Minus, Settings } from 'lucide-react';
+import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, StopCircle, Trash2, ChevronDown, Minus, Settings, Info } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
@@ -15,21 +16,28 @@ import { useRealtimeSession } from '../hooks/useRealtimeSession';
 import { useFirebaseSync } from '../hooks/useFirebaseSync';
 import { useAccountingStore } from '../stores/accountingStore';
 import { PaymentModal } from '../components/PaymentModal';
+import { CourtTimer } from '../components/CourtTimer';
+import { updatePaymentBadge } from '../lib/badge';
 
 import { BottomNav } from '../components/BottomNav';
 
 export function MainPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, currentUser } = useSessionStore();
+  const { session, updateConfig, currentUser, isAdmin, updateInformation, markInformationAsRead } = useSessionStore();
 
   // オンラインモード時のリアルタイム同期
   const isSharedSession = !!session?.createdBy;
   useRealtimeSession(isSharedSession ? session?.id ?? null : null);
-  useFirebaseSync();
+  const { prepareDirectTransaction, completeDirectTransaction } = useFirebaseSync();
   const { players, toggleRest, updatePlayer, addPlayers, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeDiversity } = useSettingsStore();
+
+  // ゲームモード判定
+  // TODO: シングルス対応時にpracticeTypeから動的に判定する（アルゴリズム改修が必要）
+  const isSingles = false;
+  const playersPerCourt = isSingles ? 2 : 4;
 
   // total active players cache used by flow-priority checks
   const totalActiveCount = players.filter(p => !p.isResting).length;
@@ -44,26 +52,30 @@ export function MainPage() {
     courtId?: number;
     position?: number;
   } | null>(null);
-  const [newPlayerName, setNewPlayerName] = useState('');
+
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
+  const [showInformationModal, setShowInformationModal] = useState(false);
+  const [informationText, setInformationText] = useState('');
 
   const playerCardRef = useRef<HTMLDivElement>(null);
+
+  // モーダル表示中にsession.informationが更新されたら、メンバー閲覧時のみ同期
+  // 管理者の編集中テキストは上書きしない
+  useEffect(() => {
+    if (showInformationModal && session?.information?.text && !isAdmin()) {
+      setInformationText(session.information.text);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- isAdmin is a stable Zustand selector
+  }, [session?.information?.text, showInformationModal]);
+
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   useEffect(() => {
     return () => {
       if (heightLockTimer.current) clearTimeout(heightLockTimer.current);
     };
-  }, []);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(Date.now());
-    }, 1000);
-    return () => clearInterval(interval);
   }, []);
 
   // ブロック条件成立時に連続モードを強制OFF
@@ -72,11 +84,13 @@ export function MainPage() {
     if (!prioritizeDiversity || !continuousMatchMode) return;
     const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
     const active = players.filter(p => !p.isResting);
-    const actualWaiting = active.length - occupied.length * 4;
-    if (occupied.length > 0 && actualWaiting < 7) {
+    const ppc = isSingles ? 2 : 4;
+    const actualWaiting = active.length - occupied.length * ppc;
+    const threshold = isSingles ? 3 : 7;
+    if (occupied.length > 0 && actualWaiting < threshold) {
       setContinuousMatchMode(false);
     }
-  }, [prioritizeDiversity, continuousMatchMode, courts, players, setContinuousMatchMode]);
+  }, [prioritizeDiversity, continuousMatchMode, courts, players, setContinuousMatchMode, isSingles]);
 
   // Ctrl+Z / Ctrl+Y キーボードショートカット
   useEffect(() => {
@@ -93,6 +107,34 @@ export function MainPage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
+
+  // config.courtCount と courts.length を同期（オンラインモード時）
+  useEffect(() => {
+    if (!session?.createdBy) return; // ローカルモードでは不要
+    const configCourtCount = session.config.courtCount || 1;
+    if (courts.length !== configCourtCount) {
+      resizeCourts(configCourtCount);
+    }
+  }, [session?.config.courtCount, courts.length, session?.createdBy, resizeCourts]);
+
+  // PWAバッジ更新：支払い予定額を表示
+  useEffect(() => {
+    if (!session || !currentUser) {
+      updatePaymentBadge(true);
+      return;
+    }
+
+    const currentPlayer = players.find(p => p.name === currentUser);
+    if (!currentPlayer) {
+      updatePaymentBadge(true);
+      return;
+    }
+
+    const isPaid = currentPlayer.operationStatus?.payment ?? false;
+    const amount = currentPlayer.paymentAmount;
+
+    updatePaymentBadge(isPaid, amount);
+  }, [session, currentUser, players]);
 
   const playersInCourts = useMemo(() => new Set(
     courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
@@ -147,12 +189,12 @@ export function MainPage() {
       scoreA: 0,
       scoreB: 0,
       isPlaying: false,
-      startedAt: null,
-      finishedAt: null,
+      startedAt: 0,
+      finishedAt: 0,
     });
   };
 
-  const handleAddCourt = () => {
+  const handleAddCourt = async () => {
     if (courts.length < 3) {
       const newCount = courts.length + 1;
       resizeCourts(newCount);
@@ -161,16 +203,33 @@ export function MainPage() {
       // コート増加後に待機人数が不足する場合、連続モードをOFF
       if (continuousMatchMode) {
         const activeCount = players.filter(p => !p.isResting).length;
-        const waitingAfter = activeCount - newCount * 4;
-        const threshold = prioritizeDiversity ? 7 : 2;
+        const waitingAfter = activeCount - newCount * playersPerCourt;
+        const threshold = prioritizeDiversity ? (isSingles ? 3 : 7) : 2;
         if (waitingAfter < threshold) {
           setContinuousMatchMode(false);
         }
       }
+
+      // コート数変更は重要な操作なので、即座にFirestoreにpush（デバウンスをスキップ）
+      if (session?.id && session?.createdBy) {
+        const { syncGameStateWithTransaction } = await import('../services/sessionService');
+        const { players: currentPlayers } = usePlayerStore.getState();
+        const { courts: currentCourts, matchHistory: currentHistory } = useGameStore.getState();
+        const { reservations: currentReservations } = useReservationStore.getState();
+        
+        syncGameStateWithTransaction(session.id, {
+          players: currentPlayers,
+          courts: currentCourts,
+          matchHistory: currentHistory,
+          reservations: currentReservations,
+        }).catch((err) => {
+          console.error('[handleAddCourt] Failed to sync:', err);
+        });
+      }
     }
   };
 
-  const handleRemoveCourt = (courtId: number) => {
+  const handleRemoveCourt = async (courtId: number) => {
     if (courts.length <= 1) return;
     const court = courts.find(c => c.id === courtId);
     if (!court) return;
@@ -178,6 +237,23 @@ export function MainPage() {
     if (hasPlayers || court.isPlaying) return;
     removeCourtById(courtId);
     updateConfig({ courtCount: courts.length - 1 });
+
+    // コート数変更は重要な操作なので、即座にFirestoreにpush（デバウンスをスキップ）
+    if (session?.id && session?.createdBy) {
+      const { syncGameStateWithTransaction } = await import('../services/sessionService');
+      const { players: currentPlayers } = usePlayerStore.getState();
+      const { courts: currentCourts, matchHistory: currentHistory } = useGameStore.getState();
+      const { reservations: currentReservations } = useReservationStore.getState();
+      
+      syncGameStateWithTransaction(session.id, {
+        players: currentPlayers,
+        courts: currentCourts,
+        matchHistory: currentHistory,
+        reservations: currentReservations,
+      }).catch((err) => {
+        console.error('[handleRemoveCourt] Failed to sync:', err);
+      });
+    }
   };
 
   const pendingReservations = reservations.filter(r => r.status === 'pending');
@@ -210,12 +286,13 @@ export function MainPage() {
           allPlayers: allActivePlayers,
           useStayDurationPriority,
           reservations,
+          gameMode: session?.config.gameMode ?? 'doubles',
         }
       );
 
-      // 配置されたプレイヤーIDを集める
+      // 配置されたプレイヤーIDを集める（空文字を除外）
       const assignedPlayerIds = new Set(
-        assignments.flatMap(a => [...a.teamA, ...a.teamB])
+        assignments.flatMap(a => [...a.teamA, ...a.teamB]).filter(id => id && id.trim())
       );
 
       // 予約消化判定: 予約メンバー全員が配置されたら fulfilled
@@ -233,8 +310,8 @@ export function MainPage() {
           scoreA: 0,
           scoreB: 0,
           isPlaying: isBulk,
-          startedAt: isBulk ? Date.now() : null,
-          finishedAt: null,
+          startedAt: isBulk ? Date.now() : 0,
+          finishedAt: 0,
         });
       });
     } catch (error) {
@@ -284,6 +361,8 @@ export function MainPage() {
     const { courts, matchHistory, updateCourt, startGame } = useGameStore.getState();
     const { players } = usePlayerStore.getState();
     const { useStayDurationPriority, prioritizeDiversity } = useSettingsStore.getState();
+    
+    const ppc = 4; // ダブルス専用
 
     // 最新の待機プレイヤーを計算
     const playersInCourts = new Set(
@@ -297,14 +376,16 @@ export function MainPage() {
     if (prioritizeDiversity) {
       const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
       const active = players.filter(p => !p.isResting);
-      const actualWaiting = active.length - occupied.length * 4;
-      if (occupied.length > 0 && actualWaiting < 7) {
+      const actualWaiting = active.length - occupied.length * ppc;
+      const threshold = 7; // ダブルス専用
+      if (occupied.length > 0 && actualWaiting < threshold) {
         setContinuousMatchMode(false);
         return;
       }
     }
 
-    if (waitingPlayers.length < 7) {
+    const minWaiting = 7; // ダブルス専用
+    if (waitingPlayers.length < minWaiting) {
       toast.error('待機中のプレイヤーが足りません');
       return;
     }
@@ -315,6 +396,7 @@ export function MainPage() {
       totalCourtCount: courts.length,
       useStayDurationPriority,
       reservations: reservations,
+      gameMode: session?.config.gameMode ?? 'doubles',
     });
 
     if (assignments[0]) {
@@ -325,8 +407,8 @@ export function MainPage() {
         scoreA: 0,
         scoreB: 0,
         isPlaying: false,
-        startedAt: null,
-        finishedAt: null,
+        startedAt: 0,
+        finishedAt: 0,
       });
       startGame(courtId);
     } else {
@@ -343,7 +425,8 @@ export function MainPage() {
     emptyCourts.length,
     waitingCount,
     totalActiveCount,
-    2
+    2,
+    playersPerCourt
   );
   const shouldBlockContinuous = shouldBlockForDiversity(
     prioritizeDiversity,
@@ -351,10 +434,11 @@ export function MainPage() {
     emptyCourts.length,
     waitingCount,
     totalActiveCount,
-    7
+    isSingles ? 3 : 7,
+    playersPerCourt
   );
-  const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= 4;
-  const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * 4;
+  const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= playersPerCourt;
+  const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * playersPerCourt;
 
   const handleSwapPlayer = (courtId: number, position: number, newPlayerId: string) => {
     const court = courts.find((c) => c.id === courtId);
@@ -415,7 +499,7 @@ export function MainPage() {
     // 休憩に入る場合（toggleRest前のisResting=false）、コート数を自動縮小
     if (!player?.isResting) {
       const activeCount = players.filter(p => !p.isResting && p.id !== playerId).length;
-      const recommended = getRecommendedCourtCount(activeCount, courts.length);
+      const recommended = getRecommendedCourtCount(activeCount, courts.length, playersPerCourt);
       if (recommended < courts.length) {
         resizeCourts(recommended);
         updateConfig({ courtCount: recommended });
@@ -519,13 +603,6 @@ export function MainPage() {
     redo();
   };
 
-  const formatElapsedTime = (startedAt: number) => {
-    const elapsed = Math.floor((currentTime - startedAt) / 1000);
-    const minutes = Math.floor(elapsed / 60);
-    const seconds = elapsed % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
-
   return (
     <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-y-auto scrollbar-hide text-foreground">
       <header className="sticky top-0 flex-none bg-background border-b border-border px-4 py-2.5 shadow-sm z-20">
@@ -542,7 +619,11 @@ export function MainPage() {
             >
               <Repeat size={16} />
               <span>連続</span>
-              {continuousMatchMode && <span className="text-[10px] bg-green-200 px-1.5 py-0.5 rounded-full font-bold">ON</span>}
+              <span className={`text-[10px] bg-green-200 py-0.5 rounded-full font-bold transition-all duration-150 ${
+                continuousMatchMode
+                  ? 'opacity-100 max-w-[2rem] px-1.5'
+                  : 'opacity-0 max-w-0 overflow-hidden px-0'
+              }`}>ON</span>
             </button>
             <button
               onClick={() => handleAutoAssign()}
@@ -552,6 +633,35 @@ export function MainPage() {
               <Users size={16} />
               <span>一括</span>
             </button>
+            {/* インフォメーションアイコン（オンラインモードのみ） */}
+            {session?.createdBy && (
+              <button
+                onClick={() => {
+                  // 管理者は周知事項がなくても編集モーダルを開ける
+                  if (isAdmin()) {
+                    setInformationText(session?.information?.text || '');
+                    setShowInformationModal(true);
+                  } else if (session?.information?.text) {
+                    // メンバーは周知事項がある場合のみ閲覧＋既読化
+                    setInformationText(session.information.text);
+                    setShowInformationModal(true);
+                    markInformationAsRead();
+                  }
+                }}
+                disabled={!isAdmin() && !session?.information?.text}
+                className={`relative flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full transition-colors ${
+                  session?.information?.text || isAdmin()
+                    ? 'hover:bg-muted text-blue-600'
+                    : 'text-muted-foreground/30 cursor-not-allowed'
+                }`}
+                aria-label="お知らせ"
+              >
+                <Info size={20} />
+                {session?.information?.text && currentUser && !session.information.readBy?.includes(currentUser) && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" />
+                )}
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -570,12 +680,14 @@ export function MainPage() {
             >
               <Redo2 size={18} />
             </button>
-            <button
-              onClick={() => navigate('/settings')}
-              className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-muted-foreground transition-colors"
-            >
-              <Settings size={18} />
-            </button>
+            {isAdmin() && (
+              <button
+                onClick={() => navigate('/settings')}
+                className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-muted-foreground transition-colors"
+              >
+                <Settings size={18} />
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -585,7 +697,7 @@ export function MainPage() {
         const currentPlayer = players.find(p => p.name === currentUser);
         if (!currentPlayer) return null;
         const status = currentPlayer.operationStatus || { payment: false, roster: false, checkin: false };
-        const allCompleted = status.payment && status.roster && status.checkin;
+        const allCompleted = status.payment && status.roster;
         if (allCompleted) return null;
 
         return (
@@ -613,23 +725,13 @@ export function MainPage() {
                 >
                   {status.roster ? '✓' : ''}名簿
                 </button>
-                <button
-                  onClick={() => toggleOperationStatus(currentPlayer.id, 'checkin')}
-                  className="text-xs py-1 px-3 rounded-lg font-medium transition-colors"
-                  style={{
-                    backgroundColor: status.checkin ? '#10b981' : '#e5e7eb',
-                    color: status.checkin ? '#ffffff' : '#6b7280',
-                  }}
-                >
-                  {status.checkin ? '✓' : ''}チェックイン
-                </button>
               </div>
             </div>
           </div>
         );
       })()}
 
-      {shouldBlockAssignment && (
+      {shouldBlockAssignment && courts.length > 1 && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-center gap-2">
           <span className="text-xs text-amber-800 font-medium text-center">
             💡 組み合わせの多様性を確保するため、一括配置を推奨
@@ -656,33 +758,35 @@ export function MainPage() {
                       }`}>
                         {court.id}
                       </span>
-                      <span className={`text-xs font-semibold ${!court.isPlaying && !hasPlayers ? 'text-muted-foreground' : ''}`}>
+                      <span className={`text-xs font-semibold min-w-[2.5em] ${!court.isPlaying && !hasPlayers ? 'text-muted-foreground' : ''}`}>
                         {court.isPlaying && matchNumber ? `#${matchNumber}` : hasPlayers ? '準備中' : '空き'}
                       </span>
                     </div>
-                    {court.isPlaying && court.startedAt ? (
-                      <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <circle cx="12" cy="12" r="10" strokeWidth="2"/>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
-                        </svg>
-                        <span>{formatElapsedTime(court.startedAt)}</span>
-                      </div>
-                    ) : !hasPlayers && courts.length > 1 && (
-                      <button
-                        onClick={() => handleRemoveCourt(court.id)}
-                        className="w-6 h-6 rounded-full bg-muted text-muted-foreground flex items-center justify-center hover:bg-destructive/20 hover:text-destructive transition-colors"
-                        aria-label="コート削除"
-                      >
-                        <Minus size={12} />
-                      </button>
-                    )}
+                    <div className="min-w-[56px] flex justify-end">
+                      {court.isPlaying && court.startedAt ? (
+                        <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tabular-nums">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" strokeWidth="2"/>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
+                          </svg>
+                          <CourtTimer startedAt={court.startedAt} />
+                        </div>
+                      ) : !hasPlayers && courts.length > 1 && (
+                        <button
+                          onClick={() => handleRemoveCourt(court.id)}
+                          className="w-6 h-6 rounded-full bg-muted text-muted-foreground flex items-center justify-center hover:bg-destructive/20 hover:text-destructive transition-colors"
+                          aria-label="コート削除"
+                        >
+                          <Minus size={12} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   {hasPlayers ? (
                     <div className="p-2 flex flex-col gap-2 min-h-[220px]">
                       <div className="flex flex-col gap-1">
-                        {court.teamA.map((playerId, idx) => {
+                        {court.teamA.filter((id) => id).map((playerId, idx) => {
                           const playerGender = getPlayerGender(playerId);
                           const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
                           return (
@@ -705,13 +809,13 @@ export function MainPage() {
                           );
                         })}
                       </div>
-                      
+
                       <div className="flex items-center justify-center py-0.5">
                         <span className="text-[10px] font-black text-muted-foreground/50">VS</span>
                       </div>
-                      
+
                       <div className="flex flex-col gap-1">
-                        {court.teamB.map((playerId, idx) => {
+                        {court.teamB.filter((id) => id).map((playerId, idx) => {
                           const playerGender = getPlayerGender(playerId);
                           const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
                           return (
@@ -737,12 +841,23 @@ export function MainPage() {
                       
                       {court.isPlaying ? (
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             const currentCourt = courts.find((c) => c.id === court.id);
                             if (!currentCourt) return;
+
+                            // べき等キーをキャプチャ（この試合の一意識別子）
+                            const matchStartedAt = currentCourt.startedAt;
+
+                            // オンラインモード: push抑止してからローカル更新
+                            const isOnline = session?.id && session?.createdBy;
+                            if (isOnline) {
+                              prepareDirectTransaction();
+                            }
+
+                            // 楽観的ローカル更新（即座にUIに反映）
                             pushUndo();
                             finishGame(court.id, 0, 0);
-                            [...court.teamA, ...court.teamB].forEach((playerId) => {
+                            [...court.teamA, ...court.teamB].filter(id => id).forEach((playerId) => {
                               const player = players.find((p) => p.id === playerId);
                               if (player) {
                                 updatePlayer(playerId, {
@@ -762,12 +877,43 @@ export function MainPage() {
                               scoreA: 0,
                               scoreB: 0,
                               isPlaying: false,
-                              startedAt: null,
-                              finishedAt: null,
+                              startedAt: 0,
+                              finishedAt: 0,
                               restingPlayerIds: [],
                             });
                             if (continuousMatchMode) {
                               handleContinuousNext(court.id);
+                            }
+
+                            // オンラインモード: べき等Transaction実行
+                            if (isOnline) {
+                              try {
+                                const { finishGameTransaction } = await import('../services/sessionService');
+                                const { computeFinishAndContinue } = await import('../lib/gameOperations');
+                                const gameMode = session?.config.gameMode ?? 'doubles';
+
+                                const result = await finishGameTransaction(
+                                  session!.id,
+                                  court.id,
+                                  matchStartedAt,
+                                  (remoteState) =>
+                                    computeFinishAndContinue(remoteState, court.id, {
+                                      continuousMatchMode,
+                                      useStayDurationPriority,
+                                      prioritizeDiversity,
+                                      gameMode,
+                                    }).newState
+                                );
+
+                                if (result === 'already_finished') {
+                                  toast.info('他のユーザーが既に終了しました');
+                                }
+                              } catch (err) {
+                                console.error('[FinishGame] Transaction failed:', err);
+                              } finally {
+                                // onSnapshotを受け入れ可能にする
+                                completeDirectTransaction();
+                              }
                             }
                           }}
                           className="w-full min-h-[44px] bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
@@ -801,7 +947,7 @@ export function MainPage() {
                         <p className="text-xs text-muted-foreground font-medium">空き</p>
                       </div>
                       <div className="flex flex-col gap-1 items-center">
-                        {shouldBlockAssignment && (
+                        {shouldBlockAssignment && courts.length > 1 && (
                           <p className="text-[10px] text-amber-700">⚠️ 一括配置推奨</p>
                         )}
                         <button
@@ -872,49 +1018,15 @@ export function MainPage() {
             
             {/* Add Member - Collapsible */}
             {showAddPlayer && (
-              <div className="bg-card p-6 rounded-2xl border border-border flex gap-2 shadow-sm">
-                <div className="flex-1 relative">
-                  <input
-                    type="text"
-                    value={newPlayerName}
-                    onChange={(e) => setNewPlayerName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newPlayerName.trim()) {
-                        const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
-                        if (parsed) {
-                          const result = addPlayers([parsed]);
-                          if (result.skipped.length > 0) {
-                            toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
-                          } else {
-                            setNewPlayerName('');
-                          }
-                        }
-                      }
-                    }}
-                    className="w-full h-10 pl-3 pr-3 bg-input border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    placeholder="こば 男"
-                    autoFocus
-                  />
-                </div>
-                <button
-                  onClick={() => {
-                    if (newPlayerName.trim()) {
-                      const parsed = parsePlayerInput(newPlayerName.trim(), /\s+/);
-                      if (parsed) {
-                        const result = addPlayers([parsed]);
-                        if (result.skipped.length > 0) {
-                          toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
-                        } else {
-                          setNewPlayerName('');
-                        }
-                      }
+              <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
+                <PlayerAddInput
+                  onAdd={(name, gender) => {
+                    const result = addPlayers([{ name, gender }]);
+                    if (result.skipped.length > 0) {
+                      toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
                     }
                   }}
-                  disabled={!newPlayerName.trim()}
-                  className="h-10 px-4 bg-secondary text-secondary-foreground rounded-xl font-semibold text-sm flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary/80 transition-colors whitespace-nowrap"
-                >
-                  追加
-                </button>
+                />
               </div>
             )}
 
@@ -927,7 +1039,7 @@ export function MainPage() {
                   <button
                     key={player.id}
                     onClick={() => handlePlayerTap(player.id)}
-                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm transition-all text-left h-[58px] ${
+                    className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl px-2 pt-[3px] pb-2 flex flex-col items-center justify-end gap-0 shadow-sm transition-all text-left h-[58px] ${
                       isSelected
                         ? 'ring-2 ring-primary ring-offset-1 border-primary'
                         : isReserved
@@ -963,7 +1075,7 @@ export function MainPage() {
                       </div>
                     )}
                     {isReserved && (
-                      <div className="absolute top-0.5 left-0.5">
+                      <div className="absolute -top-1 left-0.5">
                         <span className="px-1 py-0.5 bg-orange-500 text-white text-[8px] font-bold rounded">予約</span>
                       </div>
                     )}
@@ -1037,6 +1149,85 @@ export function MainPage() {
           onConfirm={handlePaymentConfirm}
           onCancel={() => setPaymentModalPlayer(null)}
         />
+      )}
+
+      {/* インフォメーションモーダル */}
+      {showInformationModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-card rounded-2xl p-6 max-w-md w-full max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Info size={20} className="text-blue-600" />
+                お知らせ
+              </h3>
+              <button
+                onClick={() => {
+                  setShowInformationModal(false);
+                }}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            {isAdmin() ? (
+              /* 管理者: 編集モード */
+              <>
+                <div className="flex-1 overflow-y-auto mb-4">
+                  <textarea
+                    value={informationText}
+                    onChange={(e) => setInformationText(e.target.value)}
+                    className="w-full min-h-[200px] p-3 bg-muted border border-border rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    placeholder="メンバーへの周知事項を入力..."
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setShowInformationModal(false);
+                    }}
+                    className="flex-1 btn-secondary"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={() => {
+                      const trimmed = informationText.trim();
+                      updateInformation(informationText);
+                      setShowInformationModal(false);
+                      toast.success(trimmed ? 'お知らせを更新しました' : 'お知らせを削除しました');
+                    }}
+                    className="flex-1 btn-primary"
+                  >
+                    保存
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* メンバー: 閲覧モード */
+              <>
+                <div className="flex-1 overflow-y-auto mb-4">
+                  <div className="bg-muted/50 rounded-xl p-4">
+                    <p className="text-sm text-foreground whitespace-pre-wrap">
+                      {informationText}
+                    </p>
+                  </div>
+                  {session?.information?.updatedBy && (
+                    <p className="text-xs text-muted-foreground mt-2 text-right">
+                      更新: {session.information.updatedBy}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowInformationModal(false)}
+                  className="w-full btn-primary"
+                >
+                  閉じる
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       <BottomNav activeTab="court" />

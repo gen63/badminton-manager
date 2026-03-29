@@ -4,13 +4,18 @@ import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useReservationStore } from '../stores/reservationStore';
+import { useAccountingStore } from '../stores/accountingStore';
+import { useUndoStore } from '../stores/undoStore';
 import { generateSessionId, parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { createSession, syncGameStateWithTransaction } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { requestNotificationPermission } from '../lib/notifications';
+import { clearAppBadge } from '../lib/badge';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
+import { PlayerAddInput } from '../components/PlayerAddInput';
 import { Sparkles, Download, Loader2, Play, LogIn } from 'lucide-react';
 
 // 現在日時を取得（曜日に応じて時刻を設定）
@@ -72,20 +77,35 @@ export function SessionCreate() {
   const initializeCourts = useGameStore((state) => state.initializeCourts);
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
-  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity } = useSettingsStore();
+  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType: defaultPracticeType } = useSettingsStore();
 
   const [targetScore] = useState(15);
   const [selectedGym] = useState(getInitialGym);
   const [practiceDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
+  const [practiceType, setPracticeType] = useState<'単' | '複' | '楽'>(defaultPracticeType);
   
   // Phase 1: セッションID参加機能
-  const [showJoinMode, setShowJoinMode] = useState(false);
+  const [showJoinMode, setShowJoinMode] = useState(
+    !!(location.state as { showJoinMode?: boolean })?.showJoinMode
+  );
   const [joinSessionId, setJoinSessionId] = useState('');
   const [clipboardDetected, setClipboardDetected] = useState<string | null>(null);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [allRated, setAllRated] = useState(false);
+
+  // PWAバッジをクリア（セッションがない状態）
+  useEffect(() => {
+    clearAppBadge();
+  }, []);
+
+  // 404リダイレクト時のstateをクリア（ブラウザバック時に再表示されないように）
+  useEffect(() => {
+    if ((location.state as { showJoinMode?: boolean })?.showJoinMode) {
+      window.history.replaceState({}, '');
+    }
+  }, [location.state]);
 
   // クリップボード自動検出（Phase 1）
   useEffect(() => {
@@ -201,7 +221,7 @@ export function SessionCreate() {
 
         setSession(session);
         initializeCourts(adjustedCourtCount);
-        
+
         // ローディング状態を解除してから遷移
         setIsLoadingMembers(false);
         
@@ -221,6 +241,14 @@ export function SessionCreate() {
   };
 
   const handleCreate = async () => {
+    // 重要: 新規セッション作成前に古いデータを完全クリア
+    // （前のセッションのデータが残らないように）
+    usePlayerStore.getState().clearPlayers();
+    useGameStore.getState().clearHistory();
+    useReservationStore.getState().clearReservations();
+    useAccountingStore.getState().clearRecords();
+    useUndoStore.getState().clearAll();
+
     // プレイヤー名をパース
     const playerInputs = playerNames.trim()
       ? playerNames
@@ -317,6 +345,18 @@ export function SessionCreate() {
       handleCreate();
     };
 
+    const handleAddCreatorName = (name: string, gender: 'M' | 'F') => {
+      // 重複チェック
+      if (playerInputs.some((p) => p.name === name)) {
+        setSelectedCreatorName(name);
+        return;
+      }
+      const genderText = gender === 'M' ? '男' : '女';
+      const newLine = `${name} ${genderText}`;
+      setPlayerNames((prev) => prev ? `${prev}\n${newLine}` : newLine);
+      setSelectedCreatorName(name);
+    };
+
     return (
       <div className="bg-app overflow-x-hidden min-h-screen flex items-center justify-center p-4">
         <div className="max-w-md w-full space-y-4">
@@ -326,21 +366,33 @@ export function SessionCreate() {
               <p className="text-sm text-muted-foreground">セッション管理者として登録されます</p>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 mb-4">
-              {playerInputs.map((input) => (
-                <button
-                  key={input.name}
-                  onClick={() => setSelectedCreatorName(input.name)}
-                  className={`select-button text-sm px-2 py-2 ${
-                    selectedCreatorName === input.name
-                      ? 'select-button-active'
-                      : 'select-button-inactive'
-                  }`}
-                >
-                  {selectedCreatorName === input.name && <span className="mr-1">✓</span>}
-                  {input.name}
-                </button>
-              ))}
+            {playerInputs.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                {playerInputs.map((input) => (
+                  <button
+                    key={input.name}
+                    onClick={() => setSelectedCreatorName(input.name)}
+                    className={`select-button text-sm px-2 py-2 ${
+                      selectedCreatorName === input.name
+                        ? 'select-button-active'
+                        : 'select-button-inactive'
+                    }`}
+                  >
+                    {selectedCreatorName === input.name && <span className="mr-1">✓</span>}
+                    {input.name}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-2">
+                下の入力欄から名前を追加してください
+              </p>
+            )}
+
+            {/* 名前入力 */}
+            <div className="border-t border-border pt-3 mb-4">
+              <p className="text-xs text-muted-foreground mb-2">名前を入力して追加</p>
+              <PlayerAddInput onAdd={handleAddCreatorName} />
             </div>
 
             <div className="flex gap-2">
@@ -388,7 +440,7 @@ export function SessionCreate() {
                   クリップボードにセッションIDがあります
                 </p>
                 <button
-                  onClick={() => setJoinSessionId(clipboardDetected)}
+                  onClick={() => navigate(`/session/${clipboardDetected}`)}
                   className="text-sm text-blue-600 font-medium underline"
                 >
                   {clipboardDetected} を使用
@@ -401,12 +453,17 @@ export function SessionCreate() {
               <label className="label">セッションID</label>
               <input
                 type="text"
+                inputMode="text"
+                autoCapitalize="characters"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
                 value={joinSessionId}
-                onChange={(e) => setJoinSessionId(e.target.value.toUpperCase())}
+                onChange={(e) => setJoinSessionId(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                 placeholder="ABC123"
                 maxLength={6}
-                className="input-field text-center text-2xl font-bold tracking-wider"
-                autoFocus
+                className="input-field text-center text-2xl font-bold tracking-wider uppercase"
+                style={{ imeMode: 'disabled' }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleJoinSession();
                 }}
@@ -478,8 +535,8 @@ export function SessionCreate() {
                 <textarea
                   value={playerNames}
                   onChange={(e) => setPlayerNames(e.target.value)}
-                  placeholder="星野真吾  男&#10;山口裕史  男&#10;佐野朋美  女"
-                  rows={5}
+                  placeholder="星野真吾 男&#10;山口裕史 男&#10;佐野朋美 女"
+                  rows={3}
                   className="textarea-field w-full pr-12"
                   style={{ WebkitAppearance: 'none' }}
                 />
@@ -510,6 +567,28 @@ export function SessionCreate() {
                   <p className="text-xs text-red-500">{loadError}</p>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* 練習種別 */}
+          <div>
+            <label className="label">練習種別</label>
+            <div className="flex gap-2">
+              {(['単', '複', '楽'] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    setPracticeType(type);
+                    if (type === '単') setPrioritizeDiversity(false);
+                  }}
+                  className={`flex-1 select-button text-xs px-2 ${
+                    practiceType === type ? 'select-button-active' : 'select-button-inactive'
+                  }`}
+                >
+                  {practiceType === type && <span className="mr-1">✓</span>}
+                  {type}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -570,69 +649,63 @@ export function SessionCreate() {
           </div>
 
           {/* 配置タイミング */}
-          <div>
-            <label className="label">配置タイミング</label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPrioritizeDiversity(true)}
-                className={`flex-1 select-button text-xs px-2 ${
-                  prioritizeDiversity ? 'select-button-active' : 'select-button-inactive'
-                }`}
-              >
-                {prioritizeDiversity && <span className="mr-1">✓</span>}
-                多様性優先
-              </button>
-              <button
-                onClick={() => setPrioritizeDiversity(false)}
-                className={`flex-1 select-button text-xs px-2 ${
-                  !prioritizeDiversity ? 'select-button-active' : 'select-button-inactive'
-                }`}
-              >
-                {!prioritizeDiversity && <span className="mr-1">✓</span>}
-                回数優先
-              </button>
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-1">
-              {prioritizeDiversity
-                ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
-                : '空きが出たら即座に配置'}
-            </p>
-          </div>
+          {(() => {
+            const isSinglesMode = practiceType === '単';
+            return (
+              <div>
+                <label className="label">配置タイミング</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => !isSinglesMode && setPrioritizeDiversity(true)}
+                    disabled={isSinglesMode}
+                    className={`flex-1 select-button text-xs px-2 ${
+                      !isSinglesMode && prioritizeDiversity ? 'select-button-active' : 'select-button-inactive'
+                    } ${isSinglesMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {!isSinglesMode && prioritizeDiversity && <span className="mr-1">✓</span>}
+                    多様性優先
+                  </button>
+                  <button
+                    onClick={() => !isSinglesMode && setPrioritizeDiversity(false)}
+                    disabled={isSinglesMode}
+                    className={`flex-1 select-button text-xs px-2 ${
+                      isSinglesMode || !prioritizeDiversity ? 'select-button-active' : 'select-button-inactive'
+                    } ${isSinglesMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {(isSinglesMode || !prioritizeDiversity) && <span className="mr-1">✓</span>}
+                    回数優先
+                  </button>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {isSinglesMode
+                    ? ''
+                    : prioritizeDiversity
+                    ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
+                    : '空きが出たら即座に配置'}
+                </p>
+              </div>
+            );
+          })()}
 
           {/* 作成ボタン */}
-          <div className="space-y-3">
-            <div className="flex justify-center">
-              <button
-                onClick={handleCreate}
-                className="btn-primary text-base flex items-center justify-center gap-2"
-              >
-                <Sparkles size={18} />
-                開始
-              </button>
-            </div>
+          <div className="flex justify-center gap-3">
+            <button
+              onClick={handleCreate}
+              className="btn-primary text-base flex items-center justify-center gap-2"
+            >
+              <Sparkles size={18} />
+              開始
+            </button>
 
             {/* セッションIDで参加（Firebase設定時のみ表示） */}
             {isFirebaseConfigured() && (
-              <>
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-border"></div>
-                  </div>
-                  <div className="relative flex justify-center text-xs">
-                    <span className="bg-card px-2 text-muted-foreground">または</span>
-                  </div>
-                </div>
-
-                <div className="flex justify-center">
-                  <button
-                    onClick={() => setShowJoinMode(true)}
-                    className="btn-secondary text-sm flex items-center justify-center gap-2"
-                  >
-                    <LogIn size={16} />
-                    セッションIDで参加
-                  </button>
-                </div>
-              </>
+              <button
+                onClick={() => setShowJoinMode(true)}
+                className="btn-secondary text-sm flex items-center justify-center gap-2"
+              >
+                <LogIn size={16} />
+                セッションIDで参加
+              </button>
             )}
           </div>
         </div>

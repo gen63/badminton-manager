@@ -17,6 +17,7 @@ interface PlayerState {
   clearPlayers: () => void;
   toggleOperationStatus: (id: string, field: 'payment' | 'roster' | 'checkin') => void;
   setPaymentAmount: (id: string, amount: number) => void;
+  setAllPlayersResting: () => void;
 }
 
 export const usePlayerStore = create<PlayerState>()(
@@ -45,14 +46,14 @@ export const usePlayerStore = create<PlayerState>()(
             players: [
               ...state.players,
               ...toAdd.map((input) => ({
-                id: `player-${Date.now()}-${Math.random()}`,
+                id: crypto.randomUUID(),
                 name: input.name.trim(),
                 rating: input.rating,
                 gender: input.gender,
                 isResting: true, // 全員休憩で開始（チェックイン待ち）
                 gamesPlayed: 0,
-                lastPlayedAt: null,
-                activatedAt: null, // 休憩解除時に設定
+                lastPlayedAt: 0, // 未プレイ時は0
+                activatedAt: 0, // 休憩解除時に設定
               })),
             ],
           }));
@@ -71,9 +72,9 @@ export const usePlayerStore = create<PlayerState>()(
             
             const newIsResting = !p.isResting;
             
-            // 休憩→待機の場合、activatedAtを記録（既に設定済みなら上書きしない）
+            // 休憩→待機の場合、activatedAtを記録（既に設定済み（>0）なら上書きしない）
             const newActivatedAt = 
-              !newIsResting && p.activatedAt === null
+              !newIsResting && p.activatedAt === 0
                 ? Date.now()
                 : p.activatedAt;
             
@@ -96,12 +97,23 @@ export const usePlayerStore = create<PlayerState>()(
           players: state.players.map((p) => {
             if (p.id !== id) return p;
             const current = p.operationStatus || { payment: false, roster: false, checkin: false };
-            return {
-              ...p,
+            const newValue = !current[field];
+            
+            // 支払い完了時に時刻を記録
+            const updates: Partial<Player> = {
               operationStatus: {
                 ...current,
-                [field]: !current[field],
+                [field]: newValue,
               },
+            };
+            
+            if (field === 'payment' && newValue) {
+              updates.paymentTimestamp = Date.now();
+            }
+            
+            return {
+              ...p,
+              ...updates,
             };
           }),
         })),
@@ -110,6 +122,13 @@ export const usePlayerStore = create<PlayerState>()(
           players: state.players.map((p) =>
             p.id === id ? { ...p, paymentAmount: amount } : p
           ),
+        })),
+      setAllPlayersResting: () =>
+        set((state) => ({
+          players: state.players.map((p) => ({
+            ...p,
+            isResting: true,
+          })),
         })),
     }),
     {

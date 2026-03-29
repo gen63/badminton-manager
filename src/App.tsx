@@ -6,6 +6,7 @@ import { HistoryPage } from './pages/HistoryPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ScoreInputPage } from './pages/ScoreInputPage';
 import { AccountingPage } from './pages/AccountingPage';
+import { AccountingCalcPage } from './pages/AccountingCalcPage';
 import { ReservationPage } from './pages/ReservationPage';
 import { SessionJoinPage } from './pages/SessionJoinPage';
 import { PWAPrompt } from './components/PWAPrompt';
@@ -22,9 +23,10 @@ function App() {
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/accounting" element={<AccountingPage />} />
+        <Route path="/calc" element={<AccountingCalcPage />} />
         <Route path="/reservation" element={<ReservationPage />} />
         <Route path="/score/:matchId" element={<ScoreInputPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/" replace state={{ showJoinMode: true }} />} />
       </Routes>
       <PWAPrompt />
     </BrowserRouter>

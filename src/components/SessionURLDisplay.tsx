@@ -101,22 +101,13 @@ export function SessionURLDisplay({ sessionId, onClose }: SessionURLDisplayProps
       {/* URL表示 */}
       <div className="mb-4">
         <label className="label">参加者用URL</label>
-        <div className="relative">
-          <input
-            type="text"
-            value={sessionUrl}
-            readOnly
-            className="input-field pr-12 text-sm"
-            onClick={(e) => (e.target as HTMLInputElement).select()}
-          />
-          <button
-            onClick={handleCopy}
-            className="absolute right-2 top-1/2 -translate-y-1/2 icon-btn"
-            title="URLをコピー"
-          >
-            {copied ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
-          </button>
-        </div>
+        <input
+          type="text"
+          value={sessionUrl}
+          readOnly
+          className="input-field text-sm"
+          onClick={(e) => (e.target as HTMLInputElement).select()}
+        />
         {copied && (
           <p className="text-xs text-green-600 mt-1 text-center">URLをコピーしました</p>
         )}
@@ -124,17 +115,24 @@ export function SessionURLDisplay({ sessionId, onClose }: SessionURLDisplayProps
 
       {/* アクションボタン */}
       <div className="space-y-3">
-        {'share' in navigator ? (
-          <button onClick={handleShare} className="btn-primary w-full flex items-center justify-center gap-2">
-            <Share2 size={18} />
-            URLを共有
-          </button>
-        ) : (
-          <button onClick={handleCopy} className="btn-primary w-full flex items-center justify-center gap-2">
+        <div className="flex gap-3">
+          <button 
+            onClick={handleCopy} 
+            className="flex-1 btn-primary flex items-center justify-center gap-2"
+          >
             {copied ? <Check size={18} /> : <Copy size={18} />}
             {copied ? 'コピー完了' : 'URLをコピー'}
           </button>
-        )}
+          {'share' in navigator && (
+            <button 
+              onClick={handleShare} 
+              className="flex-1 btn-primary flex items-center justify-center gap-2"
+            >
+              <Share2 size={18} />
+              URLを共有
+            </button>
+          )}
+        </div>
 
         <button onClick={onClose} className="btn-secondary w-full">
           メイン画面へ

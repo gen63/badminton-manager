@@ -87,17 +87,14 @@ export function ReservationModal({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-muted-foreground">#{reservation.orderNumber ?? index + 1}</span>
-                    {status === 'ready' ? (
-                      <span className="flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">
-                        <CheckCircle2 size={10} />
-                        準備完了
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-[10px] font-semibold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded-full">
-                        <Clock size={10} />
-                        メンバー不足
-                      </span>
-                    )}
+                    <span className={`flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full min-w-[70px] justify-center ${
+                      status === 'ready'
+                        ? 'text-green-700 bg-green-100'
+                        : 'text-orange-700 bg-orange-100'
+                    }`}>
+                      {status === 'ready' ? <CheckCircle2 size={10} /> : <Clock size={10} />}
+                      {status === 'ready' ? '準備完了' : 'メンバー不足'}
+                    </span>
                   </div>
                   <button
                     onClick={() => onRemove(reservation.id)}

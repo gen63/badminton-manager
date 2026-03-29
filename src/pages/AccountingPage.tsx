@@ -11,16 +11,17 @@ import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { BottomNav } from '../components/BottomNav';
+import { calculateAppropriateFee, toGymShortName, PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 
 export function AccountingPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, isCreator } = useSessionStore();
+  const { session, updateConfig, isAdmin: isAdminFn } = useSessionStore();
   const { players } = usePlayerStore();
   const { matchHistory } = useGameStore();
   const { records, addRecord, lastInput, saveLastInput } = useAccountingStore();
   const { accountingWebAppUrl } = useSettingsStore();
   const toast = useToast();
-  const isAdmin = isCreator();
+  const isAdmin = isAdminFn();
 
   // タブ状態
   const [activeTab, setActiveTab] = useState<'input' | 'payments'>('input');
@@ -55,12 +56,7 @@ export function AccountingPage() {
   // 体育館名（略称に変換）
   const gymShortName = useMemo(() => {
     if (!session) return '';
-    const gym = session.config.gym || '';
-    if (gym.includes('目白')) return '目白';
-    if (gym.includes('千早')) return '千早';
-    if (gym.includes('南長崎')) return '南長崎';
-    if (gym.includes('巣鴨')) return '巣鴨';
-    return gym;
+    return toGymShortName(session.config.gym || '');
   }, [session]);
 
   // 試合履歴・過去の会計データから初期値を自動設定
@@ -125,8 +121,10 @@ export function AccountingPage() {
       // 性別不明者は男性として扱う（デフォルト）
       maleParticipants += unknownGender;
 
-      // シャトル使用数の推定（1試合あたり約1.5個）
-      const estimatedShuttles = Math.ceil(matchHistory.length * 1.5);
+      // シャトル使用数の推定（楽は1個4試合、それ以外は1試合1.5個）
+      const estimatedShuttles = practiceType === '楽'
+        ? Math.ceil(matchHistory.length / 4)
+        : Math.ceil(matchHistory.length * 1.5);
 
       setMaleCount(maleParticipants);
       setFemaleCount(femaleParticipants);
@@ -157,7 +155,69 @@ export function AccountingPage() {
     }
 
     setInitialized(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchHistory, players, records, gymShortName, initialized, session, lastInput]);
+
+  // プレイヤーの支払いデータから免除・男女人数を自動同期
+  useEffect(() => {
+    if (!initialized) return;
+
+    const paidPlayers = players.filter(p => p.operationStatus?.payment);
+    if (paidPlayers.length === 0) return;
+
+    // 免除プレイヤー数（支払い確定済みで金額0）
+    const actualExemptCount = paidPlayers.filter(p => (p.paymentAmount ?? 0) === 0).length;
+
+    // 有料支払い済みプレイヤーの男女別カウント
+    const nonExemptPaid = paidPlayers.filter(p => (p.paymentAmount ?? 0) > 0);
+    const paidMales = nonExemptPaid.filter(p => p.gender === 'M' || !p.gender).length;
+    const paidFemales = nonExemptPaid.filter(p => p.gender === 'F').length;
+
+    // stale closure回避: Zustand storeから最新の永続化済み値で比較
+    const currentInput = useAccountingStore.getState().lastInput;
+    const currentExemptCount = currentInput?.exemptCount ?? exemptCount;
+    const currentMaleCount = currentInput?.maleCount ?? maleCount;
+    const currentFemaleCount = currentInput?.femaleCount ?? femaleCount;
+
+    let changed = false;
+    const overrides: Record<string, number> = {};
+
+    // 免除数を同期
+    if (actualExemptCount !== currentExemptCount) {
+      setExemptCount(actualExemptCount);
+      overrides.exemptCount = actualExemptCount;
+      changed = true;
+    }
+
+    // 有料支払い済みの人数が入力タブの人数を超えている場合のみ自動調整
+    if (paidMales > currentMaleCount) {
+      setMaleCount(paidMales);
+      overrides.maleCount = paidMales;
+      changed = true;
+    }
+    if (paidFemales > currentFemaleCount) {
+      setFemaleCount(paidFemales);
+      overrides.femaleCount = paidFemales;
+      changed = true;
+    }
+
+    if (changed) {
+      // currentInputは上で取得済み（stale closure回避）
+      if (currentInput) {
+        saveLastInput({ ...currentInput, ...overrides });
+      } else {
+        saveAllInputs(overrides);
+      }
+
+      // 変更内容をトーストで通知
+      const parts: string[] = [];
+      if (overrides.exemptCount !== undefined) parts.push(`免除${overrides.exemptCount}人`);
+      if (overrides.maleCount !== undefined) parts.push(`男${overrides.maleCount}人`);
+      if (overrides.femaleCount !== undefined) parts.push(`女${overrides.femaleCount}人`);
+      toast.info(`支払いデータから人数を更新: ${parts.join(', ')}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [players, initialized]);
 
   // 参加人数の合計（免除+男+女）
   const participantCount = exemptCount + maleCount + femaleCount;
@@ -165,7 +225,7 @@ export function AccountingPage() {
   // 支払い済みプレイヤーの集計
   const paymentStats = useMemo(() => {
     const paidPlayers = players.filter(p => p.operationStatus?.payment);
-    const totalAmount = paidPlayers.reduce((sum, p) => sum + (p.paymentAmount || 0), 0);
+    const totalAmount = paidPlayers.reduce((sum, p) => sum + (p.paymentAmount ?? 0), 0);
     return {
       paidCount: paidPlayers.length,
       totalPlayers: players.length,
@@ -173,11 +233,59 @@ export function AccountingPage() {
       players: paidPlayers.map(p => ({
         id: p.id,
         name: p.name,
-        amount: p.paymentAmount || 0,
+        amount: p.paymentAmount ?? 0,
         gamesPlayed: p.gamesPlayed,
-      })).sort((a, b) => b.amount - a.amount), // 金額順
+        paymentTimestamp: p.paymentTimestamp,
+      })).sort((a, b) => {
+        // 支払い時刻の新しい順でソート（時刻がない場合は金額順）
+        if (a.paymentTimestamp && b.paymentTimestamp) {
+          return b.paymentTimestamp - a.paymentTimestamp;
+        }
+        return b.amount - a.amount;
+      }),
     };
   }, [players]);
+
+  // ハイブリッド収入計算（入力済みメンバーは実金額、未入力は計算式）
+  const hybridIncome = useMemo(() => {
+    const paidPlayers = players.filter(p => p.operationStatus?.payment);
+
+    if (paidPlayers.length === 0) {
+      return {
+        useHybrid: false,
+        total: maleCount * maleFee + femaleCount * femaleFee,
+        paidTotal: 0,
+        unpaidTotal: maleCount * maleFee + femaleCount * femaleFee,
+        paidCount: 0,
+        unpaidMaleCount: maleCount,
+        unpaidFemaleCount: femaleCount,
+      };
+    }
+
+    // 入力済みメンバーの合計
+    const paidTotal = paidPlayers.reduce((sum, p) => sum + (p.paymentAmount ?? 0), 0);
+
+    // 免除(¥0)の支払いは exemptCount に含まれているため、
+    // maleCount/femaleCount からの差し引きは有料支払者のみで行う
+    const nonExemptPaidPlayers = paidPlayers.filter(p => (p.paymentAmount ?? 0) > 0);
+    const paidMaleCount = nonExemptPaidPlayers.filter(p => p.gender === 'M' || !p.gender).length;
+    const paidFemaleCount = nonExemptPaidPlayers.filter(p => p.gender === 'F').length;
+
+    // 未入力メンバーの推定
+    const unpaidMaleCount = Math.max(0, maleCount - paidMaleCount);
+    const unpaidFemaleCount = Math.max(0, femaleCount - paidFemaleCount);
+    const unpaidTotal = unpaidMaleCount * maleFee + unpaidFemaleCount * femaleFee;
+
+    return {
+      useHybrid: true,
+      total: paidTotal + unpaidTotal,
+      paidTotal,
+      unpaidTotal,
+      paidCount: paidPlayers.length,
+      unpaidMaleCount,
+      unpaidFemaleCount,
+    };
+  }, [players, maleCount, femaleCount, maleFee, femaleFee]);
 
   // すべての入力値を保存するヘルパー関数
   const saveAllInputs = (overrides: Partial<{
@@ -219,45 +327,17 @@ export function AccountingPage() {
   const maleTotal = maleCount * maleFee;
   const femaleTotal = femaleCount * femaleFee;
   const shuttleTotal = shuttleCount * shuttlePrice;
-  const finalTotal = maleTotal + femaleTotal - gymCost - shuttleTotal + otherAmount;
+  const incomeForTotal = hybridIncome.total;
+  const finalTotal = incomeForTotal - gymCost - shuttleTotal + otherAmount;
 
-  // 適正会費の計算（最小黒字 + 100円）
-  const calculateAppropriateFee = () => {
-    const totalExpense = gymCost + shuttleTotal - otherAmount; // その他を含める
-    if (participantCount === 0) return { male: 0, female: 0 };
+  // シャトル使用可能数（参加費から体育館代を引いた残りで買える数）
+  const shuttleUsableCount = shuttlePrice > 0
+    ? Math.max(0, Math.floor((hybridIncome.total - gymCost + otherAmount) / shuttlePrice))
+    : 0;
 
-    // 練習種別に応じた男女差額
-    const genderDiff = practiceType === '単' ? 400 : 200; // 単は400円差、複/楽は200円差
-
-    let minProfitMale = 0;
-    let minProfit = Infinity;
-
-    // 男子の会費を100円刻みで探索（0円〜1500円の範囲）
-    for (let male = genderDiff; male <= 1500; male += 100) {
-      const female = male - genderDiff;
-      if (female < 0) continue;
-
-      const income = male * maleCount + female * femaleCount;
-      const profit = income - totalExpense;
-
-      // 赤字にならず、最も黒字が少ないものを選ぶ
-      if (profit >= 0 && profit < minProfit) {
-        minProfit = profit;
-        minProfitMale = male;
-      }
-    }
-
-    // 適正会費 = 最小黒字会費 + 100円
-    const appropriateMale = minProfitMale + 100;
-    const appropriateFemale = appropriateMale - genderDiff;
-
-    return {
-      male: appropriateMale,
-      female: appropriateFemale,
-    };
-  };
-
-  const appropriateFee = calculateAppropriateFee();
+  const appropriateFee = calculateAppropriateFee({
+    gymCost, shuttleTotal, otherAmount, maleCount, femaleCount, practiceType,
+  });
 
   // コピー用テキスト生成
   const generateCopyText = () => {
@@ -266,10 +346,64 @@ export function AccountingPage() {
       `参加合計 ${participantCount}人(免除${exemptCount} 男${maleCount} 女${femaleCount})`,
       '',
       '【収入】',
-      `男 ${maleFee}×${maleCount} = ${maleTotal.toLocaleString()}`,
-      `女 ${femaleFee}×${femaleCount} = ${femaleTotal.toLocaleString()}`,
-      `免除 ${exemptCount}×0 = 0`,
     ];
+
+    // 性別ごとの金額グループを構築
+    const buildGenderLine = (gender: 'M' | 'F') => {
+      const defaultFee = gender === 'M' ? maleFee : femaleFee;
+      const totalCount = gender === 'M' ? maleCount : femaleCount;
+      const label = gender === 'M' ? '男' : '女';
+
+      // 金額ごとの人数を集計
+      const amountMap = new Map<number, number>();
+
+      if (hybridIncome.useHybrid) {
+        // 支払い済み（免除以外）の実金額を集計
+        const paidPlayers = players.filter(p =>
+          p.operationStatus?.payment &&
+          (p.paymentAmount ?? 0) > 0 &&
+          (gender === 'M' ? (p.gender === 'M' || !p.gender) : p.gender === 'F')
+        );
+        paidPlayers.forEach(p => {
+          const amount = p.paymentAmount ?? 0;
+          amountMap.set(amount, (amountMap.get(amount) ?? 0) + 1);
+        });
+
+        // 未入力者をデフォルト会費で追加
+        const paidCount = paidPlayers.length;
+        const unpaidCount = Math.max(0, totalCount - paidCount);
+        if (unpaidCount > 0) {
+          amountMap.set(defaultFee, (amountMap.get(defaultFee) ?? 0) + unpaidCount);
+        }
+      } else {
+        // 非ハイブリッド: 全員デフォルト会費
+        if (totalCount > 0) {
+          amountMap.set(defaultFee, totalCount);
+        }
+      }
+
+      if (amountMap.size === 0) return null;
+
+      // 金額の降順でソート
+      const entries = [...amountMap.entries()].sort((a, b) => b[0] - a[0]);
+      const total = entries.reduce((sum, [amount, count]) => sum + amount * count, 0);
+
+      if (entries.length === 1) {
+        const [amount, count] = entries[0];
+        return `${label} ${amount.toLocaleString()}×${count} = ${total.toLocaleString()}`;
+      } else {
+        const parts = entries.map(([amount, count]) => `(${amount.toLocaleString()}×${count})`);
+        return `${label} ${parts.join(' + ')} = ${total.toLocaleString()}`;
+      }
+    };
+
+    const maleLine = buildGenderLine('M');
+    const femaleLine = buildGenderLine('F');
+    if (maleLine) lines.push(maleLine);
+    if (femaleLine) lines.push(femaleLine);
+    if (exemptCount > 0) {
+      lines.push(`免除 ${exemptCount}×0 = 0`);
+    }
 
     // その他欄（プラスの場合は収入に追加）
     if ((otherDescription || otherAmount !== 0) && otherAmount > 0) {
@@ -289,11 +423,11 @@ export function AccountingPage() {
     }
 
     // 合計の計算式を生成
-    let totalFormula = `${maleTotal.toLocaleString()}+${femaleTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
+    let totalFormula = `${incomeForTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
     if (otherAmount !== 0) {
       totalFormula += otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`;
     }
-    
+
     lines.push(
       '',
       '【合計】',
@@ -306,6 +440,7 @@ export function AccountingPage() {
     // 試合数の情報（試合数がある場合のみ）
     if (matchCount > 0) {
       // 試合履歴から参加者数を計算（平均試合数用）
+      // 試合履歴がない場合（手動入力時）は参加人数をフォールバックとして使用
       let activePlayerCount = 0;
       if (matchHistory.length > 0) {
         const participantIds = new Set<string>();
@@ -314,9 +449,12 @@ export function AccountingPage() {
           match.teamB.forEach((id) => participantIds.add(id));
         });
         activePlayerCount = participantIds.size;
+      } else {
+        activePlayerCount = participantCount;
       }
 
-      const avgMatches = activePlayerCount > 0 ? (matchCount * 4 / activePlayerCount).toFixed(1) : '0.0';
+      const playersPerMatch = practiceType === '単' ? 2 : 4;
+      const avgMatches = activePlayerCount > 0 ? (matchCount * playersPerMatch / activePlayerCount).toFixed(1) : '0.0';
 
       // シャトル効率の計算
       if (shuttleCount > 0) {
@@ -325,6 +463,11 @@ export function AccountingPage() {
       } else {
         referenceLines.push(`試合数 ${matchCount}試合 (平均${avgMatches}試合/人)`);
       }
+    }
+
+    // シャトル使用可能数
+    if (shuttlePrice > 0) {
+      referenceLines.push(`シャトル使用可能数 ${shuttleUsableCount}個`);
     }
 
     // 適正会費（千川館以外）
@@ -375,8 +518,8 @@ export function AccountingPage() {
       }))
     );
     
-    // 収入合計と支出合計を計算
-    const incomeTotal = maleTotal + femaleTotal;
+    // 収入合計と支出合計を計算（ハイブリッド収入を使用、その他を振り分け）
+    const incomeTotal = hybridIncome.total + (otherAmount > 0 ? otherAmount : 0);
     const expenseTotal = gymCost + shuttleTotal + (otherAmount < 0 ? Math.abs(otherAmount) : 0);
     
     const record = {
@@ -439,7 +582,7 @@ export function AccountingPage() {
   };
 
   return (
-    <div className="bg-app pb-20">
+    <div className="bg-app pb-[calc(60px+env(safe-area-inset-bottom)+1rem)]">
       {/* ヘッダー */}
       <div className="header-gradient text-foreground p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
@@ -496,6 +639,14 @@ export function AccountingPage() {
                   ¥{paymentStats.totalAmount.toLocaleString()}
                 </span>
               </div>
+              {paymentStats.players.filter(p => p.amount === 0).length > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">うち免除</span>
+                  <span className="text-sm font-medium text-amber-600">
+                    {paymentStats.players.filter(p => p.amount === 0).length}人
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -508,20 +659,33 @@ export function AccountingPage() {
               </p>
             ) : (
               <div className="space-y-2">
-                {paymentStats.players.map((player) => (
-                  <div
-                    key={player.id}
-                    className="flex items-center justify-between py-2 border-b border-border last:border-0"
-                  >
-                    <div>
-                      <div className="text-sm font-medium text-foreground">{player.name}</div>
-                      <div className="text-xs text-muted-foreground">{player.gamesPlayed}試合</div>
+                {paymentStats.players.map((player) => {
+                  const paymentTime = player.paymentTimestamp
+                    ? new Date(player.paymentTimestamp).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+                    : null;
+                  
+                  return (
+                    <div
+                      key={player.id}
+                      className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                    >
+                      <div>
+                        <div className="text-sm font-medium text-foreground">{player.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {player.gamesPlayed}試合
+                          {paymentTime && (
+                            <span className="ml-2 text-[10px]">
+                              🕐 {paymentTime}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className={`text-base font-bold ${player.amount === 0 ? 'text-amber-600' : 'text-foreground'}`}>
+                        {player.amount === 0 ? '免除' : `¥${player.amount.toLocaleString()}`}
+                      </div>
                     </div>
-                    <div className="text-base font-bold text-foreground">
-                      ¥{player.amount.toLocaleString()}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -577,22 +741,28 @@ export function AccountingPage() {
         <div className="card p-4">
           <h2 className="text-sm font-bold mb-3 text-gray-700">練習種別</h2>
           <div className="flex gap-2">
-            {[
-              { value: '複', maleFee: 800, femaleFee: 600 },
-              { value: '単', maleFee: 1200, femaleFee: 800 },
-              { value: '楽', maleFee: 600, femaleFee: 400 },
-            ].map((type) => (
+            {PRACTICE_TYPE_OPTIONS.map((type) => (
               <button
                 key={type.value}
                 onClick={() => {
-                  setPracticeType(type.value);
-                  setMaleFee(type.maleFee);
-                  setFemaleFee(type.femaleFee);
-                  saveAllInputs({ 
+                  if (practiceType === type.value) return; // 同じ種別は何もしない
+                  const overrides: Record<string, number | string> = {
                     practiceType: type.value,
                     maleFee: type.maleFee,
                     femaleFee: type.femaleFee,
-                  });
+                  };
+                  setPracticeType(type.value);
+                  setMaleFee(type.maleFee);
+                  setFemaleFee(type.femaleFee);
+                  // 楽は1個4試合、それ以外は1試合1.5個でシャトル数を再推定
+                  if (matchCount > 0) {
+                    const newShuttleCount = type.value === '楽'
+                      ? Math.ceil(matchCount / 4)
+                      : Math.ceil(matchCount * 1.5);
+                    setShuttleCount(newShuttleCount);
+                    overrides.shuttleCount = newShuttleCount;
+                  }
+                  saveAllInputs(overrides);
                 }}
                 className={`flex-1 select-button text-sm px-3 py-2 ${
                   practiceType === type.value
@@ -985,10 +1155,26 @@ export function AccountingPage() {
 
         {/* 合計 */}
         <div className="card p-4 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200">
-          <h2 className="text-sm font-bold mb-3 text-gray-700">合計</h2>
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-sm font-bold text-gray-700">合計</h2>
+            {hybridIncome.useHybrid && (
+              <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">
+                支払い入力反映中（{hybridIncome.paidCount}人）
+              </span>
+            )}
+          </div>
           <div className="text-xs text-muted-foreground mb-2 font-mono">
-            {maleTotal.toLocaleString()}+{femaleTotal.toLocaleString()}-{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
-            {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
+            {hybridIncome.useHybrid ? (
+              <>
+                入力済{hybridIncome.paidTotal.toLocaleString()}+未入力{hybridIncome.unpaidTotal.toLocaleString()}-{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
+                {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
+              </>
+            ) : (
+              <>
+                {maleTotal.toLocaleString()}+{femaleTotal.toLocaleString()}-{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
+                {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
+              </>
+            )}
           </div>
           <div className={`text-4xl font-bold text-center ${finalTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {finalTotal >= 0 ? '+' : ''}{finalTotal.toLocaleString()}円
@@ -1012,7 +1198,7 @@ export function AccountingPage() {
             <Copy size={18} />
             コピー
           </button>
-          {accountingWebAppUrl && (
+          {accountingWebAppUrl && isAdmin && (
             <button
               onClick={handleUpload}
               disabled={isUploading}
