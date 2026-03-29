@@ -224,6 +224,7 @@ export function MainPage() {
           reservations: currentReservations,
         }).catch((err) => {
           console.error('[handleAddCourt] Failed to sync:', err);
+          toast.error('同期に失敗しました');
         });
       }
     }
@@ -252,6 +253,7 @@ export function MainPage() {
         reservations: currentReservations,
       }).catch((err) => {
         console.error('[handleRemoveCourt] Failed to sync:', err);
+        toast.error('同期に失敗しました');
       });
     }
   };

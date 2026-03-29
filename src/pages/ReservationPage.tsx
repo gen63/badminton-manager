@@ -8,6 +8,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { ReservationAddModal } from '../components/ReservationAddModal';
 import { BottomNav } from '../components/BottomNav';
 import { EmptyState } from '../components/EmptyState';
+import { isPlayerReady as checkPlayerReady, getReservationStatus } from '../lib/reservationUtils';
 
 export function ReservationPage() {
   const navigate = useNavigate();
@@ -34,14 +35,7 @@ export function ReservationPage() {
     return players.find((p) => p.id === playerId)?.name || '未設定';
   };
 
-  const isPlayerReady = (playerId: string) => {
-    const player = players.find(p => p.id === playerId);
-    return player && !player.isResting && !playersInCourts.has(playerId);
-  };
-
-  const getReservationStatus = (reservation: { playerIds: string[] }) => {
-    return reservation.playerIds.every(id => isPlayerReady(id)) ? 'ready' : 'waiting';
-  };
+  const isPlayerReady = (playerId: string) => checkPlayerReady(playerId, players, playersInCourts);
 
   if (showAdd) {
     return (
@@ -84,7 +78,7 @@ export function ReservationPage() {
         )}
 
         {pendingReservations.map((reservation, index) => {
-          const status = getReservationStatus(reservation);
+          const status = getReservationStatus(reservation.playerIds, players, playersInCourts);
           return (
             <div
               key={reservation.id}

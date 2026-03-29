@@ -10,6 +10,9 @@ import { useReservationStore } from '../stores/reservationStore';
 import { deleteSession, updateSession as updateFirebaseSession } from '../services/sessionService';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { clearAppBadge } from '../lib/badge';
+import { copyToClipboard } from '../lib/utils';
+import { useToast } from '../hooks/useToast';
+import { Toast } from '../components/Toast';
 import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrCode, Copy, Check } from 'lucide-react';
 
 export function SettingsPage() {
@@ -19,6 +22,7 @@ export function SettingsPage() {
   const [sessionIdCopied, setSessionIdCopied] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
   const [selectedAdmins, setSelectedAdmins] = useState<string[]>([]);
+  const toast = useToast();
 
   const userIsAdmin = isAdmin();
   const userIsCreator = isCreator();
@@ -60,21 +64,9 @@ export function SettingsPage() {
 
   const handleCopySessionId = async () => {
     if (!session.id) return;
-    try {
-      await navigator.clipboard.writeText(session.id);
-      setSessionIdCopied(true);
-      setTimeout(() => setSessionIdCopied(false), 2000);
-    } catch {
-      // フォールバック
-      const input = document.createElement('input');
-      input.value = session.id;
-      document.body.appendChild(input);
-      input.select();
-      document.execCommand('copy');
-      document.body.removeChild(input);
-      setSessionIdCopied(true);
-      setTimeout(() => setSessionIdCopied(false), 2000);
-    }
+    await copyToClipboard(session.id);
+    setSessionIdCopied(true);
+    setTimeout(() => setSessionIdCopied(false), 2000);
   };
 
   const handleMatchReset = () => {
@@ -156,6 +148,7 @@ export function SettingsPage() {
       useSessionStore.getState().updateSession({ admins: updatedAdmins });
     } catch (error) {
       console.error('Failed to update admins:', error);
+      toast.error('管理者の更新に失敗しました');
     }
   };
 
@@ -588,6 +581,11 @@ export function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* Toast表示 */}
+      {toast.toasts.map((t) => (
+        <Toast key={t.id} message={t.message} type={t.type} onClose={() => toast.hideToast(t.id)} />
+      ))}
     </div>
   );
 }

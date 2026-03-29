@@ -3,6 +3,7 @@ import { X, Plus, Trash2, ChevronDown, Users, Clock, CheckCircle2 } from 'lucide
 import type { Reservation } from '../types/reservation';
 import type { Player } from '../types/player';
 import { ReservationAddModal } from './ReservationAddModal';
+import { isPlayerReady as checkPlayerReady, getReservationStatus } from '../lib/reservationUtils';
 
 interface ReservationModalProps {
   reservations: Reservation[];
@@ -29,15 +30,7 @@ export function ReservationModal({
   const pendingReservations = reservations.filter(r => r.status === 'pending');
   const fulfilledReservations = reservations.filter(r => r.status === 'fulfilled');
 
-  const isPlayerReady = (playerId: string) => {
-    const player = players.find(p => p.id === playerId);
-    return player && !player.isResting && !playersInCourts.has(playerId);
-  };
-
-  const getReservationStatus = (reservation: Reservation) => {
-    const allReady = reservation.playerIds.every(id => isPlayerReady(id));
-    return allReady ? 'ready' : 'waiting';
-  };
+  const isPlayerReady = (playerId: string) => checkPlayerReady(playerId, players, playersInCourts);
 
   if (showAdd) {
     return (
@@ -76,7 +69,7 @@ export function ReservationModal({
           )}
 
           {pendingReservations.map((reservation, index) => {
-            const status = getReservationStatus(reservation);
+            const status = getReservationStatus(reservation.playerIds, players, playersInCourts);
             return (
               <div
                 key={reservation.id}

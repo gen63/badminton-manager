@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { copyToClipboard } from '../lib/utils';
 import { GYM_OPTIONS } from '../types/session';
 import { DollarSign, Copy, ArrowLeft, MapPin, Calendar } from 'lucide-react';
 import { useState, useCallback } from 'react';
@@ -210,10 +211,10 @@ export function AccountingCalcPage() {
 
   const handleCopy = async () => {
     const text = generateCopyText();
-    try {
-      await navigator.clipboard.writeText(text);
+    const ok = await copyToClipboard(text);
+    if (ok) {
       toast.success('コピーしました');
-    } catch {
+    } else {
       toast.error('コピーに失敗しました');
     }
   };

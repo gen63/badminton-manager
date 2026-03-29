@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, Copy, Share2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { copyToClipboard } from '../lib/utils';
 
 interface SessionURLDisplayProps {
   sessionId: string;
@@ -15,32 +16,15 @@ export function SessionURLDisplay({ sessionId, onClose }: SessionURLDisplayProps
   const sessionUrl = `${baseUrl}/session/${sessionId}`;
 
   const handleCopyId = async () => {
-    try {
-      await navigator.clipboard.writeText(sessionId);
-      setIdCopied(true);
-      setTimeout(() => setIdCopied(false), 2000);
-    } catch {
-      // フォールバック
-      const input = document.createElement('input');
-      input.value = sessionId;
-      document.body.appendChild(input);
-      input.select();
-      document.execCommand('copy');
-      document.body.removeChild(input);
-      setIdCopied(true);
-      setTimeout(() => setIdCopied(false), 2000);
-    }
+    await copyToClipboard(sessionId);
+    setIdCopied(true);
+    setTimeout(() => setIdCopied(false), 2000);
   };
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(sessionUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      const input = document.querySelector(`input[value="${sessionUrl}"]`) as HTMLInputElement;
-      input?.select();
-    }
+    await copyToClipboard(sessionUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleShare = async () => {

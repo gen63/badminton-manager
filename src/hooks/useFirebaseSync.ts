@@ -109,7 +109,8 @@ export function useFirebaseSync() {
     pushInFlight.current = (pushInFlight.current || Promise.resolve())
       .then(() => doPush())
       .catch((err) => {
-        // push失敗時はタイムスタンプをリセット（pullを受け付ける）
+        // push失敗時はハッシュとタイムスタンプをリセット（pullを受け付ける）
+        lastPushedHash.current = '';
         lastPushedTime.current = 0;
 
         if (err?.code === 'conflict') {
@@ -258,11 +259,10 @@ export function useFirebaseSync() {
     lastSyncedState.current = gameState;
     if (sessionIdRef.current) saveSyncBase(sessionIdRef.current, gameState);
 
-    // ストア更新が完全に反映されるまで少し待ってからフラグをリセット
-    // (setStateは同期的だが、subscribeコールバックは非同期的に呼ばれる可能性がある)
-    setTimeout(() => {
-      isSyncingFromRemote.current = false;
-    }, 100);
+    // Zustand setStateとsubscribeコールバックはともに同期的。
+    // ストア更新→subscribe発火→isSyncingFromRemoteチェック の順で同期的に完了するため、
+    // ここで即座にフラグをリセットしても安全。
+    isSyncingFromRemote.current = false;
   }, []); // 依存なし: refとgetState()のみ使用、再生成不要
 
   // ローカル変更をFirestoreに即座にpush
@@ -316,7 +316,10 @@ export function useFirebaseSync() {
       unsubSettings();
       if (pushTimer.current) {
         clearTimeout(pushTimer.current);
+        pushTimer.current = null;
       }
+      // セッション切替時にin-flightのpushチェーンを断ち切る
+      pushInFlight.current = null;
     };
   }, [isShared, sessionId, schedulePush]); // schedulePushを依存配列に追加
 
