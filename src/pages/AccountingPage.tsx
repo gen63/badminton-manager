@@ -19,7 +19,7 @@ export function AccountingPage() {
   const { players } = usePlayerStore();
   const { matchHistory } = useGameStore();
   const { records, addRecord, lastInput, saveLastInput } = useAccountingStore();
-  const { accountingWebAppUrl } = useSettingsStore();
+  const { accountingWebAppUrl, practiceType: defaultPracticeType } = useSettingsStore();
   const toast = useToast();
   const isAdmin = isAdminFn();
 
@@ -84,9 +84,9 @@ export function AccountingPage() {
       setShuttlePrice(lastInput.shuttlePrice);
       setShuttleCount(lastInput.shuttleCount);
       setMatchCount(lastInput.matchCount || 0);
-      // 古いデータとの互換性のため、practiceTypeがなければデフォルト値
+      // 古いデータとの互換性のため、practiceTypeがなければsettingsStoreの値
       // 旧形式（ダブルス/シングルス/初級）を新形式（複/単/楽）に変換
-      let type = lastInput.practiceType || '複';
+      let type = lastInput.practiceType || defaultPracticeType;
       if (type === 'ダブルス') type = '複';
       if (type === 'シングルス') type = '単';
       if (type === '初級') type = '楽';
@@ -94,7 +94,11 @@ export function AccountingPage() {
       // その他欄の復元（後方互換性のため存在チェック）
       if (lastInput.otherDescription !== undefined) setOtherDescription(lastInput.otherDescription);
       if (lastInput.otherAmount !== undefined) setOtherAmount(lastInput.otherAmount);
-    } else if (matchHistory.length > 0) {
+    } else {
+      // lastInputがない場合はsettingsStoreの練習種別をデフォルトとして使用
+      setPracticeType(defaultPracticeType);
+    }
+    if (!lastInput && matchHistory.length > 0) {
       // 試合履歴から参加者・シャトル数を推定
       const participantIds = new Set<string>();
       matchHistory.forEach((match) => {
@@ -122,7 +126,7 @@ export function AccountingPage() {
       maleParticipants += unknownGender;
 
       // シャトル使用数の推定（楽は1個4試合、それ以外は1試合1.5個）
-      const estimatedShuttles = practiceType === '楽'
+      const estimatedShuttles = defaultPracticeType === '楽'
         ? Math.ceil(matchHistory.length / 4)
         : Math.ceil(matchHistory.length * 1.5);
 
