@@ -53,6 +53,8 @@ export function useFirebaseSync() {
   const pushTimer = useRef<number | null>(null);
   const lastSyncedState = useRef<GameState | null>(null);
   const pushInFlight = useRef<Promise<void> | null>(null);
+  const blockedUpdate = useRef<{ gameState: GameState; data: { updatedAt: unknown } } | null>(null);
+  const retryTimer = useRef<number | null>(null);
   
   // toast と navigate を ref で保持（依存配列の安定化）
   const toastRef = useRef(toast);
@@ -141,8 +143,38 @@ export function useFirebaseSync() {
     });
 
     if (!decision.shouldApply) {
+      // pushBlockMs によるブロックの場合: ブロック期間後に再適用をスケジュール
+      // onSnapshot は再発火しないため、ブロックしたままでは永久にデータが届かなくなる
+      if (decision.reason?.startsWith('too soon after push')) {
+        const pushTimeAtBlock = lastPushedTime.current;
+        const timeSinceLastPush = Date.now() - pushTimeAtBlock;
+        const remaining = Math.max(0, 500 - timeSinceLastPush) + 50;
+
+        if (retryTimer.current) clearTimeout(retryTimer.current);
+        blockedUpdate.current = { gameState, data };
+
+        retryTimer.current = setTimeout(() => {
+          retryTimer.current = null;
+          if (!blockedUpdate.current) return;
+          // ブロック後に新しい push があれば skip（次の push の3-wayマージで自動解消）
+          if (lastPushedTime.current !== pushTimeAtBlock) {
+            blockedUpdate.current = null;
+            return;
+          }
+          const { gameState: gs, data: d } = blockedUpdate.current;
+          blockedUpdate.current = null;
+          applyRemoteData(gs, d);
+        }, remaining) as unknown as number;
+      }
       return;
     }
+
+    // 正常適用: pending retry をキャンセル（より新しい更新が通過したため）
+    if (retryTimer.current) {
+      clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+    }
+    blockedUpdate.current = null;
 
     isSyncingFromRemote.current = true;
 
@@ -320,7 +352,13 @@ export function useFirebaseSync() {
       }
     );
 
-    return unsub;
+    return () => {
+      unsub();
+      if (retryTimer.current) {
+        clearTimeout(retryTimer.current);
+        retryTimer.current = null;
+      }
+    };
   }, [isShared, sessionId, applyRemoteData]); // applyRemoteDataを依存配列に追加
 
   /**
