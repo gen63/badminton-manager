@@ -26,6 +26,28 @@ import type { Court } from '../types/court';
  * @returns prepareDirectTransaction / completeDirectTransaction
  *          外部から直接Transactionを実行する場合に使用（finishGameTransaction等）
  */
+/** sessionStorageキー */
+const syncBaseKey = (sessionId: string) => `sync_base_${sessionId}`;
+
+/** lastSyncedState をsessionStorageに保存（ページ遷移を跨いで保持） */
+function saveSyncBase(sessionId: string, state: GameState): void {
+  try {
+    sessionStorage.setItem(syncBaseKey(sessionId), JSON.stringify(state));
+  } catch {
+    // sessionStorageが使えない場合（プライベートブラウジング等）は無視
+  }
+}
+
+/** sessionStorageからlastSyncedStateを復元 */
+function loadSyncBase(sessionId: string): GameState | null {
+  try {
+    const raw = sessionStorage.getItem(syncBaseKey(sessionId));
+    return raw ? (JSON.parse(raw) as GameState) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 全ストアから現在のGameStateを構築 */
 function getCurrentGameState(): GameState {
   const { players } = usePlayerStore.getState();
@@ -55,16 +77,18 @@ export function useFirebaseSync() {
   const pushInFlight = useRef<Promise<void> | null>(null);
   const blockedUpdate = useRef<{ gameState: GameState; data: { updatedAt: unknown } } | null>(null);
   const retryTimer = useRef<number | null>(null);
-  
-  // toast と navigate を ref で保持（依存配列の安定化）
+
+  // toast / navigate / sessionId を ref で保持（依存配列の安定化）
   const toastRef = useRef(toast);
   const navigateRef = useRef(navigate);
-  
+  const sessionIdRef = useRef(sessionId);
+
   // ref更新はuseEffectで行う（render中の更新はNG）
   useEffect(() => {
     toastRef.current = toast;
     navigateRef.current = navigate;
-  }, [toast, navigate]);
+    sessionIdRef.current = sessionId;
+  }, [toast, navigate, sessionId]);
 
   const pushGameState = useCallback((sid: string) => {
     const doPush = async () => {
@@ -77,6 +101,8 @@ export function useFirebaseSync() {
       const mergedState = await syncGameStateWithTransaction(sid, gameState, lastSyncedState.current);
       lastPushedHash.current = hashGameState(mergedState);
       lastSyncedState.current = mergedState;
+      // ページ遷移後もbaseを保持（/playersでの削除が/main再訪時に復活するバグを防止）
+      saveSyncBase(sid, mergedState);
     };
 
     // Promise chainingで直列化（前のpush完了を待ってから次を実行）
@@ -143,6 +169,12 @@ export function useFirebaseSync() {
     });
 
     if (!decision.shouldApply) {
+      // 自分がpushしたデータと同じためスキップする場合でも更新時刻を記録する。
+      // これにより、blockedUpdateのリトライが古いデータを「新しい」と誤判定して
+      // 適用するのを防ぐ（メンバー削除の復活・支払い情報の上書きを防止）
+      if (decision.reason === 'same as last push' && remoteUpdatedAt > lastAppliedRemoteUpdatedAt.current) {
+        lastAppliedRemoteUpdatedAt.current = remoteUpdatedAt;
+      }
       // pushBlockMs によるブロックの場合: ブロック期間後に再適用をスケジュール
       // onSnapshot は再発火しないため、ブロックしたままでは永久にデータが届かなくなる
       if (decision.reason?.startsWith('too soon after push')) {
@@ -224,6 +256,7 @@ export function useFirebaseSync() {
 
     // lastSyncedStateを更新（次のpushで3-wayマージのbaseとして使用）
     lastSyncedState.current = gameState;
+    if (sessionIdRef.current) saveSyncBase(sessionIdRef.current, gameState);
 
     // ストア更新が完全に反映されるまで少し待ってからフラグをリセット
     // (setStateは同期的だが、subscribeコールバックは非同期的に呼ばれる可能性がある)
@@ -236,11 +269,13 @@ export function useFirebaseSync() {
   useEffect(() => {
     if (!isShared || !sessionId) return;
 
-    // lastSyncedStateを現在のストア状態で初期化
-    // （SessionJoinPageでロードした初期データ、またはlocalStorageの状態をbaseとして使用）
-    // これにより最初のpushで mergeGameState(null, ...) が走るのを防ぐ
+    // lastSyncedStateを初期化
+    // sessionStorageに前回の同期ベースが保存されている場合はそちらを使用する。
+    // （/playersでメンバー削除 → /mainに戻った際、削除が「リモート追加」と誤判定されて
+    //   復活するバグを防ぐため、ページ遷移を跨いでbaseを保持する）
     if (!lastSyncedState.current) {
-      lastSyncedState.current = getCurrentGameState();
+      const saved = loadSyncBase(sessionId);
+      lastSyncedState.current = saved ?? getCurrentGameState();
     }
 
     const unsubPlayers = usePlayerStore.subscribe(() => {
@@ -395,10 +430,12 @@ export function useFirebaseSync() {
 
     // writtenStateが渡された場合はそれを使用（トランザクションが実際に書き込んだ状態）
     // 渡されない場合はローカル状態から取得（フォールバック）
-    lastSyncedState.current = writtenState || getCurrentGameState();
+    const newBase = writtenState || getCurrentGameState();
+    lastSyncedState.current = newBase;
+    if (sessionId) saveSyncBase(sessionId, newBase);
 
     isSyncingFromRemote.current = false;
-  }, []);
+  }, [sessionId]);
 
   return { prepareDirectTransaction, completeDirectTransaction };
 }
