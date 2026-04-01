@@ -204,6 +204,13 @@ export function useFirebaseSync() {
   useEffect(() => {
     if (!isShared || !sessionId) return;
 
+    // lastSyncedStateを現在のストア状態で初期化
+    // （SessionJoinPageでロードした初期データ、またはlocalStorageの状態をbaseとして使用）
+    // これにより最初のpushで mergeGameState(null, ...) が走るのを防ぐ
+    if (!lastSyncedState.current) {
+      lastSyncedState.current = getCurrentGameState();
+    }
+
     const unsubPlayers = usePlayerStore.subscribe(() => {
       if (isSyncingFromRemote.current) return;
       schedulePush(sessionId);
@@ -225,14 +232,13 @@ export function useFirebaseSync() {
     });
 
     // 初回push（セッション作成者のみ）
-    // 参加者は初回pushをスキップ（リモートデータをpullして初期化）
-    const { players } = usePlayerStore.getState();
+    // 参加者・リロード時は onSnapshot で最新データを受け取るだけでよい
+    // （players.length > 0 条件を削除: null baseで古いデータを上書きするバグを修正）
     const currentUser = useSessionStore.getState().currentUser;
     const currentSession = useSessionStore.getState().session;
     const isCreator = currentSession?.createdBy === currentUser;
-    
-    // 作成者、またはプレイヤーが既にいる場合（ページリロード等）のみpush
-    if (isCreator || (players && players.length > 0)) {
+
+    if (isCreator) {
       pushGameStateRef.current(sessionId);
     }
 
