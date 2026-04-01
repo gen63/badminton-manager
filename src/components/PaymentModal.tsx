@@ -10,10 +10,28 @@ interface PaymentModalProps {
 
 export function PaymentModal({ playerName, defaultAmount, onConfirm, onCancel }: PaymentModalProps) {
   const [amount, setAmount] = useState(defaultAmount.toString());
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
 
   useEffect(() => {
     setAmount(defaultAmount.toString());
   }, [defaultAmount]);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const handleResize = () => {
+      const offset = window.innerHeight - viewport.height - viewport.offsetTop;
+      setKeyboardOffset(Math.max(0, offset));
+    };
+
+    viewport.addEventListener('resize', handleResize);
+    viewport.addEventListener('scroll', handleResize);
+    return () => {
+      viewport.removeEventListener('resize', handleResize);
+      viewport.removeEventListener('scroll', handleResize);
+    };
+  }, []);
 
   const handleConfirm = () => {
     const numAmount = parseInt(amount) || 0;
@@ -31,7 +49,7 @@ export function PaymentModal({ playerName, defaultAmount, onConfirm, onCancel }:
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" style={{ paddingBottom: keyboardOffset }}>
       <div className="card p-6 max-w-sm w-full">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-foreground">支払い金額</h3>
