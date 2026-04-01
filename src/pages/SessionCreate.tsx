@@ -77,13 +77,12 @@ export function SessionCreate() {
   const initializeCourts = useGameStore((state) => state.initializeCourts);
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
-  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType: defaultPracticeType } = useSettingsStore();
+  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType, setPracticeType } = useSettingsStore();
 
   const [targetScore] = useState(15);
   const [selectedGym] = useState(getInitialGym);
   const [practiceDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
-  const [practiceType, setPracticeType] = useState<'単' | '複' | '楽'>(defaultPracticeType);
   
   // Phase 1: セッションID参加機能
   const [showJoinMode, setShowJoinMode] = useState(
