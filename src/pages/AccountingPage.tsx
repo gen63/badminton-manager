@@ -414,6 +414,10 @@ export function AccountingPage() {
       lines.push(`${otherDescription || 'その他'} ${otherAmount.toLocaleString()}`);
     }
 
+    // 収入合計
+    const incomeTotalForCopy = incomeForTotal + (otherAmount > 0 ? otherAmount : 0);
+    lines.push(`収入合計 ${incomeTotalForCopy.toLocaleString()}`);
+
     lines.push(
       '',
       '【支出】',
