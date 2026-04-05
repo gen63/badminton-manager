@@ -479,6 +479,216 @@ describe('syncUtils', () => {
       expect(result.settings).toEqual({ recordScores: false }); // ローカル優先
     });
 
+    // === 競合シナリオ: フィールドレベルマージ非対応の検証 ===
+
+    it('同じプレイヤーの異なるフィールドを同時編集 → ローカル変更側が全体優先（既知の制限）', () => {
+      // Client A: name変更、Client B: gamesPlayed変更
+      // 現在の実装ではオブジェクト単位比較のため、後のpush側が全フィールドを上書きする
+      const base: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('A', { name: 'Alice', gamesPlayed: 0 })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('A', { name: 'Alice-edited', gamesPlayed: 0 })], // name変更
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('A', { name: 'Alice', gamesPlayed: 5 })], // gamesPlayed変更
+      };
+
+      const result = mergeGameState(base, local, remote);
+      // ローカル変更あり → ローカル版全体が優先される
+      expect(prop(result.players[0], 'name')).toBe('Alice-edited'); // ローカル変更が反映
+      expect(prop(result.players[0], 'gamesPlayed')).toBe(0);       // リモート変更がロスト（既知の制限）
+    });
+
+    it('同じプレイヤー: ローカル未変更 + リモート変更 → リモート版採用', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('A', { name: 'Alice', gamesPlayed: 0 })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('A', { name: 'Alice', gamesPlayed: 0 })], // 変更なし
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('A', { name: 'Alice', gamesPlayed: 5 })], // gamesPlayed変更
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(prop(result.players[0], 'gamesPlayed')).toBe(5); // リモート版採用
+    });
+
+    it('支払い情報とプレイヤー編集の同時操作 → ローカル変更側が全体優先', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('A', { name: 'Alice', paymentAmount: 0, operationStatus: { payment: false } })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('A', { name: 'Alice', paymentAmount: 500, operationStatus: { payment: true } })], // 支払い完了
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('A', { name: 'Alice-renamed', paymentAmount: 0, operationStatus: { payment: false } })], // 名前変更
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(prop(result.players[0], 'paymentAmount')).toBe(500);          // ローカル支払い保持
+      expect(prop(result.players[0], 'name')).toBe('Alice');               // リモート名前変更はロスト
+    });
+
+    // === 競合シナリオ: matchHistory スコア同時編集 ===
+
+    it('同じ試合のスコアを2人が同時編集 → ローカル版が優先', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000, { scoreA: 0, scoreB: 0 })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000, { scoreA: 21, scoreB: 19 })], // Client A のスコア
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000, { scoreA: 19, scoreB: 21 })], // Client B のスコア
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(prop(result.matchHistory[0], 'scoreA')).toBe(21); // ローカル優先
+      expect(prop(result.matchHistory[0], 'scoreB')).toBe(19);
+    });
+
+    it('スコア編集 + 別試合追加の同時操作 → 両方反映', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000, { scoreA: 0, scoreB: 0 })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000, { scoreA: 21, scoreB: 15 })], // スコア編集
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        matchHistory: [
+          makeMatch('m1', 1000, { scoreA: 0, scoreB: 0 }),
+          makeMatch('m2', 2000), // 別試合追加
+        ],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(result.matchHistory).toHaveLength(2);
+      expect(prop(result.matchHistory[0], 'scoreA')).toBe(21); // ローカルスコア保持
+      expect(result.matchHistory[1].id).toBe('m2');             // リモート追加も反映
+    });
+
+    // === 競合シナリオ: 削除と変更の同時操作 ===
+
+    it('ローカルでプレイヤー変更 + リモートで同プレイヤー削除 → ローカル変更が残る（新規追加扱い）', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('A', { isResting: true })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('A', { isResting: false })], // ローカルで変更
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        players: [], // リモートで削除
+      };
+
+      const result = mergeGameState(base, local, remote);
+      // ローカル変更あり + リモートに存在しない + baseに存在する → リモートで削除された
+      // mergeById: remoteItem が undefined → baseItem あり → 削除扱い（追加しない）
+      expect(result.players).toHaveLength(0); // リモート削除が優先
+    });
+
+    it('ローカルでプレイヤー削除 + リモートで同プレイヤー変更 → 削除が優先', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('A', { isResting: true })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        players: [], // ローカルで削除
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('A', { isResting: false })], // リモートで変更
+      };
+
+      const result = mergeGameState(base, local, remote);
+      // ローカルで削除 → remoteItem は seen に含まれない → baseItem あり → ローカル削除扱い
+      expect(result.players).toHaveLength(0); // ローカル削除が優先
+    });
+
+    // === 競合シナリオ: コート操作 ===
+
+    it('同じコートに2人が同時配置 → ローカル版が優先', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1)],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'] })],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1, { teamA: ['p5', 'p6'], teamB: ['p7', 'p8'] })],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(prop(result.courts[0], 'teamA')).toEqual(['p1', 'p2']); // ローカル優先
+    });
+
+    // === 競合シナリオ: 履歴全クリア + 新試合追加 ===
+
+    it('ローカルで履歴クリア + リモートで新試合追加 → 新試合が復活', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000)],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        matchHistory: [], // ローカルでクリア
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000), makeMatch('m2', 2000)], // リモートで新試合追加
+      };
+
+      const result = mergeGameState(base, local, remote);
+      // m1: base有り + local無し → ローカル削除 → 追加しない
+      // m2: base無し + local無し + remote有り → リモート新規 → 追加
+      expect(result.matchHistory).toHaveLength(1);
+      expect(result.matchHistory[0].id).toBe('m2'); // 新試合のみ残る
+    });
+
+    // === 競合シナリオ: 設定の同時変更 ===
+
+    it('settings: ローカルとリモートで異なる設定変更 → ローカル全体が優先', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        settings: { recordScores: true, continuousMatchMode: true },
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        settings: { recordScores: false, continuousMatchMode: true }, // recordScores変更
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        settings: { recordScores: true, continuousMatchMode: false }, // continuousMatchMode変更
+      };
+
+      const result = mergeGameState(base, local, remote);
+      // settings は常にローカル優先（フィールドレベルマージなし）
+      expect(result.settings).toEqual({ recordScores: false, continuousMatchMode: true });
+    });
+
     it('3クライアント同時休憩復帰シナリオ', () => {
       // 3人が同時に休憩から復帰するシナリオ
       const base: SyncGameState = {
