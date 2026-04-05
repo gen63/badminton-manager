@@ -18,7 +18,7 @@ export function HistoryPage() {
   const { players } = usePlayerStore();
   const { session, isCreator } = useSessionStore();
   const isAdmin = isCreator();
-  const { gasWebAppUrl } = useSettingsStore();
+  const { gasWebAppUrl, recordScores } = useSettingsStore();
   const toast = useToast();
   const [isUploading, setIsUploading] = useState(false);
 
@@ -182,13 +182,15 @@ export function HistoryPage() {
 
                       {/* 編集・削除ボタン（縦並び） */}
                       <div className="flex flex-col gap-0.5 flex-shrink-0">
-                        <button
-                          onClick={() => handleEdit(match.id)}
-                          aria-label="編集"
-                          className="p-1 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
-                        >
-                          <Edit3 size={13} />
-                        </button>
+                        {recordScores && (
+                          <button
+                            onClick={() => handleEdit(match.id)}
+                            aria-label="編集"
+                            className="p-1 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
+                          >
+                            <Edit3 size={13} />
+                          </button>
+                        )}
                         {isAdmin && (
                           <button
                             onClick={() => handleDelete(match.id)}
