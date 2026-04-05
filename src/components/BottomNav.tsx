@@ -62,13 +62,15 @@ export function BottomNav({ activeTab }: BottomNavProps) {
   const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
                 (navigator as Navigator & { standalone?: boolean }).standalone;
 
-  const tabs: { id: TabId; label: string; icon: typeof CalendarCheck; path: string }[] = [
+  const allTabs: { id: TabId; label: string; icon: typeof CalendarCheck; path: string }[] = [
     { id: 'court', label: 'メイン', icon: LayoutGrid, path: '/main' },
     { id: 'reservation', label: '試合予約', icon: CalendarCheck, path: '/reservation' },
     { id: 'history', label: '履歴', icon: History, path: '/history' },
     { id: 'players', label: '参加者', icon: Users, path: '/players' },
     { id: 'accounting', label: '会計', icon: DollarSign, path: '/accounting' },
   ];
+
+  const tabs = isAdmin() ? allTabs : allTabs.filter(t => t.id !== 'accounting');
 
   const handleTabClick = (tab: (typeof tabs)[number]) => {
     if (tab.id === activeTab) return;
