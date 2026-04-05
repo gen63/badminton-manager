@@ -136,18 +136,13 @@ export function ScoreInputPage() {
       return;
     }
 
-    const updatedHistory = matchHistory.map((m) =>
-      m.id === matchId
-        ? {
-            ...m,
-            scoreA,
-            scoreB,
-            winner: (scoreA > scoreB ? 'A' : scoreB > scoreA ? 'B' : undefined) as 'A' | 'B' | undefined,
-          }
-        : m
-    );
+    const winner = (scoreA > scoreB ? 'A' : scoreB > scoreA ? 'B' : undefined) as 'A' | 'B' | undefined;
 
-    useGameStore.setState({ matchHistory: updatedHistory });
+    useGameStore.setState((state) => ({
+      matchHistory: state.matchHistory.map((m) =>
+        m.id === matchId ? { ...m, scoreA, scoreB, winner } : m
+      ),
+    }));
     navigate(fromPage);
   };
 

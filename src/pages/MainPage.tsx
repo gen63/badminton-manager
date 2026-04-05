@@ -849,6 +849,8 @@ export function MainPage() {
 
                             // べき等キーをキャプチャ（この試合の一意識別子）
                             const matchStartedAt = currentCourt.startedAt;
+                            // matchIdを事前生成（楽観的更新とトランザクションで同じIDを使用）
+                            const matchId = crypto.randomUUID();
 
                             // オンラインモード: push抑止してからローカル更新
                             const isOnline = session?.id && session?.createdBy;
@@ -858,7 +860,7 @@ export function MainPage() {
 
                             // 楽観的ローカル更新（即座にUIに反映）
                             pushUndo();
-                            finishGame(court.id, 0, 0);
+                            finishGame(court.id, 0, 0, matchId);
                             [...court.teamA, ...court.teamB].filter(id => id).forEach((playerId) => {
                               const player = players.find((p) => p.id === playerId);
                               if (player) {
@@ -904,6 +906,7 @@ export function MainPage() {
                                       useStayDurationPriority,
                                       prioritizeDiversity,
                                       gameMode,
+                                      matchId,
                                     }).newState
                                 );
 

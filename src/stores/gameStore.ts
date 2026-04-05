@@ -11,7 +11,7 @@ interface GameState {
   removeCourtById: (courtId: number) => void;
   updateCourt: (courtId: number, updates: Partial<Court>) => void;
   startGame: (courtId: number) => void;
-  finishGame: (courtId: number, scoreA: number, scoreB: number) => void;
+  finishGame: (courtId: number, scoreA: number, scoreB: number, matchId?: string) => void;
   resetAllCourts: () => void;
   addToHistory: (match: Match) => void;
   clearHistory: () => void;
@@ -95,13 +95,13 @@ export const useGameStore = create<GameState>()(
               : c
           ),
         })),
-      finishGame: (courtId, scoreA, scoreB) =>
+      finishGame: (courtId, scoreA, scoreB, matchId) =>
         set((state) => {
           const court = state.courts.find((c) => c.id === courtId);
           if (!court) return state;
 
           const match: Match = {
-            id: crypto.randomUUID(),
+            id: matchId ?? crypto.randomUUID(),
             courtId,
             teamA: court.teamA,
             teamB: court.teamB,

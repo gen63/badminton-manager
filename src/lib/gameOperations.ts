@@ -36,6 +36,7 @@ export function computeFinishAndContinue(
     useStayDurationPriority: boolean;
     prioritizeDiversity: boolean;
     gameMode: 'singles' | 'doubles';
+    matchId?: string;
   }
 ): FinishGameResult {
   const court = state.courts.find(c => c.id === courtId);
@@ -48,7 +49,7 @@ export function computeFinishAndContinue(
 
   // 1. 試合記録を作成
   const match: Match = {
-    id: crypto.randomUUID(),
+    id: options.matchId ?? crypto.randomUUID(),
     courtId,
     teamA: court.teamA,
     teamB: court.teamB,
