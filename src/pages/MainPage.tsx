@@ -900,14 +900,17 @@ export function MainPage() {
                                   session!.id,
                                   court.id,
                                   matchStartedAt,
-                                  (remoteState) =>
-                                    computeFinishAndContinue(remoteState, court.id, {
-                                      continuousMatchMode,
+                                  (remoteState) => {
+                                    // リモートの設定値を優先（他ユーザーがOFFにした場合を反映）
+                                    const remoteSettings = remoteState.settings;
+                                    return computeFinishAndContinue(remoteState, court.id, {
+                                      continuousMatchMode: remoteSettings?.continuousMatchMode ?? continuousMatchMode,
                                       useStayDurationPriority,
                                       prioritizeDiversity,
                                       gameMode,
                                       matchId,
-                                    }).newState
+                                    }).newState;
+                                  }
                                 );
 
                                 if (result === 'already_finished') {
