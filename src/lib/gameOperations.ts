@@ -6,10 +6,41 @@
  */
 
 import type { Player } from '../types/player';
-import type { Court } from '../types/court';
+import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import { assignCourts } from './algorithm';
+
+/** ゲームモードに応じた1コートあたりの人数 */
+export function getPlayersPerCourt(gameMode: 'singles' | 'doubles'): number {
+  return gameMode === 'singles' ? 2 : 4;
+}
+
+/** ゲームモードに応じた連続モード配置に必要な最小待機人数 */
+export function getMinWaitingCount(gameMode: 'singles' | 'doubles'): number {
+  return gameMode === 'singles' ? 3 : 7;
+}
+
+/** 連続モード配置のブロック判定（多様性優先モード用） */
+export function checkContinuousBlock(
+  players: Player[],
+  courts: Court[],
+  prioritizeDiversity: boolean,
+  gameMode: 'singles' | 'doubles',
+): { blocked: boolean; reason?: string } {
+  if (!prioritizeDiversity) return { blocked: false };
+
+  const ppc = getPlayersPerCourt(gameMode);
+  const threshold = getMinWaitingCount(gameMode);
+  const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
+  const active = players.filter(p => !p.isResting);
+  const actualWaiting = active.length - occupied.length * ppc;
+
+  if (occupied.length > 0 && actualWaiting < threshold) {
+    return { blocked: true, reason: 'diversity_block' };
+  }
+  return { blocked: false };
+}
 
 export interface GameState {
   players: Player[];
@@ -45,7 +76,6 @@ export function computeFinishAndContinue(
   }
 
   const now = Date.now();
-  const playersPerCourt = options.gameMode === 'singles' ? 2 : 4;
 
   // 1. 試合記録を作成
   const match: Match = {
@@ -68,7 +98,7 @@ export function computeFinishAndContinue(
     return p;
   });
 
-  // 3. restingPlayerIds の復元
+  // 3. 休憩中プレイヤーの復元（試合前に休憩していたプレイヤーを休憩状態に戻す）
   if (court.restingPlayerIds && court.restingPlayerIds.length > 0) {
     updatedPlayers = updatedPlayers.map(p => {
       if (court.restingPlayerIds!.includes(p.id)) {
@@ -81,17 +111,7 @@ export function computeFinishAndContinue(
   // 4. コートをクリア
   let updatedCourts = state.courts.map(c =>
     c.id === courtId
-      ? {
-          ...c,
-          teamA: ['', ''] as [string, string],
-          teamB: ['', ''] as [string, string],
-          scoreA: 0,
-          scoreB: 0,
-          isPlaying: false,
-          startedAt: 0,
-          finishedAt: 0,
-          restingPlayerIds: [],
-        }
+      ? { ...c, ...EMPTY_COURT_STATE, restingPlayerIds: [] }
       : c
   );
 
@@ -109,20 +129,14 @@ export function computeFinishAndContinue(
       p => !p.isResting && !playersInCourts.has(p.id)
     );
 
-    // ブロックチェック（prioritizeDiversity ON時）
-    if (options.prioritizeDiversity) {
-      const occupied = updatedCourts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
-      const active = updatedPlayers.filter(p => !p.isResting);
-      const actualWaiting = active.length - occupied.length * playersPerCourt;
-      const threshold = options.gameMode === 'singles' ? 3 : 7;
-      if (occupied.length > 0 && actualWaiting < threshold) {
-        continuousError = 'diversity_block';
-      }
+    // ブロックチェック
+    const block = checkContinuousBlock(updatedPlayers, updatedCourts, options.prioritizeDiversity, options.gameMode);
+    if (block.blocked) {
+      continuousError = block.reason;
     }
 
     if (!continuousError) {
-      const minWaiting = options.gameMode === 'singles' ? 3 : 7;
-      if (waitingPlayers.length < minWaiting) {
+      if (waitingPlayers.length < getMinWaitingCount(options.gameMode)) {
         continuousError = 'not_enough_players';
       }
     }

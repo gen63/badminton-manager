@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Court } from '../types/court';
+import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import type { Match } from '../types/match';
 
 interface GameState {
@@ -27,13 +27,7 @@ export const useGameStore = create<GameState>()(
         set({
           courts: Array.from({ length: count }, (_, i) => ({
             id: i + 1,
-            teamA: ['', ''],
-            teamB: ['', ''],
-            scoreA: 0,
-            scoreB: 0,
-            isPlaying: false,
-            startedAt: 0,
-            finishedAt: 0,
+            ...EMPTY_COURT_STATE,
           })),
         }),
       resizeCourts: (count) =>
@@ -131,13 +125,7 @@ export const useGameStore = create<GameState>()(
         set((state) => ({
           courts: state.courts.map((c) => ({
             ...c,
-            teamA: ['', ''],
-            teamB: ['', ''],
-            scoreA: 0,
-            scoreB: 0,
-            isPlaying: false,
-            startedAt: 0,
-            finishedAt: 0,
+            ...EMPTY_COURT_STATE,
           })),
         })),
       addToHistory: (match) =>

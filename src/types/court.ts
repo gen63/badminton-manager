@@ -10,6 +10,17 @@ export interface Court {
   restingPlayerIds?: string[]; // 元々休憩中だったプレイヤーID
 }
 
+/** コートの空状態（配置なし・試合なし） */
+export const EMPTY_COURT_STATE = {
+  teamA: ['', ''] as [string, string],
+  teamB: ['', ''] as [string, string],
+  scoreA: 0,
+  scoreB: 0,
+  isPlaying: false,
+  startedAt: 0,
+  finishedAt: 0,
+} as const satisfies Omit<Court, 'id' | 'restingPlayerIds'>;
+
 export interface CourtAssignment {
   courtId: number;
   teamA: [string, string];
