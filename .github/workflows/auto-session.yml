@@ -16,7 +16,7 @@ on:
       force:
         description: '不明点があっても強制的にセッションを作成する'
         type: boolean
-        default: true
+        default: false
 
 jobs:
   create-session:
