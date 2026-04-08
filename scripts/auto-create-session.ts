@@ -333,19 +333,22 @@ async function createTmpSheet(
     })),
   );
 
+  // GAS Web AppのPOSTは302リダイレクトを返す → redirect:'follow'で自動追従
+  const payload = JSON.stringify({ action: 'createTmpSheet', sheet: sheetName, participants });
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'createTmpSheet', sheet: sheetName, participants }),
+    body: payload,
+    redirect: 'follow',
     signal: AbortSignal.timeout(30000),
   });
 
-  // GAS Web Appはリダイレクトを返すことがある
-  const data = (await response.json()) as {
-    status: string;
-    created?: boolean;
-    missingOrdering?: string[];
-  };
+  const text = await response.text();
+  let data: { status: string; created?: boolean; missingOrdering?: string[] };
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`GAS createTmpSheet returned non-JSON: ${text.substring(0, 200)}`);
+  }
 
   if (data.status === 'error') {
     throw new Error('GAS createTmpSheet returned error');
