@@ -342,12 +342,14 @@ async function createTmpSheet(
     signal: AbortSignal.timeout(30000),
   });
 
+  console.log(`[DEBUG] POST response: status=${response.status}, url=${response.url}, redirected=${response.redirected}`);
   const text = await response.text();
   let data: { status: string; created?: boolean; missingOrdering?: string[] };
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error(`GAS createTmpSheet returned non-JSON: ${text.substring(0, 200)}`);
+    console.log(`[DEBUG] Response body (first 500): ${text.substring(0, 500)}`);
+    throw new Error(`GAS createTmpSheet returned non-JSON (status=${response.status})`);
   }
 
   if (data.status === 'error') {
