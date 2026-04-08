@@ -232,6 +232,7 @@ function parseEventDetail(
   // 出席予定メンバーセクションから名前を抽出
   const memberSection = html.split('出席予定メンバー');
   if (memberSection.length >= 2) {
+    console.log(`[DEBUG] memberSection: ${memberSection[1].substring(0, 1000)}`);
     const sectionHtml = memberSection[1].split('</div>')[1] || '';
     const nameMatches = sectionHtml.match(/<b>([^<]+)<\/b>/g);
     if (nameMatches) {
