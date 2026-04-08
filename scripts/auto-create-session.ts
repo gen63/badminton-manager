@@ -649,8 +649,21 @@ async function main() {
   }
 
   console.log(`HTML length: ${listHtml.length}`);
-  console.log(`HTML preview: ${listHtml.substring(0, 500)}`);
   console.log(`Contains "user_event_list": ${listHtml.includes('user_event_list')}`);
+
+  // user_event_list周辺のHTMLを出力
+  const idx = listHtml.indexOf('user_event_list');
+  if (idx >= 0) {
+    console.log(`user_event_list context: ${JSON.stringify(listHtml.substring(idx - 50, idx + 300))}`);
+  }
+
+  // event_idの存在確認
+  const eventIdMatches = listHtml.match(/event_id=([^"&]+)/g);
+  console.log(`event_id matches: ${JSON.stringify(eventIdMatches?.slice(0, 5))}`);
+
+  // <b>タグの確認
+  const bTagMatches = listHtml.match(/<b>[^<]+<\/b>/g);
+  console.log(`<b> tag samples: ${JSON.stringify(bTagMatches?.slice(0, 5))}`);
 
   const allEvents = parseEventList(listHtml);
   console.log(`Total events found: ${allEvents.length}`);
