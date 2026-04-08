@@ -648,6 +648,10 @@ async function main() {
     throw new Error('E-tomoイベント一覧の取得に失敗しました');
   }
 
+  console.log(`HTML length: ${listHtml.length}`);
+  console.log(`HTML preview: ${listHtml.substring(0, 500)}`);
+  console.log(`Contains "user_event_list": ${listHtml.includes('user_event_list')}`);
+
   const allEvents = parseEventList(listHtml);
   console.log(`Total events found: ${allEvents.length}`);
 
