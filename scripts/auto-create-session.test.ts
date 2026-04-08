@@ -1,0 +1,407 @@
+import { describe, it, expect } from 'vitest';
+import {
+  parseEventTitle,
+  parseEventList,
+  parseEventDetail,
+  filterEventsByDate,
+  findNextPracticeDate,
+  checkPlayerIssues,
+  decodeHtmlEntities,
+  formatEventSummary,
+  buildSessionData,
+  formatPracticeDate,
+  buildPracticeStartTime,
+} from './auto-create-session';
+
+describe('parseEventTitle', () => {
+  it('標準的なタイトルをパースできる', () => {
+    const result = parseEventTitle('4/9(水)18:30〜21:30@千川館.複');
+    expect(result).toEqual({
+      month: 4,
+      day: 9,
+      startTime: '18:30',
+      endTime: '21:30',
+      venue: '千川館',
+      note: '複',
+    });
+  });
+
+  it('ノートが無い場合はvenueだけ返す', () => {
+    const result = parseEventTitle('12/25(月)9:00〜12:00@体育館');
+    expect(result).toEqual({
+      month: 12,
+      day: 25,
+      startTime: '9:00',
+      endTime: '12:00',
+      venue: '体育館',
+      note: '',
+    });
+  });
+
+  it('チルダ(~)でも時間を分割できる', () => {
+    const result = parseEventTitle('1/1(土)10:00~13:00@ぴいす.楽');
+    expect(result).toEqual({
+      month: 1,
+      day: 1,
+      startTime: '10:00',
+      endTime: '13:00',
+      venue: 'ぴいす',
+      note: '楽',
+    });
+  });
+
+  it('パース不能なタイトルはnullを返す', () => {
+    expect(parseEventTitle('イベント名のみ')).toBeNull();
+    expect(parseEventTitle('')).toBeNull();
+  });
+
+  it('会場名にドットが含まれる場合は最後のドットで分割', () => {
+    const result = parseEventTitle('5/1(木)19:00〜21:00@A.B.単');
+    expect(result).toEqual({
+      month: 5,
+      day: 1,
+      startTime: '19:00',
+      endTime: '21:00',
+      venue: 'A.B',
+      note: '単',
+    });
+  });
+});
+
+describe('parseEventList', () => {
+  const sampleHtml = `
+    <div>header</div>
+    <div class="user_event_list">
+      <a href="event_detail.php?event_id=123"><b>4/9(水)18:30〜21:30@千川館.複</b></a>
+      人数：8/12 待:2
+    </div>
+    <div class="user_event_list">
+      <a href="event_detail.php?event_id=456"><b>4/10(木)19:00〜21:00@高松.単</b></a>
+      人数：5/8
+    </div>
+  `;
+
+  it('イベント一覧をパースできる', () => {
+    const events = parseEventList(sampleHtml);
+    expect(events).toHaveLength(2);
+    expect(events[0]).toEqual({
+      eventId: '123',
+      title: '4/9(水)18:30〜21:30@千川館.複',
+      dateMonth: 4,
+      dateDay: 9,
+      startTime: '18:30',
+      endTime: '21:30',
+      venue: '千川館',
+      note: '複',
+      participantCount: 8,
+      capacity: 12,
+      waitlistCount: 2,
+    });
+    expect(events[1].eventId).toBe('456');
+    expect(events[1].waitlistCount).toBe(0);
+  });
+
+  it('重複eventIdを除去する', () => {
+    const html = `
+      <div class="user_event_list">
+        <a href="?event_id=123"><b>4/9(水)18:30〜21:30@千川館.複</b></a>
+      </div>
+      <div class="user_event_list">
+        <a href="?event_id=123"><b>4/9(水)18:30〜21:30@千川館.複</b></a>
+      </div>
+    `;
+    expect(parseEventList(html)).toHaveLength(1);
+  });
+
+  it('空HTMLでは空配列を返す', () => {
+    expect(parseEventList('')).toEqual([]);
+    expect(parseEventList('<div>nothing</div>')).toEqual([]);
+  });
+});
+
+describe('parseEventDetail', () => {
+  it('参加者リストを抽出できる', () => {
+    const html = `
+      <div class="user_event_midashi">4/9(水)18:30〜21:30@千川館.複</div>
+      場所：千川館体育館
+      人数：3/12
+      出席予定メンバー
+      <div>header</div>
+      <div><b>田中太郎</b><b>佐藤花子</b><b>山田次郎</b></div>
+    `;
+    const result = parseEventDetail(html);
+    expect(result.location).toBe('千川館体育館');
+    expect(result.capacity).toBe(12);
+    expect(result.participants).toEqual(['田中太郎', '佐藤花子', '山田次郎']);
+  });
+
+  it('HTMLエンティティをデコードする', () => {
+    const html = `
+      出席予定メンバー
+      <div>header</div>
+      <div><b>A&amp;B</b></div>
+    `;
+    const result = parseEventDetail(html);
+    expect(result.participants).toEqual(['A&B']);
+  });
+
+  it('コメントからビジター参加者を追加する', () => {
+    const html = `
+      出席予定メンバー
+      <div>header</div>
+      <div><b>田中太郎</b></div>
+      <div class="fukidasi_top">外部ゲスト1名参加</div>
+    `;
+    const result = parseEventDetail(html);
+    expect(result.participants).toContain('田中太郎');
+    expect(result.participants).toContain('外部ゲスト1名参加');
+  });
+
+  it('出席予定メンバーセクションが無い場合は空配列', () => {
+    const result = parseEventDetail('<div>nothing relevant</div>');
+    expect(result.participants).toEqual([]);
+    expect(result.location).toBe('');
+    expect(result.capacity).toBeNull();
+  });
+});
+
+describe('filterEventsByDate', () => {
+  const events = [
+    { eventId: '1', title: '4/9(水)18:30〜21:30@千川館.複', dateMonth: 4, dateDay: 9, startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複', participantCount: 0, capacity: null, waitlistCount: 0 },
+    { eventId: '2', title: '4/9(水)19:00〜21:00@高松.単', dateMonth: 4, dateDay: 9, startTime: '19:00', endTime: '21:00', venue: '高松', note: '単', participantCount: 0, capacity: null, waitlistCount: 0 },
+    { eventId: '3', title: '4/10(木)18:30〜21:30@千川館.楽', dateMonth: 4, dateDay: 10, startTime: '18:30', endTime: '21:30', venue: '千川館', note: '楽', participantCount: 0, capacity: null, waitlistCount: 0 },
+    { eventId: '4', title: '4/9(水)目白練習', dateMonth: 4, dateDay: 9, startTime: '18:00', endTime: '21:00', venue: '目白', note: '複', participantCount: 0, capacity: null, waitlistCount: 0 },
+    { eventId: '5', title: '4/9(水)18:00〜21:00@会議室.会議', dateMonth: 4, dateDay: 9, startTime: '18:00', endTime: '21:00', venue: '会議室', note: '会議', participantCount: 0, capacity: null, waitlistCount: 0 },
+  ];
+
+  it('指定日の単/複/楽イベントだけ返す', () => {
+    const target = new Date(2026, 3, 9); // 4/9
+    const filtered = filterEventsByDate(events, target);
+    expect(filtered.map(e => e.eventId)).toEqual(['1', '2']);
+  });
+
+  it('目白を含むイベントは除外する', () => {
+    const target = new Date(2026, 3, 9);
+    const filtered = filterEventsByDate(events, target);
+    expect(filtered.find(e => e.venue === '目白')).toBeUndefined();
+  });
+
+  it('単/複/楽以外のnoteは除外する', () => {
+    const target = new Date(2026, 3, 9);
+    const filtered = filterEventsByDate(events, target);
+    expect(filtered.find(e => e.note === '会議')).toBeUndefined();
+  });
+
+  it('該当日にイベントが無ければ空配列', () => {
+    const target = new Date(2026, 3, 11); // 4/11
+    expect(filterEventsByDate(events, target)).toEqual([]);
+  });
+});
+
+describe('findNextPracticeDate', () => {
+  const makeEvent = (month: number, day: number, note: string, title?: string) => ({
+    eventId: `${month}-${day}`, title: title ?? `${month}/${day}(月)18:00〜21:00@千川館.${note}`,
+    dateMonth: month, dateDay: day, startTime: '18:00', endTime: '21:00',
+    venue: '千川館', note, participantCount: 0, capacity: null, waitlistCount: 0,
+  });
+
+  it('今日以降の直近練習日を返す', () => {
+    const events = [makeEvent(4, 15, '複'), makeEvent(4, 12, '単'), makeEvent(4, 20, '楽')];
+    const today = new Date(2026, 3, 10); // 4/10
+    const result = findNextPracticeDate(events, today);
+    expect(result).toEqual(new Date(2026, 3, 12)); // 4/12が最も近い
+  });
+
+  it('当日のイベントも対象に含める', () => {
+    const events = [makeEvent(4, 10, '複')];
+    const today = new Date(2026, 3, 10);
+    const result = findNextPracticeDate(events, today);
+    expect(result).toEqual(new Date(2026, 3, 10));
+  });
+
+  it('目白は除外する', () => {
+    const events = [
+      makeEvent(4, 10, '複', '4/10(月)目白練習'),
+      makeEvent(4, 15, '複'),
+    ];
+    const today = new Date(2026, 3, 10);
+    const result = findNextPracticeDate(events, today);
+    expect(result).toEqual(new Date(2026, 3, 15));
+  });
+
+  it('単/複/楽以外は除外する', () => {
+    const events = [makeEvent(4, 10, '会議'), makeEvent(4, 15, '楽')];
+    const today = new Date(2026, 3, 10);
+    const result = findNextPracticeDate(events, today);
+    expect(result).toEqual(new Date(2026, 3, 15));
+  });
+
+  it('対象イベントが無ければnullを返す', () => {
+    expect(findNextPracticeDate([], new Date(2026, 3, 10))).toBeNull();
+  });
+
+  it('過去のイベントしかない場合はnullを返す', () => {
+    const events = [makeEvent(4, 5, '複')];
+    const today = new Date(2026, 3, 10);
+    expect(findNextPracticeDate(events, today)).toBeNull();
+  });
+});
+
+describe('checkPlayerIssues', () => {
+  const memberMap = new Map([
+    ['田中太郎', { rating: 1800, gender: 'M' as const }],
+    ['佐藤花子', { rating: 1500, gender: undefined }],
+    ['山田次郎', { rating: undefined, gender: 'M' as const }],
+  ]);
+
+  it('全員情報があれば空配列', () => {
+    expect(checkPlayerIssues(['田中太郎'], memberMap)).toEqual([]);
+  });
+
+  it('スプレッドシート未登録を検出', () => {
+    const issues = checkPlayerIssues(['未登録さん'], memberMap);
+    expect(issues).toEqual([{ name: '未登録さん', reason: 'スプレッドシート未登録' }]);
+  });
+
+  it('レーティング未設定を検出', () => {
+    const issues = checkPlayerIssues(['山田次郎'], memberMap);
+    expect(issues).toEqual([{ name: '山田次郎', reason: 'レーティング未設定' }]);
+  });
+
+  it('性別未設定を検出', () => {
+    const issues = checkPlayerIssues(['佐藤花子'], memberMap);
+    expect(issues).toEqual([{ name: '佐藤花子', reason: '性別未設定' }]);
+  });
+
+  it('複数の問題を全て検出', () => {
+    const issues = checkPlayerIssues(['田中太郎', '未登録さん', '佐藤花子'], memberMap);
+    expect(issues).toHaveLength(2);
+  });
+});
+
+describe('decodeHtmlEntities', () => {
+  it('数値エンティティをデコード', () => {
+    expect(decodeHtmlEntities('&#65;')).toBe('A');
+  });
+
+  it('16進数エンティティをデコード', () => {
+    expect(decodeHtmlEntities('&#x41;')).toBe('A');
+  });
+
+  it('名前付きエンティティをデコード', () => {
+    expect(decodeHtmlEntities('&amp;&lt;&gt;&quot;&apos;')).toBe('&<>"\'');
+  });
+
+  it('エンティティが無い文字列はそのまま返す', () => {
+    expect(decodeHtmlEntities('普通の文字列')).toBe('普通の文字列');
+  });
+});
+
+describe('formatPracticeDate', () => {
+  it('YYYY-MM-DD形式にフォーマット', () => {
+    expect(formatPracticeDate(new Date(2026, 3, 9))).toBe('2026-04-09');
+    expect(formatPracticeDate(new Date(2026, 0, 1))).toBe('2026-01-01');
+    expect(formatPracticeDate(new Date(2026, 11, 31))).toBe('2026-12-31');
+  });
+});
+
+describe('buildPracticeStartTime', () => {
+  it('日付と時間文字列からUnixタイムスタンプを生成', () => {
+    const date = new Date(2026, 3, 9); // 4/9
+    const result = buildPracticeStartTime(date, '18:30');
+    const expected = new Date(2026, 3, 9, 18, 30, 0, 0).getTime();
+    expect(result).toBe(expected);
+  });
+});
+
+describe('formatEventSummary', () => {
+  it('イベントサマリーをフォーマット', () => {
+    const event = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: ['A', 'B', 'C'],
+    };
+    const date = new Date(2026, 3, 9); // 水曜日
+    const summary = formatEventSummary(event, date);
+    expect(summary).toContain('4/9(木)');
+    expect(summary).toContain('18:30〜21:30');
+    expect(summary).toContain('千川館');
+    expect(summary).toContain('複（ダブルス）');
+    expect(summary).toContain('3名');
+  });
+
+  it('シングルスのラベルが正しい', () => {
+    const event = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '高松', note: '単',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: [],
+    };
+    const summary = formatEventSummary(event, new Date(2026, 3, 9));
+    expect(summary).toContain('単（シングルス）');
+  });
+
+  it('楽ミントのラベルが正しい', () => {
+    const event = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: 'ぴいす', note: '楽',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: [],
+    };
+    const summary = formatEventSummary(event, new Date(2026, 3, 9));
+    expect(summary).toContain('楽（楽ミント）');
+  });
+});
+
+describe('buildSessionData', () => {
+  it('セッションデータを正しく構築する', () => {
+    const event = {
+      eventId: '123', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: ['田中太郎', '佐藤花子'],
+    };
+    const memberMap = new Map([
+      ['田中太郎', { rating: 1800, gender: 'M' as const }],
+      ['佐藤花子', { rating: 1500, gender: 'F' as const }],
+    ]);
+    const date = new Date(2026, 3, 9);
+
+    const data = buildSessionData(event, memberMap, date);
+    expect(data.config.gym).toBe('千川館');
+    expect(data.config.gameMode).toBe('doubles');
+    expect(data.config.practiceDate).toBe('2026-04-09');
+    expect(data.etomoEventId).toBe('123');
+    expect(data.gameState.players).toHaveLength(2);
+    expect(data.gameState.players[0].name).toBe('田中太郎');
+    expect(data.gameState.players[0].rating).toBe(1800);
+    expect(data.gameState.players[0].gender).toBe('M');
+    expect(data.gameState.players[0].isResting).toBe(true);
+    expect(data.gameState.settings.practiceType).toBe('複');
+  });
+
+  it('シングルスのgameModeが正しい', () => {
+    const event = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '高松', note: '単',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: [],
+    };
+    const data = buildSessionData(event, new Map(), new Date(2026, 3, 9));
+    expect(data.config.gameMode).toBe('singles');
+  });
+
+  it('スプレッドシートに無い参加者はrating/genderなし', () => {
+    const event = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: ['未登録さん'],
+    };
+    const data = buildSessionData(event, new Map(), new Date(2026, 3, 9));
+    expect(data.gameState.players[0].name).toBe('未登録さん');
+    expect(data.gameState.players[0]).not.toHaveProperty('rating');
+    expect(data.gameState.players[0]).not.toHaveProperty('gender');
+  });
+});
