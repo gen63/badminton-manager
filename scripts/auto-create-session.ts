@@ -510,6 +510,8 @@ async function sendDiscordMessage(content: string): Promise<void> {
   });
 }
 
+const SESSION_BASE_URL = 'https://gen63.github.io/badminton-manager/session';
+
 async function notifySessionCreated(
   event: EtomoEventDetail,
   sessionId: string,
@@ -521,6 +523,7 @@ async function notifySessionCreated(
     '━━━━━━━━━━━━━━━━━━',
     summary,
     `セッションID: **${sessionId}**`,
+    `${SESSION_BASE_URL}/${sessionId}`,
   ].join('\n');
 
   await sendDiscordMessage(message);
