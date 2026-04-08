@@ -11,6 +11,7 @@ import {
   buildSessionData,
   formatPracticeDate,
   buildPracticeStartTime,
+  buildTmpSheetName,
 } from './auto-create-session';
 
 describe('parseEventTitle', () => {
@@ -144,36 +145,38 @@ describe('parseEventList', () => {
 });
 
 describe('parseEventDetail', () => {
-  it('参加者リストを抽出できる', () => {
+  it('参加者リストとフォント色から性別を抽出できる', () => {
     const html = `
       <div class="user_event_midashi">4/9(水)18:30〜21:30@千川館.複</div>
       場所：千川館体育館
       人数：3/12
       出席予定メンバー
       <div>header</div>
-      <div><b>田中太郎</b><b>佐藤花子</b><b>山田次郎</b></div>
+      <div><font color="#000080"><b>田中太郎</b></font><br><font color="#ff1493"><b>佐藤花子</b></font><br><font color="#000080"><b>山田次郎</b></font></div>
     `;
     const result = parseEventDetail(html);
     expect(result.location).toBe('千川館体育館');
     expect(result.capacity).toBe(12);
     expect(result.participants).toEqual(['田中太郎', '佐藤花子', '山田次郎']);
+    expect(result.genders).toEqual({ '田中太郎': 'M', '佐藤花子': 'F', '山田次郎': 'M' });
   });
 
   it('HTMLエンティティをデコードする', () => {
     const html = `
       出席予定メンバー
       <div>header</div>
-      <div><b>A&amp;B</b></div>
+      <div><font color="#000080"><b>A&amp;B</b></font></div>
     `;
     const result = parseEventDetail(html);
     expect(result.participants).toEqual(['A&B']);
+    expect(result.genders['A&B']).toBe('M');
   });
 
   it('コメントからビジター参加者を追加する', () => {
     const html = `
       出席予定メンバー
       <div>header</div>
-      <div><b>田中太郎</b></div>
+      <div><font color="#000080"><b>田中太郎</b></font></div>
       <div class="fukidasi_top">外部ゲスト1名参加</div>
     `;
     const result = parseEventDetail(html);
@@ -184,8 +187,20 @@ describe('parseEventDetail', () => {
   it('出席予定メンバーセクションが無い場合は空配列', () => {
     const result = parseEventDetail('<div>nothing relevant</div>');
     expect(result.participants).toEqual([]);
+    expect(result.genders).toEqual({});
     expect(result.location).toBe('');
     expect(result.capacity).toBeNull();
+  });
+
+  it('未知のフォント色でも参加者は抽出できる', () => {
+    const html = `
+      出席予定メンバー
+      <div>header</div>
+      <div><font color="#333333"><b>不明色さん</b></font></div>
+    `;
+    const result = parseEventDetail(html);
+    expect(result.participants).toEqual(['不明色さん']);
+    expect(result.genders).toEqual({});
   });
 });
 
@@ -273,32 +288,27 @@ describe('findNextPracticeDate', () => {
 
 describe('checkPlayerIssues', () => {
   const memberMap = new Map([
-    ['田中太郎', { rating: 1800, gender: 'M' as const }],
-    ['佐藤花子', { rating: 1500, gender: undefined }],
-    ['山田次郎', { rating: undefined, gender: 'M' as const }],
+    ['田中太郎', { ordering: 1, gender: 'M' as const }],
+    ['佐藤花子', { ordering: 2, gender: 'F' as const }],
+    ['山田次郎', { ordering: undefined, gender: 'M' as const }],
   ]);
 
-  it('全員情報があれば空配列', () => {
-    expect(checkPlayerIssues(['田中太郎'], memberMap)).toEqual([]);
+  it('全員序列があれば空配列', () => {
+    expect(checkPlayerIssues(['田中太郎', '佐藤花子'], memberMap)).toEqual([]);
   });
 
-  it('スプレッドシート未登録を検出', () => {
+  it('tmpシートに未登録の参加者を検出', () => {
     const issues = checkPlayerIssues(['未登録さん'], memberMap);
-    expect(issues).toEqual([{ name: '未登録さん', reason: 'スプレッドシート未登録' }]);
+    expect(issues).toEqual([{ name: '未登録さん', reason: '序列未設定' }]);
   });
 
-  it('レーティング未設定を検出', () => {
+  it('序列未設定を検出', () => {
     const issues = checkPlayerIssues(['山田次郎'], memberMap);
-    expect(issues).toEqual([{ name: '山田次郎', reason: 'レーティング未設定' }]);
-  });
-
-  it('性別未設定を検出', () => {
-    const issues = checkPlayerIssues(['佐藤花子'], memberMap);
-    expect(issues).toEqual([{ name: '佐藤花子', reason: '性別未設定' }]);
+    expect(issues).toEqual([{ name: '山田次郎', reason: '序列未設定' }]);
   });
 
   it('複数の問題を全て検出', () => {
-    const issues = checkPlayerIssues(['田中太郎', '未登録さん', '佐藤花子'], memberMap);
+    const issues = checkPlayerIssues(['田中太郎', '未登録さん', '山田次郎'], memberMap);
     expect(issues).toHaveLength(2);
   });
 });
@@ -344,9 +354,9 @@ describe('formatEventSummary', () => {
       eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
       startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
       participantCount: 0, capacity: null, waitlistCount: 0,
-      location: '', participants: ['A', 'B', 'C'],
+      location: '', participants: ['A', 'B', 'C'], genders: {},
     };
-    const date = new Date(2026, 3, 9); // 水曜日
+    const date = new Date(2026, 3, 9); // 木曜日
     const summary = formatEventSummary(event, date);
     expect(summary).toContain('4/9(木)');
     expect(summary).toContain('18:30〜21:30');
@@ -360,7 +370,7 @@ describe('formatEventSummary', () => {
       eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
       startTime: '18:30', endTime: '21:30', venue: '高松', note: '単',
       participantCount: 0, capacity: null, waitlistCount: 0,
-      location: '', participants: [],
+      location: '', participants: [], genders: {},
     };
     const summary = formatEventSummary(event, new Date(2026, 3, 9));
     expect(summary).toContain('単（シングルス）');
@@ -371,7 +381,7 @@ describe('formatEventSummary', () => {
       eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
       startTime: '18:30', endTime: '21:30', venue: 'ぴいす', note: '楽',
       participantCount: 0, capacity: null, waitlistCount: 0,
-      location: '', participants: [],
+      location: '', participants: [], genders: {},
     };
     const summary = formatEventSummary(event, new Date(2026, 3, 9));
     expect(summary).toContain('楽（楽ミント）');
@@ -379,16 +389,17 @@ describe('formatEventSummary', () => {
 });
 
 describe('buildSessionData', () => {
-  it('セッションデータを正しく構築する', () => {
+  it('セッションデータを正しく構築する（序列→rating変換）', () => {
     const event = {
       eventId: '123', title: 'test', dateMonth: 4, dateDay: 9,
       startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
       participantCount: 0, capacity: null, waitlistCount: 0,
       location: '', participants: ['田中太郎', '佐藤花子'],
+      genders: { '田中太郎': 'M' as const, '佐藤花子': 'F' as const },
     };
     const memberMap = new Map([
-      ['田中太郎', { rating: 1800, gender: 'M' as const }],
-      ['佐藤花子', { rating: 1500, gender: 'F' as const }],
+      ['田中太郎', { ordering: 1, gender: 'M' as const }],
+      ['佐藤花子', { ordering: 3, gender: 'F' as const }],
     ]);
     const date = new Date(2026, 3, 9);
 
@@ -399,8 +410,9 @@ describe('buildSessionData', () => {
     expect(data.etomoEventId).toBe('123');
     expect(data.gameState.players).toHaveLength(2);
     expect(data.gameState.players[0].name).toBe('田中太郎');
-    expect(data.gameState.players[0].rating).toBe(1800);
+    expect(data.gameState.players[0].rating).toBe(999); // 1000 - 1
     expect(data.gameState.players[0].gender).toBe('M');
+    expect(data.gameState.players[1].rating).toBe(997); // 1000 - 3
     expect(data.gameState.players[0].isResting).toBe(true);
     expect(data.gameState.settings.practiceType).toBe('複');
   });
@@ -410,22 +422,31 @@ describe('buildSessionData', () => {
       eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
       startTime: '18:30', endTime: '21:30', venue: '高松', note: '単',
       participantCount: 0, capacity: null, waitlistCount: 0,
-      location: '', participants: [],
+      location: '', participants: [], genders: {},
     };
     const data = buildSessionData(event, new Map(), new Date(2026, 3, 9));
     expect(data.config.gameMode).toBe('singles');
   });
 
-  it('スプレッドシートに無い参加者はrating/genderなし', () => {
+  it('序列未設定の参加者はrating無し、性別はE-tomoから取得', () => {
     const event = {
       eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
       startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
       participantCount: 0, capacity: null, waitlistCount: 0,
       location: '', participants: ['未登録さん'],
+      genders: { '未登録さん': 'F' as const },
     };
     const data = buildSessionData(event, new Map(), new Date(2026, 3, 9));
     expect(data.gameState.players[0].name).toBe('未登録さん');
     expect(data.gameState.players[0]).not.toHaveProperty('rating');
-    expect(data.gameState.players[0]).not.toHaveProperty('gender');
+    expect(data.gameState.players[0].gender).toBe('F');
+  });
+});
+
+describe('buildTmpSheetName', () => {
+  it('tmp_MMDD形式でシート名を生成', () => {
+    expect(buildTmpSheetName(new Date(2026, 3, 9))).toBe('tmp_0409');
+    expect(buildTmpSheetName(new Date(2026, 0, 1))).toBe('tmp_0101');
+    expect(buildTmpSheetName(new Date(2026, 11, 31))).toBe('tmp_1231');
   });
 });

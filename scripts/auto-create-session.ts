@@ -50,10 +50,11 @@ interface EtomoEvent {
 interface EtomoEventDetail extends EtomoEvent {
   location: string;
   participants: string[];
+  genders: Record<string, 'M' | 'F'>;
 }
 
 interface MemberData {
-  rating?: number;
+  ordering?: number;
   gender?: 'M' | 'F';
 }
 
@@ -66,7 +67,7 @@ interface PlayerIssue {
 // Phase A: E-tomoスクレイピング
 // ============================================================
 
-export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent };
+export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName };
 
 async function fetchEtomoPage(url: string): Promise<string | null> {
   try {
@@ -100,7 +101,6 @@ function parseEventTitle(title: string) {
   );
   if (!match) return null;
 
-  // 末尾の日付表記 "(4/12)" などを除去
   const venueNote = match[5].replace(/\(\d{1,2}\/\d{1,2}\)$/, '');
   const dotIndex = venueNote.lastIndexOf('.');
 
@@ -214,10 +214,20 @@ function buildEventDetailUrl(listUrl: string, eventId: string): string {
   return listUrl.replace('event_info.php', 'event_detail.php') + '&event_id=' + eventId;
 }
 
+const GENDER_COLOR_MAP: Record<string, 'M' | 'F'> = {
+  '#000080': 'M',
+  '#ff1493': 'F',
+};
+
 function parseEventDetail(
   html: string,
-): { location: string; participants: string[]; capacity: number | null } {
-  const result = { location: '', participants: [] as string[], capacity: null as number | null };
+): { location: string; participants: string[]; genders: Record<string, 'M' | 'F'>; capacity: number | null } {
+  const result = {
+    location: '',
+    participants: [] as string[],
+    genders: {} as Record<string, 'M' | 'F'>,
+    capacity: null as number | null,
+  };
 
   const locationMatch = html.match(/場所：([^<\n]+)/);
   if (locationMatch) {
@@ -229,17 +239,19 @@ function parseEventDetail(
     result.capacity = parseInt(capacityMatch[1]);
   }
 
-  // 出席予定メンバーセクションから名前を抽出
   const memberSection = html.split('出席予定メンバー');
   if (memberSection.length >= 2) {
-    console.log(`[DEBUG] memberSection: ${memberSection[1].substring(0, 1000)}`);
     const sectionHtml = memberSection[1].split('</div>')[1] || '';
-    const nameMatches = sectionHtml.match(/<b>([^<]+)<\/b>/g);
-    if (nameMatches) {
-      result.participants = nameMatches.map((m) => {
-        const name = m.replace(/<\/?b>/g, '');
-        return decodeHtmlEntities(name.trim());
-      });
+    const fontColorRegex = /<font\s+color="([^"]*)"[^>]*>\s*<b>([^<]+)<\/b>/g;
+    let match;
+    while ((match = fontColorRegex.exec(sectionHtml)) !== null) {
+      const color = match[1].toLowerCase();
+      const name = decodeHtmlEntities(match[2].trim());
+      result.participants.push(name);
+      const gender = GENDER_COLOR_MAP[color];
+      if (gender) {
+        result.genders[name] = gender;
+      }
     }
   }
 
@@ -282,10 +294,11 @@ async function fetchEventDetails(
         ...event,
         location: detail.location,
         participants: detail.participants,
+        genders: detail.genders,
       });
     } else {
       console.warn(`Failed to fetch detail for event ${event.eventId}`);
-      results.push({ ...event, location: '', participants: [] });
+      results.push({ ...event, location: '', participants: [], genders: {} });
     }
   }
 
@@ -293,48 +306,86 @@ async function fetchEventDetails(
 }
 
 // ============================================================
-// Phase C: スプレッドシートからメンバーデータ取得
+// Phase C: tmpシート経由で序列データを取得
 // ============================================================
 
-async function fetchMemberData(): Promise<Map<string, MemberData>> {
+function buildTmpSheetName(targetDate: Date): string {
+  const m = String(targetDate.getMonth() + 1).padStart(2, '0');
+  const d = String(targetDate.getDate()).padStart(2, '0');
+  return `tmp_${m}${d}`;
+}
+
+async function createTmpSheet(
+  sheetName: string,
+  events: EtomoEventDetail[],
+): Promise<string[]> {
   const url = process.env.GAS_WEB_APP_URL;
   if (!url) {
-    console.warn('GAS_WEB_APP_URL is not configured, skipping member data fetch');
+    console.warn('GAS_WEB_APP_URL is not configured, skipping tmp sheet creation');
+    return [];
+  }
+
+  const participants = events.flatMap((event) =>
+    event.participants.map((name) => ({
+      eventId: event.eventId,
+      name,
+      gender: event.genders[name] || '',
+    })),
+  );
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'createTmpSheet', sheet: sheetName, participants }),
+    signal: AbortSignal.timeout(30000),
+  });
+
+  // GAS Web Appはリダイレクトを返すことがある
+  const data = (await response.json()) as {
+    status: string;
+    created?: boolean;
+    missingOrdering?: string[];
+  };
+
+  if (data.status === 'error') {
+    throw new Error('GAS createTmpSheet returned error');
+  }
+
+  console.log(`Tmp sheet "${sheetName}": ${data.created ? 'created' : 'updated'}, missing: ${data.missingOrdering?.length ?? 0}`);
+  return data.missingOrdering ?? [];
+}
+
+async function readTmpSheet(
+  sheetName: string,
+): Promise<Map<string, MemberData>> {
+  const url = process.env.GAS_WEB_APP_URL;
+  if (!url) {
+    console.warn('GAS_WEB_APP_URL is not configured, skipping tmp sheet read');
     return new Map();
   }
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
-  if (!response.ok) {
-    throw new Error(`GAS fetch error: ${response.status}`);
-  }
+  const readUrl = `${url}?action=readTmpSheet&sheet=${encodeURIComponent(sheetName)}`;
+  const response = await fetch(readUrl, { signal: AbortSignal.timeout(30000) });
 
   const data = (await response.json()) as {
     status: string;
-    members?: { name: string; rating?: number; gender?: string }[];
+    participants?: { eventId: string; name: string; gender: string; ordering: number | null }[];
   };
 
-  if (data.status === 'error' || !data.members) {
-    throw new Error('GAS returned error or no members');
+  if (data.status === 'error' || !data.participants) {
+    throw new Error('GAS readTmpSheet returned error');
   }
 
   const memberMap = new Map<string, MemberData>();
-  for (const m of data.members) {
-    if (!m.name) continue;
-
-    let gender: 'M' | 'F' | undefined;
-    if (m.gender) {
-      const g = String(m.gender).toUpperCase();
-      if (g === 'M' || m.gender === '男') {
-        gender = 'M';
-      } else if (g === 'F' || m.gender === '女') {
-        gender = 'F';
-      }
-    }
-
-    memberMap.set(m.name, { rating: m.rating, gender });
+  for (const p of data.participants) {
+    if (!p.name) continue;
+    memberMap.set(p.name, {
+      ordering: p.ordering ?? undefined,
+      gender: p.gender === 'M' || p.gender === 'F' ? p.gender : undefined,
+    });
   }
 
-  console.log(`Fetched ${memberMap.size} members from Google Sheets`);
+  console.log(`Read ${memberMap.size} participants from tmp sheet "${sheetName}"`);
   return memberMap;
 }
 
@@ -358,12 +409,8 @@ function checkPlayerIssues(
   const issues: PlayerIssue[] = [];
   for (const name of participants) {
     const member = memberMap.get(name);
-    if (!member) {
-      issues.push({ name, reason: 'スプレッドシート未登録' });
-    } else if (member.rating == null) {
-      issues.push({ name, reason: 'レーティング未設定' });
-    } else if (!member.gender) {
-      issues.push({ name, reason: '性別未設定' });
+    if (!member || member.ordering == null) {
+      issues.push({ name, reason: '序列未設定' });
     }
   }
   return issues;
@@ -416,11 +463,14 @@ function buildSessionData(
 
   const players = event.participants.map((name) => {
     const member = memberMap.get(name);
+    const gender = event.genders[name] || member?.gender;
+    // ordering=1（最強）→ rating=999（buildInitialOrderが降順ソートするため）
+    const rating = member?.ordering != null ? 1000 - member.ordering : undefined;
     return {
       id: crypto.randomUUID(),
       name,
-      ...(member?.rating != null && { rating: member.rating }),
-      ...(member?.gender && { gender: member.gender }),
+      ...(rating != null && { rating }),
+      ...(gender && { gender }),
       isResting: true,
       gamesPlayed: 0,
       lastPlayedAt: 0,
@@ -445,6 +495,9 @@ function buildSessionData(
   };
 }
 
+// undefined値を除去（serverTimestamp()等のセンチネル値はsanitize対象外にする）
+const sanitize = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
+
 async function createFirestoreSession(
   db: ReturnType<typeof getFirestore>,
   event: EtomoEventDetail,
@@ -464,9 +517,6 @@ async function createFirestoreSession(
     }
 
     const sessionData = buildSessionData(event, memberMap, targetDate);
-
-    // sanitizeはundefined→除去だが、serverTimestamp()はFieldValueセンチネルなので除外して渡す
-    const sanitize = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
 
     await setDoc(docRef, {
       ...sanitize({ id: sessionId, ...sessionData }),
@@ -534,18 +584,19 @@ async function notifySessionPending(
   event: EtomoEventDetail,
   issues: PlayerIssue[],
   targetDate: Date,
+  tmpSheetName: string,
 ): Promise<void> {
   const summary = formatEventSummary(event, targetDate);
-  const issueLines = issues.map((i) => `  • ${i.name} — ${i.reason}`).join('\n');
+  const issueNames = issues.map((i) => `  • ${i.name}`).join('\n');
   const message = [
     '⚠️ **セッション作成保留（要確認）**',
     '━━━━━━━━━━━━━━━━━━',
     summary,
     '',
-    '❓ **不明な参加者:**',
-    issueLines,
+    '❓ **序列未設定:**',
+    issueNames,
     '',
-    '📝 スプレッドシートを修正後、GitHub Actionsを手動実行してください',
+    `📝 tmpシート「${tmpSheetName}」で序列を入力後、GitHub Actionsを手動実行してください`,
   ].join('\n');
 
   await sendDiscordMessage(message);
@@ -586,6 +637,7 @@ async function processEvents(
   memberMap: Map<string, MemberData>,
   targetDate: Date,
   forceCreate: boolean,
+  tmpSheetName: string,
 ) {
   const app = initializeApp({
     apiKey: requireEnv('VITE_FIREBASE_API_KEY'),
@@ -621,7 +673,7 @@ async function processEvents(
 
         if (!forceCreate) {
           console.log(`  -> Pending: ${issues.length} issue(s)`);
-          await notifySessionPending(event, issues, targetDate);
+          await notifySessionPending(event, issues, targetDate, tmpSheetName);
           continue;
         }
         console.log(`  -> Force creating with ${issues.length} issue(s)`);
@@ -685,25 +737,28 @@ async function main() {
     return;
   }
 
-  // Phase B + C: イベント詳細取得とスプレッドシート取得を並行実行
-  console.log('\n--- Phase B+C: イベント詳細 & メンバーデータ取得 ---');
-  const [eventsWithDetails, memberMap] = await Promise.all([
-    fetchEventDetails(targetEvents, etomoUrl),
-    fetchMemberData(),
-  ]);
+  // Phase B: イベント詳細取得（参加者名 + 性別）
+  console.log('\n--- Phase B: イベント詳細取得 ---');
+  const eventsWithDetails = await fetchEventDetails(targetEvents, etomoUrl);
 
   for (const event of eventsWithDetails) {
     console.log(`  ${event.title}: ${event.participants.length} participants`);
   }
 
+  // Phase C: tmpシート作成 → 序列データ読み取り
+  console.log('\n--- Phase C: tmpシート連携 ---');
+  const tmpSheetName = buildTmpSheetName(targetDate);
+  await createTmpSheet(tmpSheetName, eventsWithDetails);
+  const memberMap = await readTmpSheet(tmpSheetName);
+
   // Phase D: セッション作成
   console.log('\n--- Phase D: セッション作成 ---');
-  await processEvents(eventsWithDetails, memberMap, targetDate, forceCreate);
+  await processEvents(eventsWithDetails, memberMap, targetDate, forceCreate, tmpSheetName);
 
   console.log('\n=== Done ===');
 }
 
-// テスト時のモジュールインポートではmainを実行しない
+// esm直接実行時のみmainを起動
 const isDirectRun = process.argv[1]?.includes('auto-create-session') &&
   !process.argv[1]?.includes('.test.');
 
