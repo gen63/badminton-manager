@@ -96,11 +96,12 @@ function decodeHtmlEntities(str: string): string {
 
 function parseEventTitle(title: string) {
   const match = title.match(
-    /(\d{1,2})\/(\d{1,2})\([^)]+\)(\d{1,2}:\d{2})[〜~](\d{1,2}:\d{2})@(.+)/,
+    /(\d{1,2})\/(\d{1,2})\([^)]+\)(\d{1,2}:\d{2})[〜~～](\d{1,2}:\d{2})@(.+)/,
   );
   if (!match) return null;
 
-  const venueNote = match[5];
+  // 末尾の日付表記 "(4/12)" などを除去
+  const venueNote = match[5].replace(/\(\d{1,2}\/\d{1,2}\)$/, '');
   const dotIndex = venueNote.lastIndexOf('.');
 
   return {
@@ -647,23 +648,6 @@ async function main() {
   if (!listHtml) {
     throw new Error('E-tomoイベント一覧の取得に失敗しました');
   }
-
-  console.log(`HTML length: ${listHtml.length}`);
-  console.log(`Contains "user_event_list": ${listHtml.includes('user_event_list')}`);
-
-  // user_event_list周辺のHTMLを出力
-  const idx = listHtml.indexOf('user_event_list');
-  if (idx >= 0) {
-    console.log(`user_event_list context: ${JSON.stringify(listHtml.substring(idx - 50, idx + 300))}`);
-  }
-
-  // event_idの存在確認
-  const eventIdMatches = listHtml.match(/event_id=([^"&]+)/g);
-  console.log(`event_id matches: ${JSON.stringify(eventIdMatches?.slice(0, 5))}`);
-
-  // <b>タグの確認
-  const bTagMatches = listHtml.match(/<b>[^<]+<\/b>/g);
-  console.log(`<b> tag samples: ${JSON.stringify(bTagMatches?.slice(0, 5))}`);
 
   const allEvents = parseEventList(listHtml);
   console.log(`Total events found: ${allEvents.length}`);

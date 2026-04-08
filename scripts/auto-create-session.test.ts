@@ -50,6 +50,30 @@ describe('parseEventTitle', () => {
     });
   });
 
+  it('全角チルダ(～ U+FF5E)でも時間を分割できる', () => {
+    const result = parseEventTitle('4/12(日)16:00～19:00@高松.複');
+    expect(result).toEqual({
+      month: 4,
+      day: 12,
+      startTime: '16:00',
+      endTime: '19:00',
+      venue: '高松',
+      note: '複',
+    });
+  });
+
+  it('末尾の日付表記を除去する', () => {
+    const result = parseEventTitle('4/12(日)16:00～19:00@高松.複(4/12)');
+    expect(result).toEqual({
+      month: 4,
+      day: 12,
+      startTime: '16:00',
+      endTime: '19:00',
+      venue: '高松',
+      note: '複',
+    });
+  });
+
   it('パース不能なタイトルはnullを返す', () => {
     expect(parseEventTitle('イベント名のみ')).toBeNull();
     expect(parseEventTitle('')).toBeNull();
