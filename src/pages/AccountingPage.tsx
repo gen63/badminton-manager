@@ -273,8 +273,14 @@ export function AccountingPage() {
     // 免除(¥0)の支払いは exemptCount に含まれているため、
     // maleCount/femaleCount からの差し引きは有料支払者のみで行う
     const nonExemptPaidPlayers = paidPlayers.filter(p => (p.paymentAmount ?? 0) > 0);
-    const paidMaleCount = nonExemptPaidPlayers.filter(p => p.gender === 'M' || !p.gender).length;
-    const paidFemaleCount = nonExemptPaidPlayers.filter(p => p.gender === 'F').length;
+    // 性別不明プレイヤーは支払い金額で性別を推定（女性会費に近ければ女性扱い）
+    const inferGender = (p: { gender?: 'M' | 'F'; paymentAmount?: number }): 'M' | 'F' => {
+      if (p.gender === 'M' || p.gender === 'F') return p.gender;
+      const amount = p.paymentAmount ?? 0;
+      return Math.abs(amount - femaleFee) < Math.abs(amount - maleFee) ? 'F' : 'M';
+    };
+    const paidMaleCount = nonExemptPaidPlayers.filter(p => inferGender(p) === 'M').length;
+    const paidFemaleCount = nonExemptPaidPlayers.filter(p => inferGender(p) === 'F').length;
 
     // 未入力メンバーの推定
     const unpaidMaleCount = Math.max(0, maleCount - paidMaleCount);
@@ -364,11 +370,15 @@ export function AccountingPage() {
 
       if (hybridIncome.useHybrid) {
         // 支払い済み（免除以外）の実金額を集計
-        const paidPlayers = players.filter(p =>
-          p.operationStatus?.payment &&
-          (p.paymentAmount ?? 0) > 0 &&
-          (gender === 'M' ? (p.gender === 'M' || !p.gender) : p.gender === 'F')
-        );
+        const paidPlayers = players.filter(p => {
+          if (!p.operationStatus?.payment || (p.paymentAmount ?? 0) <= 0) return false;
+          if (p.gender === gender) return true;
+          if (p.gender === 'M' || p.gender === 'F') return false;
+          // 性別不明: 支払い金額で推定
+          const amount = p.paymentAmount ?? 0;
+          const inferred = Math.abs(amount - femaleFee) < Math.abs(amount - maleFee) ? 'F' : 'M';
+          return inferred === gender;
+        });
         paidPlayers.forEach(p => {
           const amount = p.paymentAmount ?? 0;
           amountMap.set(amount, (amountMap.get(amount) ?? 0) + 1);
