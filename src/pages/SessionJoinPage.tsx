@@ -213,8 +213,12 @@ export function SessionJoinPage() {
   const joinedNames = new Set(session?.participants || []);
   
   // 全ての選択可能なプレイヤー（既存 + 追加）※入室済みも含む
+  // registeredPlayersに既に含まれるadditionalPlayersを除外（リアルタイム同期で重複防止）
   const allRegisteredPlayers = session?.registeredPlayers || [];
-  const additionalPlayerNames = additionalPlayers.map((p) => p.name);
+  const registeredSet = new Set(allRegisteredPlayers);
+  const additionalPlayerNames = additionalPlayers
+    .filter((p) => !registeredSet.has(p.name))
+    .map((p) => p.name);
   const allSelectablePlayers = [...allRegisteredPlayers, ...additionalPlayerNames];
 
   return (

@@ -236,6 +236,7 @@ export async function joinSession(
       };
 
       // gameState.playersに未登録の場合、新規プレイヤーとして追加
+      // dot notationでplayersのみ更新し、courts/matchHistory等を上書きしない
       const gameState = data.gameState as GameState | undefined;
       if (gameState) {
         const playerExists = gameState.players.some((p) => p.name === playerName);
@@ -250,7 +251,7 @@ export async function joinSession(
             activatedAt: 0,
           };
           const newPlayers = [...gameState.players, newPlayer];
-          updates.gameState = sanitize({ ...gameState, players: newPlayers });
+          updates['gameState.players'] = sanitize(newPlayers);
           updates.registeredPlayers = newPlayers.map((p) => p.name);
         }
       }
