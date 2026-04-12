@@ -16,6 +16,7 @@ import { useRealtimeSession } from '../hooks/useRealtimeSession';
 import { useFirebaseSync } from '../hooks/useFirebaseSync';
 import { useAccountingStore } from '../stores/accountingStore';
 import { PaymentModal } from '../components/PaymentModal';
+import { ScoreInputModal } from '../components/ScoreInputModal';
 import { CourtTimer } from '../components/CourtTimer';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
@@ -34,7 +35,7 @@ export function MainPage() {
   const { players, toggleRest, updatePlayer, addPlayers, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();
-  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeDiversity } = useSettingsStore();
+  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeDiversity, recordScores } = useSettingsStore();
 
   const gameMode = session?.config.gameMode ?? 'doubles';
   const playersPerCourt = getPlayersPerCourt(gameMode);
@@ -58,6 +59,11 @@ export function MainPage() {
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
   const [showInformationModal, setShowInformationModal] = useState(false);
   const [informationText, setInformationText] = useState('');
+  const [pendingScoreMatch, setPendingScoreMatch] = useState<{
+    matchId: string;
+    teamA: [string, string];
+    teamB: [string, string];
+  } | null>(null);
 
   const playerCardRef = useRef<HTMLDivElement>(null);
 
@@ -863,6 +869,15 @@ export function MainPage() {
                               handleContinuousNext(court.id);
                             }
 
+                            // スコア記録ONなら結果入力モーダルを表示
+                            if (recordScores) {
+                              setPendingScoreMatch({
+                                matchId,
+                                teamA: currentCourt.teamA,
+                                teamB: currentCourt.teamB,
+                              });
+                            }
+
                             // オンラインモード: べき等Transaction実行
                             if (isOnline) {
                               try {
@@ -1211,6 +1226,26 @@ export function MainPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* スコア入力モーダル */}
+      {pendingScoreMatch && (
+        <ScoreInputModal
+          matchId={pendingScoreMatch.matchId}
+          teamA={pendingScoreMatch.teamA}
+          teamB={pendingScoreMatch.teamB}
+          targetScore={session?.config.targetScore || 21}
+          getPlayerName={(id) => players.find((p) => p.id === id)?.name || '未設定'}
+          onConfirm={(matchId, scoreA, scoreB, winner) => {
+            useGameStore.setState((state) => ({
+              matchHistory: state.matchHistory.map((m) =>
+                m.id === matchId ? { ...m, scoreA, scoreB, winner } : m
+              ),
+            }));
+            setPendingScoreMatch(null);
+          }}
+          onSkip={() => setPendingScoreMatch(null)}
+        />
       )}
 
       <BottomNav activeTab="court" />

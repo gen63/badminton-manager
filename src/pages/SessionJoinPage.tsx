@@ -27,8 +27,9 @@ export function SessionJoinPage() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [selectedName, setSelectedName] = useState('');
+  const [selectedGender, setSelectedGender] = useState<'M' | 'F' | undefined>(undefined);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
-  const [additionalPlayers, setAdditionalPlayers] = useState<string[]>([]);
+  const [additionalPlayers, setAdditionalPlayers] = useState<{ name: string; gender: 'M' | 'F' }[]>([]);
   const [loading, setLoading] = useState(!!sessionId);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(() => sessionId ? '' : 'セッションIDが指定されていません');
@@ -88,20 +89,21 @@ export function SessionJoinPage() {
   }, [sessionId]);
 
   // プレイヤー追加処理
-  const handleAddPlayer = (name: string) => {
+  const handleAddPlayer = (name: string, gender: 'M' | 'F') => {
     // 既存メンバーと重複チェック（入室済みかどうかに関係なく）
-    const allPlayers = [
+    const allNames = [
       ...(session?.registeredPlayers || []),
-      ...additionalPlayers
+      ...additionalPlayers.map((p) => p.name),
     ];
 
-    if (allPlayers.includes(name)) {
+    if (allNames.includes(name)) {
       setError('その名前は既に登録されています');
       return;
     }
 
-    setAdditionalPlayers([...additionalPlayers, name]);
+    setAdditionalPlayers([...additionalPlayers, { name, gender }]);
     setSelectedName(name); // 追加したメンバーを自動選択
+    setSelectedGender(gender);
     setShowAddPlayer(false);
     setError('');
   };
@@ -113,7 +115,7 @@ export function SessionJoinPage() {
     setError('');
 
     try {
-      const result = await joinSession(sessionId, selectedName, { force });
+      const result = await joinSession(sessionId, selectedName, { force, gender: selectedGender });
       
       // 既に参加している場合は確認ダイアログを表示
       if (result.isAlreadyJoined && !force) {
@@ -211,8 +213,13 @@ export function SessionJoinPage() {
   const joinedNames = new Set(session?.participants || []);
   
   // 全ての選択可能なプレイヤー（既存 + 追加）※入室済みも含む
+  // registeredPlayersに既に含まれるadditionalPlayersを除外（リアルタイム同期で重複防止）
   const allRegisteredPlayers = session?.registeredPlayers || [];
-  const allSelectablePlayers = [...allRegisteredPlayers, ...additionalPlayers];
+  const registeredSet = new Set(allRegisteredPlayers);
+  const additionalPlayerNames = additionalPlayers
+    .filter((p) => !registeredSet.has(p.name))
+    .map((p) => p.name);
+  const allSelectablePlayers = [...allRegisteredPlayers, ...additionalPlayerNames];
 
   return (
     <div className="min-h-screen bg-app p-4">
@@ -268,7 +275,12 @@ export function SessionJoinPage() {
                 return (
                   <button
                     key={name}
-                    onClick={() => setSelectedName(name)}
+                    onClick={() => {
+                      setSelectedName(name);
+                      // additionalPlayersから選択した場合は性別情報も設定
+                      const additional = additionalPlayers.find((p) => p.name === name);
+                      setSelectedGender(additional?.gender);
+                    }}
                     className={`relative select-button text-sm px-2 py-2 ${
                       selectedName === name
                         ? 'select-button-active'
@@ -304,7 +316,7 @@ export function SessionJoinPage() {
             {showAddPlayer && (
               <div className="mt-3 bg-muted/30 rounded-xl p-3">
                 <PlayerAddInput
-                  onAdd={(name) => handleAddPlayer(name)}
+                  onAdd={(name, gender) => handleAddPlayer(name, gender)}
                 />
               </div>
             )}
