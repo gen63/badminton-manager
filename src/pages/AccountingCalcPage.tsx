@@ -479,7 +479,19 @@ export function AccountingCalcPage() {
                   </button>
                 </div>
                 <span className="text-sm text-muted-foreground">×</span>
-                <span className="text-sm font-semibold">{maleCount}</span>
+                <input
+                  type="number"
+                  value={maleCount || ''}
+                  onChange={(e) => {
+                    const newValue = Math.max(0, parseInt(e.target.value) || 0);
+                    setMaleCount(newValue);
+                    saveAll({ maleCount: newValue });
+                  }}
+                  className="w-10 text-sm font-semibold bg-card rounded px-1 py-0.5 text-center"
+                  inputMode="numeric"
+                  min="0"
+                  placeholder="0"
+                />
               </div>
               <span className="text-lg font-bold text-blue-600">
                 {maleTotal.toLocaleString()}
@@ -523,7 +535,19 @@ export function AccountingCalcPage() {
                   </button>
                 </div>
                 <span className="text-sm text-muted-foreground">×</span>
-                <span className="text-sm font-semibold">{femaleCount}</span>
+                <input
+                  type="number"
+                  value={femaleCount || ''}
+                  onChange={(e) => {
+                    const newValue = Math.max(0, parseInt(e.target.value) || 0);
+                    setFemaleCount(newValue);
+                    saveAll({ femaleCount: newValue });
+                  }}
+                  className="w-10 text-sm font-semibold bg-card rounded px-1 py-0.5 text-center"
+                  inputMode="numeric"
+                  min="0"
+                  placeholder="0"
+                />
               </div>
               <span className="text-lg font-bold text-pink-600">
                 {femaleTotal.toLocaleString()}
@@ -535,7 +559,19 @@ export function AccountingCalcPage() {
                 <span className="text-sm text-muted-foreground">免除</span>
                 <span className="text-sm font-semibold">0</span>
                 <span className="text-sm text-muted-foreground">×</span>
-                <span className="text-sm font-semibold">{exemptCount}</span>
+                <input
+                  type="number"
+                  value={exemptCount || ''}
+                  onChange={(e) => {
+                    const newValue = Math.max(0, parseInt(e.target.value) || 0);
+                    setExemptCount(newValue);
+                    saveAll({ exemptCount: newValue });
+                  }}
+                  className="w-10 text-sm font-semibold bg-card rounded px-1 py-0.5 text-center"
+                  inputMode="numeric"
+                  min="0"
+                  placeholder="0"
+                />
               </div>
               <span className="text-lg font-bold text-muted-foreground">0</span>
             </div>
@@ -667,13 +703,24 @@ export function AccountingCalcPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-muted-foreground w-16">金額</span>
+                    <button
+                      onClick={() => {
+                        const newValue = -otherAmount;
+                        setOtherAmount(newValue);
+                        saveAll({ otherAmount: newValue });
+                      }}
+                      className="w-8 h-8 rounded-full bg-card text-muted-foreground hover:bg-muted active:scale-95 flex items-center justify-center font-bold text-xs border border-border"
+                    >
+                      ±
+                    </button>
                     <input
                       type="number"
-                      value={otherAmount || ''}
+                      value={Math.abs(otherAmount) || ''}
                       onChange={(e) => {
-                        const v = parseInt(e.target.value) || 0;
-                        setOtherAmount(v);
-                        saveAll({ otherAmount: v });
+                        const absValue = Math.abs(parseInt(e.target.value) || 0);
+                        const newValue = otherAmount < 0 ? -absValue : absValue;
+                        setOtherAmount(newValue);
+                        saveAll({ otherAmount: newValue });
                       }}
                       placeholder="0"
                       className="flex-1 text-sm font-semibold bg-card rounded px-2 py-1 text-right"
