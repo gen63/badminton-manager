@@ -10,7 +10,6 @@ import {
   getDoc,
   updateDoc,
   onSnapshot,
-  arrayUnion,
   serverTimestamp,
   runTransaction,
   deleteDoc,
@@ -196,11 +195,11 @@ export async function updateSession(
   localStorage.setItem(`firebase_session_${sessionId}`, JSON.stringify(updated));
 }
 
-/** セッションに参加者を追加 */
+/** セッションに参加者を追加（トランザクションでgameState.playersにも追加） */
 export async function joinSession(
   sessionId: string,
   playerName: string,
-  options?: { force?: boolean }
+  options?: { force?: boolean; gender?: 'M' | 'F' }
 ): Promise<{ isAlreadyJoined: boolean }> {
   if (!playerName.trim()) {
     throw new SessionError('参加者名を入力してください', 'invalid-name');
@@ -208,32 +207,57 @@ export async function joinSession(
 
   if (useFirestore) {
     const docRef = doc(db!, 'sessions', sessionId);
-    const docSnap = await getDoc(docRef);
-    if (!docSnap.exists()) {
-      throw new SessionError(`セッション ${sessionId} が見つかりません`, 'not-found');
-    }
-    const data = docSnap.data();
-    const participants = (data.participants as string[] | undefined) ?? [];
-    const isAlreadyJoined = participants.includes(playerName);
 
-    if (isAlreadyJoined && !options?.force) {
-      return { isAlreadyJoined: true };
-    }
+    return await runTransaction(db!, async (transaction) => {
+      const snap = await transaction.get(docRef);
+      if (!snap.exists()) {
+        throw new SessionError(`セッション ${sessionId} が見つかりません`, 'not-found');
+      }
 
-    // force=trueの場合、既存の参加を削除してから追加（追い出し）
-    if (isAlreadyJoined && options?.force) {
-      const newParticipants = participants.filter((name) => name !== playerName);
-      await updateDoc(docRef, {
-        participants: [...newParticipants, playerName],
-        updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
-      });
-    } else {
-      await updateDoc(docRef, {
-        participants: arrayUnion(playerName),
-        updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
-      });
-    }
-    return { isAlreadyJoined: false };
+      const data = snap.data();
+      const participants = (data.participants as string[] | undefined) ?? [];
+      const isAlreadyJoined = participants.includes(playerName);
+
+      if (isAlreadyJoined && !options?.force) {
+        return { isAlreadyJoined: true };
+      }
+
+      // participants配列を更新
+      let newParticipants: string[];
+      if (isAlreadyJoined && options?.force) {
+        newParticipants = [...participants.filter((name) => name !== playerName), playerName];
+      } else {
+        newParticipants = [...participants, playerName];
+      }
+
+      const updates: Record<string, unknown> = {
+        participants: newParticipants,
+        updatedAt: serverTimestamp(),
+      };
+
+      // gameState.playersに未登録の場合、新規プレイヤーとして追加
+      const gameState = data.gameState as GameState | undefined;
+      if (gameState) {
+        const playerExists = gameState.players.some((p) => p.name === playerName);
+        if (!playerExists) {
+          const newPlayer: Player = {
+            id: crypto.randomUUID(),
+            name: playerName,
+            gender: options?.gender,
+            isResting: true,
+            gamesPlayed: 0,
+            lastPlayedAt: 0,
+            activatedAt: 0,
+          };
+          const newPlayers = [...gameState.players, newPlayer];
+          updates.gameState = sanitize({ ...gameState, players: newPlayers });
+          updates.registeredPlayers = newPlayers.map((p) => p.name);
+        }
+      }
+
+      transaction.update(docRef, updates);
+      return { isAlreadyJoined: false };
+    });
   }
 
   // フォールバック: localStorage
