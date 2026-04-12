@@ -89,7 +89,7 @@ export function ScoreInputModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
-      <div className="bg-background rounded-t-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col animate-in slide-in-from-bottom duration-200">
+      <div className="bg-background rounded-t-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <h2 className="text-base font-bold text-foreground">試合結果を入力</h2>
