@@ -10,10 +10,12 @@ import { AccountingCalcPage } from './pages/AccountingCalcPage';
 import { ReservationPage } from './pages/ReservationPage';
 import { SessionJoinPage } from './pages/SessionJoinPage';
 import { PWAPrompt } from './components/PWAPrompt';
+import { FirebaseSyncProvider } from './contexts/FirebaseSyncContext';
 
 function App() {
   return (
     <BrowserRouter basename="/badminton-manager">
+      <FirebaseSyncProvider>
       <Routes>
         <Route path="/" element={<SessionCreate />} />
         <Route path="/session/create" element={<SessionCreate />} />
@@ -29,6 +31,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace state={{ showJoinMode: true }} />} />
       </Routes>
       <PWAPrompt />
+      </FirebaseSyncProvider>
     </BrowserRouter>
   );
 }
