@@ -13,7 +13,7 @@ import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useRealtimeSession } from '../hooks/useRealtimeSession';
-import { useFirebaseSync } from '../hooks/useFirebaseSync';
+import { useFirebaseSyncContext } from '../contexts/FirebaseSyncContext';
 import { useAccountingStore } from '../stores/accountingStore';
 import { PaymentModal } from '../components/PaymentModal';
 import { ScoreInputModal } from '../components/ScoreInputModal';
@@ -31,7 +31,7 @@ export function MainPage() {
   // オンラインモード時のリアルタイム同期
   const isSharedSession = !!session?.createdBy;
   useRealtimeSession(isSharedSession ? session?.id ?? null : null);
-  const { prepareDirectTransaction, completeDirectTransaction } = useFirebaseSync();
+  const { prepareDirectTransaction, completeDirectTransaction } = useFirebaseSyncContext();
   const { players, toggleRest, updatePlayer, addPlayers, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();
