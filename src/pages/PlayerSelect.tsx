@@ -184,16 +184,16 @@ export function PlayerSelect() {
       );
     }
 
-    const unpaidPlayers = sortedPlayers.filter(p => !p.operationStatus?.payment);
-    const paidPlayers = sortedPlayers.filter(p => p.operationStatus?.payment);
+    const incompletePlayers = sortedPlayers.filter(p => !p.operationStatus?.payment || !p.operationStatus?.roster);
+    const completePlayers = sortedPlayers.filter(p => p.operationStatus?.payment && p.operationStatus?.roster);
 
     return (
       <div className="space-y-2">
-        {/* 未払い参加者（常に表示） */}
-        {unpaidPlayers.map(renderPlayerCard)}
+        {/* 未完了の参加者（常に表示） */}
+        {incompletePlayers.map(renderPlayerCard)}
 
-        {/* 支払済み参加者（折りたたみ可能） */}
-        {paidPlayers.length > 0 && (
+        {/* タスク完了済み参加者（折りたたみ可能） */}
+        {completePlayers.length > 0 && (
           <>
             <button
               onClick={() => setPaidCollapsed(!paidCollapsed)}
@@ -203,10 +203,10 @@ export function PlayerSelect() {
                 color: '#065f46',
               }}
             >
-              <span>支払済み（{paidPlayers.length}人）</span>
+              <span>完了済み（{completePlayers.length}人）</span>
               {paidCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
             </button>
-            {!paidCollapsed && paidPlayers.map(renderPlayerCard)}
+            {!paidCollapsed && completePlayers.map(renderPlayerCard)}
           </>
         )}
       </div>
