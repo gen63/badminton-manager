@@ -6,11 +6,189 @@ import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { formatTime, copyToClipboard } from '../lib/utils';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
-import { Copy, Trash2, Edit3, Clock, Upload, Loader2, History } from 'lucide-react';
+import { Copy, Trash2, Edit3, Clock, Upload, Loader2, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
 import { BottomNav } from '../components/BottomNav';
+
+import type { Match } from '../types/match';
+
+function MatchCard({
+  match,
+  matchNumber,
+  getPlayerName,
+  handleEdit,
+  handleDelete,
+  recordScores,
+  isAdmin,
+}: {
+  match: Match;
+  matchNumber: number;
+  getPlayerName: (id: string) => string;
+  handleEdit: (id: string) => void;
+  handleDelete: (id: string) => void;
+  recordScores: boolean;
+  isAdmin: boolean;
+}) {
+  const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
+  const isNoScore = match.scoreA === 0 && match.scoreB === 0 && !match.winner;
+
+  const isTeamAWinner = match.winner === 'A';
+  const leftTeam = isTeamAWinner ? match.teamA : match.teamB;
+  const rightTeam = isTeamAWinner ? match.teamB : match.teamA;
+  const leftScore = isTeamAWinner ? match.scoreA : match.scoreB;
+  const rightScore = isTeamAWinner ? match.scoreB : match.scoreA;
+
+  const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
+  const leftNames = isMatchSingles ? getPlayerName(leftTeam[0]) : leftTeam.map(getPlayerName).join(' ');
+  const rightNames = isMatchSingles ? getPlayerName(rightTeam[0]) : rightTeam.map(getPlayerName).join(' ');
+
+  return (
+    <div
+      className={`rounded-lg p-2 border ${isNoScore ? 'bg-orange-50 border-orange-300' : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-100'}`}
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
+          {matchNumber}
+        </span>
+
+        <div className="flex-1 min-w-0 space-y-0.5">
+          <div className="flex items-center text-sm gap-1.5 leading-tight">
+            <span className="font-bold text-foreground truncate flex-1 min-w-0">
+              {leftNames}
+            </span>
+            <span className="text-muted-foreground font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
+            <span className="text-muted-foreground truncate flex-1 min-w-0">
+              {rightNames}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground leading-tight">
+            <span className="flex items-center gap-0.5 whitespace-nowrap">
+              <Clock size={11} />
+              {formatTime(match.finishedAt)}
+            </span>
+            <span className="whitespace-nowrap">({duration}分)</span>
+            {isNoScore ? (
+              <span className="text-xs font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full whitespace-nowrap">
+                未入力
+              </span>
+            ) : (
+              <span className="text-xs font-bold text-foreground bg-card px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
+                {leftScore} - {rightScore}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-0.5 flex-shrink-0">
+          {recordScores && (
+            <button
+              onClick={() => handleEdit(match.id)}
+              aria-label="編集"
+              className="p-1 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
+            >
+              <Edit3 size={13} />
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => handleDelete(match.id)}
+              aria-label="削除"
+              className="p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MatchList({
+  matchHistory,
+  getPlayerName,
+  handleEdit,
+  handleDelete,
+  recordScores,
+  isAdmin,
+  scoredCollapsed,
+  setScoredCollapsed,
+}: {
+  matchHistory: Match[];
+  getPlayerName: (id: string) => string;
+  handleEdit: (id: string) => void;
+  handleDelete: (id: string) => void;
+  recordScores: boolean;
+  isAdmin: boolean;
+  scoredCollapsed: boolean;
+  setScoredCollapsed: (v: boolean) => void;
+}) {
+  const reversedMatches = [...matchHistory].reverse();
+  const totalCount = matchHistory.length;
+
+  const unscoredMatches: { match: Match; matchNumber: number }[] = [];
+  const scoredMatches: { match: Match; matchNumber: number }[] = [];
+
+  reversedMatches.forEach((match, reverseIndex) => {
+    const matchNumber = totalCount - reverseIndex;
+    const isNoScore = match.scoreA === 0 && match.scoreB === 0 && !match.winner;
+    if (isNoScore) {
+      unscoredMatches.push({ match, matchNumber });
+    } else {
+      scoredMatches.push({ match, matchNumber });
+    }
+  });
+
+  return (
+    <div className="space-y-2">
+      {/* 未入力の試合（常に表示） */}
+      {unscoredMatches.map(({ match, matchNumber }) => (
+        <MatchCard
+          key={match.id}
+          match={match}
+          matchNumber={matchNumber}
+          getPlayerName={getPlayerName}
+          handleEdit={handleEdit}
+          handleDelete={handleDelete}
+          recordScores={recordScores}
+          isAdmin={isAdmin}
+        />
+      ))}
+
+      {/* 入力済みの試合（折りたたみ可能） */}
+      {scoredMatches.length > 0 && (
+        <>
+          <button
+            onClick={() => setScoredCollapsed(!scoredCollapsed)}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-colors"
+            style={{
+              backgroundColor: '#e0e7ff',
+              color: '#3730a3',
+            }}
+          >
+            <span>入力済み（{scoredMatches.length}件）</span>
+            {scoredCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+          </button>
+          {!scoredCollapsed && scoredMatches.map(({ match, matchNumber }) => (
+            <MatchCard
+              key={match.id}
+              match={match}
+              matchNumber={matchNumber}
+              getPlayerName={getPlayerName}
+              handleEdit={handleEdit}
+              handleDelete={handleDelete}
+              recordScores={recordScores}
+              isAdmin={isAdmin}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
 
 export function HistoryPage() {
   const navigate = useNavigate();
@@ -21,6 +199,7 @@ export function HistoryPage() {
   const { gasWebAppUrl, recordScores } = useSettingsStore();
   const toast = useToast();
   const [isUploading, setIsUploading] = useState(false);
+  const [scoredCollapsed, setScoredCollapsed] = useState(true);
 
   if (!session) {
     navigate('/');
@@ -120,92 +299,16 @@ export function HistoryPage() {
               description="メイン画面でゲームを開始すると、ここに履歴が表示されます。"
             />
           ) : (
-            <div className="space-y-2">
-              {[...matchHistory].reverse().map((match, reverseIndex) => {
-                const matchNumber = matchHistory.length - reverseIndex;
-                const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
-                const isNoScore = match.scoreA === 0 && match.scoreB === 0 && !match.winner;
-
-                // 勝ちペアを左に、スコアの高い方を左に
-                const isTeamAWinner = match.winner === 'A';
-                const leftTeam = isTeamAWinner ? match.teamA : match.teamB;
-                const rightTeam = isTeamAWinner ? match.teamB : match.teamA;
-                const leftScore = isTeamAWinner ? match.scoreA : match.scoreB;
-                const rightScore = isTeamAWinner ? match.scoreB : match.scoreA;
-
-                const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
-                const leftNames = isMatchSingles ? getPlayerName(leftTeam[0]) : leftTeam.map(getPlayerName).join(' ');
-                const rightNames = isMatchSingles ? getPlayerName(rightTeam[0]) : rightTeam.map(getPlayerName).join(' ');
-
-                return (
-                  <div
-                    key={match.id}
-                    className={`rounded-lg p-2 border ${isNoScore ? 'bg-orange-50 border-orange-300' : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-100'}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      {/* 試合番号 */}
-                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
-                        {matchNumber}
-                      </span>
-
-                      {/* メイン情報 */}
-                      <div className="flex-1 min-w-0 space-y-0.5">
-                        {/* 名前（横一列・改行なし） */}
-                        <div className="flex items-center text-sm gap-1.5 leading-tight">
-                          <span className="font-bold text-foreground truncate flex-1 min-w-0">
-                            {leftNames}
-                          </span>
-                          <span className="text-muted-foreground font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
-                          <span className="text-muted-foreground truncate flex-1 min-w-0">
-                            {rightNames}
-                          </span>
-                        </div>
-                        
-                        {/* 時間・スコア（横一列・改行なし） */}
-                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground leading-tight">
-                          <span className="flex items-center gap-0.5 whitespace-nowrap">
-                            <Clock size={11} />
-                            {formatTime(match.finishedAt)}
-                          </span>
-                          <span className="whitespace-nowrap">({duration}分)</span>
-                          {isNoScore ? (
-                            <span className="text-xs font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full whitespace-nowrap">
-                              未入力
-                            </span>
-                          ) : (
-                            <span className="text-xs font-bold text-foreground bg-card px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
-                              {leftScore} - {rightScore}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* 編集・削除ボタン（縦並び） */}
-                      <div className="flex flex-col gap-0.5 flex-shrink-0">
-                        {recordScores && (
-                          <button
-                            onClick={() => handleEdit(match.id)}
-                            aria-label="編集"
-                            className="p-1 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
-                          >
-                            <Edit3 size={13} />
-                          </button>
-                        )}
-                        {isAdmin && (
-                          <button
-                            onClick={() => handleDelete(match.id)}
-                            aria-label="削除"
-                            className="p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <MatchList
+              matchHistory={matchHistory}
+              getPlayerName={getPlayerName}
+              handleEdit={handleEdit}
+              handleDelete={handleDelete}
+              recordScores={recordScores}
+              isAdmin={isAdmin}
+              scoredCollapsed={scoredCollapsed}
+              setScoredCollapsed={setScoredCollapsed}
+            />
           )}
         </div>
       </div>
