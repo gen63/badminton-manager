@@ -59,9 +59,9 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       input.value = text;
       document.body.appendChild(input);
       input.select();
-      document.execCommand('copy');
+      const ok = document.execCommand('copy');
       document.body.removeChild(input);
-      return true;
+      return ok;
     } catch {
       return false;
     }

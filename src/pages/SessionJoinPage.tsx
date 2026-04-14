@@ -13,7 +13,8 @@ import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
-import { Loader2, Plus, Copy, Check } from 'lucide-react';
+import { Loader2, Plus, Copy, Check, Link, ChevronDown } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 
 export function SessionJoinPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -24,6 +25,13 @@ export function SessionJoinPage() {
                 (navigator as Navigator & { standalone?: boolean }).standalone;
   
   const [clipboardCopied, setClipboardCopied] = useState(false);
+  const [idCopied, setIdCopied] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
+  const [showQR, setShowQR] = useState(false);
+
+  const sessionUrl = sessionId
+    ? `${window.location.origin}/badminton-manager/session/${sessionId}`
+    : '';
 
   const [session, setSession] = useState<Session | null>(null);
   const [selectedName, setSelectedName] = useState('');
@@ -48,15 +56,31 @@ export function SessionJoinPage() {
     if (!sessionId || isPWA) return;
 
     copyToClipboard(sessionId).then((ok) => {
-      if (ok) setClipboardCopied(true);
+      if (ok) {
+        setClipboardCopied(true);
+        setTimeout(() => setClipboardCopied(false), 3000);
+      }
     });
   }, [sessionId, isPWA]);
 
   const handleManualCopy = async () => {
     if (!sessionId) return;
-    await copyToClipboard(sessionId);
-    setClipboardCopied(true);
-    setTimeout(() => setClipboardCopied(false), 2000);
+    const ok = await copyToClipboard(sessionId);
+    if (ok) {
+      setClipboardCopied(true);
+      setIdCopied(true);
+      setTimeout(() => setClipboardCopied(false), 2000);
+      setTimeout(() => setIdCopied(false), 1000);
+    }
+  };
+
+  const handleCopyUrl = async () => {
+    if (!sessionUrl) return;
+    const ok = await copyToClipboard(sessionUrl);
+    if (ok) {
+      setUrlCopied(true);
+      setTimeout(() => setUrlCopied(false), 1000);
+    }
   };
 
   useEffect(() => {
@@ -239,18 +263,12 @@ export function SessionJoinPage() {
                   ホーム画面の「バドミントン」アプリを開くと、自動的にこのセッションに参加できます。
                 </p>
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="flex-1 bg-white/60 rounded px-2 py-1 text-center">
+                  <button
+                    onClick={handleManualCopy}
+                    className="flex-1 bg-white/60 hover:bg-white/80 rounded px-2 py-1 text-center transition-colors active:scale-95"
+                  >
                     <span className="text-lg font-bold text-amber-900 tracking-wider">{sessionId}</span>
-                  </div>
-                  {!clipboardCopied && (
-                    <button
-                      onClick={handleManualCopy}
-                      className="bg-amber-500 hover:bg-amber-600 text-white rounded px-3 py-1 text-xs font-medium flex items-center gap-1"
-                    >
-                      <Copy size={14} />
-                      コピー
-                    </button>
-                  )}
+                  </button>
                 </div>
               </div>
             </div>
@@ -260,7 +278,24 @@ export function SessionJoinPage() {
         {/* ヘッダー */}
         <div className="text-center">
           <h1 className="text-xl font-bold text-foreground mb-1">参加者入室</h1>
-          <p className="text-xs text-muted-foreground">セッションID: {sessionId}</p>
+          <p
+            onClick={handleManualCopy}
+            className="text-xs text-muted-foreground mb-2 cursor-pointer active:opacity-60"
+          >
+            {idCopied
+              ? <span className="text-green-600">セッションIDをコピーしました</span>
+              : <>セッションID: <span className="font-medium">{sessionId}</span></>
+            }
+          </p>
+          {sessionId && (
+            <button
+              onClick={handleCopyUrl}
+              className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+            >
+              {urlCopied ? <Check size={14} className="text-green-500" /> : <Link size={14} />}
+              {urlCopied ? 'URLをコピーしました' : 'セッションURLをコピー'}
+            </button>
+          )}
         </div>
 
         {/* 名前選択 */}
@@ -333,6 +368,39 @@ export function SessionJoinPage() {
             {joining ? '入室中...' : '入室する'}
           </button>
         </div>
+
+        {/* QRコード（アコーディオン） */}
+        {sessionId && (
+          <div className="card overflow-hidden">
+            <button
+              onClick={() => setShowQR(!showQR)}
+              className="w-full flex items-center justify-between p-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <span>他の参加者に共有（QRコード）</span>
+              <ChevronDown
+                size={16}
+                className={`transition-transform duration-200 ${showQR ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {showQR && (
+              <div className="px-4 pb-4">
+                <div className="flex justify-center">
+                  <div className="bg-white p-3 rounded-xl shadow-sm border border-border">
+                    <QRCodeSVG
+                      value={sessionUrl}
+                      size={180}
+                      level="M"
+                      includeMargin={false}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  このQRコードを読み取ると参加できます
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 既に参加している場合の確認ダイアログ */}
         {showForceConfirm && (
