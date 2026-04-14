@@ -463,6 +463,17 @@ export function SessionCreate() {
                 maxLength={6}
                 className="input-field text-center text-2xl font-bold tracking-wider uppercase"
                 style={{ imeMode: 'disabled' }}
+                onFocus={async () => {
+                  if (joinSessionId) return;
+                  try {
+                    const text = (await navigator.clipboard.readText()).trim().toUpperCase();
+                    if (/^[A-Z0-9]{6}$/.test(text)) {
+                      setJoinSessionId(text);
+                    }
+                  } catch {
+                    // クリップボード読み取り権限がない場合は無視
+                  }
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleJoinSession();
                 }}
