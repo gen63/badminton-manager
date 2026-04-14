@@ -13,7 +13,7 @@ import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
-import { Loader2, Plus, Copy, Check } from 'lucide-react';
+import { Loader2, Plus, Copy, Check, Link } from 'lucide-react';
 
 export function SessionJoinPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -24,6 +24,11 @@ export function SessionJoinPage() {
                 (navigator as Navigator & { standalone?: boolean }).standalone;
   
   const [clipboardCopied, setClipboardCopied] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
+
+  const sessionUrl = sessionId
+    ? `${window.location.origin}/badminton-manager/session/${sessionId}`
+    : '';
 
   const [session, setSession] = useState<Session | null>(null);
   const [selectedName, setSelectedName] = useState('');
@@ -61,6 +66,15 @@ export function SessionJoinPage() {
     if (ok) {
       setClipboardCopied(true);
       setTimeout(() => setClipboardCopied(false), 2000);
+    }
+  };
+
+  const handleCopyUrl = async () => {
+    if (!sessionUrl) return;
+    const ok = await copyToClipboard(sessionUrl);
+    if (ok) {
+      setUrlCopied(true);
+      setTimeout(() => setUrlCopied(false), 2000);
     }
   };
 
@@ -265,7 +279,16 @@ export function SessionJoinPage() {
         {/* ヘッダー */}
         <div className="text-center">
           <h1 className="text-xl font-bold text-foreground mb-1">参加者入室</h1>
-          <p className="text-xs text-muted-foreground">セッションID: {sessionId}</p>
+          <p className="text-xs text-muted-foreground mb-2">セッションID: {sessionId}</p>
+          {sessionId && (
+            <button
+              onClick={handleCopyUrl}
+              className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+            >
+              {urlCopied ? <Check size={14} className="text-green-500" /> : <Link size={14} />}
+              {urlCopied ? 'URLをコピーしました' : 'セッションURLをコピー'}
+            </button>
+          )}
         </div>
 
         {/* 名前選択 */}
