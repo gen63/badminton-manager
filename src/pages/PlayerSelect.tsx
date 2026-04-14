@@ -7,7 +7,7 @@ import { buildInitialOrder, applyStreakSwaps } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
-import { Trash2, Pencil, UserPlus, Users, ArrowRight } from 'lucide-react';
+import { Trash2, Pencil, UserPlus, Users, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { useSessionStore } from '../stores/sessionStore';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
@@ -24,6 +24,7 @@ export function PlayerSelect() {
   const toast = useToast();
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
   const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F' } | null>(null);
+  const [paidCollapsed, setPaidCollapsed] = useState(true);
   const accountingStore = useAccountingStore();
   const maleFee = accountingStore.lastInput?.maleFee || 800;
   const femaleFee = accountingStore.lastInput?.femaleFee || 600;
@@ -113,9 +114,65 @@ export function PlayerSelect() {
     setPaymentModalPlayer(null);
   };
 
-  const renderPlayerList = () => (
-    <>
-      {players.length === 0 ? (
+  const renderPlayerCard = (player: typeof sortedPlayers[number]) => {
+    const hasHistory = playersInHistory.has(player.id);
+    const status = player.operationStatus || { payment: false, roster: false, checkin: false };
+    return (
+      <div
+        key={player.id}
+        className="bg-card border border-border rounded-xl px-3 py-2 flex items-center gap-2 shadow-sm"
+      >
+        {/* 名前 (40%) */}
+        <div className="flex-[2] flex items-center gap-2">
+          <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
+          {(isTabMode ? isAdmin : true) && (
+            <button
+              onClick={() => handleEdit(player)}
+              aria-label={`${player.name}を編集`}
+              className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
+            >
+              <Pencil className="w-3 h-3" />
+            </button>
+          )}
+          {!hasHistory && (isTabMode ? isAdmin : true) && (
+            <button
+              onClick={() => handleDelete(player)}
+              aria-label={`${player.name}を削除`}
+              className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        {/* チェックボックス (各20%) */}
+        <button
+          onClick={() => handlePaymentClick(player.id)}
+          className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1"
+          style={{
+            backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
+            color: status.payment ? '#ffffff' : '#6b7280',
+          }}
+        >
+          {status.payment ? '✓' : ''}支払
+        </button>
+        <button
+          onClick={() => toggleOperationStatus(player.id, 'roster')}
+          className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1"
+          style={{
+            backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
+            color: status.roster ? '#ffffff' : '#6b7280',
+          }}
+        >
+          {status.roster ? '✓' : ''}名簿
+        </button>
+      </div>
+    );
+  };
+
+  const renderPlayerList = () => {
+    if (players.length === 0) {
+      return (
         <div className="text-center py-10">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-muted mb-3">
             <Users size={24} className="text-muted-foreground" />
@@ -124,67 +181,37 @@ export function PlayerSelect() {
             まだ参加者が登録されていません
           </p>
         </div>
-      ) : (
-        <div className="space-y-2">
-          {sortedPlayers.map((player) => {
-            const hasHistory = playersInHistory.has(player.id);
-            const status = player.operationStatus || { payment: false, roster: false, checkin: false };
-            return (
-              <div
-                key={player.id}
-                className="bg-card border border-border rounded-xl px-3 py-2 flex items-center gap-2 shadow-sm"
-              >
-                {/* 名前 (40%) */}
-                <div className="flex-[2] flex items-center gap-2">
-                  <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
-                  {(isTabMode ? isAdmin : true) && (
-                    <button
-                      onClick={() => handleEdit(player)}
-                      aria-label={`${player.name}を編集`}
-                      className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
-                    >
-                      <Pencil className="w-3 h-3" />
-                    </button>
-                  )}
-                  {!hasHistory && (isTabMode ? isAdmin : true) && (
-                    <button
-                      onClick={() => handleDelete(player)}
-                      aria-label={`${player.name}を削除`}
-                      className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-                
-                {/* チェックボックス (各20%) */}
-                <button
-                  onClick={() => handlePaymentClick(player.id)}
-                  className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1"
-                  style={{
-                    backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
-                    color: status.payment ? '#ffffff' : '#6b7280',
-                  }}
-                >
-                  {status.payment ? '✓' : ''}支払
-                </button>
-                <button
-                  onClick={() => toggleOperationStatus(player.id, 'roster')}
-                  className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1"
-                  style={{
-                    backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
-                    color: status.roster ? '#ffffff' : '#6b7280',
-                  }}
-                >
-                  {status.roster ? '✓' : ''}名簿
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </>
-  );
+      );
+    }
+
+    const unpaidPlayers = sortedPlayers.filter(p => !p.operationStatus?.payment);
+    const paidPlayers = sortedPlayers.filter(p => p.operationStatus?.payment);
+
+    return (
+      <div className="space-y-2">
+        {/* 未払い参加者（常に表示） */}
+        {unpaidPlayers.map(renderPlayerCard)}
+
+        {/* 支払済み参加者（折りたたみ可能） */}
+        {paidPlayers.length > 0 && (
+          <>
+            <button
+              onClick={() => setPaidCollapsed(!paidCollapsed)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-colors"
+              style={{
+                backgroundColor: '#d1fae5',
+                color: '#065f46',
+              }}
+            >
+              <span>支払済み（{paidPlayers.length}人）</span>
+              {paidCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+            </button>
+            {!paidCollapsed && paidPlayers.map(renderPlayerCard)}
+          </>
+        )}
+      </div>
+    );
+  };
 
   // タブモード: 他ページと統一されたレイアウト
   if (isTabMode) {
