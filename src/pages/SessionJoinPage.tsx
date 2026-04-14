@@ -13,7 +13,8 @@ import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
-import { Loader2, Plus, Copy, Check, Link } from 'lucide-react';
+import { Loader2, Plus, Copy, Check, Link, ChevronDown } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 
 export function SessionJoinPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -25,6 +26,7 @@ export function SessionJoinPage() {
   
   const [clipboardCopied, setClipboardCopied] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
+  const [showQR, setShowQR] = useState(false);
 
   const sessionUrl = sessionId
     ? `${window.location.origin}/badminton-manager/session/${sessionId}`
@@ -361,6 +363,39 @@ export function SessionJoinPage() {
             {joining ? '入室中...' : '入室する'}
           </button>
         </div>
+
+        {/* QRコード（アコーディオン） */}
+        {sessionId && (
+          <div className="card overflow-hidden">
+            <button
+              onClick={() => setShowQR(!showQR)}
+              className="w-full flex items-center justify-between p-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <span>他の参加者に共有（QRコード）</span>
+              <ChevronDown
+                size={16}
+                className={`transition-transform duration-200 ${showQR ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {showQR && (
+              <div className="px-4 pb-4">
+                <div className="flex justify-center">
+                  <div className="bg-white p-3 rounded-xl shadow-sm border border-border">
+                    <QRCodeSVG
+                      value={sessionUrl}
+                      size={180}
+                      level="M"
+                      includeMargin={false}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  このQRコードを読み取ると参加できます
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 既に参加している場合の確認ダイアログ */}
         {showForceConfirm && (
