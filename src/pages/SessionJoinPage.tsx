@@ -48,15 +48,20 @@ export function SessionJoinPage() {
     if (!sessionId || isPWA) return;
 
     copyToClipboard(sessionId).then((ok) => {
-      if (ok) setClipboardCopied(true);
+      if (ok) {
+        setClipboardCopied(true);
+        setTimeout(() => setClipboardCopied(false), 3000);
+      }
     });
   }, [sessionId, isPWA]);
 
   const handleManualCopy = async () => {
     if (!sessionId) return;
-    await copyToClipboard(sessionId);
-    setClipboardCopied(true);
-    setTimeout(() => setClipboardCopied(false), 2000);
+    const ok = await copyToClipboard(sessionId);
+    if (ok) {
+      setClipboardCopied(true);
+      setTimeout(() => setClipboardCopied(false), 2000);
+    }
   };
 
   useEffect(() => {
