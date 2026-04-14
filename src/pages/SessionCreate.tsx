@@ -89,7 +89,6 @@ export function SessionCreate() {
     !!(location.state as { showJoinMode?: boolean })?.showJoinMode
   );
   const [joinSessionId, setJoinSessionId] = useState('');
-  const [clipboardDetected, setClipboardDetected] = useState<string | null>(null);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [allRated, setAllRated] = useState(false);
@@ -105,24 +104,6 @@ export function SessionCreate() {
       window.history.replaceState({}, '');
     }
   }, [location.state]);
-
-  // クリップボード自動検出（Phase 1）
-  useEffect(() => {
-    const detectClipboard = async () => {
-      try {
-        const text = await navigator.clipboard.readText();
-        if (text && /^[A-Z0-9]{6}$/.test(text.trim())) {
-          setClipboardDetected(text.trim());
-        }
-      } catch {
-        // クリップボード読み取り権限がない場合は無視
-      }
-    };
-    
-    if (showJoinMode) {
-      detectClipboard();
-    }
-  }, [showJoinMode]);
 
   const handleJoinSession = () => {
     const id = joinSessionId.trim().toUpperCase();
@@ -432,21 +413,6 @@ export function SessionCreate() {
               <p className="text-sm text-muted-foreground">6文字のセッションIDを入力してください</p>
             </div>
 
-            {/* クリップボード検出 */}
-            {clipboardDetected && (
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-xs text-blue-800 mb-2">
-                  クリップボードにセッションIDがあります
-                </p>
-                <button
-                  onClick={() => navigate(`/session/${clipboardDetected}`)}
-                  className="text-sm text-blue-600 font-medium underline"
-                >
-                  {clipboardDetected} を使用
-                </button>
-              </div>
-            )}
-
             {/* セッションID入力 */}
             <div className="mb-4">
               <label className="label">セッションID</label>
@@ -486,7 +452,6 @@ export function SessionCreate() {
                 onClick={() => {
                   setShowJoinMode(false);
                   setJoinSessionId('');
-                  setClipboardDetected(null);
                 }}
                 className="btn-secondary flex-1"
               >
