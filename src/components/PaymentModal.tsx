@@ -56,7 +56,6 @@ export function PaymentModal({ playerName, defaultAmount, onConfirm, onCancel }:
               onChange={(e) => setAmount(e.target.value)}
               className="input-field pl-8 text-lg font-medium text-right"
               placeholder="0"
-              autoFocus
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleConfirm();
               }}
