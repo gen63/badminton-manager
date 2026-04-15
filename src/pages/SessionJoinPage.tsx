@@ -245,6 +245,10 @@ export function SessionJoinPage() {
     .filter((p) => !registeredSet.has(p.name))
     .map((p) => p.name);
   const allSelectablePlayers = [...allRegisteredPlayers, ...additionalPlayerNames];
+  const notJoinedPlayers = allSelectablePlayers.filter((name) => !joinedNames.has(name));
+  const joinedPlayers = allSelectablePlayers.filter((name) => joinedNames.has(name));
+  // 選択中の名前が入室済みリストにある場合はアコーディオンを自動展開
+  const isJoinedExpanded = showJoinedMembers || (!!selectedName && joinedNames.has(selectedName));
 
   return (
     <div className="min-h-screen bg-app p-4">
@@ -306,9 +310,9 @@ export function SessionJoinPage() {
           <label className="label">あなたの名前</label>
 
           {/* 未入室プレイヤーから選択 */}
-          {allSelectablePlayers.filter((name) => !joinedNames.has(name)).length > 0 && (
+          {notJoinedPlayers.length > 0 && (
             <div className="grid grid-cols-3 gap-2 mb-3">
-              {allSelectablePlayers.filter((name) => !joinedNames.has(name)).map((name) => (
+              {notJoinedPlayers.map((name) => (
                 <button
                   key={name}
                   onClick={() => {
@@ -330,21 +334,21 @@ export function SessionJoinPage() {
           )}
 
           {/* 入室済みメンバー（アコーディオン） */}
-          {allSelectablePlayers.filter((name) => joinedNames.has(name)).length > 0 && (
+          {joinedPlayers.length > 0 && (
             <div className="mb-3">
               <button
-                onClick={() => setShowJoinedMembers(!showJoinedMembers)}
+                onClick={() => setShowJoinedMembers(!isJoinedExpanded)}
                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-2"
               >
                 <ChevronDown
                   size={14}
-                  className={`transition-transform duration-200 ${showJoinedMembers ? 'rotate-180' : ''}`}
+                  className={`transition-transform duration-200 ${isJoinedExpanded ? 'rotate-180' : ''}`}
                 />
-                入室済み（{allSelectablePlayers.filter((name) => joinedNames.has(name)).length}名）
+                入室済み（{joinedPlayers.length}名）
               </button>
-              {showJoinedMembers && (
+              {isJoinedExpanded && (
                 <div className="grid grid-cols-3 gap-2">
-                  {allSelectablePlayers.filter((name) => joinedNames.has(name)).map((name) => (
+                  {joinedPlayers.map((name) => (
                     <button
                       key={name}
                       onClick={() => {
