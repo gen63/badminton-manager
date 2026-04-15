@@ -42,6 +42,7 @@ export function SessionJoinPage() {
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(() => sessionId ? '' : 'セッションIDが指定されていません');
   const [showForceConfirm, setShowForceConfirm] = useState(false);
+  const [showJoinedMembers, setShowJoinedMembers] = useState(false);
 
   const initializeSession = useSessionStore((state) => state.initialize);
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
@@ -244,11 +245,40 @@ export function SessionJoinPage() {
     .filter((p) => !registeredSet.has(p.name))
     .map((p) => p.name);
   const allSelectablePlayers = [...allRegisteredPlayers, ...additionalPlayerNames];
+  const notJoinedPlayers = allSelectablePlayers.filter((name) => !joinedNames.has(name));
+  const joinedPlayers = allSelectablePlayers.filter((name) => joinedNames.has(name));
+  // 選択中の名前が入室済みリストにある場合はアコーディオンを自動展開
+  const isJoinedExpanded = showJoinedMembers || (!!selectedName && joinedNames.has(selectedName));
 
   return (
     <div className="min-h-screen bg-app p-4">
       <div className="max-w-md mx-auto space-y-4">
-        {/* Safari検出バナー（非PWA時のみ） */}
+        {/* ヘッダー */}
+        <div className="text-center">
+          <h1 className="text-xl font-bold text-foreground mb-1">参加者入室</h1>
+          {isPWA && (
+            <p
+              onClick={handleManualCopy}
+              className="text-xs text-muted-foreground mb-2 cursor-pointer active:opacity-60"
+            >
+              {idCopied
+                ? <span className="text-green-600">セッションIDをコピーしました</span>
+                : <>セッションID: <span className="font-medium">{sessionId}</span></>
+              }
+            </p>
+          )}
+          {sessionId && (
+            <button
+              onClick={handleCopyUrl}
+              className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+            >
+              {urlCopied ? <Check size={14} className="text-green-500" /> : <Link size={14} />}
+              {urlCopied ? 'URLをコピーしました' : 'セッションURLをコピー'}
+            </button>
+          )}
+        </div>
+
+        {/* PWA案内バナー（非PWA時のみ） */}
         {!isPWA && sessionId && (
           <div className="card p-4 bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300">
             <div className="flex items-start gap-3">
@@ -275,65 +305,72 @@ export function SessionJoinPage() {
           </div>
         )}
 
-        {/* ヘッダー */}
-        <div className="text-center">
-          <h1 className="text-xl font-bold text-foreground mb-1">参加者入室</h1>
-          <p
-            onClick={handleManualCopy}
-            className="text-xs text-muted-foreground mb-2 cursor-pointer active:opacity-60"
-          >
-            {idCopied
-              ? <span className="text-green-600">セッションIDをコピーしました</span>
-              : <>セッションID: <span className="font-medium">{sessionId}</span></>
-            }
-          </p>
-          {sessionId && (
-            <button
-              onClick={handleCopyUrl}
-              className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
-            >
-              {urlCopied ? <Check size={14} className="text-green-500" /> : <Link size={14} />}
-              {urlCopied ? 'URLをコピーしました' : 'セッションURLをコピー'}
-            </button>
-          )}
-        </div>
-
         {/* 名前選択 */}
         <div className="card p-4">
           <label className="label">あなたの名前</label>
 
-          {/* 登録済みプレイヤー + 追加プレイヤーから選択 */}
-          {allSelectablePlayers.length > 0 && (
+          {/* 未入室プレイヤーから選択 */}
+          {notJoinedPlayers.length > 0 && (
             <div className="grid grid-cols-3 gap-2 mb-3">
-              {allSelectablePlayers.map((name) => {
-                const isJoined = joinedNames.has(name);
-                return (
-                  <button
-                    key={name}
-                    onClick={() => {
-                      setSelectedName(name);
-                      // additionalPlayersから選択した場合は性別情報も設定
-                      const additional = additionalPlayers.find((p) => p.name === name);
-                      setSelectedGender(additional?.gender);
-                    }}
-                    className={`relative select-button text-sm px-2 py-2 ${
-                      selectedName === name
-                        ? 'select-button-active'
-                        : isJoined
-                        ? 'bg-muted/50 text-muted-foreground border border-border opacity-60'
-                        : 'select-button-inactive'
-                    }`}
-                  >
-                    {selectedName === name && <span className="mr-1">✓</span>}
-                    {name}
-                    {isJoined && (
+              {notJoinedPlayers.map((name) => (
+                <button
+                  key={name}
+                  onClick={() => {
+                    setSelectedName(name);
+                    const additional = additionalPlayers.find((p) => p.name === name);
+                    setSelectedGender(additional?.gender);
+                  }}
+                  className={`relative select-button text-sm px-2 py-2 ${
+                    selectedName === name
+                      ? 'select-button-active'
+                      : 'select-button-inactive'
+                  }`}
+                >
+                  {selectedName === name && <span className="mr-1">✓</span>}
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* 入室済みメンバー（アコーディオン） */}
+          {joinedPlayers.length > 0 && (
+            <div className="mb-3">
+              <button
+                onClick={() => setShowJoinedMembers(!isJoinedExpanded)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-2"
+              >
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${isJoinedExpanded ? 'rotate-180' : ''}`}
+                />
+                入室済み（{joinedPlayers.length}名）
+              </button>
+              {isJoinedExpanded && (
+                <div className="grid grid-cols-3 gap-2">
+                  {joinedPlayers.map((name) => (
+                    <button
+                      key={name}
+                      onClick={() => {
+                        setSelectedName(name);
+                        const additional = additionalPlayers.find((p) => p.name === name);
+                        setSelectedGender(additional?.gender);
+                      }}
+                      className={`relative select-button text-sm px-2 py-2 ${
+                        selectedName === name
+                          ? 'select-button-active'
+                          : 'bg-muted/50 text-muted-foreground border border-border opacity-60'
+                      }`}
+                    >
+                      {selectedName === name && <span className="mr-1">✓</span>}
+                      {name}
                       <span className="absolute -top-1 -right-1 bg-green-500 text-white text-[9px] px-1 py-0.5 rounded-full leading-none">
                         入室済み
                       </span>
-                    )}
-                  </button>
-                );
-              })}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -352,6 +389,7 @@ export function SessionJoinPage() {
               <div className="mt-3 bg-muted/30 rounded-xl p-3">
                 <PlayerAddInput
                   onAdd={(name, gender) => handleAddPlayer(name, gender)}
+                  placeholder="ニックネームを入力 例：げん"
                 />
               </div>
             )}
