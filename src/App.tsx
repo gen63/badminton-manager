@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { SessionCreate } from './pages/SessionCreate';
+import { SessionSelectPage } from './pages/SessionSelectPage';
 import { PlayerSelect } from './pages/PlayerSelect';
 import { MainPage } from './pages/MainPage';
 import { HistoryPage } from './pages/HistoryPage';
@@ -18,6 +19,7 @@ function App() {
       <FirebaseSyncProvider>
       <Routes>
         <Route path="/" element={<SessionCreate />} />
+        <Route path="/sessions" element={<SessionSelectPage />} />
         <Route path="/session/create" element={<SessionCreate />} />
         <Route path="/session/:sessionId" element={<SessionJoinPage />} />
         <Route path="/players" element={<PlayerSelect />} />
