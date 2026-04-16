@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { listRecentActiveSessions } from '../services/sessionService';
 import { clearAppBadge } from '../lib/badge';
@@ -22,12 +22,10 @@ function formatTime(timestamp: number): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
-const firebaseAvailable = isFirebaseConfigured();
-
 export function SessionSelectPage() {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(firebaseAvailable);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   // PWAバッジをクリア（セッション未参加状態）
@@ -35,12 +33,9 @@ export function SessionSelectPage() {
     clearAppBadge();
   }, []);
 
-  // Firebase未設定時はSessionCreateにリダイレクト
+  // セッション一覧を取得
   useEffect(() => {
-    if (!firebaseAvailable) {
-      navigate('/', { replace: true });
-      return;
-    }
+    if (!isFirebaseConfigured()) return;
 
     listRecentActiveSessions(5)
       .then((data) => {
@@ -51,7 +46,12 @@ export function SessionSelectPage() {
         setError('セッション一覧の取得に失敗しました');
       })
       .finally(() => setLoading(false));
-  }, [navigate]);
+  }, []);
+
+  // Firebase未設定時はSessionCreateにリダイレクト（レンダーで即時、フラッシュなし）
+  if (!isFirebaseConfigured()) {
+    return <Navigate to="/" replace />;
+  }
 
   // ローディング
   if (loading) {

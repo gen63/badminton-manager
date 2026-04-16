@@ -15,7 +15,6 @@ import {
   deleteDoc,
   collection,
   query,
-  where,
   orderBy,
   limit,
   getDocs,
@@ -452,9 +451,10 @@ export function subscribeToGameState(
 export async function listRecentActiveSessions(count = 5): Promise<Session[]> {
   if (!useFirestore) return [];
 
+  // NOTE: statusフィルターなし（現状セッション終了機能が未実装のため全セッションがactive）
+  // 単一フィールドorderByのみで複合インデックス不要
   const q = query(
     collection(db!, 'sessions'),
-    where('status', '==', 'active'),
     orderBy('updatedAt', 'desc'),
     limit(count),
   );
