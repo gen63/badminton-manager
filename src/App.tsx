@@ -30,7 +30,7 @@ function App() {
         <Route path="/calc" element={<AccountingCalcPage />} />
         <Route path="/reservation" element={<ReservationPage />} />
         <Route path="/score/:matchId" element={<ScoreInputPage />} />
-        <Route path="*" element={<Navigate to="/" replace state={{ showJoinMode: true }} />} />
+        <Route path="*" element={<Navigate to="/sessions" replace />} />
       </Routes>
       <PWAPrompt />
       </FirebaseSyncProvider>
