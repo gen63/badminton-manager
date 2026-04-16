@@ -314,6 +314,51 @@ function isPlayerInPendingReservation(
 }
 
 /**
+ * 予約メンバーの性別構成に基づいて、補充候補を同性優先でソートする
+ * candidatesはすでにpriority順にソート済みであること
+ * 同性が不足する場合は異性で補充する（ソフトフィルター方式）
+ */
+function sortByGenderPreference(
+  reservedPlayerIds: string[],
+  candidates: Player[],
+  allPlayers: Player[],
+): Player[] {
+  const reservedGenders = reservedPlayerIds
+    .map(id => allPlayers.find(p => p.id === id)?.gender)
+    .filter((g): g is 'M' | 'F' => g === 'M' || g === 'F');
+
+  if (reservedGenders.length !== reservedPlayerIds.length) return candidates;
+
+  const maleCount = reservedGenders.filter(g => g === 'M').length;
+  const femaleCount = reservedGenders.filter(g => g === 'F').length;
+
+  if (maleCount > 0 && femaleCount > 0) {
+    // ミックス: 性別バランスを目指す
+    if (maleCount === femaleCount) {
+      // 同数（例: 1M+1F）→ 残り枠にM1+F1を優先配置
+      const bestM = candidates.find(p => p.gender === 'M');
+      const bestF = candidates.find(p => p.gender === 'F');
+      if (bestM && bestF) {
+        const others = candidates.filter(p => p.id !== bestM.id && p.id !== bestF.id);
+        return [bestM, bestF, ...others];
+      }
+      return candidates;
+    }
+    // 不均衡（例: 2M+1F）→ 不足性別を優先
+    const targetGender = maleCount > femaleCount ? 'F' : 'M';
+    const preferred = candidates.filter(p => p.gender === targetGender);
+    const others = candidates.filter(p => p.gender !== targetGender);
+    return [...preferred, ...others];
+  }
+
+  // 同性のみ（男子 or 女子ダブルス）: 同性を優先
+  const targetGender = maleCount > 0 ? 'M' : 'F';
+  const sameGender = candidates.filter(p => p.gender === targetGender);
+  const otherGender = candidates.filter(p => p.gender !== targetGender);
+  return [...sameGender, ...otherGender];
+}
+
+/**
  * 4人を序列に基づいて最強+最弱ペアリングで2チームに編成
  * 序列順にソートし、1位+4位 vs 2位+3位 を返す
  * 2M+2Fの場合、MF vs MFになるようペアリングを調整する
@@ -921,7 +966,7 @@ export function assignCourts(
         teamB: [rsvPlayerIds[2], rsvPlayerIds[3]] as [string, string],
       });
     } else if (rsvPlayerIds.length === 3) {
-      // 3人: 最初の2人がペア + 3人目と通常ロジックで1人選出
+      // 3人: 最初の2人がペア + 3人目と通常ロジックで1人選出（同性優先）
       const nonReserved = activePlayers.filter(
         p => !reservationUsedPlayers.has(p.id) && !rsvPlayerIds.includes(p.id)
           && !isPlayerInPendingReservation(p.id, pendingReservations, [...fulfilledReservationIds, reservation.id])
@@ -934,7 +979,8 @@ export function assignCourts(
         calculatePriorityScore(a, practiceStartTime, useStayDuration) -
         calculatePriorityScore(b, practiceStartTime, useStayDuration)
       );
-      const fourth = nonReserved[0];
+      const sorted = sortByGenderPreference(rsvPlayerIds, nonReserved, activePlayers);
+      const fourth = sorted[0];
       reservationAssignments.push({
         courtId,
         teamA: [rsvPlayerIds[0], rsvPlayerIds[1]] as [string, string],
@@ -942,7 +988,7 @@ export function assignCourts(
       });
       reservationUsedPlayers.add(fourth.id);
     } else if (rsvPlayerIds.length === 2) {
-      // 2人: 同じチームとして配置 + 残り2人を通常ロジックで選出
+      // 2人: 同じチームとして配置 + 残り2人を通常ロジックで選出（同性優先）
       const nonReserved = activePlayers.filter(
         p => !reservationUsedPlayers.has(p.id) && !rsvPlayerIds.includes(p.id)
           && !isPlayerInPendingReservation(p.id, pendingReservations, [...fulfilledReservationIds, reservation.id])
@@ -955,13 +1001,14 @@ export function assignCourts(
         calculatePriorityScore(a, practiceStartTime, useStayDuration) -
         calculatePriorityScore(b, practiceStartTime, useStayDuration)
       );
+      const sorted = sortByGenderPreference(rsvPlayerIds, nonReserved, activePlayers);
       reservationAssignments.push({
         courtId,
         teamA: [rsvPlayerIds[0], rsvPlayerIds[1]] as [string, string],
-        teamB: [nonReserved[0].id, nonReserved[1].id] as [string, string],
+        teamB: [sorted[0].id, sorted[1].id] as [string, string],
       });
-      reservationUsedPlayers.add(nonReserved[0].id);
-      reservationUsedPlayers.add(nonReserved[1].id);
+      reservationUsedPlayers.add(sorted[0].id);
+      reservationUsedPlayers.add(sorted[1].id);
     } else if (rsvPlayerIds.length === 1) {
       // 1人: 最優先候補として通常ロジックで残り3人を選出
       const nonReserved = activePlayers.filter(

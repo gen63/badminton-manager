@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Check } from 'lucide-react';
 import type { Player } from '../types/player';
+import { inferDoublesCategory, getCategoryShortLabel } from '../lib/reservationUtils';
 
 interface ReservationAddModalProps {
   players: Player[];
@@ -29,10 +30,13 @@ export function ReservationAddModal({
   };
 
   const handleConfirm = () => {
-    if (selectedIds.size >= 1) {
+    if (selectedIds.size >= 2) {
       onConfirm(Array.from(selectedIds));
     }
   };
+
+  const category = inferDoublesCategory(Array.from(selectedIds), players);
+  const categoryLabel = getCategoryShortLabel(category);
 
   // 待機中→休憩中の順で表示
   const sortedPlayers = [...players].sort((a, b) => {
@@ -47,9 +51,22 @@ export function ReservationAddModal({
         <div className="sticky top-0 bg-background border-b border-border px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-foreground">予約追加</h2>
-            <p className="text-xs text-muted-foreground mt-1">
-              メンバーを選択 ({selectedIds.size}/{maxPlayers}人)
-            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-xs text-muted-foreground">
+                メンバーを選択 ({selectedIds.size}/{maxPlayers}人)
+              </p>
+              {categoryLabel && (
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                  category === '男子ダブルス'
+                    ? 'bg-blue-100 text-blue-700'
+                    : category === '女子ダブルス'
+                    ? 'bg-pink-100 text-pink-700'
+                    : 'bg-purple-100 text-purple-700'
+                }`}>
+                  {categoryLabel}
+                </span>
+              )}
+            </div>
           </div>
           <button
             onClick={onCancel}
@@ -120,7 +137,7 @@ export function ReservationAddModal({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={selectedIds.size === 0}
+            disabled={selectedIds.size < 2}
             className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl font-semibold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             OK
