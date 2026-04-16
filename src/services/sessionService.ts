@@ -13,6 +13,12 @@ import {
   serverTimestamp,
   runTransaction,
   deleteDoc,
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { Session } from '../types/session';
@@ -440,6 +446,21 @@ export function subscribeToGameState(
       console.error('GameState subscription error:', error);
     },
   );
+}
+
+/** 最近アクティブなセッションを取得（最大count件、updatedAt降順） */
+export async function listRecentActiveSessions(count = 5): Promise<Session[]> {
+  if (!useFirestore) return [];
+
+  const q = query(
+    collection(db!, 'sessions'),
+    where('status', '==', 'active'),
+    orderBy('updatedAt', 'desc'),
+    limit(count),
+  );
+
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((snap) => docToSession(snap.id, snap.data()));
 }
 
 /** セッションを削除（Firestoreドキュメントを完全削除） */
