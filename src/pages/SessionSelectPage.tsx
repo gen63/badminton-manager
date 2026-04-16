@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { listRecentActiveSessions } from '../services/sessionService';
+import { clearAppBadge } from '../lib/badge';
 import type { Session } from '../types/session';
 import { Loader2, Plus, LogIn, Users, MapPin, Calendar } from 'lucide-react';
 
@@ -21,15 +22,22 @@ function formatTime(timestamp: number): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+const firebaseAvailable = isFirebaseConfigured();
+
 export function SessionSelectPage() {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(firebaseAvailable);
   const [error, setError] = useState('');
+
+  // PWAバッジをクリア（セッション未参加状態）
+  useEffect(() => {
+    clearAppBadge();
+  }, []);
 
   // Firebase未設定時はSessionCreateにリダイレクト
   useEffect(() => {
-    if (!isFirebaseConfigured()) {
+    if (!firebaseAvailable) {
       navigate('/', { replace: true });
       return;
     }
