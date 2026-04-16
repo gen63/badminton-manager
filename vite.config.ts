@@ -35,7 +35,7 @@ export default defineConfig({
         background_color: '#F3F4F6',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/badminton-manager/sessions',
+        start_url: '/badminton-manager/',
         scope: '/badminton-manager/',
         icons: [
           {

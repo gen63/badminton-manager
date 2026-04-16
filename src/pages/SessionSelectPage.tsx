@@ -48,9 +48,9 @@ export function SessionSelectPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Firebase未設定時はSessionCreateにリダイレクト（レンダーで即時、フラッシュなし）
+  // Firebase未設定時はローカルモードにリダイレクト（レンダーで即時、フラッシュなし）
   if (!isFirebaseConfigured()) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/local" replace />;
   }
 
   // ローディング
@@ -150,14 +150,14 @@ export function SessionSelectPage() {
 
           <div className="flex gap-3">
             <button
-              onClick={() => navigate('/', { state: { showJoinMode: true } })}
+              onClick={() => navigate('/local', { state: { showJoinMode: true } })}
               className="btn-secondary flex-1 flex items-center justify-center gap-2 text-sm"
             >
               <LogIn size={16} />
               IDで参加
             </button>
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/local')}
               className="btn-secondary flex-1 flex items-center justify-center gap-2 text-sm"
             >
               ローカルモード

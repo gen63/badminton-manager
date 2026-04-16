@@ -18,8 +18,8 @@ function App() {
     <BrowserRouter basename="/badminton-manager">
       <FirebaseSyncProvider>
       <Routes>
-        <Route path="/" element={<SessionCreate />} />
-        <Route path="/sessions" element={<SessionSelectPage />} />
+        <Route path="/" element={<SessionSelectPage />} />
+        <Route path="/local" element={<SessionCreate />} />
         <Route path="/session/create" element={<SessionCreate />} />
         <Route path="/session/:sessionId" element={<SessionJoinPage />} />
         <Route path="/players" element={<PlayerSelect />} />
@@ -30,7 +30,7 @@ function App() {
         <Route path="/calc" element={<AccountingCalcPage />} />
         <Route path="/reservation" element={<ReservationPage />} />
         <Route path="/score/:matchId" element={<ScoreInputPage />} />
-        <Route path="*" element={<Navigate to="/sessions" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <PWAPrompt />
       </FirebaseSyncProvider>
