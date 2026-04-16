@@ -7,6 +7,7 @@ interface ReservationAddModalProps {
   getPlayerName: (id: string) => string;
   onConfirm: (playerIds: string[]) => void;
   onCancel: () => void;
+  maxPlayers?: number;
 }
 
 export function ReservationAddModal({
@@ -14,8 +15,8 @@ export function ReservationAddModal({
   getPlayerName,
   onConfirm,
   onCancel,
+  maxPlayers = 4,
 }: ReservationAddModalProps) {
-  const maxPlayers = 4; // ダブルス専用
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const handleToggle = (id: string) => {

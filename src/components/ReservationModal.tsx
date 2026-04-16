@@ -13,6 +13,7 @@ interface ReservationModalProps {
   onAdd: (playerIds: string[]) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
+  gameMode?: 'singles' | 'doubles';
 }
 
 export function ReservationModal({
@@ -23,6 +24,7 @@ export function ReservationModal({
   onAdd,
   onRemove,
   onClose,
+  gameMode = 'doubles',
 }: ReservationModalProps) {
   const [showAdd, setShowAdd] = useState(false);
   const [showFulfilled, setShowFulfilled] = useState(false);
@@ -42,6 +44,7 @@ export function ReservationModal({
           onClose();
         }}
         onCancel={() => setShowAdd(false)}
+        maxPlayers={gameMode === 'singles' ? 2 : 4}
       />
     );
   }

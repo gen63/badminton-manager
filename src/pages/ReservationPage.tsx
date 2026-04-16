@@ -37,6 +37,8 @@ export function ReservationPage() {
 
   const isPlayerReady = (playerId: string) => checkPlayerReady(playerId, players, playersInCourts);
 
+  const gameMode = session.config.gameMode ?? 'doubles';
+
   if (showAdd) {
     return (
       <ReservationAddModal
@@ -47,6 +49,7 @@ export function ReservationPage() {
           setShowAdd(false);
         }}
         onCancel={() => setShowAdd(false)}
+        maxPlayers={gameMode === 'singles' ? 2 : 4}
       />
     );
   }

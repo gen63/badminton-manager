@@ -888,7 +888,7 @@ export function assignCourts(
     }
 
     const singlesAssignments = assignCourtsSingles(
-      singlesNormalCandidates, singlesRemainingCourtIds, matchHistory, practiceStartTime, useStayDuration
+      singlesNormalCandidates, singlesRemainingCourtIds, matchHistory
     );
     return [...singlesReservationAssignments, ...singlesAssignments];
   }
@@ -1237,12 +1237,27 @@ export function sortWaitingPlayers(
  * - 試合回数が均等になるよう、試合数の少ないプレイヤーを優先
  * - 予約等で変動した場合は総当たりの制約を緩和
  */
+/**
+ * シングルス用の優先度ソート比較関数
+ *
+ * 1. gamesPlayed 昇順（試合回数が少ない人を優先）
+ * 2. gamesPlayed === 0 → rating 降順（レートが高い人を優先）
+ *    gamesPlayed > 0  → lastPlayedAt 昇順（最後の試合が古い人を優先）
+ */
+function compareSinglesPriority(a: Player, b: Player): number {
+  if (a.gamesPlayed !== b.gamesPlayed) {
+    return a.gamesPlayed - b.gamesPlayed;
+  }
+  if (a.gamesPlayed === 0) {
+    return (b.rating ?? 0) - (a.rating ?? 0);
+  }
+  return a.lastPlayedAt - b.lastPlayedAt;
+}
+
 function assignCourtsSingles(
   activePlayers: Player[],
   targetCourtIds: number[],
   matchHistory: Match[],
-  practiceStartTime: number,
-  useStayDuration: boolean
 ): CourtAssignment[] {
   const requiredPlayers = targetCourtIds.length * 2;
   if (activePlayers.length < requiredPlayers) {
@@ -1267,11 +1282,8 @@ function assignCourtsSingles(
     return matchCountMap.get(key) || 0;
   };
 
-  // 優先度順にソート（試合回数が少ない人を優先）
-  const prioritySorted = [...activePlayers].sort((a, b) =>
-    calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-    calculatePriorityScore(b, practiceStartTime, useStayDuration)
-  );
+  // シングルス専用の優先度ソート
+  const prioritySorted = [...activePlayers].sort(compareSinglesPriority);
 
   // 多めに候補を選出（総当たり最適化のため）
   const candidateCount = Math.min(activePlayers.length, requiredPlayers + 4);
@@ -1293,9 +1305,8 @@ function assignCourtsSingles(
     remaining.sort((a, b) => {
       const countA = getMatchCount(first.id, a.id);
       const countB = getMatchCount(first.id, b.id);
-      if (countA !== countB) return countA - countB; // 対戦回数が少ない方を優先
-      return calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-        calculatePriorityScore(b, practiceStartTime, useStayDuration);
+      if (countA !== countB) return countA - countB;
+      return compareSinglesPriority(a, b);
     });
 
     const second = remaining[0];

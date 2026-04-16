@@ -141,38 +141,43 @@ export function CourtCard({
       {/* プレイヤー表示エリア - 高さを固定して配置時のジャンプを防止 */}
       <div className="flex flex-col justify-center space-y-1" style={{ minHeight: '172px' }}>
       {hasPlayers ? (
-        <>
-          {/* チームA */}
-          <div className="space-y-1">
-            {court.teamA[0] ? (
-              <>
-                <PlayerPill playerId={court.teamA[0]} position={0} {...pillProps} />
-                <PlayerPill playerId={court.teamA[1]} position={1} {...pillProps} />
-              </>
-            ) : (
-              <EmptySlots />
-            )}
-          </div>
+        (() => {
+          const isSingles = court.teamA[1] === '' && court.teamB[1] === '';
+          return (
+            <>
+              {/* チームA */}
+              <div className="space-y-1">
+                {court.teamA[0] ? (
+                  <>
+                    <PlayerPill playerId={court.teamA[0]} position={0} {...pillProps} />
+                    {!isSingles && <PlayerPill playerId={court.teamA[1]} position={1} {...pillProps} />}
+                  </>
+                ) : (
+                  <EmptySlots />
+                )}
+              </div>
 
-          {/* VS */}
-          <div className="flex items-center gap-1 my-1">
-            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
-            <span className="text-muted-foreground text-[10px] font-bold">VS</span>
-            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
-          </div>
+              {/* VS */}
+              <div className="flex items-center gap-1 my-1">
+                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
+                <span className="text-muted-foreground text-[10px] font-bold">VS</span>
+                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
+              </div>
 
-          {/* チームB */}
-          <div className="space-y-1">
-            {court.teamB[0] ? (
-              <>
-                <PlayerPill playerId={court.teamB[0]} position={2} {...pillProps} />
-                <PlayerPill playerId={court.teamB[1]} position={3} {...pillProps} />
-              </>
-            ) : (
-              <EmptySlots />
-            )}
-          </div>
-        </>
+              {/* チームB */}
+              <div className="space-y-1">
+                {court.teamB[0] ? (
+                  <>
+                    <PlayerPill playerId={court.teamB[0]} position={2} {...pillProps} />
+                    {!isSingles && <PlayerPill playerId={court.teamB[1]} position={3} {...pillProps} />}
+                  </>
+                ) : (
+                  <EmptySlots />
+                )}
+              </div>
+            </>
+          );
+        })()
       ) : (
         <UnassignedDisplay />
       )}
