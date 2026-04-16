@@ -12,6 +12,7 @@ import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { clearAppBadge } from '../lib/badge';
 import { copyToClipboard } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
+import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
 import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrCode, Copy, Check } from 'lucide-react';
 
@@ -23,6 +24,7 @@ export function SettingsPage() {
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
   const [selectedAdmins, setSelectedAdmins] = useState<string[]>([]);
   const toast = useToast();
+  const devMode = useDevMode();
 
   const userIsAdmin = isAdmin();
   const userIsCreator = isCreator();
@@ -138,6 +140,31 @@ export function SettingsPage() {
     // PWAバッジをクリア
     await clearAppBadge();
     
+    navigate('/');
+  };
+
+  const handleDevDelete = async () => {
+    const confirmed = window.confirm(
+      '[DEV] このセッションを削除しますか？\n\n' +
+      'Firestoreドキュメントとローカル状態をすべて削除します。\n' +
+      'この操作は取り消せません。'
+    );
+    if (!confirmed) return;
+
+    if (session.id && session.createdBy) {
+      try {
+        await deleteSession(session.id);
+      } catch (error) {
+        console.error('Failed to delete session from Firestore:', error);
+      }
+    }
+    clearHistory();
+    clearPlayers();
+    clearUndo();
+    clearRecords();
+    clearReservations();
+    clearSession();
+    await clearAppBadge();
     navigate('/');
   };
 
@@ -504,6 +531,25 @@ export function SettingsPage() {
                 全リセット
               </button>
             </div>
+          </div>
+        )}
+
+        {devMode && (
+          <div className="card p-4 border-2 border-dashed border-gray-400">
+            <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+              <span className="w-6 h-6 rounded-lg bg-gray-200 flex items-center justify-center">
+                <Trash2 size={14} className="text-gray-700" />
+              </span>
+              セッション削除
+              <span className="text-[10px] bg-gray-700 text-white px-1.5 py-0.5 rounded-full">DEV</span>
+            </h2>
+            <button
+              onClick={handleDevDelete}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 border-2 border-gray-400 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+            >
+              <Trash2 size={16} />
+              セッションを削除
+            </button>
           </div>
         )}
       </div>
