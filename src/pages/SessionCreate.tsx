@@ -8,6 +8,7 @@ import { useReservationStore } from '../stores/reservationStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
 import { generateSessionId, parsePlayerInput } from '../lib/utils';
+import type { GameMode } from '../types/session';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { createSession, syncGameStateWithTransaction } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
@@ -79,6 +80,7 @@ export function SessionCreate() {
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType, setPracticeType } = useSettingsStore();
 
+  const [gameMode, setGameMode] = useState<GameMode>('doubles');
   const [targetScore] = useState(15);
   const [selectedGym] = useState(getInitialGym);
   const [practiceDateTime] = useState(getInitialDateTime);
@@ -194,6 +196,7 @@ export function SessionCreate() {
             practiceDate: practiceDateTime.split('T')[0],
             practiceStartTime: practiceTime,
             gym: selectedGym || undefined,
+            gameMode,
           },
           createdAt: now,
           updatedAt: now,
@@ -250,6 +253,7 @@ export function SessionCreate() {
       practiceDate: practiceDateTime.split('T')[0],
       practiceStartTime: practiceTime,
       gym: selectedGym || undefined,
+      gameMode,
     };
 
     // オンラインモード: 作成者名が未選択の場合は選択画面へ
@@ -543,6 +547,34 @@ export function SessionCreate() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* ゲームモード */}
+          <div>
+            <label className="label">ゲームモード</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setGameMode('doubles')}
+                className={`flex-1 select-button text-xs px-2 ${
+                  gameMode === 'doubles' ? 'select-button-active' : 'select-button-inactive'
+                }`}
+              >
+                {gameMode === 'doubles' && <span className="mr-1">✓</span>}
+                ダブルス
+              </button>
+              <button
+                onClick={() => setGameMode('singles')}
+                className={`flex-1 select-button text-xs px-2 ${
+                  gameMode === 'singles' ? 'select-button-active' : 'select-button-inactive'
+                }`}
+              >
+                {gameMode === 'singles' && <span className="mr-1">✓</span>}
+                シングルス
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {gameMode === 'doubles' ? '1コート4人（2対2）' : '1コート2人（1対1）'}
+            </p>
           </div>
 
           {/* 練習種別 */}
