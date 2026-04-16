@@ -8,7 +8,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { ReservationAddModal } from '../components/ReservationAddModal';
 import { BottomNav } from '../components/BottomNav';
 import { EmptyState } from '../components/EmptyState';
-import { isPlayerReady as checkPlayerReady, getReservationStatus } from '../lib/reservationUtils';
+import { isPlayerReady as checkPlayerReady, getReservationStatus, inferDoublesCategory, getCategoryShortLabel } from '../lib/reservationUtils';
 
 export function ReservationPage() {
   const navigate = useNavigate();
@@ -79,6 +79,8 @@ export function ReservationPage() {
 
         {pendingReservations.map((reservation, index) => {
           const status = getReservationStatus(reservation.playerIds, players, playersInCourts);
+          const rsvCategory = inferDoublesCategory(reservation.playerIds, players);
+          const rsvCategoryLabel = getCategoryShortLabel(rsvCategory);
           return (
             <div
               key={reservation.id}
@@ -96,6 +98,17 @@ export function ReservationPage() {
                       </span>
                     )}
                   </span>
+                  {rsvCategoryLabel && (
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                      rsvCategory === '男子ダブルス'
+                        ? 'bg-blue-100 text-blue-700'
+                        : rsvCategory === '女子ダブルス'
+                        ? 'bg-pink-100 text-pink-700'
+                        : 'bg-purple-100 text-purple-700'
+                    }`}>
+                      {rsvCategoryLabel}
+                    </span>
+                  )}
                   <span className={`flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full min-w-[70px] justify-center ${
                     status === 'ready'
                       ? 'text-green-700 bg-green-100'
