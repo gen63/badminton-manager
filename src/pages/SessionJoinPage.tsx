@@ -13,8 +13,9 @@ import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
-import { Loader2, Plus, Copy, Check, Link, ChevronDown } from 'lucide-react';
+import { Loader2, Plus, Copy, Check, Link, ChevronDown, Settings } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { useDevMode } from '../hooks/useDevMode';
 
 export function SessionJoinPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -46,6 +47,7 @@ export function SessionJoinPage() {
 
   const initializeSession = useSessionStore((state) => state.initialize);
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
+  const devMode = useDevMode();
 
   // PWAバッジをクリア（セッション参加前）
   useEffect(() => {
@@ -131,6 +133,22 @@ export function SessionJoinPage() {
     setSelectedGender(gender);
     setShowAddPlayer(false);
     setError('');
+  };
+
+  // dev mode: 入室せず設定画面に直接遷移（セッション削除等の保守用）
+  const handleOpenSettingsAsDev = () => {
+    if (!sessionId || !session) return;
+    initializeSession({
+      id: sessionId,
+      config: session.config,
+      createdAt: session.createdAt,
+      updatedAt: Date.now(),
+      createdBy: session.createdBy,
+      participants: session.participants,
+      registeredPlayers: session.registeredPlayers,
+      status: session.status,
+    });
+    navigate('/settings');
   };
 
   const handleJoin = async (force = false) => {
@@ -405,6 +423,17 @@ export function SessionJoinPage() {
             {joining && <Loader2 size={16} className="animate-spin" />}
             {joining ? '入室中...' : '入室する'}
           </button>
+
+          {devMode && (
+            <button
+              onClick={handleOpenSettingsAsDev}
+              className="w-full mt-3 bg-gray-100 hover:bg-gray-200 text-gray-800 border-2 border-dashed border-gray-400 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+            >
+              <Settings size={16} />
+              設定画面を開く（入室せず）
+              <span className="text-[10px] bg-gray-700 text-white px-1.5 py-0.5 rounded-full">DEV</span>
+            </button>
+          )}
         </div>
 
         {/* QRコード（アコーディオン） */}
