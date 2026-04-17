@@ -19,6 +19,16 @@ function makeMatch(startedAt: number, id = `m-${startedAt}`): Match {
   };
 }
 
+/** `now` を基準に offsetDays 日ずれたローカル日付の YYYY-MM-DD を返す */
+function makeDateStr(now: number, offsetDays: number): string {
+  const d = new Date(now);
+  d.setDate(d.getDate() + offsetDays);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 describe('computeFirstMatchStartedAt', () => {
   it('空配列はnullを返す', () => {
     expect(computeFirstMatchStartedAt([])).toBeNull();
@@ -37,31 +47,76 @@ describe('computeFirstMatchStartedAt', () => {
 describe('isSessionVisible', () => {
   const now = 1_700_000_000_000;
 
-  it('firstMatchStartedAtがundefinedなら表示', () => {
-    expect(isSessionVisible({}, now)).toBe(true);
+  describe('firstMatchStartedAt ありの場合（12h判定）', () => {
+    it('11時間59分前なら表示', () => {
+      const t = now - (11 * 60 + 59) * 60 * 1000;
+      expect(isSessionVisible({ firstMatchStartedAt: t }, now)).toBe(true);
+    });
+
+    it('ちょうど12時間前なら非表示（厳密な>）', () => {
+      const t = now - ARCHIVE_THRESHOLD_MS;
+      expect(isSessionVisible({ firstMatchStartedAt: t }, now)).toBe(false);
+    });
+
+    it('12時間1秒前なら非表示', () => {
+      const t = now - ARCHIVE_THRESHOLD_MS - 1000;
+      expect(isSessionVisible({ firstMatchStartedAt: t }, now)).toBe(false);
+    });
+
+    it('未来時刻（時計ずれ）なら表示', () => {
+      const t = now + 60_000;
+      expect(isSessionVisible({ firstMatchStartedAt: t }, now)).toBe(true);
+    });
+
+    it('firstMatchStartedAt が有効なら古い practiceDate より優先', () => {
+      const t = now - 60_000;
+      expect(
+        isSessionVisible(
+          {
+            firstMatchStartedAt: t,
+            config: { practiceDate: makeDateStr(now, -100) },
+          },
+          now,
+        ),
+      ).toBe(true);
+    });
   });
 
-  it('firstMatchStartedAtがnullなら表示（試合未開始）', () => {
-    expect(isSessionVisible({ firstMatchStartedAt: null }, now)).toBe(true);
-  });
+  describe('firstMatchStartedAt なしの場合（practiceDate フォールバック）', () => {
+    it('config 自体が未定義なら非表示', () => {
+      expect(isSessionVisible({}, now)).toBe(false);
+    });
 
-  it('11時間59分前なら表示', () => {
-    const t = now - (11 * 60 + 59) * 60 * 1000;
-    expect(isSessionVisible({ firstMatchStartedAt: t }, now)).toBe(true);
-  });
+    it('firstMatchStartedAt=null + config 未定義なら非表示', () => {
+      expect(isSessionVisible({ firstMatchStartedAt: null }, now)).toBe(false);
+    });
 
-  it('ちょうど12時間前なら非表示（厳密な>）', () => {
-    const t = now - ARCHIVE_THRESHOLD_MS;
-    expect(isSessionVisible({ firstMatchStartedAt: t }, now)).toBe(false);
-  });
+    it('practiceDate 未定義なら非表示', () => {
+      expect(isSessionVisible({ config: {} }, now)).toBe(false);
+    });
 
-  it('12時間1秒前なら非表示', () => {
-    const t = now - ARCHIVE_THRESHOLD_MS - 1000;
-    expect(isSessionVisible({ firstMatchStartedAt: t }, now)).toBe(false);
-  });
+    it('practiceDate が今日なら表示', () => {
+      expect(
+        isSessionVisible({ config: { practiceDate: makeDateStr(now, 0) } }, now),
+      ).toBe(true);
+    });
 
-  it('未来時刻（時計ずれ）なら表示', () => {
-    const t = now + 60_000;
-    expect(isSessionVisible({ firstMatchStartedAt: t }, now)).toBe(true);
+    it('practiceDate が明日なら表示', () => {
+      expect(
+        isSessionVisible({ config: { practiceDate: makeDateStr(now, 1) } }, now),
+      ).toBe(true);
+    });
+
+    it('practiceDate が昨日なら非表示', () => {
+      expect(
+        isSessionVisible({ config: { practiceDate: makeDateStr(now, -1) } }, now),
+      ).toBe(false);
+    });
+
+    it('practiceDate が1ヶ月前なら非表示', () => {
+      expect(
+        isSessionVisible({ config: { practiceDate: makeDateStr(now, -30) } }, now),
+      ).toBe(false);
+    });
   });
 });

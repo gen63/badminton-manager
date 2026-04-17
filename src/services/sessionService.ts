@@ -60,6 +60,9 @@ function generateFirebaseSessionId(): string {
 
 /** Firestoreドキュメントからセッションを変換 */
 function docToSession(id: string, data: Record<string, unknown>): Session {
+  const gameState = data.gameState as
+    | { matchHistory?: unknown[]; settings?: { practiceType?: '単' | '複' | '楽' } }
+    | undefined;
   return {
     id,
     config: data.config as Session['config'],
@@ -76,6 +79,8 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     status: data.status as Session['status'],
     information: data.information as Session['information'],
     firstMatchStartedAt: (data.firstMatchStartedAt as number | null | undefined) ?? null,
+    matchCount: Array.isArray(gameState?.matchHistory) ? gameState.matchHistory.length : 0,
+    practiceType: gameState?.settings?.practiceType,
   };
 }
 
@@ -468,7 +473,8 @@ export async function listRecentActiveSessions(count = 50): Promise<Session[]> {
   const snapshot = await getDocs(q);
   return snapshot.docs
     .map((snap) => docToSession(snap.id, snap.data()))
-    .filter((s) => isSessionVisible(s));
+    .filter((s) => isSessionVisible(s))
+    .sort((a, b) => b.config.practiceDate.localeCompare(a.config.practiceDate));
 }
 
 /** セッションを削除（Firestoreドキュメントを完全削除） */
