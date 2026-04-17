@@ -3,6 +3,7 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { listRecentActiveSessions } from '../services/sessionService';
 import { clearAppBadge } from '../lib/badge';
+import { useDevMode } from '../hooks/useDevMode';
 import type { Session } from '../types/session';
 import { Loader2, Plus, LogIn, Users, MapPin, Calendar, Trophy } from 'lucide-react';
 
@@ -24,6 +25,7 @@ function formatTime(timestamp: number): string {
 
 export function SessionSelectPage() {
   const navigate = useNavigate();
+  const devMode = useDevMode();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -37,7 +39,7 @@ export function SessionSelectPage() {
   useEffect(() => {
     if (!isFirebaseConfigured()) return;
 
-    listRecentActiveSessions()
+    listRecentActiveSessions(50, { includeArchived: devMode })
       .then((data) => {
         setSessions(data);
       })
@@ -46,7 +48,7 @@ export function SessionSelectPage() {
         setError('セッション一覧の取得に失敗しました');
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [devMode]);
 
   // Firebase未設定時はローカルモードにリダイレクト（レンダーで即時、フラッシュなし）
   if (!isFirebaseConfigured()) {

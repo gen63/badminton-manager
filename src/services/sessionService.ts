@@ -458,7 +458,10 @@ export function subscribeToGameState(
 }
 
 /** 最近アクティブなセッションを取得（最大count件、updatedAt降順） */
-export async function listRecentActiveSessions(count = 50): Promise<Session[]> {
+export async function listRecentActiveSessions(
+  count = 50,
+  options?: { includeArchived?: boolean },
+): Promise<Session[]> {
   if (!useFirestore) return [];
 
   // NOTE: statusフィルターなし（現状セッション終了機能が未実装のため全セッションがactive）
@@ -471,10 +474,9 @@ export async function listRecentActiveSessions(count = 50): Promise<Session[]> {
   );
 
   const snapshot = await getDocs(q);
-  return snapshot.docs
-    .map((snap) => docToSession(snap.id, snap.data()))
-    .filter((s) => isSessionVisible(s))
-    .sort((a, b) => b.config.practiceDate.localeCompare(a.config.practiceDate));
+  const sessions = snapshot.docs.map((snap) => docToSession(snap.id, snap.data()));
+  const filtered = options?.includeArchived ? sessions : sessions.filter((s) => isSessionVisible(s));
+  return filtered.sort((a, b) => b.config.practiceDate.localeCompare(a.config.practiceDate));
 }
 
 /** セッションを削除（Firestoreドキュメントを完全削除） */
