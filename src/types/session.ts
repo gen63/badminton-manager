@@ -31,4 +31,5 @@ export interface Session {
   status?: 'active' | 'ended';
   information?: SessionInformation; // 周知事項
   etomoEventId?: string; // E-tomoイベントID（自動作成時の重複防止用）
+  firstMatchStartedAt?: number | null; // 最初の試合開始時刻。null/未設定 = 試合未開始（12h自動アーカイブ判定用）
 }

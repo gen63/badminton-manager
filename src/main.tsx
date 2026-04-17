@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.tsx';
+import { applyDevModeFromUrl } from './hooks/useDevMode';
 
 // デバッグモード: URLに ?debug を付けると有効
 if (window.location.search.includes('debug')) {
@@ -9,6 +10,9 @@ if (window.location.search.includes('debug')) {
     eruda.default.init();
   });
 }
+
+// dev mode: ?dev=1 で有効化（localStorageに永続）
+applyDevModeFromUrl();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

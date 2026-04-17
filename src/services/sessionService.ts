@@ -27,6 +27,7 @@ import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import { SessionError } from '../lib/errorHandler';
 import { mergeGameState, type SyncGameState } from '../lib/syncUtils';
+import { computeFirstMatchStartedAt, isSessionVisible } from '../lib/sessionArchive';
 
 /** セッションレベルの設定（Firebase同期対象） */
 export interface SyncSettings {
@@ -74,6 +75,7 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     admins: data.admins as string[] | undefined,
     status: data.status as Session['status'],
     information: data.information as Session['information'],
+    firstMatchStartedAt: (data.firstMatchStartedAt as number | null | undefined) ?? null,
   };
 }
 
@@ -304,6 +306,7 @@ export async function syncGameState(
   await updateDoc(docRef, {
     gameState: sanitize(gameState),
     registeredPlayers,
+    firstMatchStartedAt: computeFirstMatchStartedAt(gameState.matchHistory),
     updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
   });
 }
@@ -351,6 +354,7 @@ export async function syncGameStateWithTransaction(
       transaction.update(docRef, {
         gameState: sanitize(finalState),
         registeredPlayers,
+        firstMatchStartedAt: computeFirstMatchStartedAt(finalState.matchHistory),
         updatedAt: serverTimestamp(),
       });
     });
@@ -408,6 +412,7 @@ export async function finishGameTransaction(
 
       transaction.update(docRef, {
         gameState: sanitize(newState),
+        firstMatchStartedAt: computeFirstMatchStartedAt(newState.matchHistory),
         updatedAt: serverTimestamp(),
       });
 
@@ -448,11 +453,12 @@ export function subscribeToGameState(
 }
 
 /** 最近アクティブなセッションを取得（最大count件、updatedAt降順） */
-export async function listRecentActiveSessions(count = 5): Promise<Session[]> {
+export async function listRecentActiveSessions(count = 50): Promise<Session[]> {
   if (!useFirestore) return [];
 
   // NOTE: statusフィルターなし（現状セッション終了機能が未実装のため全セッションがactive）
   // 単一フィールドorderByのみで複合インデックス不要
+  // 12h自動アーカイブ判定はクライアント側でフィルタ（Firestore OR queryを避けるため）
   const q = query(
     collection(db!, 'sessions'),
     orderBy('updatedAt', 'desc'),
@@ -460,7 +466,9 @@ export async function listRecentActiveSessions(count = 5): Promise<Session[]> {
   );
 
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((snap) => docToSession(snap.id, snap.data()));
+  return snapshot.docs
+    .map((snap) => docToSession(snap.id, snap.data()))
+    .filter((s) => isSessionVisible(s));
 }
 
 /** セッションを削除（Firestoreドキュメントを完全削除） */

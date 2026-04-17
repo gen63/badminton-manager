@@ -37,7 +37,7 @@ export function SessionSelectPage() {
   useEffect(() => {
     if (!isFirebaseConfigured()) return;
 
-    listRecentActiveSessions(5)
+    listRecentActiveSessions()
       .then((data) => {
         setSessions(data);
       })
