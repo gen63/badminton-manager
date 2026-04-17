@@ -4,7 +4,7 @@ import { isFirebaseConfigured } from '../lib/firebase';
 import { listRecentActiveSessions } from '../services/sessionService';
 import { clearAppBadge } from '../lib/badge';
 import type { Session } from '../types/session';
-import { Loader2, Plus, LogIn, Users, MapPin, Calendar } from 'lucide-react';
+import { Loader2, Plus, LogIn, Users, MapPin, Calendar, Trophy } from 'lucide-react';
 
 /** 日付をフォーマット（4/16(水)） */
 function formatSessionDate(practiceDate: string): string {
@@ -110,10 +110,23 @@ export function SessionSelectPage() {
                       </span>
                     </div>
 
-                    {/* 参加者数 */}
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Users size={12} />
-                      <span>{session.participants?.length ?? 0}名参加中</span>
+                    {/* 参加者数 + 種別 + 試合数 */}
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Users size={12} />
+                        {session.participants?.length ?? 0}名参加中
+                      </span>
+                      {session.practiceType && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground font-semibold">
+                          {session.practiceType}
+                        </span>
+                      )}
+                      {typeof session.matchCount === 'number' && session.matchCount > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Trophy size={12} />
+                          {session.matchCount}試合
+                        </span>
+                      )}
                     </div>
                   </div>
 
