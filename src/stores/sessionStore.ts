@@ -2,6 +2,15 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Session, SessionConfig } from '../types/session';
 
+// 開発モード判定（useDevMode フックはコンポーネント専用のため localStorage を直読みする）
+const isDevMode = (): boolean => {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('dev-mode') === '1';
+  } catch {
+    return false;
+  }
+};
+
 interface SessionState {
   session: Session | null;
   currentUser: string | null;
@@ -60,6 +69,8 @@ export const useSessionStore = create<SessionState>()(
         const { session, currentUser } = get();
         // ローカルモード: 全員管理者
         if (!session?.createdBy) return true;
+        // 開発モード: 作成者扱い
+        if (isDevMode()) return true;
         // オンラインモード: currentUser が必要
         if (!currentUser) return false;
         return currentUser === session.createdBy;
@@ -68,6 +79,8 @@ export const useSessionStore = create<SessionState>()(
         const { session, currentUser } = get();
         // ローカルモード: 全員管理者
         if (!session?.createdBy) return true;
+        // 開発モード: 管理者扱い
+        if (isDevMode()) return true;
         // オンラインモード: currentUser が必要
         if (!currentUser) return false;
         return currentUser === session.createdBy || session.admins?.includes(currentUser) || false;
