@@ -75,19 +75,19 @@ export function isSessionVisible(
 }
 ```
 
-### 3. `src/services/sessionService.ts` — 4箇所の変更
+### 3. `src/services/sessionService.ts` — 5箇所の変更
 
 **import追加:**
 ```ts
 import { computeFirstMatchStartedAt, isSessionVisible } from '../lib/sessionArchive';
 ```
 
-**a. `docToSession` (line 61-78):**
+**a. `docToSession`:**
 ```ts
 firstMatchStartedAt: (data.firstMatchStartedAt as number | null | undefined) ?? null,
 ```
 
-**b. `syncGameState` (line 296-309) の updateDoc:**
+**b. `syncGameState` の updateDoc:**
 ```ts
 await updateDoc(docRef, {
   gameState: sanitize(gameState),
@@ -97,7 +97,7 @@ await updateDoc(docRef, {
 });
 ```
 
-**c. `syncGameStateWithTransaction` (line 351-356) の transaction.update:**
+**c. `syncGameStateWithTransaction` の transaction.update:**
 ```ts
 transaction.update(docRef, {
   gameState: sanitize(finalState),
@@ -108,7 +108,7 @@ transaction.update(docRef, {
 ```
 ※ マージ後の `finalState.matchHistory` を使う点に注意。
 
-**d. `finishGameTransaction` (line 409-412) の transaction.update:**
+**d. `finishGameTransaction` の transaction.update:**
 ```ts
 transaction.update(docRef, {
   gameState: sanitize(newState),
@@ -117,7 +117,7 @@ transaction.update(docRef, {
 });
 ```
 
-**e. `listRecentActiveSessions` (line 451-464):**
+**e. `listRecentActiveSessions`:**
 ```ts
 export async function listRecentActiveSessions(count = 50): Promise<Session[]> {
   if (!useFirestore) return [];
@@ -135,7 +135,7 @@ export async function listRecentActiveSessions(count = 50): Promise<Session[]> {
 
 ### 4. `src/pages/SessionSelectPage.tsx`
 
-line 40: `listRecentActiveSessions(5)` → `listRecentActiveSessions()`（デフォルト50）。
+`listRecentActiveSessions(5)` → `listRecentActiveSessions()`（デフォルト50）。
 
 ### 5. `src/lib/sessionArchive.test.ts` (新規)
 
