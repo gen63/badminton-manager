@@ -55,7 +55,7 @@ export function SettingsPage() {
   }
 
   // 管理者権限チェック
-  if (!isAdmin) {
+  if (!userIsAdmin) {
     navigate('/main');
     return null;
   }
