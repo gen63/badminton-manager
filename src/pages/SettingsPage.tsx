@@ -7,7 +7,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useUndoStore } from '../stores/undoStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
-import { deleteSession, updateSession as updateFirebaseSession } from '../services/sessionService';
+import { deleteSession, updateSession as updateFirebaseSession, updateCreator } from '../services/sessionService';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { clearAppBadge } from '../lib/badge';
 import { copyToClipboard } from '../lib/utils';
@@ -23,6 +23,8 @@ export function SettingsPage() {
   const [sessionIdCopied, setSessionIdCopied] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
   const [selectedAdmins, setSelectedAdmins] = useState<string[]>([]);
+  const [showChangeCreatorModal, setShowChangeCreatorModal] = useState(false);
+  const [selectedNewCreator, setSelectedNewCreator] = useState<string | null>(null);
   const toast = useToast();
   const devMode = useDevMode();
 
@@ -197,6 +199,29 @@ export function SettingsPage() {
   const handleRemoveAdmin = (name: string) => {
     updateAdmins((session.admins || []).filter(admin => admin !== name));
   };
+
+  const handleChangeCreator = async () => {
+    if (!session.id || !selectedNewCreator || selectedNewCreator === session.createdBy) return;
+    const confirmed = window.confirm(
+      `作成者を ${session.createdBy} から ${selectedNewCreator} に変更しますか？\n\n` +
+      'この操作は Firestore のセッションドキュメントを書き換えます。'
+    );
+    if (!confirmed) return;
+    try {
+      await updateCreator(session.id, selectedNewCreator);
+      useSessionStore.getState().updateSession({ createdBy: selectedNewCreator });
+      toast.success(`作成者を ${selectedNewCreator} に変更しました`);
+      setSelectedNewCreator(null);
+      setShowChangeCreatorModal(false);
+    } catch (error) {
+      console.error('Failed to update creator:', error);
+      toast.error('作成者の変更に失敗しました');
+    }
+  };
+
+  const creatorCandidates = (session.participants || []).filter(
+    (name) => name !== session.createdBy
+  );
 
   const availableParticipants = players.filter(
     player => player.name !== session.createdBy && !session.admins?.includes(player.name)
@@ -534,6 +559,40 @@ export function SettingsPage() {
           </div>
         )}
 
+        {devMode && session.createdBy && (
+          <div className="card p-4 border-2 border-dashed border-gray-400">
+            <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+              <span className="w-6 h-6 rounded-lg bg-gray-200 flex items-center justify-center">
+                <Shield size={14} className="text-gray-700" />
+              </span>
+              作成者変更
+              <span className="text-[10px] bg-gray-700 text-white px-1.5 py-0.5 rounded-full">DEV</span>
+            </h2>
+            <div className="bg-muted rounded-xl p-3 text-xs mb-3">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">現在の作成者</span>
+                <span className="font-medium">{session.createdBy}</span>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedNewCreator(null);
+                setShowChangeCreatorModal(true);
+              }}
+              disabled={creatorCandidates.length === 0}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 border-2 border-gray-400 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Shield size={16} />
+              作成者を変更
+            </button>
+            {creatorCandidates.length === 0 && (
+              <p className="text-[10px] text-muted-foreground mt-2 text-center">
+                変更先の参加者がいません
+              </p>
+            )}
+          </div>
+        )}
+
         {devMode && (
           <div className="card p-4 border-2 border-dashed border-gray-400">
             <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
@@ -622,6 +681,65 @@ export function SettingsPage() {
                 className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 追加 {selectedAdmins.length > 0 && `(${selectedAdmins.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 作成者変更モーダル（DEV） */}
+      {showChangeCreatorModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-card rounded-2xl p-6 max-w-md w-full max-h-[80vh] flex flex-col">
+            <h3 className="text-lg font-bold text-foreground mb-2 flex items-center gap-2">
+              作成者を変更
+              <span className="text-[10px] bg-gray-700 text-white px-1.5 py-0.5 rounded-full">DEV</span>
+            </h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              新しい作成者を参加者から選択してください
+            </p>
+
+            <div className="space-y-2 mb-4 overflow-y-auto flex-1">
+              {creatorCandidates.map((name) => {
+                const isSelected = selectedNewCreator === name;
+                return (
+                  <button
+                    key={name}
+                    onClick={() => setSelectedNewCreator(name)}
+                    className={`w-full rounded-xl p-3 text-left text-sm font-medium transition-colors flex items-center gap-3 ${
+                      isSelected
+                        ? 'bg-indigo-100 text-indigo-900 border-2 border-indigo-500'
+                        : 'bg-muted hover:bg-muted/70 text-foreground border-2 border-transparent'
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      isSelected ? 'bg-indigo-500' : 'bg-muted-foreground/20'
+                    }`}>
+                      {isSelected && <Check size={14} className="text-white" />}
+                    </div>
+                    <span className="text-lg">👤</span>
+                    <span className="flex-1">{name}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setSelectedNewCreator(null);
+                  setShowChangeCreatorModal(false);
+                }}
+                className="flex-1 btn-secondary"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleChangeCreator}
+                disabled={!selectedNewCreator}
+                className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                変更
               </button>
             </div>
           </div>

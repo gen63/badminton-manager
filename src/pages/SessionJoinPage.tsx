@@ -164,7 +164,7 @@ export function SessionJoinPage() {
         config: session.config,
         createdAt: session.createdAt,
         updatedAt: Date.now(),
-        createdBy: session.createdBy,
+        createdBy: result.newCreator ?? session.createdBy,
         participants: session.participants,
         registeredPlayers: session.registeredPlayers,
         status: session.status,

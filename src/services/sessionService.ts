@@ -207,12 +207,15 @@ export async function updateSession(
   localStorage.setItem(`firebase_session_${sessionId}`, JSON.stringify(updated));
 }
 
+/** bot 作成セッションの sentinel 値。最初にログインした人が作成者に昇格する */
+export const AUTO_SESSION_BOT_CREATOR = 'auto-session-bot';
+
 /** セッションに参加者を追加（トランザクションでgameState.playersにも追加） */
 export async function joinSession(
   sessionId: string,
   playerName: string,
   options?: { force?: boolean; gender?: 'M' | 'F' }
-): Promise<{ isAlreadyJoined: boolean }> {
+): Promise<{ isAlreadyJoined: boolean; newCreator?: string }> {
   if (!playerName.trim()) {
     throw new SessionError('参加者名を入力してください', 'invalid-name');
   }
@@ -247,6 +250,14 @@ export async function joinSession(
         updatedAt: serverTimestamp(),
       };
 
+      // bot 作成セッション: 最初にログインした人を作成者に自動昇格
+      // transaction 内なので同時入室でも先着 1 人のみ昇格する
+      let newCreator: string | undefined;
+      if (data.createdBy === AUTO_SESSION_BOT_CREATOR) {
+        updates.createdBy = playerName;
+        newCreator = playerName;
+      }
+
       // gameState.playersに未登録の場合、新規プレイヤーとして追加
       // dot notationでplayersのみ更新し、courts/matchHistory等を上書きしない
       const gameState = data.gameState as GameState | undefined;
@@ -269,7 +280,7 @@ export async function joinSession(
       }
 
       transaction.update(docRef, updates);
-      return { isAlreadyJoined: false };
+      return { isAlreadyJoined: false, newCreator };
     });
   }
 
@@ -290,8 +301,23 @@ export async function joinSession(
   }
   participants = [...participants, playerName];
 
-  await updateSession(sessionId, { participants });
-  return { isAlreadyJoined: false };
+  const updates: Partial<Session> = { participants };
+  let newCreator: string | undefined;
+  if (session.createdBy === AUTO_SESSION_BOT_CREATOR) {
+    updates.createdBy = playerName;
+    newCreator = playerName;
+  }
+
+  await updateSession(sessionId, updates);
+  return { isAlreadyJoined: false, newCreator };
+}
+
+/** 作成者を変更（dev モード専用） */
+export async function updateCreator(sessionId: string, newCreator: string): Promise<void> {
+  if (!newCreator.trim()) {
+    throw new SessionError('新しい作成者名を指定してください', 'invalid-name');
+  }
+  await updateSession(sessionId, { createdBy: newCreator });
 }
 
 /** undefinedをnullに変換（Firestoreはundefinedを受け付けない） */
