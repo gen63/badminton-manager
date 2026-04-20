@@ -239,15 +239,33 @@ export function useFirebaseSync() {
     }
 
     // セッションレベル設定を更新
+    // ユーザーがローカルで変更したばかりの設定は上書きしない（push 完了前に remote が
+    // 到着した場合、remote は古い値を持っており、ユーザーの変更が消えてしまうため）
     if (gameState.settings) {
       const settings = useSettingsStore.getState();
-      if (gameState.settings.recordScores !== undefined && gameState.settings.recordScores !== settings.recordScores) {
+      const baseSettings = lastSyncedState.current?.settings;
+      const localUnchanged = <K extends keyof NonNullable<GameState['settings']>>(key: K): boolean =>
+        !baseSettings || baseSettings[key] === settings[key];
+
+      if (
+        gameState.settings.recordScores !== undefined &&
+        gameState.settings.recordScores !== settings.recordScores &&
+        localUnchanged('recordScores')
+      ) {
         useSettingsStore.getState().setRecordScores(gameState.settings.recordScores);
       }
-      if (gameState.settings.continuousMatchMode !== undefined && gameState.settings.continuousMatchMode !== settings.continuousMatchMode) {
+      if (
+        gameState.settings.continuousMatchMode !== undefined &&
+        gameState.settings.continuousMatchMode !== settings.continuousMatchMode &&
+        localUnchanged('continuousMatchMode')
+      ) {
         useSettingsStore.getState().setContinuousMatchMode(gameState.settings.continuousMatchMode);
       }
-      if (gameState.settings.practiceType !== undefined && gameState.settings.practiceType !== settings.practiceType) {
+      if (
+        gameState.settings.practiceType !== undefined &&
+        gameState.settings.practiceType !== settings.practiceType &&
+        localUnchanged('practiceType')
+      ) {
         useSettingsStore.getState().setPracticeType(gameState.settings.practiceType);
       }
     }
