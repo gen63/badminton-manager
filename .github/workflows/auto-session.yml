@@ -17,6 +17,13 @@ on:
         description: '不明点があっても強制的にセッションを作成する'
         type: boolean
         default: false
+      target:
+        description: '対象日（productionモードのみ有効）'
+        type: choice
+        options:
+          - tomorrow
+          - today
+        default: tomorrow
 
 jobs:
   create-session:
@@ -41,6 +48,7 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           MODE: ${{ inputs.mode || 'production' }}
           FORCE_CREATE: ${{ inputs.force || 'false' }}
+          TARGET: ${{ inputs.target || 'tomorrow' }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
           VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}

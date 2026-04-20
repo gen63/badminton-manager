@@ -11,6 +11,7 @@
  *   DISCORD_WEBHOOK_URL - Discord Webhook URL
  *   FORCE_CREATE       - 'true'なら不明点があっても強制作成
  *   MODE               - 'test'なら直近練習日を対象にセッション作成（デフォルト: 'production'）
+ *   TARGET             - productionモードで 'today' なら当日、'tomorrow'（デフォルト）なら翌日を対象
  *   VITE_FIREBASE_*    - Firebase設定
  *   TZ                 - Asia/Tokyo
  */
@@ -738,9 +739,13 @@ async function main() {
     targetDate = nextDate;
     console.log(`[TEST] Target: ${formatPracticeDate(targetDate)} (直近練習日)`);
   } else {
+    const target = process.env.TARGET === 'today' ? 'today' : 'tomorrow';
     targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() + 1);
+    if (target === 'tomorrow') {
+      targetDate.setDate(targetDate.getDate() + 1);
+    }
     targetDate.setHours(0, 0, 0, 0);
+    console.log(`[PROD] Target: ${formatPracticeDate(targetDate)} (${target})`);
   }
 
   const targetEvents = filterEventsByDate(allEvents, targetDate);
