@@ -9,8 +9,8 @@
 
 そこで **シングルスモード時に限り、以下の操作を管理者権限保有者のみに制限する**:
 
-1. コート追加（`handleAddCourt`）
-2. 手動配置変更（プレイヤータップによる交換 = `handlePlayerTap` / `handleSwapPlayer`）
+1. コート追加 (`handleAddCourt`)
+2. 手動配置変更 = プレイヤータップによる「選択 → 交換」(`handlePlayerTap` + `handleSwapPlayer`)
 
 ダブルスモード時の動作は従来通り（全員が操作可能）。
 
@@ -22,45 +22,70 @@
 
 ## 既存実装の整理
 
-### 管理者判定
+### 管理者判定 (`src/stores/sessionStore.ts:78-87`)
 
-`src/stores/sessionStore.ts:78-87` に `isAdmin()` が存在。
-ローカルモード（`session.createdBy` 無し）では全員管理者扱い、オンラインモードでは
-`currentUser === session.createdBy` または `session.admins[]` に含まれる場合のみ true。
-dev-mode localStorage フラグでも true を返す。
+```ts
+isAdmin: () => {
+  const { session, currentUser } = get();
+  if (!session?.createdBy) return true;          // ローカルモード
+  if (isDevMode()) return true;                  // dev モード
+  if (!currentUser) return false;
+  return currentUser === session.createdBy
+    || session.admins?.includes(currentUser) || false;
+}
+```
 
-### シングルスモード判定
+- ローカルモード (createdBy 無し): 全員 true
+- dev モード (`localStorage['dev-mode'] === '1'`): true
+- オンライン + 作成者 / admins 入り: true
+- それ以外: false
 
-`src/pages/MainPage.tsx:40` にて
-`const gameMode = session?.config.gameMode ?? 'doubles';`
+### シングルスモード判定 (`src/pages/MainPage.tsx:40`)
+
+```ts
+const gameMode = session?.config.gameMode ?? 'doubles';
+```
 
 ### 対象ハンドラ・UI
 
-| 操作               | ハンドラ                       | 呼び出し元                                |
-| ------------------ | ------------------------------ | ----------------------------------------- |
-| コート追加         | `handleAddCourt` (L189-223)    | コート追加ボタン (L965-980)                |
-| 手動配置変更（選択→交換） | `handlePlayerTap` (L497-578) | 待機プレイヤー (L1039), コート上プレイヤー (L777, L806) |
+| 操作               | ハンドラ                       | 呼び出し元 UI                                         |
+| ------------------ | ------------------------------ | ----------------------------------------------------- |
+| コート追加         | `handleAddCourt` (L189-223)    | コート追加ボタン (L965-980)                           |
+| 手動配置変更       | `handlePlayerTap` (L497-578) → `handleSwapPlayer` (L425-453) | 待機プレイヤー (L1039), コート上プレイヤー (L777, L806) |
 
-`PlayerSwapModal.tsx` は現状どこからも import されていないため対象外。
+### 本対応の範囲外 (意図的に含めないもの)
+
+ユーザー要求「コート追加」「手動配置変更」に厳密に従い、以下は制限対象外とする。
+必要であれば別課題で対応。
+
+- `handleRemoveCourt` (L225) — コート削除
+- `handleClearCourt` (L184) — コート上プレイヤーのクリア
+- `handleAutoAssign` (L255) — 自動配置 (「配置」「一括配置」ボタン)
+- `handleContinuousNext` (L354) — 連続モードの自動配置
+- `handleToggleRestWithLock` — 休憩トグル
+- Undo/Redo — シングルスモードでも誰でも使える
+- `PlayerSwapModal` — 現状どこからも import されておらず実質 dead code
 
 ## 実装方針
 
-### 1. 権限判定変数の追加
+### 1. 権限判定変数の追加 (`MainPage.tsx`)
 
-`MainPage.tsx` 上部に以下を追加:
+`handleAddCourt` 定義の直前、既存コンポーネントのロジック部に以下を追加:
 
 ```tsx
 const canManageSingles = gameMode !== 'singles' || isAdmin();
 ```
 
-- シングルスモード **ではない** 場合: 常に `true`（従来通り誰でも操作可）
-- シングルスモード **かつ** 非管理者: `false`
-- `isAdmin()` は `useSessionStore` から取得（既に L29 で destructure 済）
+- シングルスモード **ではない** → 常に `true`（従来通り）
+- シングルスモード **かつ** 非管理者 → `false`
+- `isAdmin` は既に L29 で destructure 済。Zustand ストアの変化 (session.admins 更新等) で
+  コンポーネントは再 render され `canManageSingles` も再評価される。
 
-### 2. ハンドラにガード追加（防御的）
+### 2. ハンドラへのガード追加 (Defense in Depth)
 
-UI 側で disabled にするだけでは、DOM 改変や競合で呼ばれる可能性があるため、
-ハンドラ内部でも早期 return する。
+UI で disable しても、DOM 改変や race で呼ばれる恐れがある。ハンドラ側でも早期 return。
+
+#### 2-1. `handleAddCourt`
 
 ```ts
 const handleAddCourt = async () => {
@@ -68,49 +93,139 @@ const handleAddCourt = async () => {
     toast.error('シングルスモードでは管理者のみコートを追加できます');
     return;
   }
-  // 既存処理
-};
-
-const handlePlayerTap = (...) => {
-  if (!canManageSingles) return;  // サイレント無視（トースト出さない）
-  // 既存処理
+  if (courts.length < 3) { /* 既存処理 */ }
 };
 ```
 
-`handlePlayerTap` は頻繁に呼ばれる UI イベントなのでトーストは出さず、
-ボタン側を `disabled` にして押せないよう見せる。
+トースト表示あり（ユーザーがなぜ追加できないか明示したい頻度・影響が大きい操作）。
 
-### 3. UI の disabled 化
+#### 2-2. `handleSwapPlayer`
 
-- **コート追加ボタン** (L965): 既存の `canAddCourt` に `canManageSingles` を AND。
-  プレイヤー数不足時と区別できるよう、非権限時の表示は「管理者のみ」とする。
-- **待機プレイヤータップボタン** (L1037付近): `disabled={!canManageSingles}` を付与。
-  既存の休憩ボタン (`handleToggleRestWithLock`) と性別/名前編集は残す。
-- **コート上プレイヤータップボタン** (L775, L804): `disabled={!canManageSingles}` を付与。
+```ts
+const handleSwapPlayer = (courtId, position, newPlayerId) => {
+  if (!canManageSingles) return;
+  /* 既存処理 */
+};
+```
 
-### 4. 対象外
+サイレント無視。複数経路からの保険。
 
-- `handleRemoveCourt` — ユーザー要求に含まれていない。もし必要なら別途対応。
-- `handleAutoAssign`, `handleStartGame`, 連続モード, 休憩切替, スコア入力等 — 対象外。
-- ダブルスモードの挙動 — 一切変更しない。
+#### 2-3. `handlePlayerTap` — **休憩復帰経路は維持する**
 
-## テスト観点
+`handlePlayerTap` は以下 3 種の入口を持つ:
 
-- シングルスモード & 非管理者（オンラインセッション参加者）:
-  - コート追加ボタンが disabled 表示になる
-  - コート上/待機プレイヤーをタップしても選択状態にならない
-- シングルスモード & 管理者:
-  - 従来通りコート追加・配置変更ができる
-- ダブルスモード: 従来通り誰でも操作可
-- ローカルモード（`createdBy` なし）: `isAdmin()` が true を返すので制限なし
-- dev-mode: `isAdmin()` が true を返すので制限なし
+1. **コート上プレイヤータップ** (L777, L806) — 交換専用 → 制限対象
+2. **待機プレイヤータップ** (L1039) — 交換専用 → 制限対象
+3. **休憩プレイヤータップ** (L1113) — 2 種類の用途:
+   - (a) コート上プレイヤー選択中に休憩者をタップ = 交換（配置変更）→ 制限対象
+   - (b) 何も選択していないとき休憩者をタップ = 休憩解除（復帰）→ **制限しない**
 
-## コミット前チェック
+したがって一律 early return は誤り。**交換経路のみガード** する:
+
+```ts
+const handlePlayerTap = (playerId, courtId?, position?) => {
+  const player = players.find(p => p.id === playerId);
+
+  if (player?.isResting) {
+    if (selectedPlayer?.courtId !== undefined && selectedPlayer?.position !== undefined) {
+      // 交換経路 (3-a): 管理者のみ
+      if (!canManageSingles) {
+        setSelectedPlayer(null);
+        return;
+      }
+      handleSwapPlayer(selectedPlayer.courtId, selectedPlayer.position, playerId);
+      setSelectedPlayer(null);
+    } else {
+      // 復帰経路 (3-b): 誰でも可
+      toggleRest(playerId);
+      setSelectedPlayer(null);
+    }
+    return;
+  }
+
+  // 以降は待機/コート上タップ = 選択開始 or 交換 → 管理者のみ
+  if (!canManageSingles) return;
+
+  /* 既存の選択・交換処理 */
+};
+```
+
+注: 待機/コート上タップの選択開始 (B1) がブロックされれば `selectedPlayer` は
+非管理者では set されない。よって (3-a) 交換経路は理論上到達不能だが、
+念のためガードを重ねる。
+
+### 3. UI の disable 化
+
+#### 3-1. コート追加ボタン (L965-980)
+
+既存 `canAddCourt` の計算に権限を AND:
+
+```ts
+const canAddCourt =
+  courts.length < 3
+  && totalActiveCount >= (courts.length + 1) * playersPerCourt
+  && canManageSingles;
+```
+
+ラベルは 3 状態で分岐:
+
+- 追加可能: 「コート追加」
+- プレイヤー不足: 「プレイヤー不足」(既存)
+- 非権限 (singles & !admin): 「管理者のみ」
+
+#### 3-2. プレイヤータップボタン
+
+- **待機プレイヤー** (L1037-): `disabled={!canManageSingles}` を付与
+- **コート上プレイヤー** (L775, L804): `disabled={!canManageSingles}` を付与
+- **休憩プレイヤー** (L1113): **disabled を付けない** (復帰操作は全員許可)
+
+既存の `isSelected`/`isReserved` 等のスタイリングはそのまま維持。
+
+### 4. selectedPlayer のクリーンアップ
+
+`canManageSingles` が false に変化した際、`selectedPlayer` が残っていると
+画面下の「X と交換」バナー (L985-1000) がゾンビ表示される。
+useEffect で false 化時にリセット:
+
+```ts
+useEffect(() => {
+  if (!canManageSingles) setSelectedPlayer(null);
+}, [canManageSingles]);
+```
+
+gameMode 切替や admins 更新時にクリアされる保険。
+
+## 実装順序
+
+1. `canManageSingles` と useEffect を MainPage の既存ロジック位置に追加
+2. `handleAddCourt`, `handleSwapPlayer`, `handlePlayerTap` にガード追加
+3. `canAddCourt` を更新、コート追加ボタンのラベルを 3 分岐
+4. 待機/コート上プレイヤーボタンに `disabled` 付与
+5. `npm run build && npm run lint && npm run test:run`
+6. コミット & push
+
+## テスト観点 (手動確認)
+
+ローカルモード (createdBy 無し):
+- singles, doubles 共に従来通り (isAdmin → true)
+
+オンラインモード:
+- **singles & 作成者**: コート追加・プレイヤー交換ができる
+- **singles & admins 入り**: 同上
+- **singles & 非管理者**: コート追加ボタンが「管理者のみ」表示で disabled、
+  待機/コート上プレイヤーをタップしても選択状態にならない、
+  休憩中プレイヤーをタップすれば復帰する
+- **doubles & 非管理者**: 従来通りコート追加・交換可能
+
+dev モード (`localStorage['dev-mode']='1'`):
+- 全ケースで管理者扱い (isAdmin → true) なので制限なし
+
+## コミット前チェック (CLAUDE.md 必須)
 
 ```bash
-npm run build
-npm run lint
-npm run test:run
+npm run build    # 型チェック + ビルド
+npm run lint     # コードスタイル
+npm run test:run # ユニットテスト
 ```
 
 ## ブランチ
