@@ -221,6 +221,46 @@ function mergeMatchHistory<T extends { id: string; startedAt?: number }>(
 }
 
 /**
+ * settings オブジェクトのフィールド単位 3-way マージ
+ *
+ * - base→local で変更があったキー: local の値を採用（ユーザーの変更を優先）
+ * - base→local で変更がないキー: remote の値を採用（他クライアントの変更を保持）
+ *
+ * これにより、ユーザー A が practiceType を変更している最中にユーザー B が
+ * recordScores を変更した場合でも、両者の変更がマージされる。
+ */
+function mergeSettings(
+  base: Record<string, unknown> | undefined,
+  local: Record<string, unknown> | undefined,
+  remote: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!local && !remote) return undefined;
+  if (!local) return remote;
+  if (!remote) return local;
+
+  const result: Record<string, unknown> = {};
+  const keys = new Set<string>([
+    ...Object.keys(base ?? {}),
+    ...Object.keys(local),
+    ...Object.keys(remote),
+  ]);
+
+  for (const key of keys) {
+    const baseVal = base?.[key];
+    const localVal = local[key];
+    const remoteVal = remote[key];
+
+    const localChanged = !base || JSON.stringify(baseVal) !== JSON.stringify(localVal);
+    const value = localChanged ? localVal : remoteVal;
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
+/**
  * 3-wayマージ: base（最後の同期状態）をもとに、ローカル変更をリモートに適用
  *
  * - base→localで変更されたアイテム: local版を採用
@@ -243,6 +283,6 @@ export function mergeGameState(
     ),
     matchHistory: mergeMatchHistory(base.matchHistory, local.matchHistory, remote.matchHistory),
     reservations: mergeById(base.reservations, local.reservations, remote.reservations),
-    settings: local.settings ?? remote.settings,
+    settings: mergeSettings(base.settings, local.settings, remote.settings),
   };
 }

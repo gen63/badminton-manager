@@ -461,22 +461,23 @@ describe('syncUtils', () => {
       expect(result.reservations.find(r => r.id === 'r2')).toBeDefined(); // リモート追加
     });
 
-    it('settings: ローカルの設定を優先', () => {
+    it('settings: フィールド単位で変更を採用（ローカル変更 + リモート追加）', () => {
       const base: SyncGameState = {
         ...emptyState,
         settings: { recordScores: true },
       };
       const local: SyncGameState = {
         ...emptyState,
-        settings: { recordScores: false },
+        settings: { recordScores: false }, // ローカルで変更
       };
       const remote: SyncGameState = {
         ...emptyState,
-        settings: { recordScores: true, continuousMatchMode: false },
+        settings: { recordScores: true, continuousMatchMode: false }, // リモートでキー追加
       };
 
       const result = mergeGameState(base, local, remote);
-      expect(result.settings).toEqual({ recordScores: false }); // ローカル優先
+      // recordScores はローカル変更を採用、continuousMatchMode はリモート追加を保持
+      expect(result.settings).toEqual({ recordScores: false, continuousMatchMode: false });
     });
 
     // === 競合シナリオ: フィールドレベルマージ非対応の検証 ===
@@ -670,7 +671,7 @@ describe('syncUtils', () => {
 
     // === 競合シナリオ: 設定の同時変更 ===
 
-    it('settings: ローカルとリモートで異なる設定変更 → ローカル全体が優先', () => {
+    it('settings: ローカルとリモートで異なるフィールドを変更 → 両方反映', () => {
       const base: SyncGameState = {
         ...emptyState,
         settings: { recordScores: true, continuousMatchMode: true },
@@ -685,8 +686,8 @@ describe('syncUtils', () => {
       };
 
       const result = mergeGameState(base, local, remote);
-      // settings は常にローカル優先（フィールドレベルマージなし）
-      expect(result.settings).toEqual({ recordScores: false, continuousMatchMode: true });
+      // フィールド単位 3-way マージで双方の変更を保持
+      expect(result.settings).toEqual({ recordScores: false, continuousMatchMode: false });
     });
 
     it('3クライアント同時休憩復帰シナリオ', () => {
@@ -723,6 +724,69 @@ describe('syncUtils', () => {
       expect(prop(result1.players.find(p => p.id === 'A'), 'isResting')).toBe(false); // A復帰（ローカル）
       expect(prop(result1.players.find(p => p.id === 'B'), 'isResting')).toBe(false); // B復帰（リモート保持）
       expect(prop(result1.players.find(p => p.id === 'C'), 'isResting')).toBe(true);  // C未変更
+    });
+
+    describe('settings のフィールド単位 3-way マージ', () => {
+      const baseState: SyncGameState = {
+        ...emptyState,
+        settings: { recordScores: true, continuousMatchMode: true, practiceType: '複' },
+      };
+
+      it('ローカルで practiceType を変更、リモートは未変更 → ローカル値を採用', () => {
+        const local: SyncGameState = {
+          ...emptyState,
+          settings: { recordScores: true, continuousMatchMode: true, practiceType: '単' },
+        };
+        const remote: SyncGameState = baseState;
+        const result = mergeGameState(baseState, local, remote);
+        expect(result.settings).toEqual({
+          recordScores: true,
+          continuousMatchMode: true,
+          practiceType: '単',
+        });
+      });
+
+      it('ローカルで practiceType、リモートで recordScores を変更 → 両方反映', () => {
+        const local: SyncGameState = {
+          ...emptyState,
+          settings: { recordScores: true, continuousMatchMode: true, practiceType: '単' },
+        };
+        const remote: SyncGameState = {
+          ...emptyState,
+          settings: { recordScores: false, continuousMatchMode: true, practiceType: '複' },
+        };
+        const result = mergeGameState(baseState, local, remote);
+        expect(result.settings).toEqual({
+          recordScores: false, // リモート変更を保持
+          continuousMatchMode: true,
+          practiceType: '単', // ローカル変更を優先
+        });
+      });
+
+      it('ローカル未変更 / リモートで practiceType を変更 → リモート値を採用', () => {
+        const local: SyncGameState = baseState;
+        const remote: SyncGameState = {
+          ...emptyState,
+          settings: { recordScores: true, continuousMatchMode: true, practiceType: '単' },
+        };
+        const result = mergeGameState(baseState, local, remote);
+        expect(result.settings).toEqual({
+          recordScores: true,
+          continuousMatchMode: true,
+          practiceType: '単',
+        });
+      });
+
+      it('base / remote に settings が無い → local を採用', () => {
+        const base: SyncGameState = { ...emptyState };
+        const local: SyncGameState = {
+          ...emptyState,
+          settings: { practiceType: '単' },
+        };
+        const remote: SyncGameState = { ...emptyState };
+        const result = mergeGameState(base, local, remote);
+        expect(result.settings).toEqual({ practiceType: '単' });
+      });
     });
   });
 });
