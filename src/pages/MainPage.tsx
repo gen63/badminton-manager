@@ -16,7 +16,7 @@ import { useRealtimeSession } from '../hooks/useRealtimeSession';
 import { useFirebaseSyncContext } from '../contexts/FirebaseSyncContext';
 import { useAccountingStore } from '../stores/accountingStore';
 import { PaymentModal } from '../components/PaymentModal';
-import { ScoreInputModal } from '../components/ScoreInputModal';
+import { WinnerSelectModal } from '../components/WinnerSelectModal';
 import { CourtTimer } from '../components/CourtTimer';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
@@ -63,6 +63,7 @@ export function MainPage() {
   const [informationText, setInformationText] = useState('');
   const [pendingScoreMatch, setPendingScoreMatch] = useState<{
     matchId: string;
+    courtId: number;
     teamA: [string, string];
     teamB: [string, string];
   } | null>(null);
@@ -875,6 +876,7 @@ export function MainPage() {
                             if (recordScores) {
                               setPendingScoreMatch({
                                 matchId,
+                                courtId: court.id,
                                 teamA: currentCourt.teamA,
                                 teamB: currentCourt.teamB,
                               });
@@ -1232,15 +1234,31 @@ export function MainPage() {
         </div>
       )}
 
-      {/* スコア入力モーダル */}
+      {/* 勝者選択モーダル */}
       {pendingScoreMatch && (
-        <ScoreInputModal
-          matchId={pendingScoreMatch.matchId}
+        <WinnerSelectModal
+          courtId={pendingScoreMatch.courtId}
           teamA={pendingScoreMatch.teamA}
           teamB={pendingScoreMatch.teamB}
-          targetScore={session?.config.targetScore || 21}
           getPlayerName={(id) => players.find((p) => p.id === id)?.name || '未設定'}
-          onConfirm={(matchId, scoreA, scoreB, winner) => {
+          getPlayerGender={(id) => players.find((p) => p.id === id)?.gender}
+          onConfirm={(winnerIds) => {
+            if (winnerIds === 'unknown') {
+              setPendingScoreMatch(null);
+              return;
+            }
+            const teamASet = new Set(pendingScoreMatch.teamA.filter(Boolean));
+            const teamBSet = new Set(pendingScoreMatch.teamB.filter(Boolean));
+            const allInA = winnerIds.every((id) => teamASet.has(id));
+            const allInB = winnerIds.every((id) => teamBSet.has(id));
+            if (!allInA && !allInB) {
+              setPendingScoreMatch(null);
+              return;
+            }
+            const winner: 'A' | 'B' = allInA ? 'A' : 'B';
+            const scoreA = winner === 'A' ? 100 : 99;
+            const scoreB = winner === 'B' ? 100 : 99;
+            const matchId = pendingScoreMatch.matchId;
             useGameStore.setState((state) => ({
               matchHistory: state.matchHistory.map((m) =>
                 m.id === matchId ? { ...m, scoreA, scoreB, winner } : m
@@ -1248,7 +1266,7 @@ export function MainPage() {
             }));
             setPendingScoreMatch(null);
           }}
-          onSkip={() => setPendingScoreMatch(null)}
+          onCancel={() => setPendingScoreMatch(null)}
         />
       )}
 
