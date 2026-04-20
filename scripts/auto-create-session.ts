@@ -69,19 +69,31 @@ interface PlayerIssue {
 
 export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName };
 
+const ETOMO_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
 async function fetchEtomoPage(url: string): Promise<string | null> {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.error('E-ToMo fetch error:', response.status);
-      return null;
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(url, {
+        headers: { 'User-Agent': ETOMO_USER_AGENT },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!response.ok) {
+        console.error(`E-ToMo fetch error (attempt ${attempt}/${maxAttempts}): HTTP ${response.status}`);
+      } else {
+        const buffer = Buffer.from(await response.arrayBuffer());
+        return iconv.decode(buffer, 'Shift_JIS');
+      }
+    } catch (error) {
+      console.error(`E-ToMo fetch error (attempt ${attempt}/${maxAttempts}):`, error);
     }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    return iconv.decode(buffer, 'Shift_JIS');
-  } catch (error) {
-    console.error('E-ToMo fetch error:', error);
-    return null;
+    if (attempt < maxAttempts) {
+      await sleep(2000 * 2 ** (attempt - 1));
+    }
   }
+  return null;
 }
 
 function decodeHtmlEntities(str: string): string {
