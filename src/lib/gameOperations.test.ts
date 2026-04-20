@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeFinishAndContinue, type GameState } from './gameOperations';
+import { computeFinishAndContinue, gameModeFromPracticeType, type GameState } from './gameOperations';
 import type { Player } from '../types/player';
 import type { Court } from '../types/court';
 
@@ -199,6 +199,54 @@ describe('computeFinishAndContinue', () => {
       });
       expect(result.continuousNextApplied).toBe(false);
       expect(result.continuousError).toBe('diversity_block');
+    });
+  });
+
+  describe('gameModeFromPracticeType', () => {
+    it('単 を singles に変換', () => {
+      expect(gameModeFromPracticeType('単')).toBe('singles');
+    });
+    it('複 / 楽 は doubles に変換', () => {
+      expect(gameModeFromPracticeType('複')).toBe('doubles');
+      expect(gameModeFromPracticeType('楽')).toBe('doubles');
+    });
+    it('undefined は doubles にフォールバック', () => {
+      expect(gameModeFromPracticeType(undefined)).toBe('doubles');
+    });
+  });
+
+  describe('シングルスモードで3人のみでも試合配置できる（回帰テスト）', () => {
+    it('1コート / 3人 / 連続モードONで配置が継続する', () => {
+      const state: GameState = {
+        players: [
+          makePlayer('p1'),
+          makePlayer('p2'),
+          makePlayer('p3'),
+        ],
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', ''],
+            teamB: ['p2', ''],
+            isPlaying: true,
+            startedAt: 1710500000000,
+          }),
+        ],
+        matchHistory: [],
+        reservations: [],
+      };
+
+      const result = computeFinishAndContinue(state, 1, {
+        continuousMatchMode: true,
+        useStayDurationPriority: true,
+        prioritizeDiversity: false,
+        gameMode: 'singles',
+      });
+
+      expect(result.continuousError).toBeUndefined();
+      expect(result.continuousNextApplied).toBe(true);
+      const court = result.newState.courts.find(c => c.id === 1);
+      expect(court?.teamA.filter(id => id)).toHaveLength(1);
+      expect(court?.teamB.filter(id => id)).toHaveLength(1);
     });
   });
 

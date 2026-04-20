@@ -21,6 +21,13 @@ export function getMinWaitingCount(gameMode: 'singles' | 'doubles'): number {
   return gameMode === 'singles' ? 3 : 7;
 }
 
+/** 練習種別（単/複/楽）をアルゴリズム用のゲームモードに変換 */
+export function gameModeFromPracticeType(
+  practiceType: '単' | '複' | '楽' | undefined,
+): 'singles' | 'doubles' {
+  return practiceType === '単' ? 'singles' : 'doubles';
+}
+
 /** 連続モード配置のブロック判定（多様性優先モード用） */
 export function checkContinuousBlock(
   players: Player[],

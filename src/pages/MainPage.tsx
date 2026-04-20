@@ -20,7 +20,7 @@ import { ScoreInputModal } from '../components/ScoreInputModal';
 import { CourtTimer } from '../components/CourtTimer';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
-import { checkContinuousBlock, getPlayersPerCourt, getMinWaitingCount } from '../lib/gameOperations';
+import { checkContinuousBlock, getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType } from '../lib/gameOperations';
 
 import { BottomNav } from '../components/BottomNav';
 
@@ -35,9 +35,9 @@ export function MainPage() {
   const { players, toggleRest, updatePlayer, addPlayers, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();
-  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeDiversity, recordScores } = useSettingsStore();
+  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeDiversity, recordScores, practiceType } = useSettingsStore();
 
-  const gameMode = session?.config.gameMode ?? 'doubles';
+  const gameMode = session?.config.gameMode ?? gameModeFromPracticeType(practiceType);
   const playersPerCourt = getPlayersPerCourt(gameMode);
 
   // total active players cache used by flow-priority checks
@@ -280,7 +280,7 @@ export function MainPage() {
           allPlayers: allActivePlayers,
           useStayDurationPriority,
           reservations,
-          gameMode: session?.config.gameMode ?? 'doubles',
+          gameMode,
         }
       );
 
@@ -354,8 +354,8 @@ export function MainPage() {
   const handleContinuousNext = (courtId: number) => {
     const { courts, matchHistory, updateCourt, startGame } = useGameStore.getState();
     const { players } = usePlayerStore.getState();
-    const { useStayDurationPriority, prioritizeDiversity } = useSettingsStore.getState();
-    const gm = session?.config.gameMode ?? 'doubles';
+    const { useStayDurationPriority, prioritizeDiversity, practiceType } = useSettingsStore.getState();
+    const gm = session?.config.gameMode ?? gameModeFromPracticeType(practiceType);
 
     // 最新の待機プレイヤーを計算
     const playersInCourts = new Set(
@@ -882,8 +882,7 @@ export function MainPage() {
                             if (isOnline) {
                               try {
                                 const { finishGameTransaction } = await import('../services/sessionService');
-                                const { computeFinishAndContinue } = await import('../lib/gameOperations');
-                                const gameMode = session?.config.gameMode ?? 'doubles';
+                                const { computeFinishAndContinue, gameModeFromPracticeType } = await import('../lib/gameOperations');
 
                                 const { result, writtenState } = await finishGameTransaction(
                                   session!.id,
@@ -892,11 +891,13 @@ export function MainPage() {
                                   (remoteState) => {
                                     // リモートの設定値を優先（他ユーザーがOFFにした場合を反映）
                                     const remoteSettings = remoteState.settings;
+                                    const remoteGameMode = session?.config.gameMode
+                                      ?? gameModeFromPracticeType(remoteSettings?.practiceType ?? practiceType);
                                     return computeFinishAndContinue(remoteState, court.id, {
                                       continuousMatchMode: remoteSettings?.continuousMatchMode ?? continuousMatchMode,
                                       useStayDurationPriority,
                                       prioritizeDiversity,
-                                      gameMode,
+                                      gameMode: remoteGameMode,
                                       matchId,
                                     }).newState;
                                   }
