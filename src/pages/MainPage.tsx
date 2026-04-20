@@ -39,6 +39,8 @@ export function MainPage() {
 
   const gameMode = session?.config.gameMode ?? 'doubles';
   const playersPerCourt = getPlayersPerCourt(gameMode);
+  // シングルスモード時はコート追加・手動配置変更を管理者限定にする
+  const canManageSingles = gameMode !== 'singles' || isAdmin();
 
   // total active players cache used by flow-priority checks
   const totalActiveCount = players.filter(p => !p.isResting).length;
@@ -107,6 +109,11 @@ export function MainPage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
+
+  // 権限失効時は選択状態をクリア（ゾンビ交換バナーを防ぐ）
+  useEffect(() => {
+    if (!canManageSingles) setSelectedPlayer(null);
+  }, [canManageSingles]);
 
   // config.courtCount と courts.length を同期（オンラインモード時）
   useEffect(() => {
@@ -187,6 +194,10 @@ export function MainPage() {
   };
 
   const handleAddCourt = async () => {
+    if (!canManageSingles) {
+      toast.error('シングルスモードでは管理者のみコートを追加できます');
+      return;
+    }
     if (courts.length < 3) {
       const newCount = courts.length + 1;
       resizeCourts(newCount);
@@ -420,9 +431,10 @@ export function MainPage() {
     playersPerCourt
   );
   const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= playersPerCourt;
-  const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * playersPerCourt;
+  const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * playersPerCourt && canManageSingles;
 
   const handleSwapPlayer = (courtId: number, position: number, newPlayerId: string) => {
+    if (!canManageSingles) return;
     const court = courts.find((c) => c.id === courtId);
     if (!court) return;
 
@@ -505,16 +517,24 @@ export function MainPage() {
     if (player?.isResting) {
       // コート上のメンバーが選択されている場合のみ交換
       if (selectedPlayer?.courtId !== undefined && selectedPlayer?.position !== undefined) {
+        // シングルスモードの非管理者は交換不可（選択状態のみクリア）
+        if (!canManageSingles) {
+          setSelectedPlayer(null);
+          return;
+        }
         handleSwapPlayer(selectedPlayer.courtId, selectedPlayer.position, playerId);
         setSelectedPlayer(null);
       } else {
-        // それ以外（選択なし or 待機中メンバー選択）は復帰のみ
+        // それ以外（選択なし or 待機中メンバー選択）は復帰のみ（権限不要）
         toggleRest(playerId);
         setSelectedPlayer(null);
       }
       return;
     }
-    
+
+    // 待機中・コート上メンバーの選択/交換はシングルスモード時に管理者限定
+    if (!canManageSingles) return;
+
     // 以下は待機中・コート上メンバーの処理（従来通り）
     if (!selectedPlayer) {
       setSelectedPlayer({ id: playerId, courtId, position });
@@ -775,7 +795,8 @@ export function MainPage() {
                             <button
                               key={idx}
                               onClick={() => handlePlayerTap(playerId, court.id, idx)}
-                              className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors ${
+                              disabled={!canManageSingles}
+                              className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors disabled:cursor-not-allowed ${
                                 selectedPlayer?.id === playerId
                                   ? 'border-primary bg-accent'
                                   : 'border-transparent hover:border-border'
@@ -804,7 +825,8 @@ export function MainPage() {
                             <button
                               key={idx}
                               onClick={() => handlePlayerTap(playerId, court.id, idx + 2)}
-                              className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors ${
+                              disabled={!canManageSingles}
+                              className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors disabled:cursor-not-allowed ${
                                 selectedPlayer?.id === playerId
                                   ? 'border-primary bg-accent'
                                   : 'border-transparent hover:border-border'
@@ -974,7 +996,7 @@ export function MainPage() {
               >
                 <Plus size={20} className="text-muted-foreground" />
                 <span className="text-xs font-medium text-muted-foreground">
-                  {canAddCourt ? 'コート追加' : 'プレイヤー不足'}
+                  {canAddCourt ? 'コート追加' : !canManageSingles ? '管理者のみ' : 'プレイヤー不足'}
                 </span>
               </button>
             )}
@@ -1037,7 +1059,10 @@ export function MainPage() {
                   <button
                     key={player.id}
                     onClick={() => handlePlayerTap(player.id)}
+                    aria-disabled={!canManageSingles}
                     className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl px-2 pt-[3px] pb-2 flex flex-col items-center justify-end gap-0 shadow-sm transition-all text-left h-[58px] ${
+                      !canManageSingles ? 'cursor-not-allowed' : ''
+                    } ${
                       isSelected
                         ? 'ring-2 ring-primary ring-offset-1 border-primary'
                         : isReserved
