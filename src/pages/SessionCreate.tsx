@@ -287,7 +287,19 @@ export function SessionCreate() {
         // 初期ゲーム状態をFirestoreにpush（参加者がすぐ取得できるように）
         const { players } = usePlayerStore.getState();
         const { courts, matchHistory } = useGameStore.getState();
-        await syncGameStateWithTransaction(sessionId, { players, courts, matchHistory, reservations: [] });
+        const { recordScores: initialRecordScores, continuousMatchMode: initialContinuousMatchMode, practiceType: initialPracticeType } =
+          useSettingsStore.getState();
+        await syncGameStateWithTransaction(sessionId, {
+          players,
+          courts,
+          matchHistory,
+          reservations: [],
+          settings: {
+            recordScores: initialRecordScores,
+            continuousMatchMode: initialContinuousMatchMode,
+            practiceType: initialPracticeType,
+          },
+        });
 
         setCreatedSessionId(sessionId);
         requestNotificationPermission();

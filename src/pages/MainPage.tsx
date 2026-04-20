@@ -37,7 +37,9 @@ export function MainPage() {
     useGameStore();
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeDiversity, recordScores, practiceType } = useSettingsStore();
 
-  const gameMode = session?.config.gameMode ?? gameModeFromPracticeType(practiceType);
+  // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
+  // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
+  const gameMode = gameModeFromPracticeType(practiceType);
   const playersPerCourt = getPlayersPerCourt(gameMode);
 
   // total active players cache used by flow-priority checks
@@ -355,7 +357,7 @@ export function MainPage() {
     const { courts, matchHistory, updateCourt, startGame } = useGameStore.getState();
     const { players } = usePlayerStore.getState();
     const { useStayDurationPriority, prioritizeDiversity, practiceType } = useSettingsStore.getState();
-    const gm = session?.config.gameMode ?? gameModeFromPracticeType(practiceType);
+    const gm = gameModeFromPracticeType(practiceType);
 
     // 最新の待機プレイヤーを計算
     const playersInCourts = new Set(
@@ -891,8 +893,9 @@ export function MainPage() {
                                   (remoteState) => {
                                     // リモートの設定値を優先（他ユーザーがOFFにした場合を反映）
                                     const remoteSettings = remoteState.settings;
-                                    const remoteGameMode = session?.config.gameMode
-                                      ?? gameModeFromPracticeType(remoteSettings?.practiceType ?? practiceType);
+                                    const remoteGameMode = gameModeFromPracticeType(
+                                      remoteSettings?.practiceType ?? practiceType,
+                                    );
                                     return computeFinishAndContinue(remoteState, court.id, {
                                       continuousMatchMode: remoteSettings?.continuousMatchMode ?? continuousMatchMode,
                                       useStayDurationPriority,
