@@ -18,6 +18,16 @@ export interface SessionInformation {
   readBy: string[]; // 既読ユーザー名の配列
 }
 
+/**
+ * プレゼンス情報（二重操作抑止のための画面レベルの在席表示）
+ * - lastSeenAt: 最終ハートビート（クライアント時刻）
+ * - lastTapAt:  最終タップ（クライアント時刻）。存在すれば「操作しそう」の強シグナル
+ */
+export interface PresenceEntry {
+  lastSeenAt: number;
+  lastTapAt?: number;
+}
+
 export interface Session {
   id: string;
   config: SessionConfig;
@@ -30,6 +40,7 @@ export interface Session {
   registeredPlayers?: string[]; // セッション作成時に登録された選手名
   status?: 'active' | 'ended';
   information?: SessionInformation; // 周知事項
+  presence?: { [username: string]: PresenceEntry }; // 画面を開いている/操作中のユーザー
   etomoEventId?: string; // E-tomoイベントID（自動作成時の重複防止用）
   firstMatchStartedAt?: number | null; // 最初の試合開始時刻。null/未設定 = 試合未開始（12h自動アーカイブ判定用）
   // 一覧表示用の派生フィールド（docToSession で gameState から抽出）

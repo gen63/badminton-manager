@@ -13,6 +13,9 @@ import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useRealtimeSession } from '../hooks/useRealtimeSession';
+import { usePresence } from '../hooks/usePresence';
+import { usePresenceStore } from '../stores/presenceStore';
+import { PresenceIndicator } from '../components/PresenceIndicator';
 import { useFirebaseSyncContext } from '../contexts/FirebaseSyncContext';
 import { useAccountingStore } from '../stores/accountingStore';
 import { PaymentModal } from '../components/PaymentModal';
@@ -31,6 +34,8 @@ export function MainPage() {
   // オンラインモード時のリアルタイム同期
   const isSharedSession = !!session?.createdBy;
   useRealtimeSession(isSharedSession ? session?.id ?? null : null);
+  usePresence(isSharedSession ? session?.id ?? null : null, currentUser);
+  const remotePresence = usePresenceStore((s) => s.remotePresence);
   const { prepareDirectTransaction, completeDirectTransaction } = useFirebaseSyncContext();
   const { players, toggleRest, updatePlayer, addPlayers, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
@@ -676,6 +681,13 @@ export function MainPage() {
           </div>
         </div>
       </header>
+
+      {/* プレゼンス表示（他ユーザーが画面を開いている/操作中のとき） */}
+      {isSharedSession && (
+        <div className="flex justify-center px-4 pt-2 pointer-events-none">
+          <PresenceIndicator presence={remotePresence} currentUser={currentUser} />
+        </div>
+      )}
 
       {/* 運営タスク（自分の分だけ、全て完了で非表示） */}
       {currentUser && (() => {

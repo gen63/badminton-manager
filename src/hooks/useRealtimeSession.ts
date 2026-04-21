@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { subscribeToSession } from '../services/sessionService';
 import { useSessionStore } from '../stores/sessionStore';
+import { usePresenceStore } from '../stores/presenceStore';
 
 /**
  * セッションをリアルタイム監視するフック
@@ -31,12 +32,17 @@ export function useRealtimeSession(sessionId: string | null) {
           status: session.status,
           information,
         });
+
+        // プレゼンスは sessionStore を経由せず専用の揮発ストアに流す
+        // （localStorage への永続化を避けるため）
+        usePresenceStore.getState().setRemotePresence(session.presence ?? {});
       }
     });
 
     return () => {
       unsubscribeRef.current?.();
       unsubscribeRef.current = null;
+      usePresenceStore.getState().clear();
     };
   }, [sessionId, updateSession]);
 }

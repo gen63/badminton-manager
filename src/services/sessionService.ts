@@ -18,9 +18,11 @@ import {
   orderBy,
   limit,
   getDocs,
+  FieldPath,
+  deleteField,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import type { Session } from '../types/session';
+import type { Session, PresenceEntry } from '../types/session';
 import type { Player } from '../types/player';
 import type { Court } from '../types/court';
 import type { Match } from '../types/match';
@@ -78,6 +80,7 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     admins: data.admins as string[] | undefined,
     status: data.status as Session['status'],
     information: data.information as Session['information'],
+    presence: data.presence as Session['presence'],
     firstMatchStartedAt: (data.firstMatchStartedAt as number | null | undefined) ?? null,
     matchCount: Array.isArray(gameState?.matchHistory) ? gameState.matchHistory.length : 0,
     practiceType: gameState?.settings?.practiceType,
@@ -515,4 +518,83 @@ export async function deleteSession(sessionId: string): Promise<void> {
 
   // フォールバック: localStorage
   localStorage.removeItem(`firebase_session_${sessionId}`);
+}
+
+/**
+ * プレゼンスエントリを書き込み
+ *
+ * - ユーザー名に `.` が含まれてもキー階層が壊れないよう `FieldPath` を使用
+ * - `updatedAt` は意図的に更新しない（TTL カウントと onSnapshot 経路の無駄トリガを避けるため）
+ * - Firestore 未設定時・無効な引数は no-op
+ */
+export async function writePresence(
+  sessionId: string,
+  username: string,
+  patch: Partial<PresenceEntry>,
+): Promise<void> {
+  if (!useFirestore) return;
+  if (!sessionId || !username) return;
+  const entries = Object.entries(patch);
+  if (entries.length === 0) return;
+
+  const docRef = doc(db!, 'sessions', sessionId);
+  // updateDoc の可変長 (FieldPath, value)... 形式で書き込み
+  const args: unknown[] = [];
+  for (const [key, value] of entries) {
+    if (value === undefined) continue;
+    args.push(new FieldPath('presence', username, key), value);
+  }
+  if (args.length === 0) return;
+
+  try {
+    // 型: updateDoc(docRef, fieldPath, value, ...moreFieldsAndValues)
+    await (updateDoc as (...args: unknown[]) => Promise<void>)(docRef, ...args);
+  } catch (error) {
+    console.warn('[Presence] writePresence failed:', error);
+  }
+}
+
+/**
+ * プレゼンスエントリを削除（unmount/非表示時）
+ */
+export async function clearPresence(sessionId: string, username: string): Promise<void> {
+  if (!useFirestore) return;
+  if (!sessionId || !username) return;
+
+  const docRef = doc(db!, 'sessions', sessionId);
+  try {
+    await (updateDoc as (...args: unknown[]) => Promise<void>)(
+      docRef,
+      new FieldPath('presence', username),
+      deleteField(),
+    );
+  } catch (error) {
+    console.warn('[Presence] clearPresence failed:', error);
+  }
+}
+
+/**
+ * 古いプレゼンスエントリを一括削除（漂流対策）
+ *
+ * マウント時に1回のみ呼び出す想定。
+ * `lastSeenAt` が `thresholdMs` より古いエントリを `deleteField` で削除。
+ */
+export async function pruneStalePresence(
+  sessionId: string,
+  staleUsernames: string[],
+): Promise<void> {
+  if (!useFirestore) return;
+  if (!sessionId || staleUsernames.length === 0) return;
+
+  const docRef = doc(db!, 'sessions', sessionId);
+  const args: unknown[] = [];
+  for (const username of staleUsernames) {
+    args.push(new FieldPath('presence', username), deleteField());
+  }
+
+  try {
+    await (updateDoc as (...args: unknown[]) => Promise<void>)(docRef, ...args);
+  } catch (error) {
+    console.warn('[Presence] pruneStalePresence failed:', error);
+  }
 }
