@@ -65,8 +65,10 @@ export function usePresence(sessionId: string | null, currentUser: string | null
         // （非可視タブでマウントされた場合の救済を兼ねる）
         start();
       } else {
-        // タブを裏に回した瞬間にプレゼンスを消す
-        void clearPresence(sessionId, currentUser);
+        // 裏に回してもエントリは残す。ハートビートが止まるので 45秒後に
+        // 他ユーザー側の表示から自然に消える。これにより一瞬の
+        // アプリ切替で lastTapAt が消えて「操作中」が落ちる問題を回避。
+        // （タブを閉じた場合は beforeunload / unmount の clearPresence で削除）
         lastWriteAtRef.current = 0;
         lastTapWriteAtRef.current = 0;
       }
