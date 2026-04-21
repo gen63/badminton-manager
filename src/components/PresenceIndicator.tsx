@@ -4,8 +4,6 @@ import type { PresenceEntry } from '../types/session';
 
 /** 45秒以上更新がなければ「閲覧中」リストからも除外 */
 const VIEWING_WINDOW_MS = 45_000;
-/** 15秒以内にタップがあれば「操作中」扱い */
-const ACTING_WINDOW_MS = 15_000;
 /** 名前表示の最大文字数（超過時は末尾 … ） */
 const NAME_MAX = 12;
 /** UI 再評価の tick 間隔 */
@@ -31,8 +29,10 @@ function formatNames(names: string[], suffix: string): string {
 /**
  * 他ユーザーの在席/操作状況を表示するバッジ
  *
- * - 「操作中」優先: 直近15秒以内にタップがあった人がいればオレンジで強調
- * - それ以外で「閲覧中」（45秒以内のハートビート）の人がいればグレーで控えめに表示
+ * - 「操作中」: このセッションで1回でもタップ済み（lastTapAt を持つ）
+ *   画面を開いている限り（45秒ハートビート内）ずっと操作中扱い
+ * - 「閲覧中」: 一度もタップしていない（見ているだけ）
+ * - タブを閉じる/非可視化/45秒無反応で presence ごと消え、再訪時は閲覧中に戻る
  * - 自分自身は除外
  * - 該当者ゼロなら何も描画しない
  */
@@ -53,7 +53,7 @@ export function PresenceIndicator({ presence, currentUser }: Props) {
   if (entries.length === 0) return null;
 
   const acting = entries
-    .filter(([, e]) => typeof e.lastTapAt === 'number' && now - (e.lastTapAt ?? 0) <= ACTING_WINDOW_MS)
+    .filter(([, e]) => typeof e.lastTapAt === 'number')
     .map(([name]) => name);
 
   if (acting.length > 0) {
