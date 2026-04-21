@@ -607,10 +607,6 @@ async function notifySessionPending(
   await sendDiscordMessage(message);
 }
 
-async function notifyNoEvents(): Promise<void> {
-  await sendDiscordMessage('ℹ️ 明日の開催予定はありません');
-}
-
 async function notifySkipped(event: EtomoEventDetail, targetDate: Date): Promise<void> {
   const summary = formatEventSummary(event, targetDate);
   const message = ['⏭️ **作成済みのためスキップ**', '━━━━━━━━━━━━━━━━━━', summary].join('\n');
@@ -737,7 +733,6 @@ async function main() {
   if (targetEvents.length === 0) {
     if (!isTestMode) {
       console.log('No practice scheduled for tomorrow.');
-      await notifyNoEvents();
     }
     return;
   }
