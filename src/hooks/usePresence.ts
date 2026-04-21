@@ -29,10 +29,13 @@ export function usePresence(sessionId: string | null, currentUser: string | null
     if (!sessionId || !currentUser) return;
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
+    let pruneTimerId: ReturnType<typeof setTimeout> | null = null;
     let tapListenerAttached = false;
     let cancelled = false;
 
     const heartbeat = () => {
+      // 非可視タブからは送信しない（裏に回した直後の clearPresence を上書きしないため）
+      if (document.visibilityState !== 'visible') return;
       const now = Date.now();
       if (now - lastWriteAtRef.current < HEARTBEAT_SKIP_MS) return;
       lastWriteAtRef.current = now;
@@ -40,6 +43,7 @@ export function usePresence(sessionId: string | null, currentUser: string | null
     };
 
     const handleTap = () => {
+      if (document.visibilityState !== 'visible') return;
       const now = Date.now();
       if (now - lastTapWriteAtRef.current < TAP_THROTTLE_MS) return;
       lastTapWriteAtRef.current = now;
@@ -47,9 +51,19 @@ export function usePresence(sessionId: string | null, currentUser: string | null
       void writePresence(sessionId, currentUser, { lastSeenAt: now, lastTapAt: now });
     };
 
+    const start = () => {
+      if (tapListenerAttached) return;
+      heartbeat();
+      intervalId = setInterval(heartbeat, HEARTBEAT_INTERVAL_MS);
+      window.addEventListener('pointerdown', handleTap, { passive: true });
+      tapListenerAttached = true;
+    };
+
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        heartbeat();
+        // 可視に戻ったら listener / interval を確実にアタッチ
+        // （非可視タブでマウントされた場合の救済を兼ねる）
+        start();
       } else {
         // タブを裏に回した瞬間にプレゼンスを消す
         void clearPresence(sessionId, currentUser);
@@ -61,14 +75,6 @@ export function usePresence(sessionId: string | null, currentUser: string | null
     const handleBeforeUnload = () => {
       // fire-and-forget（updateDoc の async 完了は保証されない）
       void clearPresence(sessionId, currentUser);
-    };
-
-    const start = () => {
-      if (tapListenerAttached) return;
-      heartbeat();
-      intervalId = setInterval(heartbeat, HEARTBEAT_INTERVAL_MS);
-      window.addEventListener('pointerdown', handleTap, { passive: true });
-      tapListenerAttached = true;
     };
 
     // 初期状態が可視ならすぐ開始、そうでなければ次の visibilitychange を待つ
@@ -83,7 +89,8 @@ export function usePresence(sessionId: string | null, currentUser: string | null
     if (!prunedRef.current) {
       prunedRef.current = true;
       // 少し遅延させて subscribeToSession が初期プレゼンスを流し込むのを待つ
-      setTimeout(() => {
+      pruneTimerId = setTimeout(() => {
+        pruneTimerId = null;
         if (cancelled) return;
         const now = Date.now();
         const presence = usePresenceStore.getState().remotePresence;
@@ -99,6 +106,7 @@ export function usePresence(sessionId: string | null, currentUser: string | null
     return () => {
       cancelled = true;
       if (intervalId !== null) clearInterval(intervalId);
+      if (pruneTimerId !== null) clearTimeout(pruneTimerId);
       if (tapListenerAttached) window.removeEventListener('pointerdown', handleTap);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('beforeunload', handleBeforeUnload);
