@@ -4,7 +4,7 @@ import type { Session } from '../types/session';
 import type { AccountingRecord } from '../types/accounting';
 
 interface SheetMatch {
-  datetime: string;
+  date: string;
   gym: string;
   teamA: [string, string];
   teamB: [string, string];
@@ -40,7 +40,7 @@ function formatMatchesForSheets(
 
   return {
     matches: matches.map((match) => ({
-      datetime: datetime,
+      date: datetime,
       gym: session.config.gym || '',
       teamA: [
         resolvePlayerName(match.teamA[0], players),
