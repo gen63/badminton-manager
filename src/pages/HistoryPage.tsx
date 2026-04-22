@@ -5,6 +5,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { formatTime, copyToClipboard } from '../lib/utils';
+import { formatLocalDate } from '../lib/sessionArchive';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
 import { Copy, Trash2, Edit3, Clock, Upload, Loader2, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -219,7 +220,7 @@ export function HistoryPage() {
   };
 
   const handleCopyHistory = async () => {
-    const dateStr = session?.config.practiceDate || new Date().toISOString().slice(0, 10);
+    const dateStr = formatLocalDate(session?.config.practiceStartTime ?? Date.now());
     const gymName = session?.config.gym || '';
 
     let text = '日付,場所,A選手1,A選手2,B選手1,B選手2,スコアA,スコアB,試合時間\n';

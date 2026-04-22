@@ -3,7 +3,6 @@ export type GameMode = 'singles' | 'doubles';
 export interface SessionConfig {
   courtCount: number;
   targetScore: number;
-  practiceDate: string;
   practiceStartTime: number; // 練習開始日時（Unix timestamp）
   gym?: string; // 体育館名
   gameMode?: GameMode; // シングルス/ダブルス（デフォルト: doubles）

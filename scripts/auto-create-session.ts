@@ -462,7 +462,6 @@ function buildSessionData(
   memberMap: Map<string, MemberData>,
   targetDate: Date,
 ) {
-  const practiceDate = formatPracticeDate(targetDate);
   const practiceStartTime = buildPracticeStartTime(targetDate, event.startTime);
   const gameMode = event.note === '単' ? 'singles' : 'doubles';
 
@@ -484,7 +483,7 @@ function buildSessionData(
   });
 
   return {
-    config: { courtCount: 1, targetScore: 15, practiceDate, practiceStartTime, gym: event.venue, gameMode },
+    config: { courtCount: 1, targetScore: 15, practiceStartTime, gym: event.venue, gameMode },
     createdBy: 'auto-session-bot',
     participants: [] as string[],
     registeredPlayers: event.participants,

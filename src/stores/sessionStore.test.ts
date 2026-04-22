@@ -42,7 +42,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
         },
@@ -63,7 +63,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           information: {
@@ -86,7 +86,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           information: {
@@ -109,7 +109,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
         },
@@ -127,7 +127,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           information: {
@@ -152,7 +152,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           createdBy: 'Admin',
@@ -178,7 +178,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           createdBy: 'Admin',
@@ -207,7 +207,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           createdBy: 'Admin',
@@ -229,7 +229,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           information: {
@@ -252,7 +252,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           information: {
@@ -280,7 +280,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           information: oldInformation as unknown as SessionInformation,
@@ -299,7 +299,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
         },
@@ -317,7 +317,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           information: {
@@ -342,7 +342,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           createdBy: 'Admin',
@@ -371,7 +371,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           createdBy: 'Admin',
@@ -398,7 +398,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
         },
@@ -424,7 +424,7 @@ describe('sessionStore - Information機能', () => {
       useSessionStore.setState({
         session: {
           id: 'test-session',
-          config: { courtCount: 1, targetScore: 21, practiceDate: '2024-01-01', practiceStartTime: Date.now() },
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
           createdAt: Date.now(),
           updatedAt: Date.now(),
           information: {

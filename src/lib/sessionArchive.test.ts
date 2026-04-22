@@ -19,14 +19,11 @@ function makeMatch(startedAt: number, id = `m-${startedAt}`): Match {
   };
 }
 
-/** `now` を基準に offsetDays 日ずれたローカル日付の YYYY-MM-DD を返す */
-function makeDateStr(now: number, offsetDays: number): string {
+/** `now` を基準に offsetDays 日ずれたローカル日付のタイムスタンプ(ms)を返す */
+function makeStartTime(now: number, offsetDays: number): number {
   const d = new Date(now);
   d.setDate(d.getDate() + offsetDays);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return d.getTime();
 }
 
 describe('computeFirstMatchStartedAt', () => {
@@ -68,13 +65,13 @@ describe('isSessionVisible', () => {
       expect(isSessionVisible({ firstMatchStartedAt: t }, now)).toBe(true);
     });
 
-    it('firstMatchStartedAt が有効なら古い practiceDate より優先', () => {
+    it('firstMatchStartedAt が有効なら古い practiceStartTime より優先', () => {
       const t = now - 60_000;
       expect(
         isSessionVisible(
           {
             firstMatchStartedAt: t,
-            config: { practiceDate: makeDateStr(now, -100) },
+            config: { practiceStartTime: makeStartTime(now, -100) },
           },
           now,
         ),
@@ -82,7 +79,7 @@ describe('isSessionVisible', () => {
     });
   });
 
-  describe('firstMatchStartedAt なしの場合（practiceDate フォールバック）', () => {
+  describe('firstMatchStartedAt なしの場合（practiceStartTime フォールバック）', () => {
     it('config 自体が未定義なら非表示', () => {
       expect(isSessionVisible({}, now)).toBe(false);
     });
@@ -91,31 +88,31 @@ describe('isSessionVisible', () => {
       expect(isSessionVisible({ firstMatchStartedAt: null }, now)).toBe(false);
     });
 
-    it('practiceDate 未定義なら非表示', () => {
+    it('practiceStartTime 未定義なら非表示', () => {
       expect(isSessionVisible({ config: {} }, now)).toBe(false);
     });
 
-    it('practiceDate が今日なら表示', () => {
+    it('practiceStartTime が今日なら表示', () => {
       expect(
-        isSessionVisible({ config: { practiceDate: makeDateStr(now, 0) } }, now),
+        isSessionVisible({ config: { practiceStartTime: makeStartTime(now, 0) } }, now),
       ).toBe(true);
     });
 
-    it('practiceDate が明日なら表示', () => {
+    it('practiceStartTime が明日なら表示', () => {
       expect(
-        isSessionVisible({ config: { practiceDate: makeDateStr(now, 1) } }, now),
+        isSessionVisible({ config: { practiceStartTime: makeStartTime(now, 1) } }, now),
       ).toBe(true);
     });
 
-    it('practiceDate が昨日なら非表示', () => {
+    it('practiceStartTime が昨日なら非表示', () => {
       expect(
-        isSessionVisible({ config: { practiceDate: makeDateStr(now, -1) } }, now),
+        isSessionVisible({ config: { practiceStartTime: makeStartTime(now, -1) } }, now),
       ).toBe(false);
     });
 
-    it('practiceDate が1ヶ月前なら非表示', () => {
+    it('practiceStartTime が1ヶ月前なら非表示', () => {
       expect(
-        isSessionVisible({ config: { practiceDate: makeDateStr(now, -30) } }, now),
+        isSessionVisible({ config: { practiceStartTime: makeStartTime(now, -30) } }, now),
       ).toBe(false);
     });
   });

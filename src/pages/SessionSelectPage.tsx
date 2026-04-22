@@ -8,8 +8,8 @@ import type { Session } from '../types/session';
 import { Loader2, Plus, LogIn, Users, MapPin, Calendar, Trophy } from 'lucide-react';
 
 /** 日付をフォーマット（4/16(水)） */
-function formatSessionDate(practiceDate: string): string {
-  const date = new Date(practiceDate + 'T00:00:00');
+function formatSessionDate(practiceStartTime: number): string {
+  const date = new Date(practiceStartTime);
   const month = date.getMonth() + 1;
   const day = date.getDate();
   const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
@@ -105,7 +105,7 @@ export function SessionSelectPage() {
                       )}
                       <span className="flex items-center gap-1 text-sm text-muted-foreground">
                         <Calendar size={14} className="flex-shrink-0" />
-                        {formatSessionDate(session.config.practiceDate)}
+                        {formatSessionDate(session.config.practiceStartTime)}
                         {session.config.practiceStartTime > 0 && (
                           <> {formatTime(session.config.practiceStartTime)}</>
                         )}
