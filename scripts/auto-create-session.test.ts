@@ -406,7 +406,7 @@ describe('buildSessionData', () => {
     const data = buildSessionData(event, memberMap, date);
     expect(data.config.gym).toBe('千川館');
     expect(data.config.gameMode).toBe('doubles');
-    expect(data.config.practiceDate).toBe('2026-04-09');
+    expect(formatPracticeDate(new Date(data.config.practiceStartTime))).toBe('2026-04-09');
     expect(data.etomoEventId).toBe('123');
     expect(data.gameState.players).toHaveLength(2);
     expect(data.gameState.players[0].name).toBe('田中太郎');

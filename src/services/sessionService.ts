@@ -505,7 +505,7 @@ export async function listRecentActiveSessions(
   const snapshot = await getDocs(q);
   const sessions = snapshot.docs.map((snap) => docToSession(snap.id, snap.data()));
   const filtered = options?.includeArchived ? sessions : sessions.filter((s) => isSessionVisible(s));
-  return filtered.sort((a, b) => b.config.practiceDate.localeCompare(a.config.practiceDate));
+  return filtered.sort((a, b) => b.config.practiceStartTime - a.config.practiceStartTime);
 }
 
 /** セッションを削除（Firestoreドキュメントを完全削除） */

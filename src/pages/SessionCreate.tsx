@@ -191,7 +191,6 @@ export function SessionCreate() {
           config: {
             courtCount: adjustedCourtCount,
             targetScore,
-            practiceDate: practiceDateTime.split('T')[0],
             practiceStartTime: practiceTime,
             gym: selectedGym || undefined,
           },
@@ -247,7 +246,6 @@ export function SessionCreate() {
     const sessionConfig = {
       courtCount: adjustedCourtCount,
       targetScore,
-      practiceDate: practiceDateTime.split('T')[0],
       practiceStartTime: practiceTime,
       gym: selectedGym || undefined,
     };
