@@ -107,9 +107,11 @@ function doPost(e) {
 // ============================================================
 
 const SHEET_RESULTS = '当日結果';
+const RESULTS_HEADERS = ['日付', '場所', 'A1', 'A2', 'B1', 'B2', 'スコアA', 'スコアB', '試合時間', 'matchId'];
+const RESULTS_MATCH_ID_COL = 10; // J列
 
 /**
- * 試合結果を「当日結果」シートに書き込む
+ * 試合結果を「当日結果」シートに書き込む（matchId による重複排除あり）
  */
 function handleBadmintonManagerRequest_(e, data) {
   if (!data.matches || !Array.isArray(data.matches)) {
@@ -126,13 +128,27 @@ function handleBadmintonManagerRequest_(e, data) {
     sheet = ss.insertSheet(SHEET_RESULTS);
   }
 
+  ensureResultsHeader_(sheet);
+
+  // 既存シートの matchId セットを構築
+  var existingIds = readExistingMatchIds_(sheet);
+
+  var newRows = [];
+  var skipped = 0;
   data.matches.forEach(function (match) {
+    var id = match.matchId ? String(match.matchId) : '';
+    if (id && existingIds[id]) {
+      skipped++;
+      return;
+    }
+    if (id) existingIds[id] = true; // 同一ペイロード内の重複も弾く
+
     var a0 = nicknameMap[match.teamA[0]] || match.teamA[0];
     var a1 = nicknameMap[match.teamA[1]] || match.teamA[1];
     var b0 = nicknameMap[match.teamB[0]] || match.teamB[0];
     var b1 = nicknameMap[match.teamB[1]] || match.teamB[1];
 
-    sheet.appendRow([
+    newRows.push([
       match.date,
       match.gym,
       a0,
@@ -142,12 +158,60 @@ function handleBadmintonManagerRequest_(e, data) {
       match.scoreA,
       match.scoreB,
       match.duration,
+      id,
     ]);
   });
 
+  if (newRows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, RESULTS_HEADERS.length)
+      .setValues(newRows);
+  }
+
   return ContentService.createTextOutput(
-    JSON.stringify({ status: 'ok', count: data.matches.length })
+    JSON.stringify({
+      status: 'ok',
+      count: data.matches.length,
+      inserted: newRows.length,
+      skipped: skipped,
+    })
   ).setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * 「当日結果」シートにヘッダ行を保証する
+ * - 完全に空のシート → ヘッダを書く
+ * - ヘッダはあるが matchId 列が欠けている → J1 に 'matchId' を補う
+ */
+function ensureResultsHeader_(sheet) {
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, RESULTS_HEADERS.length).setValues([RESULTS_HEADERS]);
+    sheet.setFrozenRows(1);
+    return;
+  }
+  var firstCell = sheet.getRange(1, 1).getValue();
+  if (!firstCell) {
+    sheet.getRange(1, 1, 1, RESULTS_HEADERS.length).setValues([RESULTS_HEADERS]);
+    return;
+  }
+  // matchId 列のヘッダが無ければ補充
+  if (sheet.getRange(1, RESULTS_MATCH_ID_COL).getValue() !== 'matchId') {
+    sheet.getRange(1, RESULTS_MATCH_ID_COL).setValue('matchId');
+  }
+}
+
+/**
+ * matchId 列から既存 ID の集合を返す（空セルは無視）
+ */
+function readExistingMatchIds_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return {};
+  var values = sheet.getRange(2, RESULTS_MATCH_ID_COL, lastRow - 1, 1).getValues();
+  var set = {};
+  for (var i = 0; i < values.length; i++) {
+    var id = values[i][0];
+    if (id) set[String(id)] = true;
+  }
+  return set;
 }
 
 // ============================================================
