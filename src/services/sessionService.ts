@@ -80,6 +80,7 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     admins: data.admins as string[] | undefined,
     status: data.status as Session['status'],
     information: data.information as Session['information'],
+    accounting: data.accounting as Session['accounting'],
     presence: data.presence as Session['presence'],
     firstMatchStartedAt: (data.firstMatchStartedAt as number | null | undefined) ?? null,
     matchCount: Array.isArray(gameState?.matchHistory) ? gameState.matchHistory.length : 0,

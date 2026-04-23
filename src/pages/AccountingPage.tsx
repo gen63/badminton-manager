@@ -525,6 +525,7 @@ export function AccountingPage() {
   };
 
   const handleCopy = async () => {
+    flushPending();
     const text = generateCopyText();
     const ok = await copyToClipboard(text);
     if (ok) {
@@ -536,6 +537,7 @@ export function AccountingPage() {
 
   const handleUpload = async () => {
     if (!accountingWebAppUrl || isUploading) return;
+    flushPending();
     
     // 試合履歴に出たプレイヤーのIDを収集
     const participantIds = new Set<string>();

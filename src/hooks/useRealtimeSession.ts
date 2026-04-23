@@ -31,6 +31,7 @@ export function useRealtimeSession(sessionId: string | null) {
           admins: session.admins,
           status: session.status,
           information,
+          accounting: session.accounting,
         });
 
         // プレゼンスは sessionStore を経由せず専用の揮発ストアに流す
