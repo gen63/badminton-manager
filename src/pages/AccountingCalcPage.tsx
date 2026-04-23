@@ -87,7 +87,10 @@ export function AccountingCalcPage() {
   const [matchCount, setMatchCount] = useState(initial.matchCount);
   const [otherDescription, setOtherDescription] = useState(initial.otherDescription);
   const [otherAmount, setOtherAmount] = useState(initial.otherAmount);
-  const [isOtherExpanded, setIsOtherExpanded] = useState(false);
+  // 保存値に入力があればアコーディオンを開いた状態で表示
+  const [isOtherExpanded, setIsOtherExpanded] = useState(
+    !!(initial.otherDescription || initial.otherAmount),
+  );
 
   const saveAll = useCallback((overrides: Partial<CalcInput> = {}) => {
     const data: CalcInput = {
