@@ -17,7 +17,6 @@ import { usePresence } from '../hooks/usePresence';
 import { usePresenceStore } from '../stores/presenceStore';
 import { PresenceIndicator } from '../components/PresenceIndicator';
 import { useFirebaseSyncContext } from '../contexts/FirebaseSyncContext';
-import { useAccountingStore } from '../stores/accountingStore';
 import { PaymentModal } from '../components/PaymentModal';
 import { WinnerSelectModal } from '../components/WinnerSelectModal';
 import { CourtTimer } from '../components/CourtTimer';
@@ -51,9 +50,8 @@ export function MainPage() {
   const totalActiveCount = players.filter(p => !p.isResting).length;
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
   const { reservations, fulfillReservation } = useReservationStore();
-  const accountingStore = useAccountingStore();
-  const maleFee = accountingStore.lastInput?.maleFee || 800;
-  const femaleFee = accountingStore.lastInput?.femaleFee || 600;
+  const maleFee = session?.accounting?.maleFee || 800;
+  const femaleFee = session?.accounting?.femaleFee || 600;
   const toast = useToast();
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;

@@ -17,6 +17,22 @@ export interface SessionInformation {
   readBy: string[]; // 既読ユーザー名の配列
 }
 
+/** 会計ページの入力状態（セッションごとに Firestore に保存される） */
+export interface AccountingInput {
+  exemptCount: number;
+  maleCount: number;
+  femaleCount: number;
+  maleFee: number;
+  femaleFee: number;
+  gymCost: number;
+  shuttlePrice: number;
+  shuttleCount: number;
+  matchCount: number;
+  practiceType: string;
+  otherDescription?: string;
+  otherAmount?: number;
+}
+
 /**
  * プレゼンス情報（二重操作抑止のための画面レベルの在席表示）
  * - lastSeenAt: 最終ハートビート（クライアント時刻）
@@ -39,6 +55,7 @@ export interface Session {
   registeredPlayers?: string[]; // セッション作成時に登録された選手名
   status?: 'active' | 'ended';
   information?: SessionInformation; // 周知事項
+  accounting?: AccountingInput; // 会計ページの入力状態（管理者が共有編集）
   presence?: { [username: string]: PresenceEntry }; // 画面を開いている/操作中のユーザー
   etomoEventId?: string; // E-tomoイベントID（自動作成時の重複防止用）
   firstMatchStartedAt?: number | null; // 最初の試合開始時刻。null/未設定 = 試合未開始（12h自動アーカイブ判定用）

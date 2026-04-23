@@ -8,7 +8,8 @@ import { useGameStore } from '../stores/gameStore';
 import { sendAccountingToSheets } from '../lib/sheetsApi';
 import { GYM_OPTIONS } from '../types/session';
 import { DollarSign, Copy, Upload, Loader2, MapPin, Clock } from 'lucide-react';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import type { AccountingInput } from '../types/session';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { BottomNav } from '../components/BottomNav';
@@ -16,10 +17,11 @@ import { calculateAppropriateFee, toGymShortName, PRACTICE_TYPE_OPTIONS } from '
 
 export function AccountingPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, isAdmin: isAdminFn } = useSessionStore();
+  const { session, updateConfig, updateAccounting, isAdmin: isAdminFn } = useSessionStore();
   const { players } = usePlayerStore();
   const { matchHistory } = useGameStore();
-  const { records, addRecord, lastInput, saveLastInput } = useAccountingStore();
+  const { records, addRecord } = useAccountingStore();
+  const savedAccounting = session?.accounting;
   const { accountingWebAppUrl, practiceType: defaultPracticeType } = useSettingsStore();
   const toast = useToast();
   const isAdmin = isAdminFn();
@@ -74,32 +76,32 @@ export function AccountingPage() {
     };
 
     // 保存された入力値があればそれを優先
-    if (lastInput) {
+    if (savedAccounting) {
       // すべての保存された値を復元
-      setExemptCount(lastInput.exemptCount);
-      setMaleCount(lastInput.maleCount);
-      setFemaleCount(lastInput.femaleCount);
-      setMaleFee(lastInput.maleFee);
-      setFemaleFee(lastInput.femaleFee);
-      setGymCost(lastInput.gymCost);
-      setShuttlePrice(lastInput.shuttlePrice);
-      setShuttleCount(lastInput.shuttleCount);
-      setMatchCount(lastInput.matchCount || 0);
+      setExemptCount(savedAccounting.exemptCount);
+      setMaleCount(savedAccounting.maleCount);
+      setFemaleCount(savedAccounting.femaleCount);
+      setMaleFee(savedAccounting.maleFee);
+      setFemaleFee(savedAccounting.femaleFee);
+      setGymCost(savedAccounting.gymCost);
+      setShuttlePrice(savedAccounting.shuttlePrice);
+      setShuttleCount(savedAccounting.shuttleCount);
+      setMatchCount(savedAccounting.matchCount || 0);
       // 古いデータとの互換性のため、practiceTypeがなければsettingsStoreの値
       // 旧形式（ダブルス/シングルス/初級）を新形式（複/単/楽）に変換
-      let type = lastInput.practiceType || defaultPracticeType;
+      let type = savedAccounting.practiceType || defaultPracticeType;
       if (type === 'ダブルス') type = '複';
       if (type === 'シングルス') type = '単';
       if (type === '初級') type = '楽';
       setPracticeType(type);
       // その他欄の復元（後方互換性のため存在チェック）
-      if (lastInput.otherDescription !== undefined) setOtherDescription(lastInput.otherDescription);
-      if (lastInput.otherAmount !== undefined) setOtherAmount(lastInput.otherAmount);
+      if (savedAccounting.otherDescription !== undefined) setOtherDescription(savedAccounting.otherDescription);
+      if (savedAccounting.otherAmount !== undefined) setOtherAmount(savedAccounting.otherAmount);
     } else {
-      // lastInputがない場合はsettingsStoreの練習種別をデフォルトとして使用
+      // 保存値がない場合はsettingsStoreの練習種別をデフォルトとして使用
       setPracticeType(defaultPracticeType);
     }
-    if (!lastInput && matchHistory.length > 0) {
+    if (!savedAccounting && matchHistory.length > 0) {
       // 試合履歴から参加者・シャトル数を推定
       const participantIds = new Set<string>();
       matchHistory.forEach((match) => {
@@ -138,7 +140,7 @@ export function AccountingPage() {
     }
 
     // 保存された値がない場合のみ、料金設定を過去データ・固定値から取得
-    if (!lastInput) {
+    if (!savedAccounting) {
       if (records.length > 0) {
         const latestRecord = records[records.length - 1];
         setMaleFee(latestRecord.maleFee);
@@ -161,7 +163,7 @@ export function AccountingPage() {
 
     setInitialized(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchHistory, players, records, gymShortName, initialized, session, lastInput]);
+  }, [matchHistory, players, records, gymShortName, initialized, session, savedAccounting]);
 
   // プレイヤーの支払いデータから免除・男女人数を自動同期
   useEffect(() => {
@@ -179,13 +181,13 @@ export function AccountingPage() {
     const paidFemales = nonExemptPaid.filter(p => p.gender === 'F').length;
 
     // stale closure回避: Zustand storeから最新の永続化済み値で比較
-    const currentInput = useAccountingStore.getState().lastInput;
+    const currentInput = useSessionStore.getState().session?.accounting;
     const currentExemptCount = currentInput?.exemptCount ?? exemptCount;
     const currentMaleCount = currentInput?.maleCount ?? maleCount;
     const currentFemaleCount = currentInput?.femaleCount ?? femaleCount;
 
     let changed = false;
-    const overrides: Record<string, number> = {};
+    const overrides: Partial<AccountingInput> = {};
 
     // 免除数を同期
     if (actualExemptCount !== currentExemptCount) {
@@ -207,12 +209,7 @@ export function AccountingPage() {
     }
 
     if (changed) {
-      // currentInputは上で取得済み（stale closure回避）
-      if (currentInput) {
-        saveLastInput({ ...currentInput, ...overrides });
-      } else {
-        saveAllInputs(overrides);
-      }
+      saveAllInputs(overrides);
 
       // 変更内容をトーストで通知
       const parts: string[] = [];
@@ -298,22 +295,30 @@ export function AccountingPage() {
     };
   }, [players, maleCount, femaleCount, maleFee, femaleFee]);
 
-  // すべての入力値を保存するヘルパー関数
-  const saveAllInputs = (overrides: Partial<{
-    exemptCount: number;
-    maleCount: number;
-    femaleCount: number;
-    maleFee: number;
-    femaleFee: number;
-    gymCost: number;
-    shuttlePrice: number;
-    shuttleCount: number;
-    matchCount: number;
-    practiceType: string;
-    otherDescription: string;
-    otherAmount: number;
-  }> = {}) => {
-    saveLastInput({
+  // Firestore への書き込みをデバウンス（onChange 連打を 1 回にまとめる）
+  const writeTimerRef = useRef<number | null>(null);
+  const pendingSnapshotRef = useRef<AccountingInput | null>(null);
+
+  const flushPending = useCallback(() => {
+    if (writeTimerRef.current !== null) {
+      window.clearTimeout(writeTimerRef.current);
+      writeTimerRef.current = null;
+    }
+    const snapshot = pendingSnapshotRef.current;
+    if (snapshot) {
+      pendingSnapshotRef.current = null;
+      void updateAccounting(snapshot);
+    }
+  }, [updateAccounting]);
+
+  // アンマウント時に未送信分を flush
+  useEffect(() => {
+    return () => flushPending();
+  }, [flushPending]);
+
+  // すべての入力値を保存するヘルパー関数（デバウンスで Firestore へ）
+  const saveAllInputs = (overrides: Partial<AccountingInput> = {}) => {
+    const snapshot: AccountingInput = {
       exemptCount: overrides.exemptCount ?? exemptCount,
       maleCount: overrides.maleCount ?? maleCount,
       femaleCount: overrides.femaleCount ?? femaleCount,
@@ -326,7 +331,19 @@ export function AccountingPage() {
       practiceType: overrides.practiceType ?? practiceType,
       otherDescription: overrides.otherDescription ?? otherDescription,
       otherAmount: overrides.otherAmount ?? otherAmount,
-    });
+    };
+    pendingSnapshotRef.current = snapshot;
+    if (writeTimerRef.current !== null) {
+      window.clearTimeout(writeTimerRef.current);
+    }
+    writeTimerRef.current = window.setTimeout(() => {
+      writeTimerRef.current = null;
+      const pending = pendingSnapshotRef.current;
+      if (pending) {
+        pendingSnapshotRef.current = null;
+        void updateAccounting(pending);
+      }
+    }, 500);
   };
 
   if (!session) {
@@ -764,7 +781,7 @@ export function AccountingPage() {
                 key={type.value}
                 onClick={() => {
                   if (practiceType === type.value) return; // 同じ種別は何もしない
-                  const overrides: Record<string, number | string> = {
+                  const overrides: Partial<AccountingInput> = {
                     practiceType: type.value,
                     maleFee: type.maleFee,
                     femaleFee: type.femaleFee,
