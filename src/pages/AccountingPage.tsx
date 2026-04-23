@@ -13,7 +13,13 @@ import type { AccountingInput } from '../types/session';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { BottomNav } from '../components/BottomNav';
-import { calculateAppropriateFee, toGymShortName, PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
+import {
+  buildAccountingCopyText,
+  calculateAccountingTotals,
+  calculateAppropriateFee,
+  PRACTICE_TYPE_OPTIONS,
+  toGymShortName,
+} from '../lib/accountingCalc';
 
 export function AccountingPage() {
   const navigate = useNavigate();
@@ -180,8 +186,12 @@ export function AccountingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchHistory, players, records, gymShortName, initialized, session, savedAccounting]);
 
-  // 参加人数の合計（免除+男+女）
-  const participantCount = exemptCount + maleCount + femaleCount;
+  // 入力値ベースの各種合計
+  const totals = calculateAccountingTotals({
+    exemptCount, maleCount, femaleCount, maleFee, femaleFee,
+    gymCost, shuttlePrice, shuttleCount, otherAmount,
+  });
+  const { participantCount, maleTotal, femaleTotal, incomeTotal, shuttleTotal, finalTotal } = totals;
 
   // 支払い済みプレイヤーの集計
   const paymentStats = useMemo(() => {
@@ -263,133 +273,28 @@ export function AccountingPage() {
     return null;
   }
 
-  // 計算
-  const maleTotal = maleCount * maleFee;
-  const femaleTotal = femaleCount * femaleFee;
-  const shuttleTotal = shuttleCount * shuttlePrice;
-  const incomeForTotal = maleTotal + femaleTotal;
-  const finalTotal = incomeForTotal - gymCost - shuttleTotal + otherAmount;
-
-  // シャトル使用可能数（参加費から体育館代を引いた残りで買える数）
-  const shuttleUsableCount = shuttlePrice > 0
-    ? Math.max(0, Math.floor((incomeForTotal - gymCost + otherAmount) / shuttlePrice))
-    : 0;
-
   const appropriateFee = calculateAppropriateFee({
     gymCost, shuttleTotal, otherAmount, maleCount, femaleCount, practiceType,
   });
 
-  // コピー用テキスト生成
+  // コピー用テキスト生成（実参加者数は試合履歴から算出）
   const generateCopyText = () => {
-    const lines = [
-      `${formattedDate} ${gymShortName} ${practiceType}`,
-      `参加合計 ${participantCount}人(免除${exemptCount} 男${maleCount} 女${femaleCount})`,
-      '',
-      '【収入】',
-    ];
+    const participantIds = new Set<string>();
+    matchHistory.forEach((match) => {
+      match.teamA.forEach((id) => participantIds.add(id));
+      match.teamB.forEach((id) => participantIds.add(id));
+    });
+    const activePlayerCount = participantIds.size > 0 ? participantIds.size : undefined;
 
-    // 性別ごとの金額行を構築（入力された人数 × 会費で表示）
-    const buildGenderLine = (gender: 'M' | 'F') => {
-      const fee = gender === 'M' ? maleFee : femaleFee;
-      const count = gender === 'M' ? maleCount : femaleCount;
-      const label = gender === 'M' ? '男' : '女';
-      if (count === 0) return null;
-      return `${label} ${fee.toLocaleString()}×${count} = ${(fee * count).toLocaleString()}`;
-    };
-
-    const maleLine = buildGenderLine('M');
-    const femaleLine = buildGenderLine('F');
-    if (maleLine) lines.push(maleLine);
-    if (femaleLine) lines.push(femaleLine);
-    if (exemptCount > 0) {
-      lines.push(`免除 ${exemptCount}×0 = 0`);
-    }
-
-    // その他欄（プラスの場合は収入に追加）
-    if ((otherDescription || otherAmount !== 0) && otherAmount > 0) {
-      lines.push(`${otherDescription || 'その他'} ${otherAmount.toLocaleString()}`);
-    }
-
-    // 収入合計
-    const incomeTotalForCopy = incomeForTotal + (otherAmount > 0 ? otherAmount : 0);
-    lines.push(`収入合計 ${incomeTotalForCopy.toLocaleString()}`);
-
-    lines.push(
-      '',
-      '【支出】',
-      `体育館 -${gymCost.toLocaleString()}`,
-      `シャトル使用数 -${shuttlePrice}×${shuttleCount} = -${shuttleTotal.toLocaleString()}`,
-    );
-
-    // その他欄（マイナスの場合は支出に追加）
-    if ((otherDescription || otherAmount !== 0) && otherAmount < 0) {
-      lines.push(`${otherDescription || 'その他'} ${otherAmount.toLocaleString()}`);
-    }
-
-    // 合計の計算式を生成
-    let totalFormula = `${incomeForTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
-    if (otherAmount !== 0) {
-      totalFormula += otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`;
-    }
-
-    lines.push(
-      '',
-      '【合計】',
-      `${totalFormula} = ${finalTotal.toLocaleString()}`,
-    );
-
-    // 参考セクション
-    const referenceLines: string[] = [];
-
-    // 試合数の情報（試合数がある場合のみ）
-    if (matchCount > 0) {
-      // 試合履歴から参加者数を計算（平均試合数用）
-      // 試合履歴がない場合（手動入力時）は参加人数をフォールバックとして使用
-      let activePlayerCount = 0;
-      if (matchHistory.length > 0) {
-        const participantIds = new Set<string>();
-        matchHistory.forEach((match) => {
-          match.teamA.forEach((id) => participantIds.add(id));
-          match.teamB.forEach((id) => participantIds.add(id));
-        });
-        activePlayerCount = participantIds.size;
-      } else {
-        activePlayerCount = participantCount;
-      }
-
-      const playersPerMatch = practiceType === '単' ? 2 : 4;
-      const avgMatches = activePlayerCount > 0 ? (matchCount * playersPerMatch / activePlayerCount).toFixed(1) : '0.0';
-
-      // シャトル効率の計算
-      if (shuttleCount > 0) {
-        const matchesPerShuttle = (matchCount / shuttleCount).toFixed(1);
-        referenceLines.push(`試合数 ${matchCount}試合 (平均${avgMatches}試合/人, 1個で${matchesPerShuttle}試合)`);
-      } else {
-        referenceLines.push(`試合数 ${matchCount}試合 (平均${avgMatches}試合/人)`);
-      }
-    }
-
-    // シャトル使用可能数
-    if (shuttlePrice > 0) {
-      referenceLines.push(`シャトル使用可能数 ${shuttleUsableCount}個`);
-    }
-
-    // 適正会費（千川館以外）
-    if (gymShortName !== '千川館') {
-      referenceLines.push(`適正会費: 男${appropriateFee.male}円 女${appropriateFee.female}円`);
-
-      // 適正会費との差額警告（体育館代900円以下かつ差額200円以上）
-      if (gymCost <= 900 && (Math.abs(maleFee - appropriateFee.male) >= 200 || Math.abs(femaleFee - appropriateFee.female) >= 200)) {
-        referenceLines.push('⚠️ 適正会費と会費の差が200円以上あります、調整を検討してください。');
-      }
-    }
-
-    // 参考セクションがあれば追加
-    if (referenceLines.length > 0) {
-      lines.push('', '【参考】', ...referenceLines);
-    }
-
-    return lines.join('\n');
+    return buildAccountingCopyText({
+      date: formattedDate,
+      gymShortName,
+      practiceType,
+      exemptCount, maleCount, femaleCount, maleFee, femaleFee,
+      gymCost, shuttlePrice, shuttleCount, otherAmount,
+      matchCount, otherDescription,
+      activePlayerCount,
+    });
   };
 
   const handleCopy = async () => {
@@ -423,10 +328,10 @@ export function AccountingPage() {
       }))
     );
     
-    // 収入合計と支出合計を計算（入力された人数 × 会費、その他を振り分け）
-    const incomeTotal = maleTotal + femaleTotal + (otherAmount > 0 ? otherAmount : 0);
+    // アップロード用の収入・支出合計（その他をプラス/マイナスで振り分け）
+    const uploadIncomeTotal = incomeTotal + (otherAmount > 0 ? otherAmount : 0);
     const expenseTotal = gymCost + shuttleTotal + (otherAmount < 0 ? Math.abs(otherAmount) : 0);
-    
+
     const record = {
       id: crypto.randomUUID(),
       timestamp: Date.now(),
@@ -441,7 +346,7 @@ export function AccountingPage() {
       participantCount,
       matchCount,
       members: membersJson,
-      incomeTotal,
+      incomeTotal: uploadIncomeTotal,
       gymCost,
       shuttlePrice,
       shuttleCount,
@@ -468,7 +373,7 @@ export function AccountingPage() {
           participantCount,
           matchCount,
           members: membersJson,
-          incomeTotal,
+          incomeTotal: uploadIncomeTotal,
           gymCost,
           shuttlePrice,
           shuttleCount,
