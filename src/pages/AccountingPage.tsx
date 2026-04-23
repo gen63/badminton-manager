@@ -278,6 +278,7 @@ export function AccountingPage() {
         paidCount: 0,
         unpaidMaleCount: maleCount,
         unpaidFemaleCount: femaleCount,
+        allNonExemptPaid: false,
       };
     }
 
@@ -296,9 +297,13 @@ export function AccountingPage() {
     const paidMaleCount = nonExemptPaidPlayers.filter(p => inferGender(p) === 'M').length;
     const paidFemaleCount = nonExemptPaidPlayers.filter(p => inferGender(p) === 'F').length;
 
+    // 非免除の支払い済み合計が参加人数を満たしていれば未入力なし
+    // （性別のズレで片方だけ過剰カウントされるのを防止）
+    const allNonExemptPaid = nonExemptPaidPlayers.length >= maleCount + femaleCount;
+
     // 未入力メンバーの推定
-    const unpaidMaleCount = Math.max(0, maleCount - paidMaleCount);
-    const unpaidFemaleCount = Math.max(0, femaleCount - paidFemaleCount);
+    const unpaidMaleCount = allNonExemptPaid ? 0 : Math.max(0, maleCount - paidMaleCount);
+    const unpaidFemaleCount = allNonExemptPaid ? 0 : Math.max(0, femaleCount - paidFemaleCount);
     const unpaidTotal = unpaidMaleCount * maleFee + unpaidFemaleCount * femaleFee;
 
     return {
@@ -309,6 +314,7 @@ export function AccountingPage() {
       paidCount: paidPlayers.length,
       unpaidMaleCount,
       unpaidFemaleCount,
+      allNonExemptPaid,
     };
   }, [players, maleCount, femaleCount, maleFee, femaleFee]);
 
@@ -419,8 +425,12 @@ export function AccountingPage() {
         });
 
         // 未入力者をデフォルト会費で追加
+        // ただし非免除の支払い済み合計が参加人数を満たしていれば未入力なし
+        // （hybridIncome.total との整合性を保つため）
         const paidCount = paidPlayers.length;
-        const unpaidCount = Math.max(0, totalCount - paidCount);
+        const unpaidCount = hybridIncome.allNonExemptPaid
+          ? 0
+          : Math.max(0, totalCount - paidCount);
         if (unpaidCount > 0) {
           amountMap.set(defaultFee, (amountMap.get(defaultFee) ?? 0) + unpaidCount);
         }
