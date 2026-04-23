@@ -101,42 +101,57 @@ export function AccountingPage() {
       // 保存値がない場合はsettingsStoreの練習種別をデフォルトとして使用
       setPracticeType(defaultPracticeType);
     }
-    if (!savedAccounting && matchHistory.length > 0) {
-      // 試合履歴から参加者・シャトル数を推定
-      const participantIds = new Set<string>();
-      matchHistory.forEach((match) => {
-        match.teamA.forEach((id) => participantIds.add(id));
-        match.teamB.forEach((id) => participantIds.add(id));
-      });
+    if (!savedAccounting) {
+      // デフォルト値は「支払いデータ」→「試合履歴」の優先順で推定する
+      const paidPlayers = players.filter(p => p.operationStatus?.payment);
 
-      // プレイヤー情報から性別を集計
-      let maleParticipants = 0;
-      let femaleParticipants = 0;
-      let unknownGender = 0;
+      if (paidPlayers.length > 0) {
+        // 支払いデータから免除・男・女を推定
+        const exempt = paidPlayers.filter(p => (p.paymentAmount ?? 0) === 0).length;
+        const nonExemptPaid = paidPlayers.filter(p => (p.paymentAmount ?? 0) > 0);
+        const males = nonExemptPaid.filter(p => p.gender === 'M' || !p.gender).length;
+        const females = nonExemptPaid.filter(p => p.gender === 'F').length;
+        setExemptCount(exempt);
+        setMaleCount(males);
+        setFemaleCount(females);
+      } else if (matchHistory.length > 0) {
+        // 試合履歴から参加者を推定
+        const participantIds = new Set<string>();
+        matchHistory.forEach((match) => {
+          match.teamA.forEach((id) => participantIds.add(id));
+          match.teamB.forEach((id) => participantIds.add(id));
+        });
 
-      participantIds.forEach((playerId) => {
-        const player = players.find((p) => p.id === playerId);
-        if (player?.gender === 'M') {
-          maleParticipants++;
-        } else if (player?.gender === 'F') {
-          femaleParticipants++;
-        } else {
-          unknownGender++;
-        }
-      });
+        let maleParticipants = 0;
+        let femaleParticipants = 0;
+        let unknownGender = 0;
 
-      // 性別不明者は男性として扱う（デフォルト）
-      maleParticipants += unknownGender;
+        participantIds.forEach((playerId) => {
+          const player = players.find((p) => p.id === playerId);
+          if (player?.gender === 'M') {
+            maleParticipants++;
+          } else if (player?.gender === 'F') {
+            femaleParticipants++;
+          } else {
+            unknownGender++;
+          }
+        });
 
-      // シャトル使用数の推定（楽は1個4試合、それ以外は1試合1.5個）
-      const estimatedShuttles = defaultPracticeType === '楽'
-        ? Math.ceil(matchHistory.length / 4)
-        : Math.ceil(matchHistory.length * 1.5);
+        // 性別不明者は男性として扱う（デフォルト）
+        maleParticipants += unknownGender;
 
-      setMaleCount(maleParticipants);
-      setFemaleCount(femaleParticipants);
-      setShuttleCount(estimatedShuttles);
-      setMatchCount(matchHistory.length);
+        setMaleCount(maleParticipants);
+        setFemaleCount(femaleParticipants);
+      }
+
+      // シャトル数・試合数は試合履歴から推定（支払いデータには含まれない情報）
+      if (matchHistory.length > 0) {
+        const estimatedShuttles = defaultPracticeType === '楽'
+          ? Math.ceil(matchHistory.length / 4)
+          : Math.ceil(matchHistory.length * 1.5);
+        setShuttleCount(estimatedShuttles);
+        setMatchCount(matchHistory.length);
+      }
     }
 
     // 保存された値がない場合のみ、料金設定を過去データ・固定値から取得
@@ -165,79 +180,6 @@ export function AccountingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchHistory, players, records, gymShortName, initialized, session, savedAccounting]);
 
-  // プレイヤーの支払いデータから免除・男女人数を自動同期
-  // 依存配列を primitive な paid カウントにすることで、会計書込が Firestore
-  // onSnapshot 経由で players 参照を jitter させても不要な再実行を防ぐ
-  const paidTotal = useMemo(
-    () => players.filter(p => p.operationStatus?.payment).length,
-    [players],
-  );
-  const actualExemptCount = useMemo(
-    () => players.filter(p => p.operationStatus?.payment && (p.paymentAmount ?? 0) === 0).length,
-    [players],
-  );
-  const paidMales = useMemo(
-    () => players.filter(p =>
-      p.operationStatus?.payment
-      && (p.paymentAmount ?? 0) > 0
-      && (p.gender === 'M' || !p.gender),
-    ).length,
-    [players],
-  );
-  const paidFemales = useMemo(
-    () => players.filter(p =>
-      p.operationStatus?.payment
-      && (p.paymentAmount ?? 0) > 0
-      && p.gender === 'F',
-    ).length,
-    [players],
-  );
-
-  useEffect(() => {
-    if (!initialized) return;
-    if (paidTotal === 0) return;
-
-    // stale closure回避: Zustand storeから最新の永続化済み値で比較
-    const currentInput = useSessionStore.getState().session?.accounting;
-    const currentExemptCount = currentInput?.exemptCount ?? exemptCount;
-    const currentMaleCount = currentInput?.maleCount ?? maleCount;
-    const currentFemaleCount = currentInput?.femaleCount ?? femaleCount;
-
-    let changed = false;
-    const overrides: Partial<AccountingInput> = {};
-
-    // 免除数を同期
-    if (actualExemptCount !== currentExemptCount) {
-      setExemptCount(actualExemptCount);
-      overrides.exemptCount = actualExemptCount;
-      changed = true;
-    }
-
-    // 有料支払い済みの人数が入力タブの人数を超えている場合のみ自動調整
-    if (paidMales > currentMaleCount) {
-      setMaleCount(paidMales);
-      overrides.maleCount = paidMales;
-      changed = true;
-    }
-    if (paidFemales > currentFemaleCount) {
-      setFemaleCount(paidFemales);
-      overrides.femaleCount = paidFemales;
-      changed = true;
-    }
-
-    if (changed) {
-      saveAllInputs(overrides);
-
-      // 変更内容をトーストで通知
-      const parts: string[] = [];
-      if (overrides.exemptCount !== undefined) parts.push(`免除${overrides.exemptCount}人`);
-      if (overrides.maleCount !== undefined) parts.push(`男${overrides.maleCount}人`);
-      if (overrides.femaleCount !== undefined) parts.push(`女${overrides.femaleCount}人`);
-      toast.info(`支払いデータから人数を更新: ${parts.join(', ')}`);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paidTotal, actualExemptCount, paidMales, paidFemales, initialized]);
-
   // 参加人数の合計（免除+男+女）
   const participantCount = exemptCount + maleCount + femaleCount;
 
@@ -264,59 +206,6 @@ export function AccountingPage() {
       }),
     };
   }, [players]);
-
-  // ハイブリッド収入計算（入力済みメンバーは実金額、未入力は計算式）
-  const hybridIncome = useMemo(() => {
-    const paidPlayers = players.filter(p => p.operationStatus?.payment);
-
-    if (paidPlayers.length === 0) {
-      return {
-        useHybrid: false,
-        total: maleCount * maleFee + femaleCount * femaleFee,
-        paidTotal: 0,
-        unpaidTotal: maleCount * maleFee + femaleCount * femaleFee,
-        paidCount: 0,
-        unpaidMaleCount: maleCount,
-        unpaidFemaleCount: femaleCount,
-        allNonExemptPaid: false,
-      };
-    }
-
-    // 入力済みメンバーの合計
-    const paidTotal = paidPlayers.reduce((sum, p) => sum + (p.paymentAmount ?? 0), 0);
-
-    // 免除(¥0)の支払いは exemptCount に含まれているため、
-    // maleCount/femaleCount からの差し引きは有料支払者のみで行う
-    const nonExemptPaidPlayers = paidPlayers.filter(p => (p.paymentAmount ?? 0) > 0);
-    // 性別不明プレイヤーは支払い金額で性別を推定（女性会費に近ければ女性扱い）
-    const inferGender = (p: { gender?: 'M' | 'F'; paymentAmount?: number }): 'M' | 'F' => {
-      if (p.gender === 'M' || p.gender === 'F') return p.gender;
-      const amount = p.paymentAmount ?? 0;
-      return Math.abs(amount - femaleFee) < Math.abs(amount - maleFee) ? 'F' : 'M';
-    };
-    const paidMaleCount = nonExemptPaidPlayers.filter(p => inferGender(p) === 'M').length;
-    const paidFemaleCount = nonExemptPaidPlayers.filter(p => inferGender(p) === 'F').length;
-
-    // 非免除の支払い済み合計が参加人数を満たしていれば未入力なし
-    // （性別のズレで片方だけ過剰カウントされるのを防止）
-    const allNonExemptPaid = nonExemptPaidPlayers.length >= maleCount + femaleCount;
-
-    // 未入力メンバーの推定
-    const unpaidMaleCount = allNonExemptPaid ? 0 : Math.max(0, maleCount - paidMaleCount);
-    const unpaidFemaleCount = allNonExemptPaid ? 0 : Math.max(0, femaleCount - paidFemaleCount);
-    const unpaidTotal = unpaidMaleCount * maleFee + unpaidFemaleCount * femaleFee;
-
-    return {
-      useHybrid: true,
-      total: paidTotal + unpaidTotal,
-      paidTotal,
-      unpaidTotal,
-      paidCount: paidPlayers.length,
-      unpaidMaleCount,
-      unpaidFemaleCount,
-      allNonExemptPaid,
-    };
-  }, [players, maleCount, femaleCount, maleFee, femaleFee]);
 
   // Firestore への書き込みをデバウンス（onChange 連打を 1 回にまとめる）
   const writeTimerRef = useRef<number | null>(null);
@@ -378,12 +267,12 @@ export function AccountingPage() {
   const maleTotal = maleCount * maleFee;
   const femaleTotal = femaleCount * femaleFee;
   const shuttleTotal = shuttleCount * shuttlePrice;
-  const incomeForTotal = hybridIncome.total;
+  const incomeForTotal = maleTotal + femaleTotal;
   const finalTotal = incomeForTotal - gymCost - shuttleTotal + otherAmount;
 
   // シャトル使用可能数（参加費から体育館代を引いた残りで買える数）
   const shuttleUsableCount = shuttlePrice > 0
-    ? Math.max(0, Math.floor((hybridIncome.total - gymCost + otherAmount) / shuttlePrice))
+    ? Math.max(0, Math.floor((incomeForTotal - gymCost + otherAmount) / shuttlePrice))
     : 0;
 
   const appropriateFee = calculateAppropriateFee({
@@ -399,46 +288,15 @@ export function AccountingPage() {
       '【収入】',
     ];
 
-    // 性別ごとの金額グループを構築
+    // 性別ごとの金額グループを構築（入力された人数 × 会費で表示）
     const buildGenderLine = (gender: 'M' | 'F') => {
       const defaultFee = gender === 'M' ? maleFee : femaleFee;
       const totalCount = gender === 'M' ? maleCount : femaleCount;
       const label = gender === 'M' ? '男' : '女';
 
-      // 金額ごとの人数を集計
       const amountMap = new Map<number, number>();
-
-      if (hybridIncome.useHybrid) {
-        // 支払い済み（免除以外）の実金額を集計
-        const paidPlayers = players.filter(p => {
-          if (!p.operationStatus?.payment || (p.paymentAmount ?? 0) <= 0) return false;
-          if (p.gender === gender) return true;
-          if (p.gender === 'M' || p.gender === 'F') return false;
-          // 性別不明: 支払い金額で推定
-          const amount = p.paymentAmount ?? 0;
-          const inferred = Math.abs(amount - femaleFee) < Math.abs(amount - maleFee) ? 'F' : 'M';
-          return inferred === gender;
-        });
-        paidPlayers.forEach(p => {
-          const amount = p.paymentAmount ?? 0;
-          amountMap.set(amount, (amountMap.get(amount) ?? 0) + 1);
-        });
-
-        // 未入力者をデフォルト会費で追加
-        // ただし非免除の支払い済み合計が参加人数を満たしていれば未入力なし
-        // （hybridIncome.total との整合性を保つため）
-        const paidCount = paidPlayers.length;
-        const unpaidCount = hybridIncome.allNonExemptPaid
-          ? 0
-          : Math.max(0, totalCount - paidCount);
-        if (unpaidCount > 0) {
-          amountMap.set(defaultFee, (amountMap.get(defaultFee) ?? 0) + unpaidCount);
-        }
-      } else {
-        // 非ハイブリッド: 全員デフォルト会費
-        if (totalCount > 0) {
-          amountMap.set(defaultFee, totalCount);
-        }
+      if (totalCount > 0) {
+        amountMap.set(defaultFee, totalCount);
       }
 
       if (amountMap.size === 0) return null;
@@ -582,8 +440,8 @@ export function AccountingPage() {
       }))
     );
     
-    // 収入合計と支出合計を計算（ハイブリッド収入を使用、その他を振り分け）
-    const incomeTotal = hybridIncome.total + (otherAmount > 0 ? otherAmount : 0);
+    // 収入合計と支出合計を計算（入力された人数 × 会費、その他を振り分け）
+    const incomeTotal = maleTotal + femaleTotal + (otherAmount > 0 ? otherAmount : 0);
     const expenseTotal = gymCost + shuttleTotal + (otherAmount < 0 ? Math.abs(otherAmount) : 0);
     
     const record = {
@@ -1268,24 +1126,10 @@ export function AccountingPage() {
         <div className="card p-4 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200">
           <div className="flex items-center gap-2 mb-3">
             <h2 className="text-sm font-bold text-gray-700">合計</h2>
-            {hybridIncome.useHybrid && (
-              <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">
-                支払い入力反映中（{hybridIncome.paidCount}人）
-              </span>
-            )}
           </div>
           <div className="text-xs text-muted-foreground mb-2 font-mono">
-            {hybridIncome.useHybrid ? (
-              <>
-                入力済{hybridIncome.paidTotal.toLocaleString()}+未入力{hybridIncome.unpaidTotal.toLocaleString()}-{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
-                {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
-              </>
-            ) : (
-              <>
-                {maleTotal.toLocaleString()}+{femaleTotal.toLocaleString()}-{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
-                {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
-              </>
-            )}
+            {maleTotal.toLocaleString()}+{femaleTotal.toLocaleString()}-{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
+            {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
           </div>
           <div className={`text-4xl font-bold text-center ${finalTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {finalTotal >= 0 ? '+' : ''}{finalTotal.toLocaleString()}円
