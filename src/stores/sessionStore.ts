@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Session, SessionConfig } from '../types/session';
+import type { AccountingInput, Session, SessionConfig } from '../types/session';
 
 // 開発モード判定（useDevMode フックはコンポーネント専用のため localStorage を直読みする）
 const isDevMode = (): boolean => {
@@ -25,6 +25,7 @@ interface SessionState {
   updateSession: (updates: Partial<Session>) => void;
   updateInformation: (text: string) => Promise<void>;
   markInformationAsRead: () => Promise<void>;
+  updateAccounting: (patch: Partial<AccountingInput>) => Promise<void>;
 }
 
 export const useSessionStore = create<SessionState>()(
@@ -174,6 +175,42 @@ export const useSessionStore = create<SessionState>()(
             }
           } catch (error) {
             console.error('[SessionStore] Failed to mark information as read:', error);
+          }
+        }
+      },
+      updateAccounting: async (patch) => {
+        const { session } = get();
+        if (!session) return;
+
+        const merged: AccountingInput = {
+          exemptCount: 0,
+          maleCount: 0,
+          femaleCount: 0,
+          maleFee: 0,
+          femaleFee: 0,
+          gymCost: 0,
+          shuttlePrice: 0,
+          shuttleCount: 0,
+          matchCount: 0,
+          practiceType: '複',
+          ...session.accounting,
+          ...patch,
+        };
+
+        // ローカル更新（即時反映）
+        set((state) => ({
+          session: state.session
+            ? { ...state.session, accounting: merged, updatedAt: Date.now() }
+            : null,
+        }));
+
+        // オンラインモード: Firestoreにも反映
+        if (session.id && session.createdBy) {
+          const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
+          try {
+            await updateFirebaseSession(session.id, { accounting: merged });
+          } catch (error) {
+            console.error('[SessionStore] Failed to update accounting:', error);
           }
         }
       },

@@ -446,4 +446,131 @@ describe('sessionStore - Information機能', () => {
       expect(isUnread).toBe(false);
     });
   });
+
+  describe('updateAccounting', () => {
+    const baseSnapshot = {
+      exemptCount: 2,
+      maleCount: 4,
+      femaleCount: 3,
+      maleFee: 800,
+      femaleFee: 600,
+      gymCost: 900,
+      shuttlePrice: 480,
+      shuttleCount: 2,
+      matchCount: 10,
+      practiceType: '複',
+      otherDescription: 'ツムラ',
+      otherAmount: 400,
+    };
+
+    it('ローカルセッションにマージされる', async () => {
+      useSessionStore.setState({
+        session: {
+          id: 'local-session',
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      });
+
+      const { updateAccounting } = useSessionStore.getState();
+      await updateAccounting(baseSnapshot);
+
+      const session = useSessionStore.getState().session;
+      expect(session?.accounting).toEqual(baseSnapshot);
+    });
+
+    it('既存 accounting に patch をマージする', async () => {
+      useSessionStore.setState({
+        session: {
+          id: 'local-session',
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          accounting: baseSnapshot,
+        },
+      });
+
+      const { updateAccounting } = useSessionStore.getState();
+      await updateAccounting({ maleCount: 5 });
+
+      const session = useSessionStore.getState().session;
+      expect(session?.accounting?.maleCount).toBe(5);
+      expect(session?.accounting?.femaleCount).toBe(3);
+      expect(session?.accounting?.otherDescription).toBe('ツムラ');
+    });
+
+    it('ローカルモード（createdBy なし）では Firestore に送信しない', async () => {
+      useSessionStore.setState({
+        session: {
+          id: 'local-session',
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      });
+
+      const { updateAccounting } = useSessionStore.getState();
+      await updateAccounting(baseSnapshot);
+
+      expect(mockUpdateSession).not.toHaveBeenCalled();
+    });
+
+    it('オンラインモードでは Firestore に accounting 全体が送信される', async () => {
+      useSessionStore.setState({
+        session: {
+          id: 'online-session',
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          createdBy: 'Admin',
+        },
+        currentUser: 'Admin',
+      });
+
+      const { updateAccounting } = useSessionStore.getState();
+      await updateAccounting(baseSnapshot);
+
+      expect(mockUpdateSession).toHaveBeenCalledWith(
+        'online-session',
+        expect.objectContaining({
+          accounting: expect.objectContaining({
+            maleCount: 4,
+            otherDescription: 'ツムラ',
+          }),
+        }),
+      );
+    });
+
+    it('Firebase 同期エラー時もローカル状態は更新される', async () => {
+      mockUpdateSession.mockRejectedValueOnce(new Error('Network error'));
+
+      useSessionStore.setState({
+        session: {
+          id: 'online-session',
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          createdBy: 'Admin',
+        },
+        currentUser: 'Admin',
+      });
+
+      const { updateAccounting } = useSessionStore.getState();
+      await updateAccounting(baseSnapshot);
+
+      const session = useSessionStore.getState().session;
+      expect(session?.accounting?.maleCount).toBe(4);
+    });
+
+    it('session が null の場合は何もしない', async () => {
+      useSessionStore.setState({ session: null });
+
+      const { updateAccounting } = useSessionStore.getState();
+      await updateAccounting(baseSnapshot);
+
+      expect(useSessionStore.getState().session).toBeNull();
+      expect(mockUpdateSession).not.toHaveBeenCalled();
+    });
+  });
 });

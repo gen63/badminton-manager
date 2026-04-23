@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
-import { useAccountingStore } from '../stores/accountingStore';
 import { buildInitialOrder, applyStreakSwaps } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
@@ -25,9 +24,8 @@ export function PlayerSelect() {
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
   const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F' } | null>(null);
   const [paidCollapsed, setPaidCollapsed] = useState(true);
-  const accountingStore = useAccountingStore();
-  const maleFee = accountingStore.lastInput?.maleFee || 800;
-  const femaleFee = accountingStore.lastInput?.femaleFee || 600;
+  const maleFee = session?.accounting?.maleFee || 800;
+  const femaleFee = session?.accounting?.femaleFee || 600;
 
   // 試合履歴に登場するプレイヤーIDのセット
   const playersInHistory = new Set(
