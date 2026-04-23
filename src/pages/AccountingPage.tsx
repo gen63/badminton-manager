@@ -288,30 +288,13 @@ export function AccountingPage() {
       '【収入】',
     ];
 
-    // 性別ごとの金額グループを構築（入力された人数 × 会費で表示）
+    // 性別ごとの金額行を構築（入力された人数 × 会費で表示）
     const buildGenderLine = (gender: 'M' | 'F') => {
-      const defaultFee = gender === 'M' ? maleFee : femaleFee;
-      const totalCount = gender === 'M' ? maleCount : femaleCount;
+      const fee = gender === 'M' ? maleFee : femaleFee;
+      const count = gender === 'M' ? maleCount : femaleCount;
       const label = gender === 'M' ? '男' : '女';
-
-      const amountMap = new Map<number, number>();
-      if (totalCount > 0) {
-        amountMap.set(defaultFee, totalCount);
-      }
-
-      if (amountMap.size === 0) return null;
-
-      // 金額の降順でソート
-      const entries = [...amountMap.entries()].sort((a, b) => b[0] - a[0]);
-      const total = entries.reduce((sum, [amount, count]) => sum + amount * count, 0);
-
-      if (entries.length === 1) {
-        const [amount, count] = entries[0];
-        return `${label} ${amount.toLocaleString()}×${count} = ${total.toLocaleString()}`;
-      } else {
-        const parts = entries.map(([amount, count]) => `(${amount.toLocaleString()}×${count})`);
-        return `${label} ${parts.join(' + ')} = ${total.toLocaleString()}`;
-      }
+      if (count === 0) return null;
+      return `${label} ${fee.toLocaleString()}×${count} = ${(fee * count).toLocaleString()}`;
     };
 
     const maleLine = buildGenderLine('M');
