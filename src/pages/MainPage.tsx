@@ -27,6 +27,8 @@ import { checkContinuousBlock, getPlayersPerCourt, getMinWaitingCount, gameModeF
 
 import { BottomNav } from '../components/BottomNav';
 
+const BUG_REPORT_TEMPLATE = '発生画面：\n期待値：\n実際：';
+
 export function MainPage() {
   const navigate = useNavigate();
   const { session, updateConfig, currentUser, isAdmin, updateInformation, markInformationAsRead } = useSessionStore();
@@ -65,7 +67,6 @@ export function MainPage() {
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
   const [showInformationModal, setShowInformationModal] = useState(false);
   const [informationText, setInformationText] = useState('');
-  const BUG_REPORT_TEMPLATE = '発生画面：\n期待値：\n実際：';
   const [showBugReportModal, setShowBugReportModal] = useState(false);
   const [bugReportText, setBugReportText] = useState(BUG_REPORT_TEMPLATE);
   const [isSendingBugReport, setIsSendingBugReport] = useState(false);
@@ -594,6 +595,31 @@ export function MainPage() {
 
   const handleRedo = () => {
     redo();
+  };
+
+  const handleSendBugReport = async () => {
+    if (bugReportText.trim() === '' || bugReportText === BUG_REPORT_TEMPLATE) {
+      toast.error('内容を入力してください');
+      return;
+    }
+    setIsSendingBugReport(true);
+    const result = await sendBugReportToDiscord(
+      import.meta.env.VITE_DISCORD_WEBHOOK_URL || '',
+      bugReportText,
+      {
+        currentUser: currentUser ?? null,
+        sessionId: session?.id ?? null,
+        gym: session?.config.gym ?? null,
+      }
+    );
+    setIsSendingBugReport(false);
+    if (result.success) {
+      toast.success(result.message);
+      setBugReportText(BUG_REPORT_TEMPLATE);
+      setShowBugReportModal(false);
+    } else {
+      toast.error(result.message);
+    }
   };
 
   return (
@@ -1270,11 +1296,10 @@ export function MainPage() {
                 バグ報告
               </h3>
               <button
-                onClick={() => {
-                  if (isSendingBugReport) return;
-                  setShowBugReportModal(false);
-                }}
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setShowBugReportModal(false)}
+                disabled={isSendingBugReport}
+                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="閉じる"
               >
                 <X size={20} />
               </button>
@@ -1297,31 +1322,7 @@ export function MainPage() {
                 キャンセル
               </button>
               <button
-                onClick={async () => {
-                  const trimmed = bugReportText.trim();
-                  if (!trimmed) {
-                    toast.error('内容を入力してください');
-                    return;
-                  }
-                  setIsSendingBugReport(true);
-                  const result = await sendBugReportToDiscord(
-                    import.meta.env.VITE_DISCORD_WEBHOOK_URL || '',
-                    bugReportText,
-                    {
-                      currentUser: currentUser ?? null,
-                      sessionId: session?.id ?? null,
-                      gym: session?.config.gym ?? null,
-                    }
-                  );
-                  setIsSendingBugReport(false);
-                  if (result.success) {
-                    toast.success(result.message);
-                    setBugReportText(BUG_REPORT_TEMPLATE);
-                    setShowBugReportModal(false);
-                  } else {
-                    toast.error(result.message);
-                  }
-                }}
+                onClick={handleSendBugReport}
                 disabled={isSendingBugReport}
                 className="flex-1 btn-primary disabled:opacity-50"
               >
