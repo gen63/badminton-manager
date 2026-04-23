@@ -7,7 +7,8 @@ import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, StopCircle, Trash2, ChevronDown, Minus, Settings, Info } from 'lucide-react';
+import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, StopCircle, Trash2, ChevronDown, Minus, Settings, Info, MessageSquare } from 'lucide-react';
+import { sendBugReportToDiscord } from '../lib/bugReport';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
@@ -64,6 +65,10 @@ export function MainPage() {
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
   const [showInformationModal, setShowInformationModal] = useState(false);
   const [informationText, setInformationText] = useState('');
+  const BUG_REPORT_TEMPLATE = '発生画面：\n期待値：\n実際：';
+  const [showBugReportModal, setShowBugReportModal] = useState(false);
+  const [bugReportText, setBugReportText] = useState(BUG_REPORT_TEMPLATE);
+  const [isSendingBugReport, setIsSendingBugReport] = useState(false);
   const [pendingScoreMatch, setPendingScoreMatch] = useState<{
     matchId: string;
     courtId: number;
@@ -650,6 +655,17 @@ export function MainPage() {
                 )}
               </button>
             )}
+            {/* バグ報告アイコン（常時表示） */}
+            <button
+              onClick={() => {
+                setBugReportText(BUG_REPORT_TEMPLATE);
+                setShowBugReportModal(true);
+              }}
+              className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-blue-600 transition-colors"
+              aria-label="バグ報告"
+            >
+              <MessageSquare size={20} />
+            </button>
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -1240,6 +1256,78 @@ export function MainPage() {
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* バグ報告モーダル */}
+      {showBugReportModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-card rounded-2xl p-6 max-w-md w-full max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <MessageSquare size={20} className="text-blue-600" />
+                バグ報告
+              </h3>
+              <button
+                onClick={() => {
+                  if (isSendingBugReport) return;
+                  setShowBugReportModal(false);
+                }}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto mb-4">
+              <textarea
+                value={bugReportText}
+                onChange={(e) => setBugReportText(e.target.value)}
+                disabled={isSendingBugReport}
+                className="w-full min-h-[200px] p-3 bg-muted border border-border rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+                placeholder="発生画面、期待値、実際の挙動を入力..."
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowBugReportModal(false)}
+                disabled={isSendingBugReport}
+                className="flex-1 btn-secondary disabled:opacity-50"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={async () => {
+                  const trimmed = bugReportText.trim();
+                  if (!trimmed) {
+                    toast.error('内容を入力してください');
+                    return;
+                  }
+                  setIsSendingBugReport(true);
+                  const result = await sendBugReportToDiscord(
+                    import.meta.env.VITE_DISCORD_WEBHOOK_URL || '',
+                    bugReportText,
+                    {
+                      currentUser: currentUser ?? null,
+                      sessionId: session?.id ?? null,
+                      gym: session?.config.gym ?? null,
+                    }
+                  );
+                  setIsSendingBugReport(false);
+                  if (result.success) {
+                    toast.success(result.message);
+                    setBugReportText(BUG_REPORT_TEMPLATE);
+                    setShowBugReportModal(false);
+                  } else {
+                    toast.error(result.message);
+                  }
+                }}
+                disabled={isSendingBugReport}
+                className="flex-1 btn-primary disabled:opacity-50"
+              >
+                {isSendingBugReport ? '送信中...' : '送信'}
+              </button>
+            </div>
           </div>
         </div>
       )}
