@@ -103,6 +103,10 @@ export function AccountingPage() {
       // その他欄の復元（後方互換性のため存在チェック）
       if (savedAccounting.otherDescription !== undefined) setOtherDescription(savedAccounting.otherDescription);
       if (savedAccounting.otherAmount !== undefined) setOtherAmount(savedAccounting.otherAmount);
+      // 入力がある場合はアコーディオンを開いた状態で表示
+      if (savedAccounting.otherDescription || savedAccounting.otherAmount) {
+        setIsOtherExpanded(true);
+      }
     } else {
       // 保存値がない場合はsettingsStoreの練習種別をデフォルトとして使用
       setPracticeType(defaultPracticeType);
