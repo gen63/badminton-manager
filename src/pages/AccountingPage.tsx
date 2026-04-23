@@ -166,19 +166,36 @@ export function AccountingPage() {
   }, [matchHistory, players, records, gymShortName, initialized, session, savedAccounting]);
 
   // プレイヤーの支払いデータから免除・男女人数を自動同期
+  // 依存配列を primitive な paid カウントにすることで、会計書込が Firestore
+  // onSnapshot 経由で players 参照を jitter させても不要な再実行を防ぐ
+  const paidTotal = useMemo(
+    () => players.filter(p => p.operationStatus?.payment).length,
+    [players],
+  );
+  const actualExemptCount = useMemo(
+    () => players.filter(p => p.operationStatus?.payment && (p.paymentAmount ?? 0) === 0).length,
+    [players],
+  );
+  const paidMales = useMemo(
+    () => players.filter(p =>
+      p.operationStatus?.payment
+      && (p.paymentAmount ?? 0) > 0
+      && (p.gender === 'M' || !p.gender),
+    ).length,
+    [players],
+  );
+  const paidFemales = useMemo(
+    () => players.filter(p =>
+      p.operationStatus?.payment
+      && (p.paymentAmount ?? 0) > 0
+      && p.gender === 'F',
+    ).length,
+    [players],
+  );
+
   useEffect(() => {
     if (!initialized) return;
-
-    const paidPlayers = players.filter(p => p.operationStatus?.payment);
-    if (paidPlayers.length === 0) return;
-
-    // 免除プレイヤー数（支払い確定済みで金額0）
-    const actualExemptCount = paidPlayers.filter(p => (p.paymentAmount ?? 0) === 0).length;
-
-    // 有料支払い済みプレイヤーの男女別カウント
-    const nonExemptPaid = paidPlayers.filter(p => (p.paymentAmount ?? 0) > 0);
-    const paidMales = nonExemptPaid.filter(p => p.gender === 'M' || !p.gender).length;
-    const paidFemales = nonExemptPaid.filter(p => p.gender === 'F').length;
+    if (paidTotal === 0) return;
 
     // stale closure回避: Zustand storeから最新の永続化済み値で比較
     const currentInput = useSessionStore.getState().session?.accounting;
@@ -219,7 +236,7 @@ export function AccountingPage() {
       toast.info(`支払いデータから人数を更新: ${parts.join(', ')}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [players, initialized]);
+  }, [paidTotal, actualExemptCount, paidMales, paidFemales, initialized]);
 
   // 参加人数の合計（免除+男+女）
   const participantCount = exemptCount + maleCount + femaleCount;
