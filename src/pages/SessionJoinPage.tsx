@@ -403,15 +403,17 @@ export function SessionJoinPage() {
             {showQR && (
               <div className="px-4 pb-4 space-y-3">
                 <div className="text-center">
-                  <p
-                    onClick={handleManualCopy}
-                    className="text-xs text-muted-foreground mb-2 cursor-pointer active:opacity-60"
-                  >
-                    {idCopied
-                      ? <span className="text-green-600">セッションIDをコピーしました</span>
-                      : <>セッションID: <span className="font-medium">{sessionId}</span></>
-                    }
-                  </p>
+                  {isPWA && (
+                    <p
+                      onClick={handleManualCopy}
+                      className="text-xs text-muted-foreground mb-2 cursor-pointer active:opacity-60"
+                    >
+                      {idCopied
+                        ? <span className="text-green-600">セッションIDをコピーしました</span>
+                        : <>セッションID: <span className="font-medium">{sessionId}</span></>
+                      }
+                    </p>
+                  )}
                   <button
                     onClick={handleCopyUrl}
                     className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
