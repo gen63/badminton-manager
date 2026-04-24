@@ -623,14 +623,14 @@ export function MainPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-y-auto scrollbar-hide text-foreground">
-      <header className="sticky top-0 flex-none bg-background border-b border-border px-4 py-2.5 shadow-sm z-20">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+    <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-x-hidden overflow-y-auto scrollbar-hide text-foreground">
+      <header className="sticky top-0 flex-none bg-background border-b border-border px-3 py-2.5 shadow-sm z-20">
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setContinuousMatchMode(!continuousMatchMode)}
               disabled={shouldBlockContinuous}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
                 continuousMatchMode
                   ? 'bg-green-50 text-green-700 border border-green-200'
                   : 'bg-muted text-muted-foreground border border-border'
@@ -647,7 +647,7 @@ export function MainPage() {
             <button
               onClick={() => handleAutoAssign()}
               disabled={!canAutoAssign}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
+              className="flex items-center gap-1 px-2 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
             >
               <Users size={16} />
               <span>一括</span>
@@ -668,7 +668,7 @@ export function MainPage() {
                   }
                 }}
                 disabled={!isAdmin() && !session?.information?.text}
-                className={`relative flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full transition-colors ${
+                className={`relative flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full transition-colors ${
                   session?.information?.text || isAdmin()
                     ? 'hover:bg-muted text-blue-600'
                     : 'text-muted-foreground/30 cursor-not-allowed'
@@ -687,17 +687,17 @@ export function MainPage() {
                 setBugReportText(BUG_REPORT_TEMPLATE);
                 setShowBugReportModal(true);
               }}
-              className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-blue-600 transition-colors"
+              className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-blue-600 transition-colors"
               aria-label="バグ報告"
             >
               <MessageSquare size={20} />
             </button>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-0.5">
             <button
               onClick={handleUndo}
               disabled={undoStack.length === 0}
-              className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               aria-label="元に戻す"
             >
               <Undo2 size={18} />
@@ -705,7 +705,7 @@ export function MainPage() {
             <button
               onClick={handleRedo}
               disabled={redoStack.length === 0}
-              className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               aria-label="やり直し"
             >
               <Redo2 size={18} />
@@ -713,7 +713,7 @@ export function MainPage() {
             {isAdmin() && (
               <button
                 onClick={() => navigate('/settings')}
-                className="flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full hover:bg-muted text-muted-foreground transition-colors"
+                className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors"
               >
                 <Settings size={18} />
               </button>
