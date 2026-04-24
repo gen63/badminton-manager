@@ -255,27 +255,7 @@ export function SessionJoinPage() {
       <div className="max-w-md mx-auto space-y-4">
         {/* ヘッダー */}
         <div className="text-center">
-          <h1 className="text-xl font-bold text-foreground mb-1">参加者入室</h1>
-          {isPWA && (
-            <p
-              onClick={handleManualCopy}
-              className="text-xs text-muted-foreground mb-2 cursor-pointer active:opacity-60"
-            >
-              {idCopied
-                ? <span className="text-green-600">セッションIDをコピーしました</span>
-                : <>セッションID: <span className="font-medium">{sessionId}</span></>
-              }
-            </p>
-          )}
-          {sessionId && (
-            <button
-              onClick={handleCopyUrl}
-              className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
-            >
-              {urlCopied ? <Check size={14} className="text-green-500" /> : <Link size={14} />}
-              {urlCopied ? 'URLをコピーしました' : 'セッションURLをコピー'}
-            </button>
-          )}
+          <h1 className="text-xl font-bold text-foreground">参加者入室</h1>
         </div>
 
         {/* PWA案内バナー（非PWA時のみ） */}
@@ -407,21 +387,39 @@ export function SessionJoinPage() {
           </button>
         </div>
 
-        {/* QRコード（アコーディオン） */}
+        {/* 他の参加者に共有（アコーディオン） */}
         {sessionId && (
           <div className="card overflow-hidden">
             <button
               onClick={() => setShowQR(!showQR)}
               className="w-full flex items-center justify-between p-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              <span>他の参加者に共有（QRコード）</span>
+              <span>他の参加者に共有</span>
               <ChevronDown
                 size={16}
                 className={`transition-transform duration-200 ${showQR ? 'rotate-180' : ''}`}
               />
             </button>
             {showQR && (
-              <div className="px-4 pb-4">
+              <div className="px-4 pb-4 space-y-3">
+                <div className="text-center">
+                  <p
+                    onClick={handleManualCopy}
+                    className="text-xs text-muted-foreground mb-2 cursor-pointer active:opacity-60"
+                  >
+                    {idCopied
+                      ? <span className="text-green-600">セッションIDをコピーしました</span>
+                      : <>セッションID: <span className="font-medium">{sessionId}</span></>
+                    }
+                  </p>
+                  <button
+                    onClick={handleCopyUrl}
+                    className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+                  >
+                    {urlCopied ? <Check size={14} className="text-green-500" /> : <Link size={14} />}
+                    {urlCopied ? 'URLをコピーしました' : 'セッションURLをコピー'}
+                  </button>
+                </div>
                 <div className="flex justify-center">
                   <div className="bg-white p-3 rounded-xl shadow-sm border border-border">
                     <QRCodeSVG
@@ -432,7 +430,7 @@ export function SessionJoinPage() {
                     />
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground text-center mt-2">
+                <p className="text-xs text-muted-foreground text-center">
                   このQRコードを読み取ると参加できます
                 </p>
               </div>
