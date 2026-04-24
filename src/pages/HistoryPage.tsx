@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -200,7 +200,14 @@ export function HistoryPage() {
   const { gasWebAppUrl, recordScores } = useSettingsStore();
   const toast = useToast();
   const [isUploading, setIsUploading] = useState(false);
-  const [scoredCollapsed, setScoredCollapsed] = useState(true);
+  const hasUnscored = matchHistory.some(
+    (m) => m.scoreA === 0 && m.scoreB === 0 && !m.winner
+  );
+  const [scoredCollapsed, setScoredCollapsed] = useState(() => hasUnscored);
+
+  useEffect(() => {
+    setScoredCollapsed(hasUnscored);
+  }, [hasUnscored]);
 
   if (!session) {
     navigate('/');
