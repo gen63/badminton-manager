@@ -158,7 +158,7 @@ function parseEventList(html: string): EtomoEvent[] {
 }
 
 function isPracticeEvent(e: EtomoEvent): boolean {
-  return /[単複楽]/.test(e.note) && !e.title.includes('目白');
+  return e.note !== '周知' && e.note !== '協議会';
 }
 
 function filterEventsByDate(events: EtomoEvent[], targetDate: Date): EtomoEvent[] {
@@ -173,7 +173,7 @@ function filterEventsByDate(events: EtomoEvent[], targetDate: Date): EtomoEvent[
   );
 }
 
-/** 対象イベント（単/複/楽、目白除外）の中から今日以降で最も近い日付を探す */
+/** 練習イベント（周知・協議会を除く）の中から今日以降で最も近い日付を探す */
 function findNextPracticeDate(events: EtomoEvent[], today: Date): Date | null {
   const todayMonth = today.getMonth() + 1;
   const todayDay = today.getDate();

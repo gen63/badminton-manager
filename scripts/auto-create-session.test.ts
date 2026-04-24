@@ -209,26 +209,33 @@ describe('filterEventsByDate', () => {
     { eventId: '1', title: '4/9(水)18:30〜21:30@千川館.複', dateMonth: 4, dateDay: 9, startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複', participantCount: 0, capacity: null, waitlistCount: 0 },
     { eventId: '2', title: '4/9(水)19:00〜21:00@高松.単', dateMonth: 4, dateDay: 9, startTime: '19:00', endTime: '21:00', venue: '高松', note: '単', participantCount: 0, capacity: null, waitlistCount: 0 },
     { eventId: '3', title: '4/10(木)18:30〜21:30@千川館.楽', dateMonth: 4, dateDay: 10, startTime: '18:30', endTime: '21:30', venue: '千川館', note: '楽', participantCount: 0, capacity: null, waitlistCount: 0 },
-    { eventId: '4', title: '4/9(水)目白練習', dateMonth: 4, dateDay: 9, startTime: '18:00', endTime: '21:00', venue: '目白', note: '複', participantCount: 0, capacity: null, waitlistCount: 0 },
-    { eventId: '5', title: '4/9(水)18:00〜21:00@会議室.会議', dateMonth: 4, dateDay: 9, startTime: '18:00', endTime: '21:00', venue: '会議室', note: '会議', participantCount: 0, capacity: null, waitlistCount: 0 },
+    { eventId: '4', title: '4/25(土)12:00〜14:00@目白.複', dateMonth: 4, dateDay: 25, startTime: '12:00', endTime: '14:00', venue: '目白', note: '複', participantCount: 0, capacity: null, waitlistCount: 0 },
+    { eventId: '5', title: '4/9(水)18:00〜21:00@会議室.周知', dateMonth: 4, dateDay: 9, startTime: '18:00', endTime: '21:00', venue: '会議室', note: '周知', participantCount: 0, capacity: null, waitlistCount: 0 },
+    { eventId: '6', title: '4/9(水)19:00〜21:00@会議室.協議会', dateMonth: 4, dateDay: 9, startTime: '19:00', endTime: '21:00', venue: '会議室', note: '協議会', participantCount: 0, capacity: null, waitlistCount: 0 },
   ];
 
-  it('指定日の単/複/楽イベントだけ返す', () => {
+  it('指定日の練習イベントを返す（周知・協議会は除外）', () => {
     const target = new Date(2026, 3, 9); // 4/9
     const filtered = filterEventsByDate(events, target);
     expect(filtered.map(e => e.eventId)).toEqual(['1', '2']);
   });
 
-  it('目白を含むイベントは除外する', () => {
-    const target = new Date(2026, 3, 9);
+  it('目白会場のイベントも練習として含める', () => {
+    const target = new Date(2026, 3, 25); // 4/25(土)
     const filtered = filterEventsByDate(events, target);
-    expect(filtered.find(e => e.venue === '目白')).toBeUndefined();
+    expect(filtered.map(e => e.eventId)).toEqual(['4']);
   });
 
-  it('単/複/楽以外のnoteは除外する', () => {
+  it('周知のイベントは除外する', () => {
     const target = new Date(2026, 3, 9);
     const filtered = filterEventsByDate(events, target);
-    expect(filtered.find(e => e.note === '会議')).toBeUndefined();
+    expect(filtered.find(e => e.note === '周知')).toBeUndefined();
+  });
+
+  it('協議会のイベントは除外する', () => {
+    const target = new Date(2026, 3, 9);
+    const filtered = filterEventsByDate(events, target);
+    expect(filtered.find(e => e.note === '協議会')).toBeUndefined();
   });
 
   it('該当日にイベントが無ければ空配列', () => {
@@ -258,18 +265,18 @@ describe('findNextPracticeDate', () => {
     expect(result).toEqual(new Date(2026, 3, 10));
   });
 
-  it('目白は除外する', () => {
+  it('目白会場も練習として含める', () => {
     const events = [
-      makeEvent(4, 10, '複', '4/10(月)目白練習'),
+      makeEvent(4, 11, '複', '4/11(土)12:00〜14:00@目白.複'),
       makeEvent(4, 15, '複'),
     ];
     const today = new Date(2026, 3, 10);
     const result = findNextPracticeDate(events, today);
-    expect(result).toEqual(new Date(2026, 3, 15));
+    expect(result).toEqual(new Date(2026, 3, 11));
   });
 
-  it('単/複/楽以外は除外する', () => {
-    const events = [makeEvent(4, 10, '会議'), makeEvent(4, 15, '楽')];
+  it('周知・協議会は除外する', () => {
+    const events = [makeEvent(4, 10, '周知'), makeEvent(4, 12, '協議会'), makeEvent(4, 15, '楽')];
     const today = new Date(2026, 3, 10);
     const result = findNextPracticeDate(events, today);
     expect(result).toEqual(new Date(2026, 3, 15));
