@@ -45,14 +45,21 @@ function MatchCard({
   const rightScore = isTeamAWinner ? match.scoreB : match.scoreA;
 
   const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
-  const sortByStrength = (ids: readonly string[]) =>
-    [...ids].sort((a, b) => getPlayerRating(b) - getPlayerRating(a));
+  // ペア内の表示順を一定にする: rating 降順、同点は name 昇順、最後に id でタイブレーク
+  const sortPairForDisplay = (ids: readonly string[]) =>
+    [...ids].sort((a, b) => {
+      const ratingDiff = getPlayerRating(b) - getPlayerRating(a);
+      if (ratingDiff !== 0) return ratingDiff;
+      const nameDiff = getPlayerName(a).localeCompare(getPlayerName(b));
+      if (nameDiff !== 0) return nameDiff;
+      return a.localeCompare(b);
+    });
   const leftNames = isMatchSingles
     ? getPlayerName(leftTeam[0])
-    : sortByStrength(leftTeam).map(getPlayerName).join(' ');
+    : sortPairForDisplay(leftTeam).map(getPlayerName).join(' ');
   const rightNames = isMatchSingles
     ? getPlayerName(rightTeam[0])
-    : sortByStrength(rightTeam).map(getPlayerName).join(' ');
+    : sortPairForDisplay(rightTeam).map(getPlayerName).join(' ');
 
   return (
     <div
