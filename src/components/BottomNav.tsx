@@ -4,6 +4,7 @@ import { useReservationStore } from '../stores/reservationStore';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
+import { isMatchOfPlayer } from '../lib/matchFilter';
 import { useToast } from '../hooks/useToast';
 import { Toast } from './Toast';
 
@@ -37,18 +38,11 @@ export function BottomNav({ activeTab }: BottomNavProps) {
     
     // オンラインモード & 一般ユーザー: 自分が参加した試合のみ
     if (currentUser) {
-      return unrecordedMatches.filter((match) => {
-        // matchに含まれるplayerIdから名前を取得
-        const playerIds = [...match.teamA, ...match.teamB];
-        const playerNames = playerIds
-          .map((id) => players.find((p) => p.id === id)?.name)
-          .filter(Boolean);
-        
-        // 自分が参加しているかチェック
-        return playerNames.includes(currentUser);
-      }).length;
+      return unrecordedMatches.filter((match) =>
+        isMatchOfPlayer(match, currentUser, players)
+      ).length;
     }
-    
+
     return 0;
   })();
 
