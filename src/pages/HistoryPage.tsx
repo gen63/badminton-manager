@@ -20,6 +20,7 @@ function MatchCard({
   match,
   matchNumber,
   getPlayerName,
+  getPlayerRating,
   handleEdit,
   handleDelete,
   recordScores,
@@ -28,6 +29,7 @@ function MatchCard({
   match: Match;
   matchNumber: number;
   getPlayerName: (id: string) => string;
+  getPlayerRating: (id: string) => number;
   handleEdit: (id: string) => void;
   handleDelete: (id: string) => void;
   recordScores: boolean;
@@ -43,8 +45,21 @@ function MatchCard({
   const rightScore = isTeamAWinner ? match.scoreB : match.scoreA;
 
   const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
-  const leftNames = isMatchSingles ? getPlayerName(leftTeam[0]) : leftTeam.map(getPlayerName).join(' ');
-  const rightNames = isMatchSingles ? getPlayerName(rightTeam[0]) : rightTeam.map(getPlayerName).join(' ');
+  // ペア内の表示順を一定にする: rating 降順、同点は name 昇順、最後に id でタイブレーク
+  const sortPairForDisplay = (ids: readonly string[]) =>
+    [...ids].sort((a, b) => {
+      const ratingDiff = getPlayerRating(b) - getPlayerRating(a);
+      if (ratingDiff !== 0) return ratingDiff;
+      const nameDiff = getPlayerName(a).localeCompare(getPlayerName(b));
+      if (nameDiff !== 0) return nameDiff;
+      return a.localeCompare(b);
+    });
+  const leftNames = isMatchSingles
+    ? getPlayerName(leftTeam[0])
+    : sortPairForDisplay(leftTeam).map(getPlayerName).join(' ');
+  const rightNames = isMatchSingles
+    ? getPlayerName(rightTeam[0])
+    : sortPairForDisplay(rightTeam).map(getPlayerName).join(' ');
 
   return (
     <div
@@ -113,6 +128,7 @@ function MatchList({
   unscoredMatches,
   scoredMatches,
   getPlayerName,
+  getPlayerRating,
   handleEdit,
   handleDelete,
   recordScores,
@@ -123,6 +139,7 @@ function MatchList({
   unscoredMatches: { match: Match; matchNumber: number }[];
   scoredMatches: { match: Match; matchNumber: number }[];
   getPlayerName: (id: string) => string;
+  getPlayerRating: (id: string) => number;
   handleEdit: (id: string) => void;
   handleDelete: (id: string) => void;
   recordScores: boolean;
@@ -139,6 +156,7 @@ function MatchList({
           match={match}
           matchNumber={matchNumber}
           getPlayerName={getPlayerName}
+          getPlayerRating={getPlayerRating}
           handleEdit={handleEdit}
           handleDelete={handleDelete}
           recordScores={recordScores}
@@ -166,6 +184,7 @@ function MatchList({
               match={match}
               matchNumber={matchNumber}
               getPlayerName={getPlayerName}
+              getPlayerRating={getPlayerRating}
               handleEdit={handleEdit}
               handleDelete={handleDelete}
               recordScores={recordScores}
@@ -227,6 +246,10 @@ export function HistoryPage() {
 
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '未設定';
+  };
+
+  const getPlayerRating = (playerId: string) => {
+    return players.find((p) => p.id === playerId)?.rating ?? 0;
   };
 
   const handleEdit = (matchId: string) => {
@@ -351,6 +374,7 @@ export function HistoryPage() {
                   unscoredMatches={unscoredMatches}
                   scoredMatches={scoredMatches}
                   getPlayerName={getPlayerName}
+                  getPlayerRating={getPlayerRating}
                   handleEdit={handleEdit}
                   handleDelete={handleDelete}
                   recordScores={recordScores}
