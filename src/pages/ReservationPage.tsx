@@ -158,6 +158,15 @@ export function ReservationPage() {
           );
         })}
 
+        {/* 予約追加ボタン */}
+        <button
+          onClick={() => setShowAdd(true)}
+          className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-semibold text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+        >
+          <Plus size={16} />
+          予約追加
+        </button>
+
         {/* 消化済み予約 */}
         {fulfilledReservations.length > 0 && (
           <div className="mt-2">
@@ -201,15 +210,6 @@ export function ReservationPage() {
             )}
           </div>
         )}
-
-        {/* 予約追加ボタン */}
-        <button
-          onClick={() => setShowAdd(true)}
-          className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-semibold text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
-        >
-          <Plus size={16} />
-          予約追加
-        </button>
       </div>
 
       <BottomNav activeTab="reservation" />
