@@ -46,6 +46,19 @@
 
 `isAdmin` は L34 で既に分割代入されているため、追加 import は不要。
 
+## 追加対応：休憩切替の副作用ガード
+
+`handleToggleRestWithLock`（`MainPage.tsx:467`）で、プレイヤーを休憩に入れた際に
+`resizeCourts()` + `updateConfig({ courtCount })` および `setContinuousMatchMode(false)` が
+発火する。これは UI ボタンを介さない「コート削除/連続OFF」の間接パスとなるため、
+当該ブロック全体を `isAdmin()` で囲って管理者のみに限定する。
+
+休憩切替自体（`toggleRest`）は引き続き全ユーザに開放する。自動調整だけ管理者専用。
+
+なお `setContinuousMatchMode(false)` のリアクティブな安全装置（`MainPage.tsx:100-105` の
+diversity_block useEffect / `handleContinuousNext` 内のブロック検知）は state 変化に対する
+収束ロジックのため、ガード対象外とする。
+
 ## 影響範囲
 
 - ローカルモード（共有していない単独利用）は `isAdmin()` が常に true → 既存動作維持

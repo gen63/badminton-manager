@@ -491,7 +491,9 @@ export function MainPage() {
     toggleRest(playerId);
 
     // 休憩に入る場合（toggleRest前のisResting=false）、コート数を自動縮小
-    if (!player?.isResting) {
+    // コート数変更・連続モード操作は管理者のみに限定（一般ユーザの休憩切替が間接的に
+    // session.config.courtCount や continuousMatchMode を変更しないようガード）
+    if (!player?.isResting && isAdmin()) {
       const activeCount = players.filter(p => !p.isResting && p.id !== playerId).length;
       const recommended = getRecommendedCourtCount(activeCount, courts.length, playersPerCourt);
       if (recommended < courts.length) {
