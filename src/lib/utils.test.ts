@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { cn, formatDate, formatTime, formatDuration, generateSessionId, copyToClipboard, parsePlayerInput, getRecommendedCourtCount, shouldBlockForDiversity } from './utils';
+import { cn, formatDate, formatTime, formatDuration, generateSessionId, copyToClipboard, parsePlayerInput, getRecommendedCourtCount, shouldBlockForDiversity, sortPairByStrength, sortPairWithIndex } from './utils';
+import type { Player } from '../types/player';
 
 describe('cn', () => {
   it('単一のクラス名を返す', () => {
@@ -240,6 +241,112 @@ describe('parsePlayerInput', () => {
   it('空行はnullを返す', () => {
     expect(parsePlayerInput('')).toBe(null);
     expect(parsePlayerInput('   ')).toBe(null);
+  });
+});
+
+describe('sortPairByStrength', () => {
+  const makePlayer = (id: string, name: string, rating?: number): Player => ({
+    id,
+    name,
+    rating,
+    isResting: false,
+    gamesPlayed: 0,
+    lastPlayedAt: 0,
+    activatedAt: 0,
+  });
+
+  it('高レーティング選手が先頭に来る', () => {
+    const players = [
+      makePlayer('p1', 'Alice', 1500),
+      makePlayer('p2', 'Bob', 1700),
+    ];
+    expect(sortPairByStrength(['p1', 'p2'], players)).toEqual(['p2', 'p1']);
+    expect(sortPairByStrength(['p2', 'p1'], players)).toEqual(['p2', 'p1']);
+  });
+
+  it('同レーティングの場合は名前昇順', () => {
+    const players = [
+      makePlayer('p1', '佐藤', 1500),
+      makePlayer('p2', '伊藤', 1500),
+    ];
+    // 伊藤 < 佐藤
+    expect(sortPairByStrength(['p1', 'p2'], players)).toEqual(['p2', 'p1']);
+  });
+
+  it('レーティング未設定は0扱い（最弱）', () => {
+    const players = [
+      makePlayer('p1', 'Alice', 1500),
+      makePlayer('p2', 'Bob'), // 未設定
+    ];
+    expect(sortPairByStrength(['p1', 'p2'], players)).toEqual(['p1', 'p2']);
+    expect(sortPairByStrength(['p2', 'p1'], players)).toEqual(['p1', 'p2']);
+  });
+
+  it('シングルス（空文字ID）は末尾', () => {
+    const players = [makePlayer('p1', 'Alice', 1500)];
+    expect(sortPairByStrength(['p1', ''], players)).toEqual(['p1', '']);
+    expect(sortPairByStrength(['', 'p1'], players)).toEqual(['p1', '']);
+  });
+
+  it('見つからないIDは末尾', () => {
+    const players = [makePlayer('p1', 'Alice', 1500)];
+    expect(sortPairByStrength(['unknown', 'p1'], players)).toEqual(['p1', 'unknown']);
+  });
+
+  it('元のペアを破壊しない', () => {
+    const players = [
+      makePlayer('p1', 'Alice', 1500),
+      makePlayer('p2', 'Bob', 1700),
+    ];
+    const original: [string, string] = ['p1', 'p2'];
+    sortPairByStrength(original, players);
+    expect(original).toEqual(['p1', 'p2']);
+  });
+});
+
+describe('sortPairWithIndex', () => {
+  const makePlayer = (id: string, name: string, rating?: number): Player => ({
+    id,
+    name,
+    rating,
+    isResting: false,
+    gamesPlayed: 0,
+    lastPlayedAt: 0,
+    activatedAt: 0,
+  });
+
+  it('強い選手が先頭、元の配列インデックスを保持する', () => {
+    const players = [
+      makePlayer('p1', 'Alice', 1500),
+      makePlayer('p2', 'Bob', 1700),
+    ];
+    expect(sortPairWithIndex(['p1', 'p2'], players)).toEqual([
+      { id: 'p2', index: 1 },
+      { id: 'p1', index: 0 },
+    ]);
+  });
+
+  it('既に強い順ならそのまま', () => {
+    const players = [
+      makePlayer('p1', 'Alice', 1700),
+      makePlayer('p2', 'Bob', 1500),
+    ];
+    expect(sortPairWithIndex(['p1', 'p2'], players)).toEqual([
+      { id: 'p1', index: 0 },
+      { id: 'p2', index: 1 },
+    ]);
+  });
+
+  it('シングルス（空文字IDは末尾）でもインデックスは元のまま', () => {
+    const players = [makePlayer('p1', 'Alice', 1500)];
+    expect(sortPairWithIndex(['p1', ''], players)).toEqual([
+      { id: 'p1', index: 0 },
+      { id: '', index: 1 },
+    ]);
+    expect(sortPairWithIndex(['', 'p1'], players)).toEqual([
+      { id: 'p1', index: 1 },
+      { id: '', index: 0 },
+    ]);
   });
 });
 

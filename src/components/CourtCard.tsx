@@ -1,9 +1,12 @@
 import { Play, Square, Clock, Users, X } from 'lucide-react';
 import { useGameTimer } from '../hooks/useGameTimer';
 import type { Court } from '../types/court';
+import type { Player } from '../types/player';
+import { sortPairWithIndex } from '../lib/utils';
 
 interface CourtCardProps {
   court: Court;
+  players: Player[];
   getPlayerName: (playerId: string) => string;
   getPlayerGamesPlayed: (playerId: string) => number;
   getPlayerGender?: (playerId: string) => 'M' | 'F' | undefined;
@@ -101,6 +104,7 @@ function UnassignedDisplay() {
 
 export function CourtCard({
   court,
+  players,
   getPlayerName,
   getPlayerGamesPlayed,
   getPlayerGender,
@@ -118,6 +122,10 @@ export function CourtCard({
   const hasPlayers = court.teamA[0] || court.teamB[0];
 
   const pillProps = { selectedPlayerId, getPlayerName, getPlayerGamesPlayed, getPlayerGender, onPlayerTap, onClearSelection };
+
+  // 表示は強さ順だが、position は元の配列インデックス（teamA: 0/1, teamB: 2/3）を渡す
+  const teamADisplay = sortPairWithIndex(court.teamA, players);
+  const teamBDisplay = sortPairWithIndex(court.teamB, players);
 
   return (
     <div
@@ -146,8 +154,8 @@ export function CourtCard({
           <div className="space-y-1">
             {court.teamA[0] ? (
               <>
-                <PlayerPill playerId={court.teamA[0]} position={0} {...pillProps} />
-                <PlayerPill playerId={court.teamA[1]} position={1} {...pillProps} />
+                <PlayerPill playerId={teamADisplay[0].id} position={teamADisplay[0].index} {...pillProps} />
+                <PlayerPill playerId={teamADisplay[1].id} position={teamADisplay[1].index} {...pillProps} />
               </>
             ) : (
               <EmptySlots />
@@ -165,8 +173,8 @@ export function CourtCard({
           <div className="space-y-1">
             {court.teamB[0] ? (
               <>
-                <PlayerPill playerId={court.teamB[0]} position={2} {...pillProps} />
-                <PlayerPill playerId={court.teamB[1]} position={3} {...pillProps} />
+                <PlayerPill playerId={teamBDisplay[0].id} position={2 + teamBDisplay[0].index} {...pillProps} />
+                <PlayerPill playerId={teamBDisplay[1].id} position={2 + teamBDisplay[1].index} {...pillProps} />
               </>
             ) : (
               <EmptySlots />

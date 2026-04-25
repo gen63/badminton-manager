@@ -4,7 +4,7 @@ import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
-import { formatTime, copyToClipboard } from '../lib/utils';
+import { formatTime, copyToClipboard, sortPairByStrength } from '../lib/utils';
 import { formatLocalDate } from '../lib/sessionArchive';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
 import { isMatchOfPlayer } from '../lib/matchFilter';
@@ -15,6 +15,7 @@ import { EmptyState } from '../components/EmptyState';
 import { BottomNav } from '../components/BottomNav';
 
 import type { Match } from '../types/match';
+import type { Player } from '../types/player';
 
 function MatchCard({
   match,
@@ -24,6 +25,7 @@ function MatchCard({
   handleDelete,
   recordScores,
   isAdmin,
+  players,
 }: {
   match: Match;
   matchNumber: number;
@@ -32,6 +34,7 @@ function MatchCard({
   handleDelete: (id: string) => void;
   recordScores: boolean;
   isAdmin: boolean;
+  players: Player[];
 }) {
   const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
   const isNoScore = match.scoreA === 0 && match.scoreB === 0 && !match.winner;
@@ -43,8 +46,10 @@ function MatchCard({
   const rightScore = isTeamAWinner ? match.scoreB : match.scoreA;
 
   const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
-  const leftNames = isMatchSingles ? getPlayerName(leftTeam[0]) : leftTeam.map(getPlayerName).join(' ');
-  const rightNames = isMatchSingles ? getPlayerName(rightTeam[0]) : rightTeam.map(getPlayerName).join(' ');
+  const leftSorted = sortPairByStrength(leftTeam, players);
+  const rightSorted = sortPairByStrength(rightTeam, players);
+  const leftNames = isMatchSingles ? getPlayerName(leftSorted[0]) : leftSorted.map(getPlayerName).join(' ');
+  const rightNames = isMatchSingles ? getPlayerName(rightSorted[0]) : rightSorted.map(getPlayerName).join(' ');
 
   return (
     <div
@@ -119,6 +124,7 @@ function MatchList({
   isAdmin,
   scoredCollapsed,
   setScoredCollapsed,
+  players,
 }: {
   unscoredMatches: { match: Match; matchNumber: number }[];
   scoredMatches: { match: Match; matchNumber: number }[];
@@ -129,6 +135,7 @@ function MatchList({
   isAdmin: boolean;
   scoredCollapsed: boolean;
   setScoredCollapsed: (v: boolean) => void;
+  players: Player[];
 }) {
   return (
     <div className="space-y-2">
@@ -143,6 +150,7 @@ function MatchList({
           handleDelete={handleDelete}
           recordScores={recordScores}
           isAdmin={isAdmin}
+          players={players}
         />
       ))}
 
@@ -170,6 +178,7 @@ function MatchList({
               handleDelete={handleDelete}
               recordScores={recordScores}
               isAdmin={isAdmin}
+              players={players}
             />
           ))}
         </>
@@ -244,10 +253,12 @@ export function HistoryPage() {
     let text = '日付,場所,A選手1,A選手2,B選手1,B選手2,スコアA,スコアB,試合時間\n';
     matchHistory.forEach((match) => {
       const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
-      const a1 = getPlayerName(match.teamA[0]);
-      const a2 = isMatchSingles ? '' : getPlayerName(match.teamA[1]);
-      const b1 = getPlayerName(match.teamB[0]);
-      const b2 = isMatchSingles ? '' : getPlayerName(match.teamB[1]);
+      const sortedA = sortPairByStrength(match.teamA, players);
+      const sortedB = sortPairByStrength(match.teamB, players);
+      const a1 = getPlayerName(sortedA[0]);
+      const a2 = isMatchSingles ? '' : getPlayerName(sortedA[1]);
+      const b1 = getPlayerName(sortedB[0]);
+      const b2 = isMatchSingles ? '' : getPlayerName(sortedB[1]);
       const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
       text += `${dateStr},${gymName},${a1},${a2},${b1},${b2},${match.scoreA},${match.scoreB},${duration}\n`;
     });
@@ -357,6 +368,7 @@ export function HistoryPage() {
                   isAdmin={isAdmin}
                   scoredCollapsed={scoredCollapsed}
                   setScoredCollapsed={setScoredCollapsed}
+                  players={players}
                 />
               )}
             </div>

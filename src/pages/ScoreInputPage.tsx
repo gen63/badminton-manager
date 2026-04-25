@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
+import { sortPairWithIndex } from '../lib/utils';
 import { X, Trash2, LogOut } from 'lucide-react';
 
 export function ScoreInputPage() {
@@ -192,61 +193,56 @@ export function ScoreInputPage() {
                 {getPlayerName(match.teamB[0])}
               </button>
             </div>
-          ) : (
-            /* ダブルス: A,B vs C,D */
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3 gap-y-1.5">
-              {/* A */}
-              <button
-                onClick={() => handlePlayerTap(0)}
-                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                  selectedPlayer?.position === 0
-                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
-                }`}
-              >
-                {getPlayerName(match.teamA[0])}
-              </button>
+          ) : (() => {
+            // 強さ順に並び替え。position は元の配列インデックスを保持（teamA: 0/1, teamB: 2/3）
+            const teamADisp = sortPairWithIndex(match.teamA, players);
+            const teamBDisp = sortPairWithIndex(match.teamB, players);
+            const cellClass = (position: number) =>
+              `min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                selectedPlayer?.position === position
+                  ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
+                  : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
+              }`;
+            return (
+              /* ダブルス: 上段 = 強い方, 下段 = 弱い方 */
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3 gap-y-1.5">
+                {/* A 上段 */}
+                <button
+                  onClick={() => handlePlayerTap(teamADisp[0].index)}
+                  className={cellClass(teamADisp[0].index)}
+                >
+                  {getPlayerName(teamADisp[0].id)}
+                </button>
 
-              {/* VS */}
-              <span className="text-muted-foreground font-bold text-xs row-span-2 self-center">VS</span>
+                {/* VS */}
+                <span className="text-muted-foreground font-bold text-xs row-span-2 self-center">VS</span>
 
-              {/* C */}
-              <button
-                onClick={() => handlePlayerTap(2)}
-                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                  selectedPlayer?.position === 2
-                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
-                }`}
-              >
-                {getPlayerName(match.teamB[0])}
-              </button>
+                {/* B 上段 */}
+                <button
+                  onClick={() => handlePlayerTap(teamBDisp[0].index + 2)}
+                  className={cellClass(teamBDisp[0].index + 2)}
+                >
+                  {getPlayerName(teamBDisp[0].id)}
+                </button>
 
-              {/* B */}
-              <button
-                onClick={() => handlePlayerTap(1)}
-                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                  selectedPlayer?.position === 1
-                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
-                }`}
-              >
-                {getPlayerName(match.teamA[1])}
-              </button>
+                {/* A 下段 */}
+                <button
+                  onClick={() => handlePlayerTap(teamADisp[1].index)}
+                  className={cellClass(teamADisp[1].index)}
+                >
+                  {getPlayerName(teamADisp[1].id)}
+                </button>
 
-              {/* D */}
-              <button
-                onClick={() => handlePlayerTap(3)}
-                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                  selectedPlayer?.position === 3
-                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
-                }`}
-              >
-                {getPlayerName(match.teamB[1])}
-              </button>
-            </div>
-          )}
+                {/* B 下段 */}
+                <button
+                  onClick={() => handlePlayerTap(teamBDisp[1].index + 2)}
+                  className={cellClass(teamBDisp[1].index + 2)}
+                >
+                  {getPlayerName(teamBDisp[1].id)}
+                </button>
+              </div>
+            );
+          })()}
         </div>
 
         {/* スコア表示 */}

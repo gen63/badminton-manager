@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import type { Player } from '../types/player';
 
 /**
  * Tailwind CSS class names merger
@@ -106,6 +107,64 @@ export function parsePlayerInput(
   }
 
   return { name, rating, gender };
+}
+
+/**
+ * ペア内の選手IDを「強さ順」で安定的に並び替える（表示用）
+ *
+ * 並び基準:
+ *  1. Player.rating の降順（高レーティング = 強い）
+ *  2. 同点は Player.name の localeCompare('ja') 昇順
+ *  3. 該当プレイヤーが見つからない／空文字IDは末尾扱い
+ *
+ * 注意: データモデル（Match.teamA/teamB の格納順）は変更しない。
+ * あくまで表示時にこの関数で並び替える。
+ */
+export function sortPairByStrength(
+  pair: readonly [string, string],
+  players: readonly Player[]
+): [string, string] {
+  const [a, b] = pair;
+  const compare = comparePlayerStrength(a, b, players);
+  return compare <= 0 ? [a, b] : [b, a];
+}
+
+/**
+ * ペアを「強さ順」で並べた上で、元の配列インデックスも返す
+ *
+ * クリック可能な選手UI（コート上で位置情報を必要とする操作: 入れ替え等）で利用する。
+ * 戻り値の順は表示順（強い順）、`index` は `pair` 配列での元位置（0 または 1）。
+ */
+export function sortPairWithIndex(
+  pair: readonly [string, string],
+  players: readonly Player[]
+): Array<{ id: string; index: 0 | 1 }> {
+  const compare = comparePlayerStrength(pair[0], pair[1], players);
+  const entries: Array<{ id: string; index: 0 | 1 }> = [
+    { id: pair[0], index: 0 },
+    { id: pair[1], index: 1 },
+  ];
+  return compare <= 0 ? entries : [entries[1], entries[0]];
+}
+
+function comparePlayerStrength(
+  idA: string,
+  idB: string,
+  players: readonly Player[]
+): number {
+  const pa = idA ? players.find((p) => p.id === idA) : undefined;
+  const pb = idB ? players.find((p) => p.id === idB) : undefined;
+
+  // 見つからない / 空文字は末尾
+  if (!pa && !pb) return 0;
+  if (!pa) return 1;
+  if (!pb) return -1;
+
+  const ra = pa.rating ?? 0;
+  const rb = pb.rating ?? 0;
+  if (ra !== rb) return rb - ra; // 降順
+
+  return pa.name.localeCompare(pb.name, 'ja');
 }
 
 /**

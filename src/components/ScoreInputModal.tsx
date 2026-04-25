@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { X, Trash2 } from 'lucide-react';
+import { sortPairByStrength } from '../lib/utils';
+import type { Player } from '../types/player';
 
 interface ScoreInputModalProps {
   matchId: string;
   teamA: [string, string];
   teamB: [string, string];
   targetScore: number;
+  players: Player[];
   getPlayerName: (id: string) => string;
   onConfirm: (matchId: string, scoreA: number, scoreB: number, winner: 'A' | 'B') => void;
   onSkip: () => void;
@@ -16,6 +19,7 @@ export function ScoreInputModal({
   teamA,
   teamB,
   targetScore,
+  players,
   getPlayerName,
   onConfirm,
   onSkip,
@@ -26,12 +30,14 @@ export function ScoreInputModal({
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const isSingles = teamA[1] === '' && teamB[1] === '';
+  const sortedA = sortPairByStrength(teamA, players);
+  const sortedB = sortPairByStrength(teamB, players);
   const teamANames = isSingles
-    ? getPlayerName(teamA[0])
-    : `${getPlayerName(teamA[0])} ${getPlayerName(teamA[1])}`;
+    ? getPlayerName(sortedA[0])
+    : `${getPlayerName(sortedA[0])} ${getPlayerName(sortedA[1])}`;
   const teamBNames = isSingles
-    ? getPlayerName(teamB[0])
-    : `${getPlayerName(teamB[0])} ${getPlayerName(teamB[1])}`;
+    ? getPlayerName(sortedB[0])
+    : `${getPlayerName(sortedB[0])} ${getPlayerName(sortedB[1])}`;
 
   // 目標点数に対する最大点数
   const getMaxScore = (target: number): number => {

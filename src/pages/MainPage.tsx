@@ -4,7 +4,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
-import { getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
+import { getRecommendedCourtCount, shouldBlockForDiversity, sortPairWithIndex } from '../lib/utils';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { useSettingsStore } from '../stores/settingsStore';
 import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, StopCircle, Trash2, ChevronDown, Minus, Settings, Info, MessageSquare } from 'lucide-react';
@@ -825,13 +825,15 @@ export function MainPage() {
                   {hasPlayers ? (
                     <div className="p-2 flex flex-col gap-2 min-h-[220px]">
                       <div className="flex flex-col gap-1">
-                        {court.teamA.filter((id) => id).map((playerId, idx) => {
+                        {sortPairWithIndex(court.teamA, players)
+                          .filter(({ id }) => id)
+                          .map(({ id: playerId, index }) => {
                           const playerGender = getPlayerGender(playerId);
                           const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
                           return (
                             <button
-                              key={idx}
-                              onClick={() => handlePlayerTap(playerId, court.id, idx)}
+                              key={index}
+                              onClick={() => handlePlayerTap(playerId, court.id, index)}
                               className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors ${
                                 selectedPlayer?.id === playerId
                                   ? 'border-primary bg-accent'
@@ -854,13 +856,15 @@ export function MainPage() {
                       </div>
 
                       <div className="flex flex-col gap-1">
-                        {court.teamB.filter((id) => id).map((playerId, idx) => {
+                        {sortPairWithIndex(court.teamB, players)
+                          .filter(({ id }) => id)
+                          .map(({ id: playerId, index }) => {
                           const playerGender = getPlayerGender(playerId);
                           const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
                           return (
                             <button
-                              key={idx}
-                              onClick={() => handlePlayerTap(playerId, court.id, idx + 2)}
+                              key={index}
+                              onClick={() => handlePlayerTap(playerId, court.id, index + 2)}
                               className={`flex items-center justify-between bg-muted/30 p-1.5 rounded-lg border transition-colors ${
                                 selectedPlayer?.id === playerId
                                   ? 'border-primary bg-accent'
@@ -1342,6 +1346,7 @@ export function MainPage() {
           courtId={pendingScoreMatch.courtId}
           teamA={pendingScoreMatch.teamA}
           teamB={pendingScoreMatch.teamB}
+          players={players}
           getPlayerName={(id) => players.find((p) => p.id === id)?.name || '未設定'}
           getPlayerGender={(id) => players.find((p) => p.id === id)?.gender}
           onConfirm={(winnerIds) => {

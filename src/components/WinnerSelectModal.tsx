@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { X, Check } from 'lucide-react';
+import { sortPairByStrength } from '../lib/utils';
+import type { Player } from '../types/player';
 
 interface WinnerSelectModalProps {
   courtId: number;
   teamA: string[];
   teamB: string[];
+  players: Player[];
   getPlayerName: (id: string) => string;
   getPlayerGender: (id: string) => 'M' | 'F' | undefined;
   onConfirm: (winnerIds: string[] | 'unknown') => void;
@@ -15,12 +18,15 @@ export function WinnerSelectModal({
   courtId,
   teamA,
   teamB,
+  players,
   getPlayerName,
   getPlayerGender,
   onConfirm,
   onCancel,
 }: WinnerSelectModalProps) {
-  const allPlayers = [...teamA, ...teamB].filter(id => id);
+  const sortedA = sortPairByStrength([teamA[0] ?? '', teamA[1] ?? ''], players);
+  const sortedB = sortPairByStrength([teamB[0] ?? '', teamB[1] ?? ''], players);
+  const allPlayers = [...sortedA, ...sortedB].filter(id => id);
   const isSingles = teamA[1] === '' && teamB[1] === '';
   const maxSelect = isSingles ? 1 : 2;
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());

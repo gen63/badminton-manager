@@ -2,6 +2,7 @@ import type { Match } from '../types/match';
 import type { Player } from '../types/player';
 import type { Session } from '../types/session';
 import type { AccountingRecord } from '../types/accounting';
+import { sortPairByStrength } from './utils';
 
 interface SheetMatch {
   matchId: string;
@@ -40,22 +41,27 @@ function formatMatchesForSheets(
   const datetime = `${year}/${month}/${day} ${hour}:${minute}`;
 
   return {
-    matches: matches.map((match) => ({
-      matchId: match.id,
-      date: datetime,
-      gym: session.config.gym || '',
-      teamA: [
-        resolvePlayerName(match.teamA[0], players),
-        resolvePlayerName(match.teamA[1], players),
-      ],
-      teamB: [
-        resolvePlayerName(match.teamB[0], players),
-        resolvePlayerName(match.teamB[1], players),
-      ],
-      scoreA: match.scoreA,
-      scoreB: match.scoreB,
-      duration: Math.round((match.finishedAt - match.startedAt) / 60000),
-    })),
+    matches: matches.map((match) => {
+      // 強さ順に並び替えて出力（表示と整合）
+      const sortedA = sortPairByStrength(match.teamA, players);
+      const sortedB = sortPairByStrength(match.teamB, players);
+      return {
+        matchId: match.id,
+        date: datetime,
+        gym: session.config.gym || '',
+        teamA: [
+          resolvePlayerName(sortedA[0], players),
+          resolvePlayerName(sortedA[1], players),
+        ] as [string, string],
+        teamB: [
+          resolvePlayerName(sortedB[0], players),
+          resolvePlayerName(sortedB[1], players),
+        ] as [string, string],
+        scoreA: match.scoreA,
+        scoreB: match.scoreB,
+        duration: Math.round((match.finishedAt - match.startedAt) / 60000),
+      };
+    }),
   };
 }
 

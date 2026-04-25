@@ -12,6 +12,7 @@ import { syncGameStateWithTransaction, type GameState } from '../services/sessio
 import { notifyMatchStart } from '../lib/notifications';
 import { useToast } from './useToast';
 import { getTimestampMillis, hashGameState, shouldApplyRemoteData } from '../lib/syncUtils';
+import { sortPairByStrength } from '../lib/utils';
 import type { Court } from '../types/court';
 
 /**
@@ -508,16 +509,18 @@ function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
       ).length;
       const matchNumber = finishedBefore + playingBefore + 1;
 
-      // プレイヤーIDから名前を取得
-      const teamANames = newCourt.teamA.map(id => {
+      // プレイヤーIDから名前を取得（強さ順に並び替え）
+      const sortedA = sortPairByStrength(newCourt.teamA, players);
+      const sortedB = sortPairByStrength(newCourt.teamB, players);
+      const teamANames = sortedA.map(id => {
         const player = players.find(p => p.id === id);
         return player?.name || '';
       });
-      const teamBNames = newCourt.teamB.map(id => {
+      const teamBNames = sortedB.map(id => {
         const player = players.find(p => p.id === id);
         return player?.name || '';
       });
-      
+
       notifyMatchStart(newCourt.id, matchNumber, teamANames, teamBNames, newCourt.startedAt ?? undefined);
       
       // 通知済みとして記録
