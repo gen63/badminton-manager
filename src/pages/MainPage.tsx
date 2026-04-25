@@ -1060,31 +1060,7 @@ export function MainPage() {
         {/* Waiting Players */}
         <section className="px-4 flex flex-col gap-4 transition-all duration-300" ref={playerCardRef}>
           <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground">待機中 ({sortedWaitingPlayers.length})</h3>
-              <button
-                onClick={() => setShowAddPlayer(!showAddPlayer)}
-                className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1.5 rounded-lg hover:bg-primary/20 transition-colors flex items-center gap-1.5"
-              >
-                <Plus size={14} />
-                <span>{showAddPlayer ? '閉じる' : 'メンバー追加'}</span>
-                <ChevronDown size={14} className={`transition-transform ${showAddPlayer ? 'rotate-180' : ''}`} />
-              </button>
-            </div>
-            
-            {/* Add Member - Collapsible */}
-            {showAddPlayer && (
-              <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
-                <PlayerAddInput
-                  onAdd={(name, gender) => {
-                    const result = addPlayers([{ name, gender }]);
-                    if (result.skipped.length > 0) {
-                      toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
-                    }
-                  }}
-                />
-              </div>
-            )}
+            <h3 className="text-sm font-bold text-foreground">待機中 ({sortedWaitingPlayers.length})</h3>
 
             <div className="grid grid-cols-3 gap-2">
               {sortedWaitingPlayers.map((player) => {
@@ -1154,6 +1130,31 @@ export function MainPage() {
                 );
               })}
             </div>
+          </div>
+
+          {/* Add Member - between Waiting and On Break */}
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => setShowAddPlayer(!showAddPlayer)}
+              className="self-start text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1.5 rounded-lg hover:bg-primary/20 transition-colors flex items-center gap-1.5"
+            >
+              <Plus size={14} />
+              <span>{showAddPlayer ? '閉じる' : 'メンバー追加'}</span>
+              <ChevronDown size={14} className={`transition-transform ${showAddPlayer ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showAddPlayer && (
+              <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
+                <PlayerAddInput
+                  onAdd={(name, gender) => {
+                    const result = addPlayers([{ name, gender }]);
+                    if (result.skipped.length > 0) {
+                      toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
+                    }
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           {/* On Break */}
