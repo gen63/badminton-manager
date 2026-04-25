@@ -627,23 +627,25 @@ export function MainPage() {
       <header className="sticky top-0 flex-none bg-background border-b border-border px-3 py-2.5 shadow-sm z-20">
         <div className="flex items-center justify-between gap-1">
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setContinuousMatchMode(!continuousMatchMode)}
-              disabled={shouldBlockContinuous}
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
-                continuousMatchMode
-                  ? 'bg-green-50 text-green-700 border border-green-200'
-                  : 'bg-muted text-muted-foreground border border-border'
-              }`}
-            >
-              <Repeat size={16} />
-              <span>連続</span>
-              <span className={`text-[10px] bg-green-200 py-0.5 rounded-full font-bold transition-all duration-150 ${
-                continuousMatchMode
-                  ? 'opacity-100 max-w-[2rem] px-1.5'
-                  : 'opacity-0 max-w-0 overflow-hidden px-0'
-              }`}>ON</span>
-            </button>
+            {isAdmin() && (
+              <button
+                onClick={() => setContinuousMatchMode(!continuousMatchMode)}
+                disabled={shouldBlockContinuous}
+                className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
+                  continuousMatchMode
+                    ? 'bg-green-50 text-green-700 border border-green-200'
+                    : 'bg-muted text-muted-foreground border border-border'
+                }`}
+              >
+                <Repeat size={16} />
+                <span>連続</span>
+                <span className={`text-[10px] bg-green-200 py-0.5 rounded-full font-bold transition-all duration-150 ${
+                  continuousMatchMode
+                    ? 'opacity-100 max-w-[2rem] px-1.5'
+                    : 'opacity-0 max-w-0 overflow-hidden px-0'
+                }`}>ON</span>
+              </button>
+            )}
             <button
               onClick={() => handleAutoAssign()}
               disabled={!canAutoAssign}
@@ -808,7 +810,7 @@ export function MainPage() {
                           </svg>
                           <CourtTimer startedAt={court.startedAt} />
                         </div>
-                      ) : !hasPlayers && courts.length > 1 && (
+                      ) : !hasPlayers && courts.length > 1 && isAdmin() && (
                         <button
                           onClick={() => handleRemoveCourt(court.id)}
                           className="w-6 h-6 rounded-full bg-muted text-muted-foreground flex items-center justify-center hover:bg-destructive/20 hover:text-destructive transition-colors"
@@ -1020,7 +1022,7 @@ export function MainPage() {
                 </div>
               );
             })}
-            {courts.length < 3 && (
+            {courts.length < 3 && isAdmin() && (
               <button
                 onClick={handleAddCourt}
                 disabled={!canAddCourt}
