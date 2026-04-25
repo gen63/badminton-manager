@@ -677,7 +677,9 @@ export function MainPage() {
               >
                 <Info size={20} />
                 {session?.information?.text && currentUser && !session.information.readBy?.includes(currentUser) && (
-                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" />
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center px-0.5 text-[10px] font-bold text-red-500 bg-white rounded-full border border-red-500 leading-none">
+                    未
+                  </span>
                 )}
               </button>
             )}
