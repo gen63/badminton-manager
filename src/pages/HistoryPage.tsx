@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -7,7 +7,8 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { formatTime, copyToClipboard } from '../lib/utils';
 import { formatLocalDate } from '../lib/sessionArchive';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
-import { Copy, Trash2, Edit3, Clock, Upload, Loader2, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { isMatchOfPlayer } from '../lib/matchFilter';
+import { Copy, Trash2, Edit3, Clock, Upload, Loader2, History, ChevronDown, ChevronUp, User } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
@@ -109,7 +110,8 @@ function MatchCard({
 }
 
 function MatchList({
-  matchHistory,
+  unscoredMatches,
+  scoredMatches,
   getPlayerName,
   handleEdit,
   handleDelete,
@@ -118,7 +120,8 @@ function MatchList({
   scoredCollapsed,
   setScoredCollapsed,
 }: {
-  matchHistory: Match[];
+  unscoredMatches: { match: Match; matchNumber: number }[];
+  scoredMatches: { match: Match; matchNumber: number }[];
   getPlayerName: (id: string) => string;
   handleEdit: (id: string) => void;
   handleDelete: (id: string) => void;
@@ -127,22 +130,6 @@ function MatchList({
   scoredCollapsed: boolean;
   setScoredCollapsed: (v: boolean) => void;
 }) {
-  const reversedMatches = [...matchHistory].reverse();
-  const totalCount = matchHistory.length;
-
-  const unscoredMatches: { match: Match; matchNumber: number }[] = [];
-  const scoredMatches: { match: Match; matchNumber: number }[] = [];
-
-  reversedMatches.forEach((match, reverseIndex) => {
-    const matchNumber = totalCount - reverseIndex;
-    const isNoScore = match.scoreA === 0 && match.scoreB === 0 && !match.winner;
-    if (isNoScore) {
-      unscoredMatches.push({ match, matchNumber });
-    } else {
-      scoredMatches.push({ match, matchNumber });
-    }
-  });
-
   return (
     <div className="space-y-2">
       {/* 未入力の試合（常に表示） */}
@@ -195,14 +182,38 @@ export function HistoryPage() {
   const navigate = useNavigate();
   const { matchHistory, removeMatch } = useGameStore();
   const { players } = usePlayerStore();
-  const { session, isCreator } = useSessionStore();
+  const { session, isCreator, currentUser } = useSessionStore();
   const isAdmin = isCreator();
   const { gasWebAppUrl, recordScores } = useSettingsStore();
   const toast = useToast();
   const [isUploading, setIsUploading] = useState(false);
-  const hasUnscored = matchHistory.some(
-    (m) => m.scoreA === 0 && m.scoreB === 0 && !m.winner
-  );
+  const [myMatchesOnly, setMyMatchesOnly] = useState(false);
+
+  // 自分の試合フィルタが使えるのはオンラインモード & currentUser がある時のみ
+  const canFilterByMe = !!session?.createdBy && !!currentUser;
+  const filterActive = canFilterByMe && myMatchesOnly;
+
+  // 全試合に通し番号を振った後でフィルタを適用（番号は全体基準で安定）
+  const { unscoredMatches, scoredMatches } = useMemo(() => {
+    const totalCount = matchHistory.length;
+    const reversed = [...matchHistory].reverse();
+    const unscored: { match: Match; matchNumber: number }[] = [];
+    const scored: { match: Match; matchNumber: number }[] = [];
+    reversed.forEach((match, reverseIndex) => {
+      if (filterActive && !isMatchOfPlayer(match, currentUser, players)) return;
+      const matchNumber = totalCount - reverseIndex;
+      const isNoScore = match.scoreA === 0 && match.scoreB === 0 && !match.winner;
+      if (isNoScore) {
+        unscored.push({ match, matchNumber });
+      } else {
+        scored.push({ match, matchNumber });
+      }
+    });
+    return { unscoredMatches: unscored, scoredMatches: scored };
+  }, [matchHistory, filterActive, currentUser, players]);
+
+  // フィルタ適用後の未入力有無で折り畳みを判定（自分視点に合わせる）
+  const hasUnscored = unscoredMatches.length > 0;
   const [scoredCollapsed, setScoredCollapsed] = useState(() => hasUnscored);
 
   useEffect(() => {
@@ -307,16 +318,48 @@ export function HistoryPage() {
               description="メイン画面でゲームを開始すると、ここに履歴が表示されます。"
             />
           ) : (
-            <MatchList
-              matchHistory={matchHistory}
-              getPlayerName={getPlayerName}
-              handleEdit={handleEdit}
-              handleDelete={handleDelete}
-              recordScores={recordScores}
-              isAdmin={isAdmin}
-              scoredCollapsed={scoredCollapsed}
-              setScoredCollapsed={setScoredCollapsed}
-            />
+            <div className="space-y-2">
+              {canFilterByMe && (
+                <button
+                  onClick={() => setMyMatchesOnly((v) => !v)}
+                  aria-pressed={myMatchesOnly}
+                  aria-label="自分の試合のみ表示"
+                  className={`w-full flex items-center justify-center gap-2 px-3 rounded-xl text-sm font-medium transition-colors min-h-[44px] active:scale-[0.98] ${
+                    myMatchesOnly
+                      ? ''
+                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                  }`}
+                  style={
+                    myMatchesOnly
+                      ? { backgroundColor: '#e0e7ff', color: '#3730a3' }
+                      : undefined
+                  }
+                >
+                  <User size={16} />
+                  <span>{myMatchesOnly ? '自分の試合のみ ✓' : '自分の試合のみ'}</span>
+                </button>
+              )}
+
+              {filterActive && unscoredMatches.length === 0 && scoredMatches.length === 0 ? (
+                <EmptyState
+                  icon="🔍"
+                  title="あなたの試合はまだありません"
+                  description="フィルタを解除すると、すべての試合が表示されます。"
+                />
+              ) : (
+                <MatchList
+                  unscoredMatches={unscoredMatches}
+                  scoredMatches={scoredMatches}
+                  getPlayerName={getPlayerName}
+                  handleEdit={handleEdit}
+                  handleDelete={handleDelete}
+                  recordScores={recordScores}
+                  isAdmin={isAdmin}
+                  scoredCollapsed={scoredCollapsed}
+                  setScoredCollapsed={setScoredCollapsed}
+                />
+              )}
+            </div>
           )}
         </div>
       </div>
