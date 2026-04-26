@@ -5,6 +5,7 @@ import type { GameState } from '../services/sessionService';
 interface FirebaseSyncApi {
   prepareDirectTransaction: () => void;
   completeDirectTransaction: (writtenState?: GameState) => void;
+  pushImmediate: () => Promise<GameState | null>;
 }
 
 const FirebaseSyncContext = createContext<FirebaseSyncApi | null>(null);

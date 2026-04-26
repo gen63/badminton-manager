@@ -11,7 +11,7 @@ import { onSnapshot } from 'firebase/firestore';
 import { syncGameStateWithTransaction, type GameState } from '../services/sessionService';
 import { notifyMatchStart } from '../lib/notifications';
 import { useToast } from './useToast';
-import { getTimestampMillis, hashGameState, shouldApplyRemoteData } from '../lib/syncUtils';
+import { getTimestampMillis, hashGameState, mergeGameState, shouldApplyRemoteData, type SyncGameState } from '../lib/syncUtils';
 import type { Court } from '../types/court';
 
 /**
@@ -109,15 +109,18 @@ export function useFirebaseSync() {
     pushInFlight.current = (pushInFlight.current || Promise.resolve())
       .then(() => doPush())
       .catch((err) => {
-        // push失敗時はハッシュとタイムスタンプをリセット（pullを受け付ける）
-        lastPushedHash.current = '';
-        lastPushedTime.current = 0;
-
         if (err?.code === 'conflict') {
+          // 競合時は guard を維持: 次の onSnapshot で 3-way マージが正しく解決するため、
+          // guard をリセットして「自分の push と同じ」スキップ判定を弱めるとローカルの
+          // 楽観的更新が短時間で巻き戻る原因になる。
           console.warn('[FirebaseSync] Conflict detected:', err);
           toastRef.current.warning('他のユーザーが更新しました。もう一度お試しください');
         } else {
+          // ネットワーク失敗等: ハッシュをクリアして次の snapshot を受け入れ可能にする
+          // （guard 維持のままだと永久にローカル状態が反映されないため）
           console.error('[FirebaseSync] Push failed:', err);
+          lastPushedHash.current = '';
+          lastPushedTime.current = 0;
         }
       });
   }, []); // 依存なし: refとgetState()のみ使用、再生成不要
@@ -211,31 +214,40 @@ export function useFirebaseSync() {
 
     isSyncingFromRemote.current = true;
 
+    // 3-way マージ: ローカルの未push変更を保護したうえでリモート変更を取り込む
+    // base が無い（初回 pull）の場合は remote をそのまま採用する
+    const localState = getCurrentGameState();
+    const baseState = lastSyncedState.current;
+    const merged = baseState
+      ? mergeGameState(
+          baseState as unknown as SyncGameState,
+          localState as unknown as SyncGameState,
+          gameState as unknown as SyncGameState,
+        ) as unknown as GameState
+      : gameState;
+
     // プレイヤーストアを更新
-    const { players } = usePlayerStore.getState();
-    if (JSON.stringify(players) !== JSON.stringify(gameState.players)) {
-      usePlayerStore.setState({ players: gameState.players });
+    if (JSON.stringify(localState.players) !== JSON.stringify(merged.players)) {
+      usePlayerStore.setState({ players: merged.players });
     }
 
     // ゲームストアを更新
-    const { courts, matchHistory } = useGameStore.getState();
     const gameUpdates: Record<string, unknown> = {};
-    if (JSON.stringify(courts) !== JSON.stringify(gameState.courts)) {
+    if (JSON.stringify(localState.courts) !== JSON.stringify(merged.courts)) {
       // 試合開始通知: コートが isPlaying: false → true に変わった場合
-      checkMatchStartNotifications(courts, gameState.courts);
-      gameUpdates.courts = gameState.courts;
+      checkMatchStartNotifications(localState.courts, merged.courts);
+      gameUpdates.courts = merged.courts;
     }
-    if (JSON.stringify(matchHistory) !== JSON.stringify(gameState.matchHistory)) {
-      gameUpdates.matchHistory = gameState.matchHistory;
+    if (JSON.stringify(localState.matchHistory) !== JSON.stringify(merged.matchHistory)) {
+      gameUpdates.matchHistory = merged.matchHistory;
     }
     if (Object.keys(gameUpdates).length > 0) {
-      useGameStore.setState(gameUpdates as { courts: typeof courts; matchHistory: typeof matchHistory });
+      useGameStore.setState(gameUpdates as { courts: typeof merged.courts; matchHistory: typeof merged.matchHistory });
     }
 
     // 予約ストアを更新
-    const { reservations } = useReservationStore.getState();
-    if (gameState.reservations && JSON.stringify(reservations) !== JSON.stringify(gameState.reservations)) {
-      useReservationStore.setState({ reservations: gameState.reservations });
+    if (merged.reservations && JSON.stringify(localState.reservations) !== JSON.stringify(merged.reservations)) {
+      useReservationStore.setState({ reservations: merged.reservations });
     }
 
     // セッションレベル設定を更新
@@ -458,7 +470,47 @@ export function useFirebaseSync() {
     isSyncingFromRemote.current = false;
   }, [sessionId]);
 
-  return { prepareDirectTransaction, completeDirectTransaction };
+  /**
+   * デバウンスをスキップして即座に push を直列実行する。
+   *
+   * `prepareDirectTransaction` でガードしたうえでローカル状態を変更し、
+   * その確定をその場で push したいケース（コート増減等）で使用する。
+   * 内部の push チェーンに乗せるので他の push と直列化される。
+   *
+   * 失敗（competing更新による conflict 等）は呼び出し側に reject として伝えるが、
+   * 内部の `pushInFlight` チェーンは常に resolve させて後続 push を阻害しない。
+   *
+   * @returns 書き込み（3-wayマージ）後の GameState、未設定セッションでは null
+   */
+  const pushImmediate = useCallback(async (): Promise<GameState | null> => {
+    const sid = sessionIdRef.current;
+    if (!sid) return null;
+
+    if (pushTimer.current) {
+      clearTimeout(pushTimer.current);
+      pushTimer.current = null;
+    }
+
+    const result = (pushInFlight.current || Promise.resolve()).then(async () => {
+      const gameState = getCurrentGameState();
+      lastPushedTime.current = Date.now();
+      const written = await syncGameStateWithTransaction(sid, gameState, lastSyncedState.current);
+      lastPushedHash.current = hashGameState(written);
+      lastSyncedState.current = written;
+      saveSyncBase(sid, written);
+      return written;
+    });
+
+    // 後続 push のためにチェーンは常に resolve させる
+    pushInFlight.current = result.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    return result;
+  }, []);
+
+  return { prepareDirectTransaction, completeDirectTransaction, pushImmediate };
 }
 
 // 通知済みの試合を記録（重複防止）

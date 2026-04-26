@@ -38,7 +38,7 @@ export function MainPage() {
   useRealtimeSession(isSharedSession ? session?.id ?? null : null);
   usePresence(isSharedSession ? session?.id ?? null : null, currentUser);
   const remotePresence = usePresenceStore((s) => s.remotePresence);
-  const { prepareDirectTransaction, completeDirectTransaction } = useFirebaseSyncContext();
+  const { prepareDirectTransaction, completeDirectTransaction, pushImmediate } = useFirebaseSyncContext();
   const { players, toggleRest, updatePlayer, addPlayers, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();
@@ -199,37 +199,35 @@ export function MainPage() {
   };
 
   const handleAddCourt = async () => {
-    if (courts.length < 3) {
-      const newCount = courts.length + 1;
-      resizeCourts(newCount);
-      updateConfig({ courtCount: newCount });
+    if (courts.length >= 3) return;
+    const newCount = courts.length + 1;
+    const isOnline = !!(session?.id && session?.createdBy);
 
-      // コート増加後に待機人数が不足する場合、連続モードをOFF
-      if (continuousMatchMode) {
-        const activeCount = players.filter(p => !p.isResting).length;
-        const waitingAfter = activeCount - newCount * playersPerCourt;
-        const threshold = prioritizeDiversity ? getMinWaitingCount(gameMode) : 2;
-        if (waitingAfter < threshold) {
-          setContinuousMatchMode(false);
-        }
+    if (isOnline) {
+      prepareDirectTransaction();
+    }
+
+    resizeCourts(newCount);
+    updateConfig({ courtCount: newCount });
+
+    // コート増加後に待機人数が不足する場合、連続モードをOFF
+    if (continuousMatchMode) {
+      const activeCount = players.filter(p => !p.isResting).length;
+      const waitingAfter = activeCount - newCount * playersPerCourt;
+      const threshold = prioritizeDiversity ? getMinWaitingCount(gameMode) : 2;
+      if (waitingAfter < threshold) {
+        setContinuousMatchMode(false);
       }
+    }
 
-      // コート数変更は重要な操作なので、即座にFirestoreにpush（デバウンスをスキップ）
-      if (session?.id && session?.createdBy) {
-        const { syncGameStateWithTransaction } = await import('../services/sessionService');
-        const { players: currentPlayers } = usePlayerStore.getState();
-        const { courts: currentCourts, matchHistory: currentHistory } = useGameStore.getState();
-        const { reservations: currentReservations } = useReservationStore.getState();
-        
-        syncGameStateWithTransaction(session.id, {
-          players: currentPlayers,
-          courts: currentCourts,
-          matchHistory: currentHistory,
-          reservations: currentReservations,
-        }).catch((err) => {
-          console.error('[handleAddCourt] Failed to sync:', err);
-          toast.error('同期に失敗しました');
-        });
+    if (isOnline) {
+      try {
+        const written = await pushImmediate();
+        completeDirectTransaction(written ?? undefined);
+      } catch (err) {
+        console.error('[handleAddCourt] Failed to sync:', err);
+        toast.error('同期に失敗しました');
+        completeDirectTransaction();
       }
     }
   };
@@ -240,25 +238,25 @@ export function MainPage() {
     if (!court) return;
     const hasPlayers = court.teamA[0] && court.teamA[0] !== '';
     if (hasPlayers || court.isPlaying) return;
+
+    const isOnline = !!(session?.id && session?.createdBy);
+
+    if (isOnline) {
+      prepareDirectTransaction();
+    }
+
     removeCourtById(courtId);
     updateConfig({ courtCount: courts.length - 1 });
 
-    // コート数変更は重要な操作なので、即座にFirestoreにpush（デバウンスをスキップ）
-    if (session?.id && session?.createdBy) {
-      const { syncGameStateWithTransaction } = await import('../services/sessionService');
-      const { players: currentPlayers } = usePlayerStore.getState();
-      const { courts: currentCourts, matchHistory: currentHistory } = useGameStore.getState();
-      const { reservations: currentReservations } = useReservationStore.getState();
-      
-      syncGameStateWithTransaction(session.id, {
-        players: currentPlayers,
-        courts: currentCourts,
-        matchHistory: currentHistory,
-        reservations: currentReservations,
-      }).catch((err) => {
+    if (isOnline) {
+      try {
+        const written = await pushImmediate();
+        completeDirectTransaction(written ?? undefined);
+      } catch (err) {
         console.error('[handleRemoveCourt] Failed to sync:', err);
         toast.error('同期に失敗しました');
-      });
+        completeDirectTransaction();
+      }
     }
   };
 

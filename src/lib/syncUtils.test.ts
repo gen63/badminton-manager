@@ -357,6 +357,220 @@ describe('syncUtils', () => {
       expect(result.players[0].id).toBe('A');
     });
 
+    // === 巻き戻り再現シナリオ: ローカル「開始」中にリモートで別コート変更 ===
+    //
+    // 報告されたバグ: 「開始」した試合が直後に未開始に戻る。
+    // 経路: schedulePush の 300ms デバウンス中に他クライアントの onSnapshot が届き、
+    // pull 側でローカル courts を上書きしていた。3-way マージにすればこのケースで
+    // ローカルの isPlaying:true が保持される。
+    it('courtsマージ: ローカルで試合開始 + リモートで別コート配置 → 開始保持', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'] }),
+          makeCourt(2),
+        ],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            isPlaying: true,
+            startedAt: 5000,
+          }), // ローカルで「開始」操作
+          makeCourt(2),
+        ],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'] }), // リモートはまだ未開始
+          makeCourt(2, { teamA: ['p5', 'p6'], teamB: ['p7', 'p8'] }), // リモートで別コート配置
+        ],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(result.courts).toHaveLength(2);
+      // ローカルの「開始」が保持される
+      expect(prop(result.courts.find(c => c.id === 1), 'isPlaying')).toBe(true);
+      expect(prop(result.courts.find(c => c.id === 1), 'startedAt')).toBe(5000);
+      // リモートのコート2配置も反映される
+      expect(prop(result.courts.find(c => c.id === 2), 'teamA')).toEqual(['p5', 'p6']);
+      expect(prop(result.courts.find(c => c.id === 2), 'teamB')).toEqual(['p7', 'p8']);
+    });
+
+    it('courtsマージ: ローカルで試合終了（playing→false）+ リモートはまだ playing → 終了保持', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            isPlaying: true,
+            startedAt: 5000,
+          }),
+        ],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1)], // ローカルで終了 → 全フィールドリセット
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            isPlaying: true,
+            startedAt: 5000,
+          }), // リモートはまだ playing
+        ],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(prop(result.courts[0], 'isPlaying')).toBe(false); // ローカル終了が優先
+      expect(prop(result.courts[0], 'teamA')).toEqual(['', '']);
+    });
+
+    it('courtsマージ: ローカル未変更 + リモートで他クライアントが終了 → リモート反映', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            isPlaying: true,
+            startedAt: 5000,
+          }),
+        ],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            isPlaying: true,
+            startedAt: 5000,
+          }), // 変更なし
+        ],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1)], // 他クライアントが終了
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(prop(result.courts[0], 'isPlaying')).toBe(false); // リモート終了が反映
+    });
+
+    it('courtsマージ: ローカルで試合開始 + リモートでコート追加 → 両方反映', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'] })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            isPlaying: true,
+            startedAt: 5000,
+          }), // ローカル開始
+        ],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'] }), // 変更なし
+          makeCourt(2), // リモートで追加
+        ],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(result.courts).toHaveLength(2);
+      expect(prop(result.courts.find(c => c.id === 1), 'isPlaying')).toBe(true);
+      expect(result.courts.find(c => c.id === 2)).toBeDefined();
+    });
+
+    it('courtsマージ: ローカル未変更 + リモートで管理者がコート追加 → リモート追加反映', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1)],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1)],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1), makeCourt(2)],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(result.courts).toHaveLength(2);
+    });
+
+    it('courtsマージ: ローカルでコート追加 + リモートで他コート開始 → 両方反映', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'] })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'] }), // 未変更
+          makeCourt(2), // ローカルで追加
+        ],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            isPlaying: true,
+            startedAt: 5000,
+          }), // 他クライアントで開始
+        ],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(result.courts).toHaveLength(2);
+      expect(prop(result.courts.find(c => c.id === 1), 'isPlaying')).toBe(true); // リモート開始反映
+      expect(result.courts.find(c => c.id === 2)).toBeDefined(); // ローカル追加反映
+    });
+
+    it('courtsマージ: ローカルでコート削除 + リモートで残コート開始 → 両方反映', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'] }), makeCourt(2)],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'] })], // コート2削除
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            isPlaying: true,
+            startedAt: 5000,
+          }),
+          makeCourt(2),
+        ],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(result.courts).toHaveLength(1);
+      expect(prop(result.courts[0], 'isPlaying')).toBe(true);
+    });
+
     it('courtsマージ: ローカルでコート状態変更 + リモートで別コート状態変更', () => {
       const base: SyncGameState = {
         ...emptyState,
