@@ -91,7 +91,6 @@ export function PlayerSelect() {
     const player = players.find(p => p.id === playerId);
     if (!player) return;
 
-    // デフォルト金額を計算（会計設定から）
     const defaultAmount = player.gender === 'M'
       ? maleFee
       : player.gender === 'F'

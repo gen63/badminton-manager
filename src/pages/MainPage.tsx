@@ -338,7 +338,6 @@ export function MainPage() {
     const player = players.find(p => p.id === playerId);
     if (!player) return;
 
-    // デフォルト金額（会計設定から）
     const defaultAmount = player.gender === 'M'
       ? maleFee
       : player.gender === 'F'
