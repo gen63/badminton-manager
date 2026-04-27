@@ -166,22 +166,39 @@ export function AccountingPage() {
 
     // 保存された値がない場合のみ、料金設定を過去データ・固定値から取得
     if (!savedAccounting) {
-      if (records.length > 0) {
-        const latestRecord = records[records.length - 1];
-        setMaleFee(latestRecord.maleFee);
-        setFemaleFee(latestRecord.femaleFee);
-        setShuttlePrice(latestRecord.shuttlePrice);
-        
-        // 同じ体育館の直近データがあればその体育館代を使う
-        const sameGymRecord = [...records].reverse().find(r => r.gym === gymShortName);
-        if (sameGymRecord) {
-          setGymCost(sameGymRecord.gymCost);
-        } else {
-          // なければ体育館別の固定値
-          setGymCost(gymCostMap[gymShortName] || 900);
-        }
+      // 旧形式の練習種別を新形式に正規化（古いレコードとの互換）
+      const normalizeType = (t: string): string => {
+        if (t === 'ダブルス') return '複';
+        if (t === 'シングルス') return '単';
+        if (t === '初級') return '楽';
+        return t;
+      };
+
+      // 料金は同じ練習種別の直近レコードを優先。なければ練習種別の標準料金
+      const sameTypeRecord = [...records].reverse().find(
+        (r) => normalizeType(r.practiceType) === defaultPracticeType,
+      );
+      if (sameTypeRecord) {
+        setMaleFee(sameTypeRecord.maleFee);
+        setFemaleFee(sameTypeRecord.femaleFee);
       } else {
-        // 過去データがない場合は体育館別の固定値
+        const typeDefaults =
+          PRACTICE_TYPE_OPTIONS.find((t) => t.value === defaultPracticeType) ??
+          PRACTICE_TYPE_OPTIONS[0];
+        setMaleFee(typeDefaults.maleFee);
+        setFemaleFee(typeDefaults.femaleFee);
+      }
+
+      // シャトル価格は練習種別と独立。直近レコードから継承
+      if (records.length > 0) {
+        setShuttlePrice(records[records.length - 1].shuttlePrice);
+      }
+
+      // 体育館代は同じ体育館の直近データを優先、なければ体育館別の固定値
+      const sameGymRecord = [...records].reverse().find((r) => r.gym === gymShortName);
+      if (sameGymRecord) {
+        setGymCost(sameGymRecord.gymCost);
+      } else {
         setGymCost(gymCostMap[gymShortName] || 900);
       }
     }
