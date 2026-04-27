@@ -24,6 +24,7 @@ import { CourtTimer } from '../components/CourtTimer';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { checkContinuousBlock, getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType } from '../lib/gameOperations';
+import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 
 import { BottomNav } from '../components/BottomNav';
 
@@ -53,8 +54,10 @@ export function MainPage() {
   const totalActiveCount = players.filter(p => !p.isResting).length;
   const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
   const { reservations, fulfillReservation } = useReservationStore();
-  const maleFee = session?.accounting?.maleFee || 800;
-  const femaleFee = session?.accounting?.femaleFee || 600;
+  const practiceDefaults =
+    PRACTICE_TYPE_OPTIONS.find((t) => t.value === practiceType) ?? PRACTICE_TYPE_OPTIONS[0];
+  const maleFee = session?.accounting?.maleFee ?? practiceDefaults.maleFee;
+  const femaleFee = session?.accounting?.femaleFee ?? practiceDefaults.femaleFee;
   const toast = useToast();
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;

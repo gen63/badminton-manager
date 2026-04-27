@@ -8,6 +8,8 @@ import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { Trash2, Pencil, UserPlus, Users, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { useSessionStore } from '../stores/sessionStore';
+import { useSettingsStore } from '../stores/settingsStore';
+import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
 import { PlayerEditModal } from '../components/PlayerEditModal';
@@ -17,6 +19,7 @@ export function PlayerSelect() {
   const { players, addPlayers, removePlayer, updatePlayer, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
   const { matchHistory } = useGameStore();
   const { session, isCreator } = useSessionStore();
+  const { practiceType } = useSettingsStore();
   const isTabMode = !!session;
   const isAdmin = isCreator();
   const [newPlayerNames, setNewPlayerNames] = useState('');
@@ -24,8 +27,10 @@ export function PlayerSelect() {
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
   const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F' } | null>(null);
   const [paidCollapsed, setPaidCollapsed] = useState(true);
-  const maleFee = session?.accounting?.maleFee || 800;
-  const femaleFee = session?.accounting?.femaleFee || 600;
+  const practiceDefaults =
+    PRACTICE_TYPE_OPTIONS.find((t) => t.value === practiceType) ?? PRACTICE_TYPE_OPTIONS[0];
+  const maleFee = session?.accounting?.maleFee ?? practiceDefaults.maleFee;
+  const femaleFee = session?.accounting?.femaleFee ?? practiceDefaults.femaleFee;
 
   // 試合履歴に登場するプレイヤーIDのセット
   const playersInHistory = new Set(
