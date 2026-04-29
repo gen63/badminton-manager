@@ -350,6 +350,8 @@ export function useFirebaseSync() {
       }
       // セッション切替時にin-flightのpushチェーンを断ち切る
       pushInFlight.current = null;
+      // モジュール寿命の通知重複抑止 Set もリセット（セッション間で蓄積させない）
+      notifiedMatches.clear();
     };
   }, [isShared, sessionId, schedulePush]); // schedulePushを依存配列に追加
 

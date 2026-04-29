@@ -9,7 +9,8 @@ import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
 import { generateSessionId, parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
-import { createSession, syncGameStateWithTransaction } from '../services/sessionService';
+import { clearPresence, createSession, leaveSession, syncGameStateWithTransaction } from '../services/sessionService';
+import { useFirebaseSyncContext } from '../contexts/FirebaseSyncContext';
 import { getErrorMessage } from '../lib/errorHandler';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { requestNotificationPermission } from '../lib/notifications';
@@ -66,6 +67,7 @@ export function SessionCreate() {
   const location = useLocation();
   const setSession = useSessionStore((state) => state.setSession);
   const initializeSession = useSessionStore((state) => state.initialize);
+  const { prepareDirectTransaction } = useFirebaseSyncContext();
 
   // オンラインモード判定
   const isPhase1Mode = location.pathname === '/session/create';
@@ -220,6 +222,20 @@ export function SessionCreate() {
   };
 
   const handleCreate = async () => {
+    // 旧オンラインセッションに居る場合、ローカルクリアによる空 push を抑止しつつ
+    // 旧セッションの participants から自分を除去する（fire-and-forget）
+    const previousSession = useSessionStore.getState().session;
+    const previousUser = useSessionStore.getState().currentUser;
+    if (previousSession?.id && previousSession.createdBy) {
+      prepareDirectTransaction();
+      if (previousUser) {
+        void Promise.allSettled([
+          leaveSession(previousSession.id, previousUser),
+          clearPresence(previousSession.id, previousUser),
+        ]);
+      }
+    }
+
     // 重要: 新規セッション作成前に古いデータを完全クリア
     // （前のセッションのデータが残らないように）
     usePlayerStore.getState().clearPlayers();

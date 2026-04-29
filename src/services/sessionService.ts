@@ -316,6 +316,29 @@ export async function joinSession(
   return { isAlreadyJoined: false, newCreator };
 }
 
+/** participants から自分を除去する。createdBy は変更しない。 */
+export async function leaveSession(sessionId: string, playerName: string): Promise<void> {
+  if (!sessionId || !playerName) return;
+  if (!useFirestore) return;
+
+  const docRef = doc(db!, 'sessions', sessionId);
+  try {
+    await runTransaction(db!, async (transaction) => {
+      const snap = await transaction.get(docRef);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const participants = (data.participants as string[] | undefined) ?? [];
+      if (!participants.includes(playerName)) return;
+      transaction.update(docRef, {
+        participants: participants.filter((name) => name !== playerName),
+        updatedAt: serverTimestamp(),
+      });
+    });
+  } catch (error) {
+    console.warn('[SessionService] leaveSession failed:', error);
+  }
+}
+
 /** 作成者を変更（dev モード専用） */
 export async function updateCreator(sessionId: string, newCreator: string): Promise<void> {
   if (!newCreator.trim()) {
