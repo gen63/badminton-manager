@@ -12,14 +12,11 @@ import { ReservationPage } from './pages/ReservationPage';
 import { SessionJoinPage } from './pages/SessionJoinPage';
 import { PWAPrompt } from './components/PWAPrompt';
 import { FirebaseSyncProvider } from './contexts/FirebaseSyncContext';
-import { useSessionStore } from './stores/sessionStore';
 
-// セッション切替時に sync 用 ref / module-scoped state をリセットするため、
-// FirebaseSyncProvider を sessionId で remount する
-function AppRoutes() {
-  const sessionId = useSessionStore((s) => s.session?.id);
+function App() {
   return (
-    <FirebaseSyncProvider key={sessionId ?? 'none'}>
+    <BrowserRouter basename="/badminton-manager">
+      <FirebaseSyncProvider>
       <Routes>
         <Route path="/" element={<SessionSelectPage />} />
         <Route path="/local" element={<SessionCreate />} />
@@ -36,14 +33,7 @@ function AppRoutes() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <PWAPrompt />
-    </FirebaseSyncProvider>
-  );
-}
-
-function App() {
-  return (
-    <BrowserRouter basename="/badminton-manager">
-      <AppRoutes />
+      </FirebaseSyncProvider>
     </BrowserRouter>
   );
 }

@@ -182,6 +182,19 @@ export function SessionCreate() {
       
       // パターン1のみ自動開始（入力欄が空だった場合）
       if (!hasInputNames && inputs.length > 0) {
+        // 旧オンラインセッションに居る場合、ローカルクリアによる空 push を抑止しつつ離脱
+        const previousSession = useSessionStore.getState().session;
+        const previousUser = useSessionStore.getState().currentUser;
+        if (previousSession?.id && previousSession.createdBy) {
+          prepareDirectTransaction();
+          if (previousUser) {
+            void Promise.allSettled([
+              leaveSession(previousSession.id, previousUser),
+              clearPresence(previousSession.id, previousUser),
+            ]);
+          }
+        }
+
         addPlayers(inputs);
 
         const adjustedCourtCount = 1;

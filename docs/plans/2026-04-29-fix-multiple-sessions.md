@@ -32,10 +32,13 @@
 | ファイル | 内容 |
 |---------|------|
 | `src/services/sessionService.ts` | `leaveSession(sessionId, playerName)` を追加。runTransaction で `participants` から自分を除去し、`createdBy` は温存する |
-| `src/App.tsx` | `<FirebaseSyncProvider key={sessionId ?? 'none'}>` で sessionId 切替時に強制 remount。`useSessionStore` 購読のため `AppRoutes` 内側コンポーネントを切り出し |
-| `src/hooks/useFirebaseSync.ts` | useEffect cleanup で `notifiedMatches.clear()` を実行 |
-| `src/pages/SessionCreate.tsx` | `useFirebaseSyncContext` を import。`handleCreate` 冒頭で旧オンラインセッションがあれば `prepareDirectTransaction()` で push を抑止し、`leaveSession` + `clearPresence` を fire-and-forget |
+| `src/hooks/useFirebaseSync.ts` | useEffect cleanup で session-scoped 全 ref (`lastSyncedState` / `lastPushedHash` / `lastPushedTime` / `lastAppliedRemoteUpdatedAt` / `sessionDeletedNotified` / `blockedUpdate` / `isSyncingFromRemote`) と module-scoped `notifiedMatches` をリセット |
+| `src/pages/SessionCreate.tsx` | `useFirebaseSyncContext` を import。`handleCreate` 冒頭と `handleLoadFromSheets` 自動開始ブランチで旧オンラインセッションがあれば `prepareDirectTransaction()` で push を抑止し、`leaveSession` + `clearPresence` を fire-and-forget |
 | `src/pages/SessionJoinPage.tsx` | 同様に `handleJoin` 冒頭で別セッションに居れば離脱処理。同一セッションへの force 再入室は対象外 |
+
+### 設計判断: `key={sessionId}` ではなく ref 手動リセット
+
+当初は `<FirebaseSyncProvider key={sessionId}>` で remount する案を検討したが、`FirebaseSyncProvider` は `<Routes>` を内包しているため key 変更で **ページコンポーネント自体が unmount/remount** されてしまう。これにより `SessionCreate.handleCreate` の途中（`initializeSession(B)` で sessionId が変わった瞬間）に SessionCreate が unmount され、後続の `setCreatedSessionId` が効かず URL 表示画面が出ない、という UX 破壊が発生する。代わりに `useFirebaseSync` の cleanup で session-scoped ref を全部リセットすることで、ページツリーを保ったまま sync 内部状態だけをセッション境界で初期化する。
 
 ### 既存資産の再利用
 - `useFirebaseSync.prepareDirectTransaction` — pushTimer キャンセル + `isSyncingFromRemote=true` を既に実装済み
