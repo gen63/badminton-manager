@@ -350,6 +350,19 @@ export function useFirebaseSync() {
       }
       // セッション切替時にin-flightのpushチェーンを断ち切る
       pushInFlight.current = null;
+      // セッション切替時に session-scoped state をフルリセット
+      // （App 寿命中ずっと同じ Provider を使うため、ref が残ると新セッションの
+      //   3-way merge / shouldApplyRemoteData guard / 削除通知判定が壊れる）
+      lastSyncedState.current = null;
+      lastPushedHash.current = '';
+      lastPushedTime.current = 0;
+      lastAppliedRemoteUpdatedAt.current = 0;
+      sessionDeletedNotified.current = false;
+      blockedUpdate.current = null;
+      // 旧セッション中に prepareDirectTransaction で立てた guard が残らないように戻す
+      isSyncingFromRemote.current = false;
+      // モジュール寿命の通知重複抑止 Set もリセット（セッション間で蓄積させない）
+      notifiedMatches.clear();
     };
   }, [isShared, sessionId, schedulePush]); // schedulePushを依存配列に追加
 

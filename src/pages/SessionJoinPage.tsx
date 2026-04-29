@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
-import { getSession, joinSession, subscribeToGameState, subscribeToSession } from '../services/sessionService';
+import { clearPresence, getSession, joinSession, leaveSession, subscribeToGameState, subscribeToSession } from '../services/sessionService';
+import { useFirebaseSyncContext } from '../contexts/FirebaseSyncContext';
 import { getErrorMessage } from '../lib/errorHandler';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { requestNotificationPermission } from '../lib/notifications';
@@ -46,6 +47,7 @@ export function SessionJoinPage() {
 
   const initializeSession = useSessionStore((state) => state.initialize);
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
+  const { prepareDirectTransaction } = useFirebaseSyncContext();
 
   // PWAバッジをクリア（セッション参加前）
   useEffect(() => {
@@ -138,6 +140,23 @@ export function SessionJoinPage() {
 
     setJoining(true);
     setError('');
+
+    // 別の共有セッションに居る場合は離脱（同一セッションへの再入室は除く）
+    const previousSession = useSessionStore.getState().session;
+    const previousUser = useSessionStore.getState().currentUser;
+    if (
+      previousSession?.id &&
+      previousSession.id !== sessionId &&
+      previousSession.createdBy
+    ) {
+      prepareDirectTransaction();
+      if (previousUser) {
+        void Promise.allSettled([
+          leaveSession(previousSession.id, previousUser),
+          clearPresence(previousSession.id, previousUser),
+        ]);
+      }
+    }
 
     try {
       const result = await joinSession(sessionId, selectedName, { force, gender: selectedGender });
