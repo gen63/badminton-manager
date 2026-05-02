@@ -942,10 +942,12 @@ describe('syncUtils', () => {
 
     // === 同期によるメンバー重複・操作巻き戻りの検証（2026-05-02 修正） ===
 
-    it('courtsマージ: 異なるコートに同じプレイヤー配置 → 重複を解消（local 配置を残す）', () => {
-      // 並行操作シナリオ: A が p1 を court1 に配置、B が p1 を court2 に配置
+    it('courtsマージ: 異なるコートに同じプレイヤー配置 → 重複を解消（remote 配置を残す）', () => {
+      // 並行操作シナリオ: A が p1 を court1 に配置して push、B が p1 を court2 に配置。
       // B 側で onSnapshot 受信時、base 空・local court2 に p1・remote court1 に p1 →
-      // 旧実装では両コートに p1 が残る重複バグ。修正後は dedup で 1 ヶ所のみに。
+      // 両コートに p1 が出現するため dedup で 1 ヶ所のみに。
+      // 「remote-sourced 位置を優先」で先に push した A の配置（court1）を残し、
+      // B の未認識並行配置（court2）を空にする。これにより A 視点の巻き戻りが起きない。
       const base: SyncGameState = {
         ...emptyState,
         courts: [makeCourt(1), makeCourt(2)],
@@ -979,9 +981,64 @@ describe('syncUtils', () => {
       const p1Count = allPids.filter((p) => p === 'p1').length;
       expect(p1Count).toBe(1);
 
-      // 直近のローカル操作（court2 に配置）が残るのが望ましい
-      expect(prop(c2, 'teamA')).toEqual(['p1', '']);
-      expect(prop(c1, 'teamA')).toEqual(['', '']);
+      // remote 配置（先 push の authoritative 配置）が残る
+      expect(prop(c1, 'teamA')).toEqual(['p1', '']);
+      expect(prop(c2, 'teamA')).toEqual(['', '']);
+    });
+
+    it('courtsマージ: 他メンバー配置済コートが、未認識の並行配置 dedup で空に巻き戻らない', () => {
+      // 報告バグ: 「他メンバーの同期でコート情報が巻き戻る／配置がされていないことになる」
+      //
+      // シナリオ:
+      //  T1: A が court1 に p1..p4 を一括配置（per-court / isPlaying=false）→ A が push
+      //  T2: B（A の push 未受信）が court2 に同じ p1..p4 を配置
+      //  T3: B が onSnapshot で A の push を受信
+      //     → base: 両コート空, local: court2=[p1..p4], remote: court1=[p1..p4]
+      //     → mergeCourt 結果: court1=[p1..p4]（remote）, court2=[p1..p4]（local）
+      //     → dedup の優先度が「remote 優先」になることで court1 が残り court2 が空に。
+      //  T4: B が後続操作で push しても、court1 は authoritative な配置のままで A 側の
+      //     view が巻き戻らない。
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1), makeCourt(2)],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1),
+          makeCourt(2, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'] }), // B の並行配置
+        ],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'] }), // A が先に push 済み
+          makeCourt(2),
+        ],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      const c1 = result.courts.find((c) => c.id === 1)!;
+      const c2 = result.courts.find((c) => c.id === 2)!;
+
+      // remote (A) の配置が court1 にそのまま残る（A 視点で巻き戻りが起きない）
+      expect(prop(c1, 'teamA')).toEqual(['p1', 'p2']);
+      expect(prop(c1, 'teamB')).toEqual(['p3', 'p4']);
+
+      // B の重複配置は空になる（再配置可能な状態に）
+      expect(prop(c2, 'teamA')).toEqual(['', '']);
+      expect(prop(c2, 'teamB')).toEqual(['', '']);
+
+      // 全プレイヤー ID は 1 ヶ所のみに存在
+      const allPids = [
+        ...(prop(c1, 'teamA') as string[]),
+        ...(prop(c1, 'teamB') as string[]),
+        ...(prop(c2, 'teamA') as string[]),
+        ...(prop(c2, 'teamB') as string[]),
+      ].filter(Boolean);
+      for (const pid of ['p1', 'p2', 'p3', 'p4']) {
+        expect(allPids.filter((p) => p === pid).length).toBe(1);
+      }
     });
 
     it('courtsマージ: 試合中コートと準備中コートに同じプレイヤー → 試合中側を保持（試合保護）', () => {
