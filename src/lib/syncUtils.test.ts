@@ -940,6 +940,154 @@ describe('syncUtils', () => {
       expect(prop(result1.players.find(p => p.id === 'C'), 'isResting')).toBe(true);  // C未変更
     });
 
+    // === 同期によるメンバー重複・操作巻き戻りの検証（2026-05-02 修正） ===
+
+    it('courtsマージ: 異なるコートに同じプレイヤー配置 → 重複を解消（local 配置を残す）', () => {
+      // 並行操作シナリオ: A が p1 を court1 に配置、B が p1 を court2 に配置
+      // B 側で onSnapshot 受信時、base 空・local court2 に p1・remote court1 に p1 →
+      // 旧実装では両コートに p1 が残る重複バグ。修正後は dedup で 1 ヶ所のみに。
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1), makeCourt(2)],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1), // local 側では court1 は触っていない
+          makeCourt(2, { teamA: ['p1', ''] }), // local で p1 を court2 に配置
+        ],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, { teamA: ['p1', ''] }), // remote では p1 が court1 に
+          makeCourt(2),
+        ],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      const c1 = result.courts.find((c) => c.id === 1)!;
+      const c2 = result.courts.find((c) => c.id === 2)!;
+
+      // p1 はちょうど 1 ヶ所のみに存在するべき
+      const allPids = [
+        ...(prop(c1, 'teamA') as string[]),
+        ...(prop(c1, 'teamB') as string[]),
+        ...(prop(c2, 'teamA') as string[]),
+        ...(prop(c2, 'teamB') as string[]),
+      ].filter(Boolean);
+      const p1Count = allPids.filter((p) => p === 'p1').length;
+      expect(p1Count).toBe(1);
+
+      // 直近のローカル操作（court2 に配置）が残るのが望ましい
+      expect(prop(c2, 'teamA')).toEqual(['p1', '']);
+      expect(prop(c1, 'teamA')).toEqual(['', '']);
+    });
+
+    it('courtsマージ: 同一コート内で別ポジションを並行編集 → 両方反映（巻き戻り防止）', () => {
+      // base: Court1 = [X, Y, P, Q]
+      // A: pos1 を Y→R に交換  → local = [X, R, P, Q]
+      // B: pos2 を P→S に交換 → remote = [X, Y, S, Q]
+      // 旧実装では JSON 全体比較で local 優先 → S が消える（巻き戻り）。
+      // 修正後はポジション単位 3-way で両方保持。
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1, { teamA: ['X', 'Y'], teamB: ['P', 'Q'] })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1, { teamA: ['X', 'R'], teamB: ['P', 'Q'] })], // A が pos1 を交換
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1, { teamA: ['X', 'Y'], teamB: ['S', 'Q'] })], // B が pos2 を交換
+      };
+
+      const result = mergeGameState(base, local, remote);
+      // 両方の変更が共存するべき
+      expect(prop(result.courts[0], 'teamA')).toEqual(['X', 'R']);
+      expect(prop(result.courts[0], 'teamB')).toEqual(['S', 'Q']);
+    });
+
+    it('courtsマージ: スコア・isPlaying は scalar 3-way（ローカル未変更ならリモート反映）', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            isPlaying: true,
+            startedAt: 1000,
+            scoreA: 0,
+            scoreB: 0,
+          }),
+        ],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            isPlaying: true,
+            startedAt: 1000,
+            scoreA: 0,
+            scoreB: 0,
+          }), // 変更なし
+        ],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            isPlaying: true,
+            startedAt: 1000,
+            scoreA: 21,
+            scoreB: 19,
+          }), // 他クライアントがスコア更新
+        ],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(prop(result.courts[0], 'scoreA')).toBe(21);
+      expect(prop(result.courts[0], 'scoreB')).toBe(19);
+    });
+
+    it('courtsマージ: restingPlayerIds は集合 3-way（ローカル追加 + リモート追加）', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'], restingPlayerIds: [] }),
+        ],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            restingPlayerIds: ['rest1'], // local が rest1 を追加
+          }),
+        ],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            restingPlayerIds: ['rest2'], // remote が rest2 を追加
+          }),
+        ],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      const ids = (prop(result.courts[0], 'restingPlayerIds') as string[]).slice().sort();
+      expect(ids).toEqual(['rest1', 'rest2']);
+    });
+
     describe('settings のフィールド単位 3-way マージ', () => {
       const baseState: SyncGameState = {
         ...emptyState,

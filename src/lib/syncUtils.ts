@@ -175,6 +175,256 @@ function mergeById<T extends { id: string | number }>(
 }
 
 /**
+ * Court 用の最低限の構造（id + チーム配列 + 任意の追加フィールド）
+ * `mergeCourt` / `mergeCourts` 内で使用する。
+ */
+type CourtLike = {
+  id: number;
+  teamA?: [string, string] | string[];
+  teamB?: [string, string] | string[];
+  restingPlayerIds?: string[];
+  [key: string]: unknown;
+};
+
+/**
+ * チーム配列をポジション単位で 3-way マージ
+ *
+ * teamA / teamB は固定長（2）の player ID 配列。
+ * 異なるポジションへの変更が並行して行われた場合に両方を保持するため、
+ * 配列全体ではなく各ポジションを独立に 3-way マージする。
+ */
+function mergeTeam(
+  base: string[] | undefined,
+  local: string[] | undefined,
+  remote: string[] | undefined,
+): [string, string] {
+  const get = (arr: string[] | undefined, i: number) => (arr?.[i] ?? '') as string;
+  const result: [string, string] = ['', ''];
+  for (let i = 0; i < 2; i++) {
+    const b = get(base, i);
+    const l = get(local, i);
+    const r = get(remote, i);
+    // local が base から変わっていれば local 優先、そうでなければ remote
+    result[i] = l !== b ? l : r;
+  }
+  return result;
+}
+
+/**
+ * restingPlayerIds（順序を持たない ID 集合）の 3-way マージ
+ *
+ * - base→local で追加された ID は維持（local が追加した）
+ * - base→local で削除された ID は除外（local が削除した）
+ * - それ以外は remote 反映（他クライアントの追加・削除を保持）
+ */
+function mergeRestingIds(
+  base: string[] | undefined,
+  local: string[] | undefined,
+  remote: string[] | undefined,
+): string[] | undefined {
+  if (local === undefined && remote === undefined) return undefined;
+  const baseSet = new Set(base ?? []);
+  const localSet = new Set(local ?? []);
+  const remoteSet = new Set(remote ?? []);
+
+  const localAdded = [...localSet].filter((id) => !baseSet.has(id));
+  const localRemoved = new Set([...baseSet].filter((id) => !localSet.has(id)));
+
+  const result = new Set(remoteSet);
+  for (const id of localAdded) result.add(id);
+  for (const id of localRemoved) result.delete(id);
+
+  return Array.from(result);
+}
+
+/**
+ * Court オブジェクトのフィールド粒度 3-way マージ
+ *
+ * teamA/teamB はポジション単位、restingPlayerIds は集合単位、
+ * その他のフィールド（isPlaying / startedAt / scoreA 等）はスカラ 3-way。
+ */
+function mergeCourt<T extends CourtLike>(base: T | undefined, local: T, remote: T): T {
+  const result: Record<string, unknown> = { ...remote };
+
+  // teamA / teamB: ポジション単位 3-way
+  result.teamA = mergeTeam(base?.teamA as string[] | undefined, local.teamA as string[] | undefined, remote.teamA as string[] | undefined);
+  result.teamB = mergeTeam(base?.teamB as string[] | undefined, local.teamB as string[] | undefined, remote.teamB as string[] | undefined);
+
+  // restingPlayerIds: 集合 3-way
+  const merged = mergeRestingIds(base?.restingPlayerIds, local.restingPlayerIds, remote.restingPlayerIds);
+  if (merged === undefined) {
+    delete result.restingPlayerIds;
+  } else {
+    result.restingPlayerIds = merged;
+  }
+
+  // その他フィールド: scalar 3-way（teamA/teamB/restingPlayerIds/id 以外）
+  const handledKeys = new Set(['teamA', 'teamB', 'restingPlayerIds', 'id']);
+  const allKeys = new Set<string>([
+    ...Object.keys(base ?? {}),
+    ...Object.keys(local),
+    ...Object.keys(remote),
+  ]);
+  for (const key of allKeys) {
+    if (handledKeys.has(key)) continue;
+    const baseVal = base?.[key];
+    const localVal = local[key];
+    const remoteVal = remote[key];
+    const localChanged = !base || JSON.stringify(baseVal) !== JSON.stringify(localVal);
+    result[key] = localChanged ? localVal : remoteVal;
+  }
+
+  result.id = local.id;
+  return result as T;
+}
+
+/**
+ * courts 配列の 3-way マージ + コート横断重複除去
+ *
+ * 1. local の順序を保ちながら、3者にあるコートは `mergeCourt` でフィールド粒度マージ。
+ * 2. local のみのコート（追加） / base にあって remote から消えたコート（削除）の
+ *    扱いは `mergeById` と同等（自分の追加は維持、他者の削除は反映）。
+ * 3. 最後にコート横断で同一プレイヤー ID の重複を解消する。
+ *    - 各プレイヤー ID は teamA/teamB 全体で最大 1 ヶ所のみに存在すべき。
+ *    - 重複時は「local 側で base から teamA/teamB が変更されたコート」を残し、
+ *      他方のコートの該当スロットを '' にする（直近のローカル操作を尊重）。
+ *    - どちらも local-changed / どちらも未変更の場合は court.id が小さい方を残す。
+ */
+function mergeCourts<T extends CourtLike>(
+  base: T[] | undefined,
+  local: T[],
+  remote: T[],
+): T[] {
+  // base が無い場合は local をそのまま返すが、重複除去は実行する
+  const baseList = base ?? [];
+  const baseMap = new Map(baseList.map((c) => [c.id, c]));
+  const localMap = new Map(local.map((c) => [c.id, c]));
+  const remoteMap = new Map(remote.map((c) => [c.id, c]));
+
+  const result: T[] = [];
+  const seen = new Set<number>();
+
+  // 1. local の順序を基準
+  for (const localItem of local) {
+    seen.add(localItem.id);
+    const baseItem = baseMap.get(localItem.id);
+    const remoteItem = remoteMap.get(localItem.id);
+
+    if (!remoteItem) {
+      // リモートに存在しない
+      if (!baseItem) {
+        // base にもない → ローカルで新規追加 → 追加
+        result.push(localItem);
+      }
+      // base にある → リモートで削除された → 削除（追加しない）
+      continue;
+    }
+
+    if (!base) {
+      // base が無い場合は local 側を採用（mergeById 互換）
+      result.push(localItem);
+      continue;
+    }
+
+    // 3者にあるケースはフィールド粒度マージ
+    result.push(mergeCourt(baseItem, localItem, remoteItem));
+  }
+
+  // 2. リモートにのみ存在するコート（他クライアントが追加）
+  for (const remoteItem of remote) {
+    if (seen.has(remoteItem.id)) continue;
+    seen.add(remoteItem.id);
+    const baseItem = baseMap.get(remoteItem.id);
+    if (!baseItem) {
+      result.push(remoteItem);
+    }
+    // base にある → ローカルで削除 → 追加しない
+  }
+
+  // 3. コート横断で同一プレイヤー ID の重複を解消
+  void remoteMap;
+  return dedupPlayersAcrossCourts(result, baseMap, localMap);
+}
+
+/**
+ * teamA/teamB 全体で同じプレイヤー ID が複数コートに存在しないようにする。
+ *
+ * 重複時は以下の優先度で「残すコート」を決定:
+ *   1. base から teamA/teamB が変更されたコート（直近のローカル操作）
+ *   2. 同点なら court.id の小さい方
+ * 残さない側のコート上の該当スロットは '' に置換する。
+ */
+function dedupPlayersAcrossCourts<T extends CourtLike>(
+  courts: T[],
+  baseMap: Map<number, T>,
+  localMap: Map<number, T>,
+): T[] {
+  // どのコートが local 側で teamA/teamB を変更したかを判定
+  const localChangedTeams = new Set<number>();
+  for (const court of courts) {
+    const baseItem = baseMap.get(court.id);
+    const localItem = localMap.get(court.id);
+    if (!localItem) continue;
+    const baseTeams = JSON.stringify([baseItem?.teamA ?? ['', ''], baseItem?.teamB ?? ['', '']]);
+    const localTeams = JSON.stringify([localItem.teamA ?? ['', ''], localItem.teamB ?? ['', '']]);
+    if (baseTeams !== localTeams) localChangedTeams.add(court.id);
+  }
+
+  // playerId -> 出現位置のリスト
+  type Pos = { courtId: number; team: 'teamA' | 'teamB'; index: 0 | 1 };
+  const occurrences = new Map<string, Pos[]>();
+
+  for (const court of courts) {
+    for (const team of ['teamA', 'teamB'] as const) {
+      const arr = (court[team] as string[] | undefined) ?? ['', ''];
+      for (let i = 0; i < 2; i++) {
+        const pid = arr[i];
+        if (!pid) continue;
+        const list = occurrences.get(pid) ?? [];
+        list.push({ courtId: court.id, team, index: i as 0 | 1 });
+        occurrences.set(pid, list);
+      }
+    }
+  }
+
+  // 重複があれば、残すコート以外を空にする
+  const courtsById = new Map(courts.map((c) => [c.id, { ...c, teamA: [...((c.teamA as string[] | undefined) ?? ['', ''])] as string[], teamB: [...((c.teamB as string[] | undefined) ?? ['', ''])] as string[] }]));
+  let modified = false;
+
+  for (const [, positions] of occurrences) {
+    if (positions.length <= 1) continue;
+    modified = true;
+    // 残すコートを決定
+    const sorted = [...positions].sort((a, b) => {
+      const aChanged = localChangedTeams.has(a.courtId) ? 1 : 0;
+      const bChanged = localChangedTeams.has(b.courtId) ? 1 : 0;
+      if (aChanged !== bChanged) return bChanged - aChanged; // local-changed を先頭に
+      return a.courtId - b.courtId; // 同点は id 小さい方
+    });
+    // sorted[0] は残し、それ以外のスロットを空にする
+    for (const pos of sorted.slice(1)) {
+      const c = courtsById.get(pos.courtId);
+      if (!c) continue;
+      const arr = c[pos.team] as string[];
+      arr[pos.index] = '';
+    }
+  }
+
+  if (!modified) return courts;
+
+  // 元の順序を保ちつつ、書き換えた配列を反映
+  return courts.map((c) => {
+    const updated = courtsById.get(c.id);
+    if (!updated) return c;
+    return {
+      ...c,
+      teamA: [updated.teamA[0] ?? '', updated.teamA[1] ?? ''] as [string, string],
+      teamB: [updated.teamB[0] ?? '', updated.teamB[1] ?? ''] as [string, string],
+    } as T;
+  });
+}
+
+/**
  * matchHistory専用マージ（和集合 + 時系列ソート）
  *
  * matchHistoryはappend-onlyの性質を持つため、IDベースの和集合で十分。
@@ -276,11 +526,11 @@ export function mergeGameState(
 
   return {
     players: mergeById(base.players, local.players, remote.players),
-    courts: mergeById(
-      base.courts as (typeof local.courts[number])[],
-      local.courts as (typeof local.courts[number])[],
-      remote.courts as (typeof local.courts[number])[],
-    ),
+    courts: mergeCourts(
+      base.courts as unknown as CourtLike[],
+      local.courts as unknown as CourtLike[],
+      remote.courts as unknown as CourtLike[],
+    ) as unknown as typeof local.courts,
     matchHistory: mergeMatchHistory(base.matchHistory, local.matchHistory, remote.matchHistory),
     reservations: mergeById(base.reservations, local.reservations, remote.reservations),
     settings: mergeSettings(base.settings, local.settings, remote.settings),
