@@ -1041,6 +1041,86 @@ describe('syncUtils', () => {
       }
     });
 
+    it('courtsマージ: 意図的な swap（local が court1 から court2 へ p1 を移動）→ 重複扱いされない', () => {
+      // ローカル swap で base→local の差分が court1 と court2 の両方にある場合、
+      // どちらの位置も "local-source" として記録される。
+      // ただし merge 結果に重複がない（court1 から削除されているため）ので
+      // dedup は発火しない。意図的な swap が remote 配置の取り戻しで巻き戻されない
+      // ことの回帰テスト。
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'] }),
+          makeCourt(2),
+        ],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, { teamA: ['', 'p2'], teamB: ['p3', 'p4'] }), // p1 を抜いた
+          makeCourt(2, { teamA: ['p1', ''] }), // p1 を court2 へ
+        ],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'] }), // remote 未変更
+          makeCourt(2),
+        ],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      const c1 = result.courts.find((c) => c.id === 1)!;
+      const c2 = result.courts.find((c) => c.id === 2)!;
+
+      // local の意図的な swap が両側で反映される
+      expect(prop(c1, 'teamA')).toEqual(['', 'p2']);
+      expect(prop(c2, 'teamA')).toEqual(['p1', '']);
+
+      // p1 は court2 のみに存在（dedup が誤って空にしない）
+      const allPids = [
+        ...(prop(c1, 'teamA') as string[]),
+        ...(prop(c1, 'teamB') as string[]),
+        ...(prop(c2, 'teamA') as string[]),
+        ...(prop(c2, 'teamB') as string[]),
+      ].filter(Boolean);
+      expect(allPids.filter((p) => p === 'p1').length).toBe(1);
+    });
+
+    it('courtsマージ: 両コートとも remote-sourced で重複 → court.id 小さい方を残す', () => {
+      // Firestore に既に重複が存在する状態を受信した場合（base/local に変化なし）。
+      // 両位置とも source='remote' になるため、優先度 3 (court.id 昇順) で court1 を残す。
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, { teamA: ['p1', ''] }),
+          makeCourt(2, { teamA: ['p1', ''] }),
+        ],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, { teamA: ['p1', ''] }),
+          makeCourt(2, { teamA: ['p1', ''] }),
+        ],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, { teamA: ['p1', ''] }),
+          makeCourt(2, { teamA: ['p1', ''] }),
+        ],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      const c1 = result.courts.find((c) => c.id === 1)!;
+      const c2 = result.courts.find((c) => c.id === 2)!;
+
+      // court.id 小さい方（court1）を残す
+      expect(prop(c1, 'teamA')).toEqual(['p1', '']);
+      expect(prop(c2, 'teamA')).toEqual(['', '']);
+    });
+
     it('courtsマージ: 試合中コートと準備中コートに同じプレイヤー → 試合中側を保持（試合保護）', () => {
       // スクリーンショットの再現: A が一括配置で Court1 を開始（playing）した直後に
       // B が古い待機リストから同じメンバーを Court2 のper-court 配置に使用 → push。

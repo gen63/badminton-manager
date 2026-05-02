@@ -286,9 +286,8 @@ function mergeCourt<T extends CourtLike>(base: T | undefined, local: T, remote: 
  *    扱いは `mergeById` と同等（自分の追加は維持、他者の削除は反映）。
  * 3. 最後にコート横断で同一プレイヤー ID の重複を解消する。
  *    - 各プレイヤー ID は teamA/teamB 全体で最大 1 ヶ所のみに存在すべき。
- *    - 重複時は「local 側で base から teamA/teamB が変更されたコート」を残し、
- *      他方のコートの該当スロットを '' にする（直近のローカル操作を尊重）。
- *    - どちらも local-changed / どちらも未変更の場合は court.id が小さい方を残す。
+ *    - 重複時は `dedupPlayersAcrossCourts` の優先度（試合中 → remote-sourced
+ *      → court.id 小）に従って残す位置を決め、他方のスロットを '' にする。
  */
 function mergeCourts<T extends CourtLike>(
   base: T[] | undefined,
