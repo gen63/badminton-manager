@@ -655,6 +655,50 @@ describe('syncUtils', () => {
       expect(result.matchHistory[0].id).toBe('m1');
     });
 
+    it('matchHistory: ローカルで全消し（base/remote同一）→ マージ後も全消し（既存仕様の確認）', () => {
+      // SessionJoinPage.handleJoin が同一セッション再入室時に clearHistory を呼ぶと、
+      // baseには[matches]・localは[]・remoteは[matches]の状態で push が走り得る。
+      // mergeMatchHistory の append-only セマンティクス上、これは「localで意図的に削除」
+      // と区別が付かないため結果は []。SessionJoinPage 側で同一セッション時の
+      // clearHistory をスキップする修正で根本対応している（再発防止の文書化）。
+      const base: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000), makeMatch('m2', 2000)],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        matchHistory: [], // すべて消えた状態
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000), makeMatch('m2', 2000)],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(result.matchHistory).toHaveLength(0);
+    });
+
+    it('matchHistory: localがbaseと同じ[matches]ならremoteと一致しても保たれる（再入室時のクリア無し動作）', () => {
+      // 同一セッション再入室で clearHistory をスキップした場合の挙動。
+      // local がそのまま [matches] を保持していれば base と差分なし → remote 採用 → 保たれる。
+      const base: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000), makeMatch('m2', 2000)],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000), makeMatch('m2', 2000)],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000), makeMatch('m2', 2000)],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(result.matchHistory).toHaveLength(2);
+      expect(result.matchHistory.map(m => m.id).sort()).toEqual(['m1', 'm2']);
+    });
+
     it('reservationsマージ: ローカルで成立 + リモートで新規追加', () => {
       const base: SyncGameState = {
         ...emptyState,
