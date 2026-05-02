@@ -45,20 +45,37 @@
   該当のクリア処理が必ず走る
 - participants から外れた状態で再入室した場合（非 force 経路）
 
-## 設計方針
+### 別経路の同種バグ: 別セッションから戻ってきた creator の即時 push
+
+`useFirebaseSync` の effect 内には「セッション作成者の場合は mount 時に即時 push を発火」
+する処理がある (`src/hooks/useFirebaseSync.ts:338-340`)。これは creator が
+オフラインで行ったローカル変更をオンライン復帰時に push するためだが、
+**セッション切替直後**には別の wipe 経路を生む:
+
+1. ユーザーは過去にセッション B（自分が creator）を使っていた → `sessionStorage`
+   に `sync_base_B = {matchHistory: [m1, m2], ...}` が保存される。
+2. その後セッション A に切り替えて使用、また B に戻ろうと SessionJoinPage 経由で
+   再入室する（A→B、別セッション扱い）。
+3. handleJoin 内で `prepareDirectTransaction()` → clearXXX → `initializeSession(B)`
+   → `setCurrentUser` → `subscribeToGameState(B, ...)` の順で進行。
+4. React render で `useFirebaseSync` の cleanup（A 用）が走り、`lastSyncedState=null`
+   などをリセット。直後に新 effect が B 用に起動:
+   - `lastSyncedState = loadSyncBase(B) ?? getCurrentGameState()` → sessionStorage に
+     残っていた **古い [m1, m2]** が復元される
+   - gameStore は clearXXX 直後で **空**
+   - `isCreator=true` → `pushGameStateRef.current(B)` が即時発火
+5. doPush は `getCurrentGameState()` を読み取る時点でまだ subscribe コールバックが
+   届いておらず、`local = matchHistory: []`、`base = [m1, m2]`。
+   `mergeMatchHistory(base=[m1,m2], local=[], remote=[m1,m2,m3])` が `[m3]` を返し、
+   m1/m2 が Firestore からワイプされる。
 
 ### アプローチ A: 同一オンラインセッション再入室時はクリア処理をスキップ（採用）
 
+SessionJoinPage の同一セッション再入室分:
 ローカルストア (`gameStore` / `playerStore` / `reservationStore`) の現状値は
 そのセッションの正しいデータそのものなので、わざわざクリアする必要がない。
 `subscribeToGameState` 経由の onSnapshot で最新値で上書きされるため、
 古い値が混入するリスクは無い。
-
-メリット:
-- 1 ファイルの差分で済む
-- 既存の「別セッションへの切替時はクリア」セマンティクスを維持
-- `prepareDirectTransaction` を増やす必要がないため、`completeDirectTransaction` の
-  追加呼び出しなど副作用も増えない
 
 検討した代替案:
 - アプローチ B: 常に `prepareDirectTransaction()` してから clear → subscribe 完了で
@@ -67,6 +84,29 @@
   実装が複雑化する。
 - アプローチ C: `pushGameState` 側で「local が空 + base が非空」のときに wipe を抑止。
   しかし matchHistory の正当な「全削除」操作（管理者の試合リセット）と区別できない。
+
+### アプローチ D: セッション切替直後の即時 creator push をスキップ（採用）
+
+useFirebaseSync の effect で、`previousSessionIdRef` を使って「直前まで別セッション
+だったか」を判定する。セッション切替直後と判定された場合は即時 creator push を
+スキップし、`subscribeToGameState` の onSnapshot で local が最新化されてから
+subscriber 経由で push される経路に委ねる。
+
+メリット:
+- subscriber 経由 push は local がすでに最新の Firestore 状態と一致した状態で発火
+  するため、stale な base が残っていても merge 結果が正しくなる（local と remote が
+  ほぼ同一なので、union が取られる）
+- 通常のリロード（同一 sessionId のまま再 mount）や cold start では従来通り
+  即時 push が走り、creator のオフライン変更がただちに sync される
+
+検討した代替案:
+- 即時 push を完全削除: SessionCreate の初回 push と onSnapshot で十分にも見えるが、
+  creator がオフラインでローカル変更を蓄積しオンライン復帰した直後（同一セッション
+  のままアプリ再起動）の push 経路を失うため見送り。
+- session 切替時に `sessionStorage.removeItem('sync_base_${oldSessionId}')`:
+  別端末/タブからの戻りで sessionStorage が空でも被害は出ないが、
+  `sync_base_${currentSessionId}` 側の stale が直接の問題なので別問題。
+  またページ遷移を跨ぐ base 保持の意図に反する。
 
 ## 実装
 
@@ -92,6 +132,25 @@ if (!isSameOnlineSession) {
 }
 ```
 
+### `src/hooks/useFirebaseSync.ts`
+- `previousSessionIdRef` を追加し、cleanup で「これから抜ける sessionId」を記録する。
+- effect 起動時、`previousSessionIdRef.current !== undefined &&
+  previousSessionIdRef.current !== sessionId` ならセッション切替直後と判断し、
+  即時 creator push をスキップする。
+
+```ts
+const previousSessionIdRef = useRef<string | undefined>(undefined);
+// ...
+const isSessionSwitch =
+  previousSessionIdRef.current !== undefined &&
+  previousSessionIdRef.current !== sessionId;
+if (isCreator && !isSessionSwitch) {
+  pushGameStateRef.current(sessionId);
+}
+// cleanup 末尾:
+previousSessionIdRef.current = sessionId;
+```
+
 ### テスト
 `src/lib/syncUtils.test.ts` に回帰テストを追加:
 - `mergeMatchHistory(base=[m1,m2], local=[], remote=[m1,m2])` が `[]` を返すことを
@@ -110,3 +169,4 @@ npm run test:run
 2. もう片方のブラウザでセッション URL を開き「入室する」→「再入室」を選択。
 3. SessionSelectPage に戻ったとき、当該セッションに「3 試合」バッジが残っていること。
 4. 別セッションへの切替・新規セッション作成でローカル残骸が混入しないこと（既存挙動の維持確認）。
+5. creator として A→B→A の順にセッション切替を行い、A の試合数バッジが減らないこと。
