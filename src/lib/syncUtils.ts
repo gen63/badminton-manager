@@ -342,7 +342,6 @@ function mergeCourts<T extends CourtLike>(
   }
 
   // 3. コート横断で同一プレイヤー ID の重複を解消
-  void remoteMap;
   return dedupPlayersAcrossCourts(result, baseMap, localMap);
 }
 
