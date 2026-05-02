@@ -350,9 +350,15 @@ function mergeCourts<T extends CourtLike>(
  * teamA/teamB 全体で同じプレイヤー ID が複数コートに存在しないようにする。
  *
  * 重複時は以下の優先度で「残すコート」を決定:
- *   1. base から teamA/teamB が変更されたコート（直近のローカル操作）
- *   2. 同点なら court.id の小さい方
+ *   1. **isPlaying のコート（試合中はロック扱い）**
+ *      → 試合中のメンバーを抜くと進行中の試合を破壊するため最優先で保持
+ *   2. base から teamA/teamB が変更されたコート（直近のローカル操作）
+ *   3. 同点なら court.id の小さい方
  * 残さない側のコート上の該当スロットは '' に置換する。
+ *
+ * 典型例: A が「開始」した直後、B が古い待機リストから同メンバーを別コートへ
+ * 一括配置して push。3-way merge 結果は両コートにそのメンバーが乗るが、
+ * isPlaying のコートを優先することで試合中コートを守る。
  */
 function dedupPlayersAcrossCourts<T extends CourtLike>(
   courts: T[],
@@ -368,6 +374,12 @@ function dedupPlayersAcrossCourts<T extends CourtLike>(
     const baseTeams = JSON.stringify([baseItem?.teamA ?? ['', ''], baseItem?.teamB ?? ['', '']]);
     const localTeams = JSON.stringify([localItem.teamA ?? ['', ''], localItem.teamB ?? ['', '']]);
     if (baseTeams !== localTeams) localChangedTeams.add(court.id);
+  }
+
+  // マージ後の isPlaying（merged courts の値を信頼）
+  const playingCourts = new Set<number>();
+  for (const court of courts) {
+    if (court.isPlaying === true) playingCourts.add(court.id);
   }
 
   // playerId -> 出現位置のリスト
@@ -396,10 +408,16 @@ function dedupPlayersAcrossCourts<T extends CourtLike>(
     modified = true;
     // 残すコートを決定
     const sorted = [...positions].sort((a, b) => {
+      // 優先度1: 試合中のコート
+      const aPlaying = playingCourts.has(a.courtId) ? 1 : 0;
+      const bPlaying = playingCourts.has(b.courtId) ? 1 : 0;
+      if (aPlaying !== bPlaying) return bPlaying - aPlaying;
+      // 優先度2: ローカルでチームが変更されたコート
       const aChanged = localChangedTeams.has(a.courtId) ? 1 : 0;
       const bChanged = localChangedTeams.has(b.courtId) ? 1 : 0;
-      if (aChanged !== bChanged) return bChanged - aChanged; // local-changed を先頭に
-      return a.courtId - b.courtId; // 同点は id 小さい方
+      if (aChanged !== bChanged) return bChanged - aChanged;
+      // 優先度3: court.id 小さい方
+      return a.courtId - b.courtId;
     });
     // sorted[0] は残し、それ以外のスロットを空にする
     for (const pos of sorted.slice(1)) {

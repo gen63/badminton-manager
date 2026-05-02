@@ -984,6 +984,55 @@ describe('syncUtils', () => {
       expect(prop(c1, 'teamA')).toEqual(['', '']);
     });
 
+    it('courtsマージ: 試合中コートと準備中コートに同じプレイヤー → 試合中側を保持（試合保護）', () => {
+      // スクリーンショットの再現: A が一括配置で Court1 を開始（playing）した直後に
+      // B が古い待機リストから同じメンバーを Court2 のper-court 配置に使用 → push。
+      // 両コートに同メンバーが乗る → 試合中の Court1 を残し、Court2 のスロットを空にする。
+      const base: SyncGameState = {
+        ...emptyState,
+        courts: [makeCourt(1), makeCourt(2)],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1), // local 側ではまだ Court1 触っていない
+          makeCourt(2, { teamA: ['gen', 'ryo'], teamB: ['tayama', 'naka'] }), // B が Court2 を準備
+        ],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        courts: [
+          makeCourt(1, {
+            teamA: ['gen', 'keina'],
+            teamB: ['tayama', 'rin'],
+            isPlaying: true,
+            startedAt: 5000,
+          }), // A が Court1 を開始
+          makeCourt(2),
+        ],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      const c1 = result.courts.find((c) => c.id === 1)!;
+      const c2 = result.courts.find((c) => c.id === 2)!;
+
+      // 試合中の Court1 はそのまま保持される
+      expect(prop(c1, 'isPlaying')).toBe(true);
+      expect(prop(c1, 'teamA')).toEqual(['gen', 'keina']);
+      expect(prop(c1, 'teamB')).toEqual(['tayama', 'rin']);
+
+      // Court2 の重複していたスロットは空になる（gen, tayama）
+      const c2A = prop(c2, 'teamA') as string[];
+      const c2B = prop(c2, 'teamB') as string[];
+      expect(c2A).toEqual(['', 'ryo']);
+      expect(c2B).toEqual(['', 'naka']);
+
+      // 全コート横断で gen/tayama はちょうど 1 ヶ所のみ
+      const allPids = [...c2A, ...c2B, ...(prop(c1, 'teamA') as string[]), ...(prop(c1, 'teamB') as string[])].filter(Boolean);
+      expect(allPids.filter((p) => p === 'gen').length).toBe(1);
+      expect(allPids.filter((p) => p === 'tayama').length).toBe(1);
+    });
+
     it('courtsマージ: 同一コート内で別ポジションを並行編集 → 両方反映（巻き戻り防止）', () => {
       // base: Court1 = [X, Y, P, Q]
       // A: pos1 を Y→R に交換  → local = [X, R, P, Q]
