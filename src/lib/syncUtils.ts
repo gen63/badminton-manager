@@ -286,9 +286,8 @@ function mergeCourt<T extends CourtLike>(base: T | undefined, local: T, remote: 
  *    扱いは `mergeById` と同等（自分の追加は維持、他者の削除は反映）。
  * 3. 最後にコート横断で同一プレイヤー ID の重複を解消する。
  *    - 各プレイヤー ID は teamA/teamB 全体で最大 1 ヶ所のみに存在すべき。
- *    - 重複時は「local 側で base から teamA/teamB が変更されたコート」を残し、
- *      他方のコートの該当スロットを '' にする（直近のローカル操作を尊重）。
- *    - どちらも local-changed / どちらも未変更の場合は court.id が小さい方を残す。
+ *    - 重複時は `dedupPlayersAcrossCourts` の優先度（試合中 → remote-sourced
+ *      → court.id 小）に従って残す位置を決め、他方のスロットを '' にする。
  */
 function mergeCourts<T extends CourtLike>(
   base: T[] | undefined,
@@ -348,11 +347,17 @@ function mergeCourts<T extends CourtLike>(
 /**
  * teamA/teamB 全体で同じプレイヤー ID が複数コートに存在しないようにする。
  *
- * 重複時は以下の優先度で「残すコート」を決定:
+ * 重複時は以下の優先度で「残す位置」を決定:
  *   1. **isPlaying のコート（試合中はロック扱い）**
  *      → 試合中のメンバーを抜くと進行中の試合を破壊するため最優先で保持
- *   2. base から teamA/teamB が変更されたコート（直近のローカル操作）
- *   3. 同点なら court.id の小さい方
+ *   2. **remote-sourced な位置（他クライアントが既に Firestore に書いた配置）**
+ *      → `mergeTeam` で `l === b` のため remote の値を採用した位置。
+ *        他クライアントの prior write を尊重する。これにより、未認識の
+ *        並行配置 (e.g., A が court1 配置 push 後、B が court2 に同じ
+ *        メンバーを配置) が dedup で先方の配置を空にしてしまう
+ *        「巻き戻り」を防ぐ。
+ *   3. local-sourced な位置（base と異なる local 側の変更）
+ *   4. 同点なら court.id の小さい方
  * 残さない側のコート上の該当スロットは '' に置換する。
  *
  * 典型例: A が「開始」した直後、B が古い待機リストから同メンバーを別コートへ
@@ -364,17 +369,6 @@ function dedupPlayersAcrossCourts<T extends CourtLike>(
   baseMap: Map<number, T>,
   localMap: Map<number, T>,
 ): T[] {
-  // どのコートが local 側で teamA/teamB を変更したかを判定
-  const localChangedTeams = new Set<number>();
-  for (const court of courts) {
-    const baseItem = baseMap.get(court.id);
-    const localItem = localMap.get(court.id);
-    if (!localItem) continue;
-    const baseTeams = JSON.stringify([baseItem?.teamA ?? ['', ''], baseItem?.teamB ?? ['', '']]);
-    const localTeams = JSON.stringify([localItem.teamA ?? ['', ''], localItem.teamB ?? ['', '']]);
-    if (baseTeams !== localTeams) localChangedTeams.add(court.id);
-  }
-
   // マージ後の isPlaying（merged courts の値を信頼）
   const playingCourts = new Set<number>();
   for (const court of courts) {
@@ -382,17 +376,29 @@ function dedupPlayersAcrossCourts<T extends CourtLike>(
   }
 
   // playerId -> 出現位置のリスト
-  type Pos = { courtId: number; team: 'teamA' | 'teamB'; index: 0 | 1 };
+  // source: 各位置の値が「remote 由来」か「local 由来」か。
+  // mergeTeam の規則 `l !== b ? l : r` に従い、base[i] と local[i] が
+  // 異なる位置は local が値を確定させた → 'local'。
+  // base[i] === local[i] の位置は remote の値が採用された → 'remote'
+  // （base/local/remote が全て同値の "stable" も remote 扱いに含める）。
+  type Pos = { courtId: number; team: 'teamA' | 'teamB'; index: 0 | 1; source: 'remote' | 'local' };
   const occurrences = new Map<string, Pos[]>();
 
   for (const court of courts) {
+    const baseCourt = baseMap.get(court.id);
+    const localCourt = localMap.get(court.id);
     for (const team of ['teamA', 'teamB'] as const) {
       const arr = (court[team] as string[] | undefined) ?? ['', ''];
+      const baseArr = (baseCourt?.[team] as string[] | undefined) ?? ['', ''];
+      const localArr = (localCourt?.[team] as string[] | undefined) ?? ['', ''];
       for (let i = 0; i < 2; i++) {
         const pid = arr[i];
         if (!pid) continue;
+        const basePos = baseArr[i] ?? '';
+        const localPos = localArr[i] ?? '';
+        const source: 'remote' | 'local' = localPos !== basePos ? 'local' : 'remote';
         const list = occurrences.get(pid) ?? [];
-        list.push({ courtId: court.id, team, index: i as 0 | 1 });
+        list.push({ courtId: court.id, team, index: i as 0 | 1, source });
         occurrences.set(pid, list);
       }
     }
@@ -405,16 +411,16 @@ function dedupPlayersAcrossCourts<T extends CourtLike>(
   for (const [, positions] of occurrences) {
     if (positions.length <= 1) continue;
     modified = true;
-    // 残すコートを決定
+    // 残す位置を決定
     const sorted = [...positions].sort((a, b) => {
       // 優先度1: 試合中のコート
       const aPlaying = playingCourts.has(a.courtId) ? 1 : 0;
       const bPlaying = playingCourts.has(b.courtId) ? 1 : 0;
       if (aPlaying !== bPlaying) return bPlaying - aPlaying;
-      // 優先度2: ローカルでチームが変更されたコート
-      const aChanged = localChangedTeams.has(a.courtId) ? 1 : 0;
-      const bChanged = localChangedTeams.has(b.courtId) ? 1 : 0;
-      if (aChanged !== bChanged) return bChanged - aChanged;
+      // 優先度2: remote-sourced（他クライアントが Firestore に書いた authoritative 配置）
+      const aRemote = a.source === 'remote' ? 1 : 0;
+      const bRemote = b.source === 'remote' ? 1 : 0;
+      if (aRemote !== bRemote) return bRemote - aRemote;
       // 優先度3: court.id 小さい方
       return a.courtId - b.courtId;
     });
