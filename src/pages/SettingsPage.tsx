@@ -280,10 +280,7 @@ export function SettingsPage() {
                 {(['単', '複', '楽'] as const).map((type) => (
                   <button
                     key={type}
-                    onClick={() => {
-                      setPracticeType(type);
-                      if (type === '単') setPrioritizeDiversity(false);
-                    }}
+                    onClick={() => setPracticeType(type)}
                     className={`flex-1 select-button text-xs px-2 ${
                       practiceType === type ? 'select-button-active' : 'select-button-inactive'
                     }`}
@@ -363,38 +360,44 @@ export function SettingsPage() {
 
             {(() => {
               const isSinglesMode = practiceType === '単';
+              const isRelaxedMode = practiceType === '楽';
+              const isLocked = isSinglesMode || isRelaxedMode;
+              const diversityActive = isRelaxedMode || (!isSinglesMode && prioritizeDiversity);
+              const countActive = isSinglesMode || (!isRelaxedMode && !prioritizeDiversity);
               return (
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">配置タイミング</label>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => !isSinglesMode && setPrioritizeDiversity(true)}
-                      disabled={isSinglesMode}
+                      onClick={() => !isLocked && setPrioritizeDiversity(true)}
+                      disabled={isLocked}
                       className={`flex-1 select-button text-xs px-2 ${
-                        !isSinglesMode && prioritizeDiversity
+                        diversityActive
                           ? 'select-button-active'
                           : 'select-button-inactive'
-                      } ${isSinglesMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      {!isSinglesMode && prioritizeDiversity && <span className="mr-1">✓</span>}
+                      {diversityActive && <span className="mr-1">✓</span>}
                       多様性優先
                     </button>
                     <button
-                      onClick={() => !isSinglesMode && setPrioritizeDiversity(false)}
-                      disabled={isSinglesMode}
+                      onClick={() => !isLocked && setPrioritizeDiversity(false)}
+                      disabled={isLocked}
                       className={`flex-1 select-button text-xs px-2 ${
-                        isSinglesMode || !prioritizeDiversity
+                        countActive
                           ? 'select-button-active'
                           : 'select-button-inactive'
-                      } ${isSinglesMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      {(isSinglesMode || !prioritizeDiversity) && <span className="mr-1">✓</span>}
+                      {countActive && <span className="mr-1">✓</span>}
                       回数優先
                     </button>
                   </div>
                   <p className="text-[10px] text-muted-foreground mt-1">
                     {isSinglesMode
                       ? 'シングルスでは回数優先が適用されます'
+                      : isRelaxedMode
+                      ? '楽では多様性優先が適用されます'
                       : prioritizeDiversity
                       ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
                       : '空きが出たら即座に配置'}
