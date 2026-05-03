@@ -41,6 +41,9 @@ import {
   computeUpdateCourt,
   computeStartGame,
   computeClearCourt,
+  computeResetAllCourts,
+  computeClearPlayers,
+  computeClearHistory,
   computeAddMatch,
   computeRemoveMatch,
   computeUpdateMatchScore,
@@ -380,6 +383,38 @@ describe('sessionMutations - courts', () => {
       restingPlayerIds: [],
     });
   });
+
+  it('computeResetAllCourts: 全コートを空状態にし restingPlayerIds も空にする', () => {
+    const state = baseState({
+      courts: [
+        makeCourt(1, {
+          teamA: ['p1', 'p2'],
+          teamB: ['p3', 'p4'],
+          isPlaying: true,
+          startedAt: 1000,
+          restingPlayerIds: ['r1'],
+        }),
+        makeCourt(2, { teamA: ['p5', 'p6'] }),
+      ],
+    });
+    const next = computeResetAllCourts(state);
+    expect(next.courts).toHaveLength(2);
+    expect(next.courts.every((c) => !c.isPlaying && c.teamA[0] === '' && c.teamB[0] === '')).toBe(true);
+    expect(next.courts.every((c) => (c.restingPlayerIds ?? []).length === 0)).toBe(true);
+    // ID は維持
+    expect(next.courts.map((c) => c.id)).toEqual([1, 2]);
+  });
+
+  it('computeClearPlayers: 全プレイヤーを削除', () => {
+    const state = baseState({
+      players: [makePlayer('a'), makePlayer('b')],
+      courts: [makeCourt(1)],
+    });
+    const next = computeClearPlayers(state);
+    expect(next.players).toEqual([]);
+    // 他のフィールドは保持
+    expect(next.courts).toHaveLength(1);
+  });
 });
 
 describe('sessionMutations - match history', () => {
@@ -407,6 +442,16 @@ describe('sessionMutations - match history', () => {
     });
     const next = computeUpdateMatchScore(state, 'm1', 21, 18);
     expect(next.matchHistory[0]).toMatchObject({ scoreA: 21, scoreB: 18, winner: 'A' });
+  });
+
+  it('computeClearHistory: matchHistory を空にし、他フィールドは保持', () => {
+    const state = baseState({
+      matchHistory: [makeMatch('m1'), makeMatch('m2')],
+      players: [makePlayer('a')],
+    });
+    const next = computeClearHistory(state);
+    expect(next.matchHistory).toEqual([]);
+    expect(next.players).toHaveLength(1);
   });
 });
 

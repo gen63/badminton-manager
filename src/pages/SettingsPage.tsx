@@ -7,7 +7,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useUndoStore } from '../stores/undoStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
-import { useSessionWriter } from '../hooks/useSessionWriter';
+import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { deleteSession, updateSession as updateFirebaseSession, updateCreator } from '../services/sessionService';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { clearAppBadge } from '../lib/badge';
@@ -35,7 +35,7 @@ export function SettingsPage() {
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
-  const writer = useSessionWriter();
+  const writer = useSessionWriterWithToast(toast);
 
   // オンラインモードかどうか
   const isOnlineMode = !!session?.createdBy;

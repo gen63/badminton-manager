@@ -17,7 +17,7 @@ import { useRealtimeSession } from '../hooks/useRealtimeSession';
 import { usePresence } from '../hooks/usePresence';
 import { usePresenceStore } from '../stores/presenceStore';
 import { PresenceIndicator } from '../components/PresenceIndicator';
-import { useSessionWriter } from '../hooks/useSessionWriter';
+import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import * as sm from '../services/sessionMutations';
 import { PaymentModal } from '../components/PaymentModal';
 import { WinnerSelectModal } from '../components/WinnerSelectModal';
@@ -40,11 +40,12 @@ export function MainPage() {
   useRealtimeSession(isSharedSession ? session?.id ?? null : null);
   usePresence(isSharedSession ? session?.id ?? null : null, currentUser);
   const remotePresence = usePresenceStore((s) => s.remotePresence);
+  const toast = useToast();
   // 書き込みは useSessionWriter（共有時は sessionMutations.X 経由のトランザクション、
-  // 非共有時は zustand store action にフォールバック）。
+  // 非共有時は zustand store action にフォールバック）。エラーは既存の toast に通知。
   // 旧 useFirebaseSyncContext の prepare/completeDirectTransaction / pushImmediate は
   // Phase 2 でこのフックに置換済み（Phase 3 で context 自体を撤廃）。
-  const writer = useSessionWriter();
+  const writer = useSessionWriterWithToast(toast);
   const { players } = usePlayerStore();
   const { courts, matchHistory, finishGame } = useGameStore();
   const { useStayDurationPriority, continuousMatchMode, prioritizeDiversity, recordScores, practiceType } = useSettingsStore();
@@ -62,7 +63,6 @@ export function MainPage() {
     PRACTICE_TYPE_OPTIONS.find((t) => t.value === practiceType) ?? PRACTICE_TYPE_OPTIONS[0];
   const maleFee = session?.accounting?.maleFee ?? practiceDefaults.maleFee;
   const femaleFee = session?.accounting?.femaleFee ?? practiceDefaults.femaleFee;
-  const toast = useToast();
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;
     courtId?: number;

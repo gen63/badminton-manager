@@ -5,6 +5,7 @@ import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import * as sm from '../services/sessionMutations';
+import { SessionError } from '../lib/errorHandler';
 import type { Player } from '../types/player';
 import type { Court } from '../types/court';
 import type { Match } from '../types/match';
@@ -23,45 +24,68 @@ import type { Match } from '../types/match';
  *   - 共有モードでは onSnapshot がストアを更新するので、wrapper 内で
  *     楽観的に setState はしない（巻き戻りリスクを排除）。
  *   - 戻り値が必要な操作（addPlayers の added/skipped 等）のみ async。
+ *   - zustand action は安定参照なので、各 store から個別 selector で取り出して
+ *     再レンダーを抑える（オブジェクトリテラルの selector は毎回新参照になる）。
+ *   - `onError` callback を渡すと共有モード transaction の失敗を呼び出し側に通知できる。
+ *     未指定時は `console.error` のみ（呼び出し側が `void writer.X(...)` でも
+ *     未捕捉 Promise rejection にならないように内部で握る）。
  */
-export function useSessionWriter() {
+export interface SessionWriterOptions {
+  /** 共有モードで sessionMutations の transaction が失敗した場合に呼ばれる */
+  onError?: (err: unknown, op: string) => void;
+}
+
+export function useSessionWriter(options?: SessionWriterOptions) {
   const session = useSessionStore((s) => s.session);
   const sessionId = session?.id;
   const isShared = !!session?.createdBy && !!sessionId;
 
-  // 非共有時のフォールバック先（zustand actions）
-  const playerActions = usePlayerStore((s) => ({
-    addPlayers: s.addPlayers,
-    removePlayer: s.removePlayer,
-    updatePlayer: s.updatePlayer,
-    toggleRest: s.toggleRest,
-    toggleOperationStatus: s.toggleOperationStatus,
-    applyPayment: s.applyPayment,
-    incrementGamesPlayed: s.incrementGamesPlayed,
-    setAllPlayersResting: s.setAllPlayersResting,
-    clearPlayers: s.clearPlayers,
-  }));
-  const gameActions = useGameStore((s) => ({
-    initializeCourts: s.initializeCourts,
-    resizeCourts: s.resizeCourts,
-    removeCourtById: s.removeCourtById,
-    updateCourt: s.updateCourt,
-    startGame: s.startGame,
-    resetAllCourts: s.resetAllCourts,
-    clearHistory: s.clearHistory,
-    removeMatch: s.removeMatch,
-  }));
-  const reservationActions = useReservationStore((s) => ({
-    addReservation: s.addReservation,
-    removeReservation: s.removeReservation,
-    fulfillReservation: s.fulfillReservation,
-    clearReservations: s.clearReservations,
-  }));
-  const settingsActions = useSettingsStore((s) => ({
-    setRecordScores: s.setRecordScores,
-    setContinuousMatchMode: s.setContinuousMatchMode,
-    setPracticeType: s.setPracticeType,
-  }));
+  const onError = options?.onError;
+  const handle = useCallback(
+    async <T>(op: string, fn: () => Promise<T>): Promise<T | undefined> => {
+      try {
+        return await fn();
+      } catch (err) {
+        const code = err instanceof SessionError ? err.code : undefined;
+        console.error(`[useSessionWriter] ${op} failed${code ? ` (${code})` : ''}:`, err);
+        onError?.(err, op);
+        return undefined;
+      }
+    },
+    [onError],
+  );
+
+  // ---- player actions（個別 selector で安定参照を維持） ----
+  const addPlayersLocal = usePlayerStore((s) => s.addPlayers);
+  const removePlayerLocal = usePlayerStore((s) => s.removePlayer);
+  const updatePlayerLocal = usePlayerStore((s) => s.updatePlayer);
+  const toggleRestLocal = usePlayerStore((s) => s.toggleRest);
+  const toggleOperationStatusLocal = usePlayerStore((s) => s.toggleOperationStatus);
+  const applyPaymentLocal = usePlayerStore((s) => s.applyPayment);
+  const incrementGamesPlayedLocal = usePlayerStore((s) => s.incrementGamesPlayed);
+  const setAllPlayersRestingLocal = usePlayerStore((s) => s.setAllPlayersResting);
+  const clearPlayersLocal = usePlayerStore((s) => s.clearPlayers);
+
+  // ---- game actions ----
+  const initializeCourtsLocal = useGameStore((s) => s.initializeCourts);
+  const resizeCourtsLocal = useGameStore((s) => s.resizeCourts);
+  const removeCourtByIdLocal = useGameStore((s) => s.removeCourtById);
+  const updateCourtLocal = useGameStore((s) => s.updateCourt);
+  const startGameLocal = useGameStore((s) => s.startGame);
+  const resetAllCourtsLocal = useGameStore((s) => s.resetAllCourts);
+  const clearHistoryLocal = useGameStore((s) => s.clearHistory);
+  const removeMatchLocal = useGameStore((s) => s.removeMatch);
+
+  // ---- reservation actions ----
+  const addReservationLocal = useReservationStore((s) => s.addReservation);
+  const removeReservationLocal = useReservationStore((s) => s.removeReservation);
+  const fulfillReservationLocal = useReservationStore((s) => s.fulfillReservation);
+  const clearReservationsLocal = useReservationStore((s) => s.clearReservations);
+
+  // ---- settings actions ----
+  const setRecordScoresLocal = useSettingsStore((s) => s.setRecordScores);
+  const setContinuousMatchModeLocal = useSettingsStore((s) => s.setContinuousMatchMode);
+  const setPracticeTypeLocal = useSettingsStore((s) => s.setPracticeType);
 
   // ===== Players =====
   const addPlayers = useCallback(
@@ -69,178 +93,182 @@ export function useSessionWriter() {
       inputs: { name: string; rating?: number; gender?: 'M' | 'F' }[],
     ): Promise<{ added: number; skipped: string[] }> => {
       if (isShared && sessionId) {
-        const r = await sm.addPlayers(sessionId, inputs);
-        return { added: r.added, skipped: r.skipped };
+        const r = await handle('addPlayers', () => sm.addPlayers(sessionId, inputs));
+        return r ? { added: r.added, skipped: r.skipped } : { added: 0, skipped: [] };
       }
-      return playerActions.addPlayers(inputs);
+      return addPlayersLocal(inputs);
     },
-    [isShared, sessionId, playerActions],
+    [isShared, sessionId, handle, addPlayersLocal],
   );
 
   const removePlayer = useCallback(
     async (id: string) => {
       if (isShared && sessionId) {
-        await sm.removePlayer(sessionId, id);
+        await handle('removePlayer', () => sm.removePlayer(sessionId, id));
         return;
       }
-      playerActions.removePlayer(id);
+      removePlayerLocal(id);
     },
-    [isShared, sessionId, playerActions],
+    [isShared, sessionId, handle, removePlayerLocal],
   );
 
   const updatePlayer = useCallback(
     async (id: string, updates: Omit<Partial<Player>, 'id'>) => {
       if (isShared && sessionId) {
-        await sm.updatePlayer(sessionId, id, updates);
+        await handle('updatePlayer', () => sm.updatePlayer(sessionId, id, updates));
         return;
       }
-      playerActions.updatePlayer(id, updates);
+      updatePlayerLocal(id, updates);
     },
-    [isShared, sessionId, playerActions],
+    [isShared, sessionId, handle, updatePlayerLocal],
   );
 
   const toggleRest = useCallback(
     async (id: string) => {
       if (isShared && sessionId) {
-        await sm.toggleRest(sessionId, id);
+        await handle('toggleRest', () => sm.toggleRest(sessionId, id));
         return;
       }
-      playerActions.toggleRest(id);
+      toggleRestLocal(id);
     },
-    [isShared, sessionId, playerActions],
+    [isShared, sessionId, handle, toggleRestLocal],
   );
 
   const toggleOperationStatus = useCallback(
     async (id: string, field: 'payment' | 'roster' | 'checkin') => {
       if (isShared && sessionId) {
-        await sm.toggleOperationStatus(sessionId, id, field);
+        await handle('toggleOperationStatus', () =>
+          sm.toggleOperationStatus(sessionId, id, field),
+        );
         return;
       }
-      playerActions.toggleOperationStatus(id, field);
+      toggleOperationStatusLocal(id, field);
     },
-    [isShared, sessionId, playerActions],
+    [isShared, sessionId, handle, toggleOperationStatusLocal],
   );
 
   const applyPayment = useCallback(
     async (id: string, amount: number) => {
       if (isShared && sessionId) {
-        await sm.applyPayment(sessionId, id, amount);
+        await handle('applyPayment', () => sm.applyPayment(sessionId, id, amount));
         return;
       }
-      playerActions.applyPayment(id, amount);
+      applyPaymentLocal(id, amount);
     },
-    [isShared, sessionId, playerActions],
+    [isShared, sessionId, handle, applyPaymentLocal],
   );
 
   const incrementGamesPlayed = useCallback(
     async (ids: string[], lastPlayedAt: number = Date.now()) => {
       if (isShared && sessionId) {
-        await sm.incrementGamesPlayed(sessionId, ids, lastPlayedAt);
+        await handle('incrementGamesPlayed', () =>
+          sm.incrementGamesPlayed(sessionId, ids, lastPlayedAt),
+        );
         return;
       }
-      playerActions.incrementGamesPlayed(ids, lastPlayedAt);
+      incrementGamesPlayedLocal(ids, lastPlayedAt);
     },
-    [isShared, sessionId, playerActions],
+    [isShared, sessionId, handle, incrementGamesPlayedLocal],
   );
 
   const setAllPlayersResting = useCallback(async () => {
     if (isShared && sessionId) {
-      await sm.setAllPlayersResting(sessionId);
+      await handle('setAllPlayersResting', () => sm.setAllPlayersResting(sessionId));
       return;
     }
-    playerActions.setAllPlayersResting();
-  }, [isShared, sessionId, playerActions]);
+    setAllPlayersRestingLocal();
+  }, [isShared, sessionId, handle, setAllPlayersRestingLocal]);
 
   const clearPlayers = useCallback(async () => {
     if (isShared && sessionId) {
-      await sm.clearPlayers(sessionId);
+      await handle('clearPlayers', () => sm.clearPlayers(sessionId));
       return;
     }
-    playerActions.clearPlayers();
-  }, [isShared, sessionId, playerActions]);
+    clearPlayersLocal();
+  }, [isShared, sessionId, handle, clearPlayersLocal]);
 
   // ===== Courts =====
   const initializeCourts = useCallback(
     async (count: number) => {
       if (isShared && sessionId) {
-        await sm.initializeCourts(sessionId, count);
+        await handle('initializeCourts', () => sm.initializeCourts(sessionId, count));
         return;
       }
-      gameActions.initializeCourts(count);
+      initializeCourtsLocal(count);
     },
-    [isShared, sessionId, gameActions],
+    [isShared, sessionId, handle, initializeCourtsLocal],
   );
 
   const resizeCourts = useCallback(
     async (count: number) => {
       if (isShared && sessionId) {
-        await sm.resizeCourts(sessionId, count);
+        await handle('resizeCourts', () => sm.resizeCourts(sessionId, count));
         return;
       }
-      gameActions.resizeCourts(count);
+      resizeCourtsLocal(count);
     },
-    [isShared, sessionId, gameActions],
+    [isShared, sessionId, handle, resizeCourtsLocal],
   );
 
   const removeCourtById = useCallback(
     async (courtId: number) => {
       if (isShared && sessionId) {
-        await sm.removeCourt(sessionId, courtId);
+        await handle('removeCourt', () => sm.removeCourt(sessionId, courtId));
         return;
       }
-      gameActions.removeCourtById(courtId);
+      removeCourtByIdLocal(courtId);
     },
-    [isShared, sessionId, gameActions],
+    [isShared, sessionId, handle, removeCourtByIdLocal],
   );
 
   const updateCourt = useCallback(
     async (courtId: number, updates: Partial<Court>) => {
       if (isShared && sessionId) {
-        await sm.updateCourt(sessionId, courtId, updates);
+        await handle('updateCourt', () => sm.updateCourt(sessionId, courtId, updates));
         return;
       }
-      gameActions.updateCourt(courtId, updates);
+      updateCourtLocal(courtId, updates);
     },
-    [isShared, sessionId, gameActions],
+    [isShared, sessionId, handle, updateCourtLocal],
   );
 
   const startGame = useCallback(
     async (courtId: number) => {
       if (isShared && sessionId) {
-        await sm.startGame(sessionId, courtId);
+        await handle('startGame', () => sm.startGame(sessionId, courtId));
         return;
       }
-      gameActions.startGame(courtId);
+      startGameLocal(courtId);
     },
-    [isShared, sessionId, gameActions],
+    [isShared, sessionId, handle, startGameLocal],
   );
 
   const resetAllCourts = useCallback(async () => {
     if (isShared && sessionId) {
-      await sm.resetAllCourts(sessionId);
+      await handle('resetAllCourts', () => sm.resetAllCourts(sessionId));
       return;
     }
-    gameActions.resetAllCourts();
-  }, [isShared, sessionId, gameActions]);
+    resetAllCourtsLocal();
+  }, [isShared, sessionId, handle, resetAllCourtsLocal]);
 
   // ===== Match history =====
   const clearHistory = useCallback(async () => {
     if (isShared && sessionId) {
-      await sm.clearHistory(sessionId);
+      await handle('clearHistory', () => sm.clearHistory(sessionId));
       return;
     }
-    gameActions.clearHistory();
-  }, [isShared, sessionId, gameActions]);
+    clearHistoryLocal();
+  }, [isShared, sessionId, handle, clearHistoryLocal]);
 
   const removeMatch = useCallback(
     async (matchId: string) => {
       if (isShared && sessionId) {
-        await sm.removeMatch(sessionId, matchId);
+        await handle('removeMatch', () => sm.removeMatch(sessionId, matchId));
         return;
       }
-      gameActions.removeMatch(matchId);
+      removeMatchLocal(matchId);
     },
-    [isShared, sessionId, gameActions],
+    [isShared, sessionId, handle, removeMatchLocal],
   );
 
   const updateMatchScore = useCallback(
@@ -251,10 +279,12 @@ export function useSessionWriter() {
       winner?: 'A' | 'B',
     ) => {
       if (isShared && sessionId) {
-        await sm.updateMatchScore(sessionId, matchId, scoreA, scoreB, winner);
+        await handle('updateMatchScore', () =>
+          sm.updateMatchScore(sessionId, matchId, scoreA, scoreB, winner),
+        );
         return;
       }
-      // 非共有ではローカル store の matchHistory を更新
+      // 非共有時はローカル store の matchHistory を直接更新（gameStore に対応 action なし）
       useGameStore.setState((state) => ({
         matchHistory: state.matchHistory.map((m: Match) =>
           m.id === matchId
@@ -265,72 +295,80 @@ export function useSessionWriter() {
         ),
       }));
     },
-    [isShared, sessionId],
+    [isShared, sessionId, handle],
   );
 
   // ===== Reservations =====
   const addReservation = useCallback(
     async (playerIds: string[], createdBy?: string) => {
       if (isShared && sessionId) {
-        await sm.addReservation(sessionId, playerIds, createdBy);
+        await handle('addReservation', () =>
+          sm.addReservation(sessionId, playerIds, createdBy),
+        );
         return;
       }
-      reservationActions.addReservation(playerIds, createdBy);
+      addReservationLocal(playerIds, createdBy);
     },
-    [isShared, sessionId, reservationActions],
+    [isShared, sessionId, handle, addReservationLocal],
   );
 
   const removeReservation = useCallback(
     async (reservationId: string) => {
       if (isShared && sessionId) {
-        await sm.removeReservation(sessionId, reservationId);
+        await handle('removeReservation', () =>
+          sm.removeReservation(sessionId, reservationId),
+        );
         return;
       }
-      reservationActions.removeReservation(reservationId);
+      removeReservationLocal(reservationId);
     },
-    [isShared, sessionId, reservationActions],
+    [isShared, sessionId, handle, removeReservationLocal],
   );
 
   const fulfillReservation = useCallback(
     async (reservationId: string) => {
       if (isShared && sessionId) {
-        await sm.fulfillReservation(sessionId, reservationId);
+        await handle('fulfillReservation', () =>
+          sm.fulfillReservation(sessionId, reservationId),
+        );
         return;
       }
-      reservationActions.fulfillReservation(reservationId);
+      fulfillReservationLocal(reservationId);
     },
-    [isShared, sessionId, reservationActions],
+    [isShared, sessionId, handle, fulfillReservationLocal],
   );
 
   const clearReservations = useCallback(async () => {
     if (isShared && sessionId) {
-      await sm.clearReservations(sessionId);
+      await handle('clearReservations', () => sm.clearReservations(sessionId));
       return;
     }
-    reservationActions.clearReservations();
-  }, [isShared, sessionId, reservationActions]);
+    clearReservationsLocal();
+  }, [isShared, sessionId, handle, clearReservationsLocal]);
 
   // ===== Settings =====
   const setRecordScores = useCallback(
     async (value: boolean) => {
       if (isShared && sessionId) {
-        await sm.setRecordScores(sessionId, value);
+        await handle('setRecordScores', () => sm.setRecordScores(sessionId, value));
         return;
       }
-      settingsActions.setRecordScores(value);
+      setRecordScoresLocal(value);
     },
-    [isShared, sessionId, settingsActions],
+    [isShared, sessionId, handle, setRecordScoresLocal],
   );
 
   const setContinuousMatchMode = useCallback(
     async (value: boolean) => {
       if (isShared && sessionId) {
-        await sm.setContinuousMatchMode(sessionId, value);
+        await handle('setContinuousMatchMode', () =>
+          sm.setContinuousMatchMode(sessionId, value),
+        );
         return;
       }
-      settingsActions.setContinuousMatchMode(value);
+      setContinuousMatchModeLocal(value);
     },
-    [isShared, sessionId, settingsActions],
+    [isShared, sessionId, handle, setContinuousMatchModeLocal],
   );
 
   const setPracticeType = useCallback(
@@ -340,12 +378,12 @@ export function useSessionWriter() {
       else if (value === '楽') useSettingsStore.setState({ prioritizeDiversity: true });
 
       if (isShared && sessionId) {
-        await sm.setPracticeType(sessionId, value);
+        await handle('setPracticeType', () => sm.setPracticeType(sessionId, value));
         return;
       }
-      settingsActions.setPracticeType(value);
+      setPracticeTypeLocal(value);
     },
-    [isShared, sessionId, settingsActions],
+    [isShared, sessionId, handle, setPracticeTypeLocal],
   );
 
   return useMemo(

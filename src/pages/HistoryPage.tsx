@@ -4,7 +4,7 @@ import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
-import { useSessionWriter } from '../hooks/useSessionWriter';
+import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { formatTime, copyToClipboard } from '../lib/utils';
 import { formatLocalDate } from '../lib/sessionArchive';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
@@ -202,11 +202,11 @@ export function HistoryPage() {
   const navigate = useNavigate();
   const { matchHistory } = useGameStore();
   const { players } = usePlayerStore();
-  const writer = useSessionWriter();
   const { session, isCreator, currentUser } = useSessionStore();
   const isAdmin = isCreator();
   const { gasWebAppUrl, recordScores } = useSettingsStore();
   const toast = useToast();
+  const writer = useSessionWriterWithToast(toast);
   const [isUploading, setIsUploading] = useState(false);
   const [myMatchesOnly, setMyMatchesOnly] = useState(false);
 

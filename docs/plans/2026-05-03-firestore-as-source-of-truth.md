@@ -272,6 +272,15 @@ interface GameState {
 - [ ] 初回 mount → onSnapshot → store 反映の flow が動く
 - [ ] 並行操作テストが引き続き通る（mutation は transactional なので merge なしで OK）
 
+### Phase 2 終了時の残骸（Phase 3 で撤去予定）
+
+- `useFirebaseSync.ts`: `prepareDirectTransaction` / `completeDirectTransaction` /
+  `pushImmediate` の export
+- `contexts/FirebaseSyncContext.tsx`: 3 メソッドを束ねる context
+- `SessionJoinPage.tsx` / `SessionCreate.tsx`: 初期化時に
+  `prepareDirectTransaction()` を呼んでいる（自動 push 抑止用）。
+  Phase 3 で push 機構ごと撤去すれば不要になる。
+
 ---
 
 ## Phase 4: ローカルモード廃止
