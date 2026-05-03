@@ -32,10 +32,27 @@ export const useSettingsStore = create<SettingsState>()(
       prioritizeDiversity: false,
       setPrioritizeDiversity: (value) => set({ prioritizeDiversity: value }),
       practiceType: '複',
-      setPracticeType: (value) => set({ practiceType: value }),
+      setPracticeType: (value) =>
+        set(() => {
+          // 楽 は多様性優先固定、単 は回数優先固定。
+          // 切替時に prioritizeDiversity も整合させる。
+          if (value === '単') return { practiceType: value, prioritizeDiversity: false };
+          if (value === '楽') return { practiceType: value, prioritizeDiversity: true };
+          return { practiceType: value };
+        }),
     }),
     {
       name: 'badminton-settings',
+      onRehydrateStorage: () => (state) => {
+        // 旧バージョンで保存された localStorage から復元したとき、
+        // practiceType と prioritizeDiversity の整合を取り直す。
+        if (!state) return;
+        if (state.practiceType === '単' && state.prioritizeDiversity !== false) {
+          state.prioritizeDiversity = false;
+        } else if (state.practiceType === '楽' && state.prioritizeDiversity !== true) {
+          state.prioritizeDiversity = true;
+        }
+      },
     }
   )
 );
