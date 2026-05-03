@@ -133,22 +133,54 @@ if (!isSameOnlineSession) {
 ```
 
 ### `src/hooks/useFirebaseSync.ts`
-- `previousSessionIdRef` を追加し、cleanup で「これから抜ける sessionId」を記録する。
+- `previousSessionIdRef` を追加し、setup 末尾で現在の sessionId を記録する
+  （cleanup ではなく setup 末尾なのは React StrictMode の dev 二重実行で
+  cleanup→setup の循環が同 id 誤判定を起こすのを避けるため）。
 - effect 起動時、`previousSessionIdRef.current !== undefined &&
-  previousSessionIdRef.current !== sessionId` ならセッション切替直後と判断し、
-  即時 creator push をスキップする。
+  previousSessionIdRef.current !== sessionId` ならセッション切替直後と判断する。
+- **lastSyncedState の初期化**: セッション切替直後 OR ローカルが空のときは
+  `loadSyncBase` で sessionStorage から復元せず、現在のローカル状態（空）を
+  base に据える。これで `mergeMatchHistory(base=[], local=[], remote=[matches])`
+  が append-only として remote 全件を採用する経路に乗り、wipe 経路を遮断する。
+  この保護は subscriber 経由 push と onSnapshot 経路（applyRemoteData）の両方を
+  カバーする。
+- **即時 creator push のスキップ**: 切替直後は subscribe 未到達の状態で push が
+  走るため、保険として即時 push 自体もスキップする。subscribe で local が
+  最新化された後の subscriber 経由 push に任せる。
 
 ```ts
 const previousSessionIdRef = useRef<string | undefined>(undefined);
-// ...
-const isSessionSwitch =
-  previousSessionIdRef.current !== undefined &&
-  previousSessionIdRef.current !== sessionId;
-if (isCreator && !isSessionSwitch) {
-  pushGameStateRef.current(sessionId);
-}
-// cleanup 末尾:
-previousSessionIdRef.current = sessionId;
+
+useEffect(() => {
+  if (!isShared || !sessionId) return;
+
+  const isSessionSwitch =
+    previousSessionIdRef.current !== undefined &&
+    previousSessionIdRef.current !== sessionId;
+
+  if (!lastSyncedState.current) {
+    const local = getCurrentGameState();
+    const localIsEmpty =
+      local.matchHistory.length === 0 &&
+      local.players.length === 0 &&
+      local.courts.length === 0;
+    if (isSessionSwitch || localIsEmpty) {
+      lastSyncedState.current = local;
+    } else {
+      const saved = loadSyncBase(sessionId);
+      lastSyncedState.current = saved ?? local;
+    }
+  }
+
+  // ... subscribers ...
+
+  if (isCreator && !isSessionSwitch) {
+    pushGameStateRef.current(sessionId);
+  }
+
+  previousSessionIdRef.current = sessionId; // setup 末尾で記録
+  return () => { /* ... 既存リセット ... */ };
+}, [isShared, sessionId, schedulePush]);
 ```
 
 ### テスト

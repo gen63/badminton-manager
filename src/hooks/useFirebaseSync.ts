@@ -302,13 +302,39 @@ export function useFirebaseSync() {
   useEffect(() => {
     if (!isShared || !sessionId) return;
 
+    // セッション切替直後か（前回 setup で記録した previousSessionIdRef を見て判定）
+    const isSessionSwitch =
+      previousSessionIdRef.current !== undefined &&
+      previousSessionIdRef.current !== sessionId;
+
     // lastSyncedStateを初期化
     // sessionStorageに前回の同期ベースが保存されている場合はそちらを使用する。
     // （/playersでメンバー削除 → /mainに戻った際、削除が「リモート追加」と誤判定されて
     //   復活するバグを防ぐため、ページ遷移を跨いでbaseを保持する）
+    //
+    // ただし以下の場合はローカルストアが clearXXX 直後で空になっている一方、
+    // sessionStorage には旧 push 状態が残っているため、両者を 3-way merge の
+    // base/local として組み合わせると「local が削除した」と誤解釈して
+    // リモートの matchHistory がワイプされる:
+    //   - セッション切替直後 (A→B など、isSessionSwitch)
+    //   - 旧セッションの effect が isShared=false で早期リターンしていて
+    //     previousSessionIdRef が undefined のまま、ローカルが空で再参加するケース
+    //     （ローカルモードからオンラインへの切替、bot セッション乗っ取り等）
+    // ローカルが空なら sessionStorage は信頼せず、現在のローカル状態（空）を
+    // base に据える。空 base なら mergeMatchHistory(base=[], local=[], remote=[m..])
+    // は append-only として全ての remote item を採用するため安全。
     if (!lastSyncedState.current) {
-      const saved = loadSyncBase(sessionId);
-      lastSyncedState.current = saved ?? getCurrentGameState();
+      const local = getCurrentGameState();
+      const localIsEmpty =
+        local.matchHistory.length === 0 &&
+        local.players.length === 0 &&
+        local.courts.length === 0;
+      if (isSessionSwitch || localIsEmpty) {
+        lastSyncedState.current = local;
+      } else {
+        const saved = loadSyncBase(sessionId);
+        lastSyncedState.current = saved ?? local;
+      }
     }
 
     const unsubPlayers = usePlayerStore.subscribe(() => {
@@ -335,24 +361,24 @@ export function useFirebaseSync() {
     // 参加者・リロード時は onSnapshot で最新データを受け取るだけでよい
     // （players.length > 0 条件を削除: null baseで古いデータを上書きするバグを修正）
     //
-    // ただし「セッション切替直後」（previousSessionIdRef が別の id を保持）は
-    // 直前の SessionJoinPage / SessionCreate でローカルストアがクリアされた状態で
-    // ある一方、lastSyncedState は sessionStorage の sync_base_${sessionId} から
-    // 復元され古い [matches] を保持している可能性がある。この組合せで push が
-    // 走ると mergeMatchHistory(base=[matches], local=[], remote=[matches]) が
-    // 「local が削除した」と解釈し Firestore の matchHistory をワイプする。
-    // セッション切替時は subscribeToGameState の onSnapshot でローカルが
-    // 最新化されてから subscriber 経由で push されるパスに任せる。
+    // セッション切替直後はローカルがクリアされている一方で base が stale なため、
+    // push 経路でも matchHistory を「local が削除した」と誤解釈してワイプし得る。
+    // 上の lastSyncedState 初期化で base を空にする対策をしているが、保険として
+    // 切替直後は即時 creator push 自体もスキップし、subscribeToGameState の
+    // onSnapshot 経路に任せる（local が確実に最新化された後に push が走る）。
     const currentUser = useSessionStore.getState().currentUser;
     const currentSession = useSessionStore.getState().session;
     const isCreator = currentSession?.createdBy === currentUser;
-    const isSessionSwitch =
-      previousSessionIdRef.current !== undefined &&
-      previousSessionIdRef.current !== sessionId;
 
     if (isCreator && !isSessionSwitch) {
       pushGameStateRef.current(sessionId);
     }
+
+    // 次回 effect 実行時にセッション切替を検知できるよう、現在の sessionId を記録。
+    // cleanup ではなく setup 末尾で記録する: StrictMode の dev 二重実行
+    // (setup → cleanup → setup) で 2 回目の setup が isSessionSwitch=false の
+    // つもりが直前 cleanup で同 id が記録され誤判定するのを防ぐ。
+    previousSessionIdRef.current = sessionId;
 
     return () => {
       unsubPlayers();
@@ -378,8 +404,6 @@ export function useFirebaseSync() {
       isSyncingFromRemote.current = false;
       // モジュール寿命の通知重複抑止 Set もリセット（セッション間で蓄積させない）
       notifiedMatches.clear();
-      // 次回 effect 実行時にセッション切替を検知できるよう、抜けた sessionId を記録
-      previousSessionIdRef.current = sessionId;
     };
   }, [isShared, sessionId, schedulePush]); // schedulePushを依存配列に追加
 

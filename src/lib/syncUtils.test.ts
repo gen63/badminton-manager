@@ -699,6 +699,30 @@ describe('syncUtils', () => {
       expect(result.matchHistory.map(m => m.id).sort()).toEqual(['m1', 'm2']);
     });
 
+    it('matchHistory: base=空・local=空・remote=[matches] なら全て採用される（セッション切替直後の安全な挙動）', () => {
+      // useFirebaseSync の effect 起動時、セッション切替直後は lastSyncedState を
+      // 現在の（空の）ローカル状態に初期化する。その状態で onSnapshot や
+      // subscriber 経由 push が走ると base=[]・local=[] と remote=[matches] が
+      // 組み合わさるが、base が空なので mergeMatchHistory は append-only として
+      // 全 remote item を採用し、ワイプを起こさない。
+      const base: SyncGameState = {
+        ...emptyState,
+        matchHistory: [],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        matchHistory: [],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000), makeMatch('m2', 2000), makeMatch('m3', 3000)],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      expect(result.matchHistory).toHaveLength(3);
+      expect(result.matchHistory.map(m => m.id)).toEqual(['m1', 'm2', 'm3']);
+    });
+
     it('reservationsマージ: ローカルで成立 + リモートで新規追加', () => {
       const base: SyncGameState = {
         ...emptyState,
