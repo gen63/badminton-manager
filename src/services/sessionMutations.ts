@@ -47,9 +47,17 @@ function requireDb() {
 /**
  * `runTransaction(read → apply → write)` の汎用ラッパー。
  *
- * `apply(remoteState)` が `GameState` を返すと、それを `gameState` フィールドに
+ * `apply(remoteState)` が次の `GameState` を返すと、それを `gameState` フィールドに
  * 書き込み、`updatedAt` / `registeredPlayers` / `firstMatchStartedAt` も同時更新する。
- * `aborted` は `SessionError('conflict')` に変換し、それ以外は素通しする。
+ *
+ * エラー変換:
+ *   - セッション未存在: `SessionError('not-found')`
+ *   - gameState 未初期化: `SessionError('invalid-state')`
+ *   - Firestore aborted: `SessionError('conflict')`（他のエラーは素通し）
+ *
+ * 注意: Firestore は内部でトランザクションを最大 5 回まで自動リトライするので、
+ * `apply` は副作用フリーであるべき。UUID や時刻は wrapper のクロージャで
+ * 1 度だけ生成して `apply` に渡せば、リトライしても同じ値が使われ idempotent。
  */
 async function mutateGameState(
   sessionId: string,
@@ -151,11 +159,13 @@ export function computeRemovePlayer(state: GameState, playerId: string): GameSta
 export function computeUpdatePlayer(
   state: GameState,
   playerId: string,
-  updates: Partial<Player>,
+  updates: Omit<Partial<Player>, 'id'>,
 ): GameState {
   return {
     ...state,
-    players: state.players.map((p) => (p.id === playerId ? { ...p, ...updates } : p)),
+    players: state.players.map((p) =>
+      p.id === playerId ? { ...p, ...updates, id: p.id } : p,
+    ),
   };
 }
 
@@ -350,9 +360,13 @@ export function computeUpdateMatchScore(
 ): GameState {
   return {
     ...state,
-    matchHistory: state.matchHistory.map((m) =>
-      m.id === matchId ? { ...m, scoreA, scoreB, winner } : m,
-    ),
+    matchHistory: state.matchHistory.map((m) => {
+      if (m.id !== matchId) return m;
+      // winner 未指定なら既存値を保持（undefined で上書きして消さない）
+      return winner === undefined
+        ? { ...m, scoreA, scoreB }
+        : { ...m, scoreA, scoreB, winner };
+    }),
   };
 }
 
@@ -363,9 +377,9 @@ export function computeUpdateMatchScore(
 export function computeAddReservation(
   state: GameState,
   playerIds: string[],
+  id: string,
+  now: number,
   createdBy?: string,
-  id: string = crypto.randomUUID(),
-  now: number = Date.now(),
 ): GameState {
   const maxOrder = state.reservations.reduce(
     (max, r) => Math.max(max, r.orderNumber ?? 0),
@@ -426,10 +440,25 @@ export function computeSetSetting<K extends keyof NonNullable<GameState['setting
 // Transactional wrappers: 各 user-facing operation を runTransaction で
 // =============================================================================
 
-export function addPlayers(sessionId: string, inputs: PlayerInput[]) {
-  // 衝突回避を考慮し、UUID は wrapper 側で生成（compute 関数を deterministic に保つ）
+/**
+ * プレイヤーを追加する。`compute` の `added` / `skipped` を呼び出し側に返すので、
+ * トースト表示等で「N 人追加 / M 人スキップ」を伝えられる。
+ *
+ * UUID は wrapper のクロージャで先に生成し、transaction リトライ時も同じ ID
+ * が使われるようにする（idempotent）。
+ */
+export async function addPlayers(
+  sessionId: string,
+  inputs: PlayerInput[],
+): Promise<{ state: GameState; added: number; skipped: string[] }> {
   const ids = inputs.map(() => crypto.randomUUID());
-  return mutateGameState(sessionId, (s) => computeAddPlayers(s, inputs, ids).state);
+  let lastResult: { added: number; skipped: string[] } = { added: 0, skipped: [] };
+  const state = await mutateGameState(sessionId, (s) => {
+    const computed = computeAddPlayers(s, inputs, ids);
+    lastResult = { added: computed.added, skipped: computed.skipped };
+    return computed.state;
+  });
+  return { state, ...lastResult };
 }
 
 export function removePlayer(sessionId: string, playerId: string) {
@@ -514,7 +543,10 @@ export function updateMatchScore(
 
 export function addReservation(sessionId: string, playerIds: string[], createdBy?: string) {
   const id = crypto.randomUUID();
-  return mutateGameState(sessionId, (s) => computeAddReservation(s, playerIds, createdBy, id));
+  const now = Date.now();
+  return mutateGameState(sessionId, (s) =>
+    computeAddReservation(s, playerIds, id, now, createdBy),
+  );
 }
 
 export function removeReservation(sessionId: string, reservationId: string) {
@@ -559,14 +591,24 @@ export interface FinishGameOptions {
  * を返し、書き込みは行わない。
  *
  * 既存の `sessionService.finishGameTransaction` の置き換え版。
+ * `gameStore.finishGame`（楽観更新版）と区別するため、composite であることを
+ * 明示する名前にしている。
+ *
  * 設定（continuousMatchMode / practiceType）はリモート状態を優先採用する。
  */
-export async function finishGame(
+export async function finishMatchAndContinue(
   sessionId: string,
   courtId: number,
   matchStartedAt: number,
   options: FinishGameOptions,
 ): Promise<{ result: 'success' | 'already_finished'; writtenState?: GameState }> {
+  if (matchStartedAt <= 0) {
+    throw new SessionError(
+      'matchStartedAt が無効です（試合が開始されていません）',
+      'invalid-arg',
+    );
+  }
+
   const _db = requireDb();
   const ref = doc(_db, 'sessions', sessionId);
 

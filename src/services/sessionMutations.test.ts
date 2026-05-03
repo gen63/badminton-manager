@@ -1,4 +1,31 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// =============================================================================
+// Firestore mocks（wrapper テスト用）
+// =============================================================================
+
+const mockTransactionGet = vi.fn();
+const mockTransactionUpdate = vi.fn();
+const mockTransaction = { get: mockTransactionGet, update: mockTransactionUpdate };
+const mockRunTransaction = vi.fn(async (_db: unknown, cb: (tx: typeof mockTransaction) => unknown) =>
+  cb(mockTransaction),
+);
+
+vi.mock('firebase/firestore', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('firebase/firestore');
+  return {
+    ...actual,
+    runTransaction: (db: unknown, cb: (tx: typeof mockTransaction) => unknown) =>
+      mockRunTransaction(db, cb),
+    doc: vi.fn(() => ({ __docRef: true })),
+    serverTimestamp: () => '__serverTimestamp__',
+  };
+});
+
+vi.mock('../lib/firebase', () => ({
+  db: { __mockDb: true },
+}));
+
 import {
   computeAddPlayers,
   computeRemovePlayer,
@@ -22,11 +49,15 @@ import {
   computeFulfillReservation,
   computeClearReservations,
   computeSetSetting,
+  applyPayment,
+  addPlayers,
+  finishMatchAndContinue,
 } from './sessionMutations';
 import type { GameState } from './sessionService';
 import type { Player } from '../types/player';
 import type { Court } from '../types/court';
 import type { Match } from '../types/match';
+import { SessionError } from '../lib/errorHandler';
 
 const makePlayer = (id: string, overrides: Partial<Player> = {}): Player => ({
   id,
@@ -369,6 +400,14 @@ describe('sessionMutations - match history', () => {
     const next = computeUpdateMatchScore(state, 'm1', 21, 19, 'A');
     expect(next.matchHistory[0]).toMatchObject({ scoreA: 21, scoreB: 19, winner: 'A' });
   });
+
+  it('computeUpdateMatchScore: winner 未指定時は既存 winner を保持（消さない）', () => {
+    const state = baseState({
+      matchHistory: [makeMatch('m1', { scoreA: 21, scoreB: 19, winner: 'A' })],
+    });
+    const next = computeUpdateMatchScore(state, 'm1', 21, 18);
+    expect(next.matchHistory[0]).toMatchObject({ scoreA: 21, scoreB: 18, winner: 'A' });
+  });
 });
 
 describe('sessionMutations - reservations', () => {
@@ -378,7 +417,7 @@ describe('sessionMutations - reservations', () => {
         { id: 'r1', orderNumber: 5, playerIds: ['p1'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
       ],
     });
-    const next = computeAddReservation(state, ['p2', 'p3'], 'admin', 'r2', 1000);
+    const next = computeAddReservation(state, ['p2', 'p3'], 'r2', 1000, 'admin');
     expect(next.reservations).toHaveLength(2);
     expect(next.reservations[1]).toMatchObject({
       id: 'r2',
@@ -433,5 +472,198 @@ describe('sessionMutations - settings', () => {
     const state = baseState();
     const next = computeSetSetting(state, 'recordScores', false);
     expect(next.settings).toEqual({ recordScores: false });
+  });
+});
+
+// =============================================================================
+// Wrapper-level tests: mutateGameState の挙動を applyPayment 経由で検証
+// =============================================================================
+
+describe('sessionMutations - transactional wrapper (via applyPayment)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('成功: snap を読んで apply の結果を update に渡し、戻り値を返す', async () => {
+    const state = baseState({
+      players: [
+        makePlayer('p1', {
+          name: 'Alice',
+          operationStatus: { payment: false, roster: false, checkin: false },
+        }),
+        makePlayer('p2', { name: 'Bob' }),
+      ],
+      matchHistory: [makeMatch('m1', { startedAt: 1000, finishedAt: 2000 })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    const result = await applyPayment('session-1', 'p1', 800);
+
+    expect(result.players.find((p) => p.id === 'p1')).toMatchObject({
+      paymentAmount: 800,
+      operationStatus: { payment: true, roster: false, checkin: false },
+    });
+    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    expect(updateArgs.updatedAt).toBe('__serverTimestamp__');
+    expect(updateArgs.registeredPlayers).toEqual(['Alice', 'Bob']);
+    expect(updateArgs.firstMatchStartedAt).toBe(1000);
+    expect(updateArgs.gameState.players).toHaveLength(2);
+  });
+
+  it('not-found: snap が存在しないと SessionError("not-found") を throw', async () => {
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => false,
+      data: () => undefined,
+      ref: { __docRef: true },
+    });
+    await expect(applyPayment('missing', 'p1', 800)).rejects.toMatchObject({
+      code: 'not-found',
+    });
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('invalid-state: gameState 未定義だと SessionError("invalid-state") を throw', async () => {
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({}),
+      ref: { __docRef: true },
+    });
+    await expect(applyPayment('s', 'p1', 800)).rejects.toMatchObject({
+      code: 'invalid-state',
+    });
+  });
+
+  it('aborted: Firestore aborted を SessionError("conflict") に変換', async () => {
+    mockRunTransaction.mockImplementationOnce(async () => {
+      const err = new Error('aborted') as Error & { code?: string };
+      err.code = 'aborted';
+      throw err;
+    });
+    await expect(applyPayment('s', 'p1', 800)).rejects.toMatchObject({
+      code: 'conflict',
+    });
+  });
+
+  it('aborted 以外のエラーは素通し', async () => {
+    mockRunTransaction.mockImplementationOnce(async () => {
+      throw new Error('network down');
+    });
+    await expect(applyPayment('s', 'p1', 800)).rejects.toThrow('network down');
+  });
+});
+
+describe('sessionMutations - addPlayers wrapper', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('added / skipped を呼び出し側に返す', async () => {
+    const state = baseState({ players: [makePlayer('p1', { name: 'Alice' })] });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    const result = await addPlayers('s', [{ name: 'Alice' }, { name: 'Bob' }]);
+    expect(result.added).toBe(1);
+    expect(result.skipped).toEqual(['Alice']);
+    expect(result.state.players).toHaveLength(2);
+    expect(result.state.players[1].name).toBe('Bob');
+  });
+});
+
+describe('sessionMutations - finishMatchAndContinue', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('matchStartedAt <= 0 で invalid-arg を throw（read 前にガード）', async () => {
+    await expect(
+      finishMatchAndContinue('s', 1, 0, {
+        matchId: 'm1',
+        useStayDurationPriority: false,
+        prioritizeDiversity: false,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-arg' });
+    expect(mockRunTransaction).not.toHaveBeenCalled();
+  });
+
+  it('既に終了済み（startedAt が一致しない）なら already_finished を返し update しない', async () => {
+    const state = baseState({
+      players: [makePlayer('p1', { name: 'Alice' })],
+      courts: [
+        makeCourt(1, {
+          teamA: ['p1', 'p2'],
+          teamB: ['p3', 'p4'],
+          isPlaying: true,
+          startedAt: 9999, // 呼び出し側が知っていたのは 1000
+        }),
+      ],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    const result = await finishMatchAndContinue('s', 1, 1000, {
+      matchId: 'm1',
+      useStayDurationPriority: false,
+      prioritizeDiversity: false,
+    });
+    expect(result.result).toBe('already_finished');
+    expect(result.writtenState).toBeUndefined();
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('isPlaying が false なら already_finished', async () => {
+    const state = baseState({
+      players: [makePlayer('p1', { name: 'Alice' })],
+      courts: [
+        makeCourt(1, {
+          teamA: ['p1', 'p2'],
+          teamB: ['p3', 'p4'],
+          isPlaying: false,
+          startedAt: 1000,
+        }),
+      ],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    const result = await finishMatchAndContinue('s', 1, 1000, {
+      matchId: 'm1',
+      useStayDurationPriority: false,
+      prioritizeDiversity: false,
+    });
+    expect(result.result).toBe('already_finished');
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('aborted を SessionError("conflict") に変換', async () => {
+    mockRunTransaction.mockImplementationOnce(async () => {
+      const err = new Error('aborted') as Error & { code?: string };
+      err.code = 'aborted';
+      throw err;
+    });
+    await expect(
+      finishMatchAndContinue('s', 1, 1000, {
+        matchId: 'm1',
+        useStayDurationPriority: false,
+        prioritizeDiversity: false,
+      }),
+    ).rejects.toBeInstanceOf(SessionError);
   });
 });
