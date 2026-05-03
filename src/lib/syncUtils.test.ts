@@ -281,7 +281,10 @@ describe('syncUtils', () => {
       expect(prop(result.players.find(p => p.id === 'B'), 'isResting')).toBe(false);  // リモート変更
     });
 
-    it('同じプレイヤーを両方が変更 → ローカル優先', () => {
+    it('同じプレイヤーの異なるフィールドを両方が変更 → フィールドごとに採用', () => {
+      // フィールド粒度 3-way マージ:
+      //   isResting: base=true → local=false（変化）→ local 採用
+      //   gamesPlayed: base=0 == local=0（無変化）→ remote=5 採用
       const base: SyncGameState = {
         ...emptyState,
         players: [makePlayer('A', { isResting: true, gamesPlayed: 0 })],
@@ -296,8 +299,8 @@ describe('syncUtils', () => {
       };
 
       const result = mergeGameState(base, local, remote);
-      expect(prop(result.players[0], 'isResting')).toBe(false); // ローカル優先
-      expect(prop(result.players[0], 'gamesPlayed')).toBe(0);   // ローカル版の値
+      expect(prop(result.players[0], 'isResting')).toBe(false); // ローカル変更を反映
+      expect(prop(result.players[0], 'gamesPlayed')).toBe(5);   // リモート変更を反映
     });
 
     it('ローカルでプレイヤー追加 + リモートでも別プレイヤー追加 → 両方追加', () => {
@@ -738,11 +741,11 @@ describe('syncUtils', () => {
       expect(result.settings).toEqual({ recordScores: false, continuousMatchMode: false });
     });
 
-    // === 競合シナリオ: フィールドレベルマージ非対応の検証 ===
+    // === 競合シナリオ: プレイヤーのフィールド粒度 3-way マージ ===
 
-    it('同じプレイヤーの異なるフィールドを同時編集 → ローカル変更側が全体優先（既知の制限）', () => {
+    it('同じプレイヤーの異なるフィールドを同時編集 → 両方反映', () => {
       // Client A: name変更、Client B: gamesPlayed変更
-      // 現在の実装ではオブジェクト単位比較のため、後のpush側が全フィールドを上書きする
+      // フィールド粒度 3-way: 両方の変更が共存する。
       const base: SyncGameState = {
         ...emptyState,
         players: [makePlayer('A', { name: 'Alice', gamesPlayed: 0 })],
@@ -757,9 +760,8 @@ describe('syncUtils', () => {
       };
 
       const result = mergeGameState(base, local, remote);
-      // ローカル変更あり → ローカル版全体が優先される
       expect(prop(result.players[0], 'name')).toBe('Alice-edited'); // ローカル変更が反映
-      expect(prop(result.players[0], 'gamesPlayed')).toBe(0);       // リモート変更がロスト（既知の制限）
+      expect(prop(result.players[0], 'gamesPlayed')).toBe(5);       // リモート変更も反映
     });
 
     it('同じプレイヤー: ローカル未変更 + リモート変更 → リモート版採用', () => {
@@ -780,7 +782,9 @@ describe('syncUtils', () => {
       expect(prop(result.players[0], 'gamesPlayed')).toBe(5); // リモート版採用
     });
 
-    it('支払い情報とプレイヤー編集の同時操作 → ローカル変更側が全体優先', () => {
+    it('支払い情報とプレイヤー編集の同時操作 → フィールドごとに保持', () => {
+      // フィールド粒度 3-way により、ローカルの支払い変更とリモートの名前変更が
+      // 同時に保持される（旧実装では片方ロストしていた）。
       const base: SyncGameState = {
         ...emptyState,
         players: [makePlayer('A', { name: 'Alice', paymentAmount: 0, operationStatus: { payment: false } })],
@@ -796,7 +800,156 @@ describe('syncUtils', () => {
 
       const result = mergeGameState(base, local, remote);
       expect(prop(result.players[0], 'paymentAmount')).toBe(500);          // ローカル支払い保持
-      expect(prop(result.players[0], 'name')).toBe('Alice');               // リモート名前変更はロスト
+      expect(prop(result.players[0], 'name')).toBe('Alice-renamed');       // リモート名前変更も保持
+      expect(prop(result.players[0], 'operationStatus')).toEqual({ payment: true });
+    });
+
+    it('operationStatus の異なるサブフィールドを並行トグル → 両方反映（巻き戻り防止）', () => {
+      // 報告バグ: 「参加者管理の情報が巻き戻ることがある」
+      // T0: payment=false, roster=false。
+      //  A が「名簿」をタップ → roster=true で push。
+      //  A の push 未受信の B が「支払」をタップ → payment=true。
+      //  B が onSnapshot でマージ後、両方の変更が共存するべき（旧実装では片方ロスト）。
+      const base: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('gen', {
+          operationStatus: { payment: false, roster: false, checkin: true },
+        })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('gen', {
+          operationStatus: { payment: true, roster: false, checkin: true }, // B: payment トグル
+          paymentAmount: 500,
+          paymentTimestamp: 9000,
+        })],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('gen', {
+          operationStatus: { payment: false, roster: true, checkin: true }, // A: roster トグル（先 push）
+        })],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      const merged = result.players[0];
+      expect(prop(merged, 'operationStatus')).toEqual({
+        payment: true,   // local 変更が保持される
+        roster: true,    // remote 変更も保持される
+        checkin: true,   // 共通値はそのまま
+      });
+      expect(prop(merged, 'paymentAmount')).toBe(500);
+      expect(prop(merged, 'paymentTimestamp')).toBe(9000);
+    });
+
+    it('checkin / payment / roster を 3 端末で別々にトグル → 全て反映', () => {
+      const base: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('gen', {
+          operationStatus: { payment: false, roster: false, checkin: false },
+        })],
+      };
+      // A が checkin、B が payment（ローカル）、A の push 後 C(remote) が roster をトグル
+      const local: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('gen', {
+          operationStatus: { payment: true, roster: false, checkin: false },
+        })],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('gen', {
+          operationStatus: { payment: false, roster: true, checkin: true },
+        })],
+      };
+      const result = mergeGameState(base, local, remote);
+      expect(prop(result.players[0], 'operationStatus')).toEqual({
+        payment: true,   // local
+        roster: true,    // remote
+        checkin: true,   // remote
+      });
+    });
+
+    it('finishGame × payment トグル並行 → gamesPlayed も payment も両方反映', () => {
+      // A が「終了」を押した直後の writtenState（gamesPlayed +1）が remote に。
+      // B が同時に「支払」をタップして local が payment:true。
+      // フィールド粒度マージで両方残る（旧実装では payment=true で全体採用 → gamesPlayed が巻き戻り）。
+      const base: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('gen', {
+          gamesPlayed: 5,
+          lastPlayedAt: 1000,
+          isResting: false,
+          operationStatus: { payment: false, roster: false, checkin: true },
+        })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('gen', {
+          gamesPlayed: 5,
+          lastPlayedAt: 1000,
+          isResting: false,
+          operationStatus: { payment: true, roster: false, checkin: true }, // B が支払
+          paymentAmount: 800,
+        })],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        players: [makePlayer('gen', {
+          gamesPlayed: 6,                // A が試合終了
+          lastPlayedAt: 9000,
+          isResting: false,
+          operationStatus: { payment: false, roster: false, checkin: true },
+        })],
+      };
+
+      const result = mergeGameState(base, local, remote);
+      const merged = result.players[0];
+      expect(prop(merged, 'gamesPlayed')).toBe(6);                      // remote の試合終了反映
+      expect(prop(merged, 'lastPlayedAt')).toBe(9000);                  // remote
+      expect(prop(merged, 'paymentAmount')).toBe(800);                  // local 支払
+      expect(prop(merged, 'operationStatus')).toEqual({
+        payment: true, roster: false, checkin: true,
+      });
+    });
+
+    it('reservations: 同じ予約の異なるフィールドを並行編集 → 両方反映', () => {
+      // A が status を fulfilled に、B が orderNumber を変更 → 両方残る。
+      const base: SyncGameState = {
+        ...emptyState,
+        reservations: [makeReservation('r1', { orderNumber: 1, status: 'pending' })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        reservations: [makeReservation('r1', { orderNumber: 1, status: 'fulfilled', fulfilledAt: 5000 })],
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        reservations: [makeReservation('r1', { orderNumber: 9, status: 'pending' })],
+      };
+      const result = mergeGameState(base, local, remote);
+      expect(prop(result.reservations[0], 'status')).toBe('fulfilled');     // local
+      expect(prop(result.reservations[0], 'fulfilledAt')).toBe(5000);       // local
+      expect(prop(result.reservations[0], 'orderNumber')).toBe(9);          // remote
+    });
+
+    it('matchHistory: 異なるスコアフィールドを並行編集 → 両方反映', () => {
+      // A が scoreA だけを 21 に、B が scoreB だけを 19 に → 両方反映される。
+      const base: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000, { scoreA: 0, scoreB: 0 })],
+      };
+      const local: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000, { scoreA: 21, scoreB: 0 })], // A だけ scoreA
+      };
+      const remote: SyncGameState = {
+        ...emptyState,
+        matchHistory: [makeMatch('m1', 1000, { scoreA: 0, scoreB: 19 })], // B だけ scoreB
+      };
+      const result = mergeGameState(base, local, remote);
+      expect(prop(result.matchHistory[0], 'scoreA')).toBe(21);
+      expect(prop(result.matchHistory[0], 'scoreB')).toBe(19);
     });
 
     // === 競合シナリオ: matchHistory スコア同時編集 ===

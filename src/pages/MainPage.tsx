@@ -40,7 +40,7 @@ export function MainPage() {
   usePresence(isSharedSession ? session?.id ?? null : null, currentUser);
   const remotePresence = usePresenceStore((s) => s.remotePresence);
   const { prepareDirectTransaction, completeDirectTransaction, pushImmediate } = useFirebaseSyncContext();
-  const { players, toggleRest, updatePlayer, addPlayers, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
+  const { players, toggleRest, updatePlayer, addPlayers, toggleOperationStatus, applyPayment, incrementGamesPlayed } = usePlayerStore();
   const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
     useGameStore();
   const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeDiversity, recordScores, practiceType } = useSettingsStore();
@@ -353,13 +353,7 @@ export function MainPage() {
 
   const handlePaymentConfirm = (amount: number) => {
     if (!paymentModalPlayer) return;
-    
-    // 金額を保存
-    setPaymentAmount(paymentModalPlayer.id, amount);
-    
-    // 支払い完了フラグをON
-    toggleOperationStatus(paymentModalPlayer.id, 'payment');
-    
+    applyPayment(paymentModalPlayer.id, amount);
     setPaymentModalPlayer(null);
   };
 
@@ -902,15 +896,9 @@ export function MainPage() {
                             // 楽観的ローカル更新（即座にUIに反映）
                             pushUndo();
                             finishGame(court.id, 0, 0, matchId);
-                            [...court.teamA, ...court.teamB].filter(id => id).forEach((playerId) => {
-                              const player = players.find((p) => p.id === playerId);
-                              if (player) {
-                                updatePlayer(playerId, {
-                                  gamesPlayed: player.gamesPlayed + 1,
-                                  lastPlayedAt: Date.now(),
-                                });
-                              }
-                            });
+                            // ストアの最新状態から +1 する（render closure の stale players を読まない）
+                            const activePlayerIds = [...court.teamA, ...court.teamB].filter(id => id);
+                            incrementGamesPlayed(activePlayerIds, Date.now());
                             if (court.restingPlayerIds && court.restingPlayerIds.length > 0) {
                               court.restingPlayerIds.forEach((playerId: string) => {
                                 updatePlayer(playerId, { isResting: true });

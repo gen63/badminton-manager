@@ -16,7 +16,7 @@ import { PlayerEditModal } from '../components/PlayerEditModal';
 
 export function PlayerSelect() {
   const navigate = useNavigate();
-  const { players, addPlayers, removePlayer, updatePlayer, toggleOperationStatus, setPaymentAmount } = usePlayerStore();
+  const { players, addPlayers, removePlayer, updatePlayer, toggleOperationStatus, applyPayment } = usePlayerStore();
   const { matchHistory } = useGameStore();
   const { session, isCreator } = useSessionStore();
   const { practiceType } = useSettingsStore();
@@ -106,13 +106,7 @@ export function PlayerSelect() {
 
   const handlePaymentConfirm = (amount: number) => {
     if (!paymentModalPlayer) return;
-    
-    // 金額を保存
-    setPaymentAmount(paymentModalPlayer.id, amount);
-    
-    // 支払い完了フラグをON
-    toggleOperationStatus(paymentModalPlayer.id, 'payment');
-    
+    applyPayment(paymentModalPlayer.id, amount);
     setPaymentModalPlayer(null);
   };
 
