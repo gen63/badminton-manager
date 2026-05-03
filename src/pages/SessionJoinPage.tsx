@@ -144,6 +144,10 @@ export function SessionJoinPage() {
     // 別の共有セッションに居る場合は離脱（同一セッションへの再入室は除く）
     const previousSession = useSessionStore.getState().session;
     const previousUser = useSessionStore.getState().currentUser;
+    const isSameOnlineSession =
+      !!previousSession?.id &&
+      !!previousSession.createdBy &&
+      previousSession.id === sessionId;
     if (
       previousSession?.id &&
       previousSession.id !== sessionId &&
@@ -160,7 +164,7 @@ export function SessionJoinPage() {
 
     try {
       const result = await joinSession(sessionId, selectedName, { force, gender: selectedGender });
-      
+
       // 既に参加している場合は確認ダイアログを表示
       if (result.isAlreadyJoined && !force) {
         setShowForceConfirm(true);
@@ -170,13 +174,19 @@ export function SessionJoinPage() {
 
       requestNotificationPermission();
 
-      // 重要: セッション参加前に古いデータを完全クリア
-      // （前のセッションやローカルモードのデータが残らないように）
-      usePlayerStore.getState().clearPlayers();
-      useGameStore.getState().clearHistory();
-      useReservationStore.getState().clearReservations();
-      useAccountingStore.getState().clearRecords();
-      useUndoStore.getState().clearAll();
+      // 同一オンラインセッションへの再入室時はローカル状態を保持する。
+      // クリアすると useFirebaseSync の subscriber が schedulePush を発火し、
+      // subscribeToGameState による復元より先に push が動くと
+      // mergeMatchHistory(base=[matches], local=[], remote=[matches]) が
+      // 「local が削除した」と解釈して Firestore の matchHistory をワイプしてしまう。
+      // 別セッションへの切替・新規入室・ローカルモードからの遷移時は従来通りクリアする。
+      if (!isSameOnlineSession) {
+        usePlayerStore.getState().clearPlayers();
+        useGameStore.getState().clearHistory();
+        useReservationStore.getState().clearReservations();
+        useAccountingStore.getState().clearRecords();
+        useUndoStore.getState().clearAll();
+      }
 
       initializeSession({
         id: sessionId,

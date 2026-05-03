@@ -77,6 +77,9 @@ export function useFirebaseSync() {
   const pushInFlight = useRef<Promise<void> | null>(null);
   const blockedUpdate = useRef<{ gameState: GameState; data: { updatedAt: unknown } } | null>(null);
   const retryTimer = useRef<number | null>(null);
+  // 直前に effect を抜けた sessionId（cleanup で記録）。
+  // 新しい effect 実行時に「セッション切替直後か否か」を判定するために使う。
+  const previousSessionIdRef = useRef<string | undefined>(undefined);
 
   // toast / navigate / sessionId を ref で保持（依存配列の安定化）
   const toastRef = useRef(toast);
@@ -331,11 +334,23 @@ export function useFirebaseSync() {
     // 初回push（セッション作成者のみ）
     // 参加者・リロード時は onSnapshot で最新データを受け取るだけでよい
     // （players.length > 0 条件を削除: null baseで古いデータを上書きするバグを修正）
+    //
+    // ただし「セッション切替直後」（previousSessionIdRef が別の id を保持）は
+    // 直前の SessionJoinPage / SessionCreate でローカルストアがクリアされた状態で
+    // ある一方、lastSyncedState は sessionStorage の sync_base_${sessionId} から
+    // 復元され古い [matches] を保持している可能性がある。この組合せで push が
+    // 走ると mergeMatchHistory(base=[matches], local=[], remote=[matches]) が
+    // 「local が削除した」と解釈し Firestore の matchHistory をワイプする。
+    // セッション切替時は subscribeToGameState の onSnapshot でローカルが
+    // 最新化されてから subscriber 経由で push されるパスに任せる。
     const currentUser = useSessionStore.getState().currentUser;
     const currentSession = useSessionStore.getState().session;
     const isCreator = currentSession?.createdBy === currentUser;
+    const isSessionSwitch =
+      previousSessionIdRef.current !== undefined &&
+      previousSessionIdRef.current !== sessionId;
 
-    if (isCreator) {
+    if (isCreator && !isSessionSwitch) {
       pushGameStateRef.current(sessionId);
     }
 
@@ -363,6 +378,8 @@ export function useFirebaseSync() {
       isSyncingFromRemote.current = false;
       // モジュール寿命の通知重複抑止 Set もリセット（セッション間で蓄積させない）
       notifiedMatches.clear();
+      // 次回 effect 実行時にセッション切替を検知できるよう、抜けた sessionId を記録
+      previousSessionIdRef.current = sessionId;
     };
   }, [isShared, sessionId, schedulePush]); // schedulePushを依存配列に追加
 
