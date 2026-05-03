@@ -600,6 +600,15 @@ export function setPracticeType(sessionId: string, value: '単' | '複' | '楽')
   return mutateGameState(sessionId, (s) => computeSetSetting(s, 'practiceType', value));
 }
 
+/**
+ * 初回 gameState を上書きする（セッション作成直後、参加者に共有するための初期 push）。
+ * 通常は `mutateGameState` で remote をマージするが、こちらは「初期化」用途で
+ * remote を無視して `initial` で上書きする。
+ */
+export function initializeGameState(sessionId: string, initial: GameState) {
+  return mutateGameState(sessionId, () => initial);
+}
+
 // =============================================================================
 // Composite operations: 試合終了（既存 finishGameTransaction を取り込み）
 // =============================================================================

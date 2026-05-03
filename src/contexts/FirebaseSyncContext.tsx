@@ -1,41 +1,17 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { useFirebaseSync } from '../hooks/useFirebaseSync';
-import type { GameState } from '../services/sessionService';
-
-interface FirebaseSyncApi {
-  prepareDirectTransaction: () => void;
-  completeDirectTransaction: (writtenState?: GameState) => void;
-  pushImmediate: () => Promise<GameState | null>;
-}
-
-const FirebaseSyncContext = createContext<FirebaseSyncApi | null>(null);
 
 /**
- * Firebase双方向同期をアプリ全体で維持するProvider
+ * Firebase 双方向同期をアプリ全体で維持する Provider。
  *
- * useFirebaseSyncをApp levelでマウントすることで、
- * ページ遷移（/main → /players → /accounting 等）しても
- * 同期が途切れないようにする。
+ * `useFirebaseSync` を App level でマウントすることで、ページ遷移
+ * （/main → /players → /accounting 等）しても onSnapshot 購読が
+ * 途切れないようにする。
+ *
+ * Phase 3 で `useFirebaseSync` が値を返さなくなったため、Provider は
+ * フックを呼ぶだけ（context API は撤去済み）。
  */
 export function FirebaseSyncProvider({ children }: { children: ReactNode }) {
-  const syncApi = useFirebaseSync();
-  return (
-    <FirebaseSyncContext.Provider value={syncApi}>
-      {children}
-    </FirebaseSyncContext.Provider>
-  );
-}
-
-/**
- * Firebase同期APIを取得するhook
- *
- * MainPageなど、直接Transactionを実行するページで使用。
- */
-// eslint-disable-next-line react-refresh/only-export-components
-export function useFirebaseSyncContext(): FirebaseSyncApi {
-  const ctx = useContext(FirebaseSyncContext);
-  if (!ctx) {
-    throw new Error('useFirebaseSyncContext must be used within FirebaseSyncProvider');
-  }
-  return ctx;
+  useFirebaseSync();
+  return <>{children}</>;
 }

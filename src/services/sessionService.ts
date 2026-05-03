@@ -28,7 +28,6 @@ import type { Court } from '../types/court';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import { SessionError } from '../lib/errorHandler';
-import { mergeGameState, type SyncGameState } from '../lib/syncUtils';
 import { computeFirstMatchStartedAt, isSessionVisible } from '../lib/sessionArchive';
 
 /** セッションレベルの設定（Firebase同期対象） */
@@ -367,124 +366,6 @@ export async function syncGameState(
     firstMatchStartedAt: computeFirstMatchStartedAt(gameState.matchHistory),
     updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
   });
-}
-
-/**
- * ゲーム状態をFirestoreに同期（Transaction使用 + 3-wayマージ）
- *
- * 競合時に自動リトライ（最大5回）し、同時更新を安全に処理します。
- * baseStateが指定されている場合、リモート状態との3-wayマージを行い、
- * 他クライアントの変更を保持しつつローカル変更を適用します。
- */
-export async function syncGameStateWithTransaction(
-  sessionId: string,
-  gameState: GameState,
-  baseState?: GameState | null,
-): Promise<GameState> {
-  if (!useFirestore) return gameState;
-
-  const docRef = doc(db!, 'sessions', sessionId);
-
-  let writtenState: GameState = gameState;
-
-  try {
-    await runTransaction(db!, async (transaction) => {
-      const snap = await transaction.get(docRef);
-      if (!snap.exists()) {
-        throw new Error('Session not found');
-      }
-
-      const data = snap.data();
-      const remoteState = data?.gameState as GameState | undefined;
-
-      // リモート状態とbaseがある場合は3-wayマージ、なければ従来通り上書き
-      const finalState = (remoteState && baseState)
-        ? mergeGameState(
-            baseState as unknown as SyncGameState,
-            gameState as unknown as SyncGameState,
-            remoteState as unknown as SyncGameState,
-          ) as unknown as GameState
-        : gameState;
-
-      writtenState = finalState;
-
-      const registeredPlayers = finalState.players.map((p) => p.name);
-      transaction.update(docRef, {
-        gameState: sanitize(finalState),
-        registeredPlayers,
-        firstMatchStartedAt: computeFirstMatchStartedAt(finalState.matchHistory),
-        updatedAt: serverTimestamp(),
-      });
-    });
-  } catch (error: unknown) {
-    if ((error as { code?: string })?.code === 'aborted') {
-      throw new SessionError(
-        '他のユーザーが更新しました。もう一度お試しください',
-        'conflict'
-      );
-    }
-    throw error;
-  }
-
-  return writtenState;
-}
-
-/**
- * べき等な試合終了Transaction
- *
- * startedAt をべき等キーとして使用し、同じ試合の二重終了を防ぐ。
- * 2人が同時に「終了」をタップしても、1人目のみ成功し、
- * 2人目は 'already_finished' を受け取る。
- *
- * @param computeNewState リモート状態を受け取り、新しい状態を返す純粋関数
- * @returns 'success' | 'already_finished'
- */
-export async function finishGameTransaction(
-  sessionId: string,
-  courtId: number,
-  matchStartedAt: number,
-  computeNewState: (remoteState: GameState) => GameState,
-): Promise<{ result: 'success' | 'already_finished'; writtenState?: GameState }> {
-  if (!useFirestore) return { result: 'success' };
-
-  const docRef = doc(db!, 'sessions', sessionId);
-
-  try {
-    return await runTransaction(db!, async (transaction) => {
-      const snap = await transaction.get(docRef);
-      if (!snap.exists()) {
-        throw new Error('Session not found');
-      }
-
-      const data = snap.data();
-      const remoteState = data.gameState as GameState;
-      const remoteCourt = remoteState.courts.find(c => c.id === courtId);
-
-      // べき等チェック: この試合がまだ進行中か？
-      if (!remoteCourt?.isPlaying || remoteCourt.startedAt !== matchStartedAt) {
-        return { result: 'already_finished' };
-      }
-
-      // リモート状態に対して新しい状態を計算
-      const newState = computeNewState(remoteState);
-
-      transaction.update(docRef, {
-        gameState: sanitize(newState),
-        firstMatchStartedAt: computeFirstMatchStartedAt(newState.matchHistory),
-        updatedAt: serverTimestamp(),
-      });
-
-      return { result: 'success', writtenState: newState };
-    });
-  } catch (error: unknown) {
-    if ((error as { code?: string })?.code === 'aborted') {
-      throw new SessionError(
-        '他のユーザーが更新しました。もう一度お試しください',
-        'conflict'
-      );
-    }
-    throw error;
-  }
 }
 
 /** ゲーム状態をリアルタイム監視（参加者が呼ぶ） */

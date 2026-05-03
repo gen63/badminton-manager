@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import type { Match } from '../types/match';
 
@@ -18,9 +17,7 @@ interface GameState {
   removeMatch: (matchId: string) => void;
 }
 
-export const useGameStore = create<GameState>()(
-  persist(
-    (set) => ({
+export const useGameStore = create<GameState>()((set) => ({
       courts: [],
       matchHistory: [],
       initializeCourts: (count) =>
@@ -137,9 +134,4 @@ export const useGameStore = create<GameState>()(
         set((state) => ({
           matchHistory: state.matchHistory.filter((m) => m.id !== matchId),
         })),
-    }),
-    {
-      name: 'badminton-game',
-    }
-  )
-);
+}));

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
+import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
 import { PlayerAddInput } from '../components/PlayerAddInput';
@@ -46,6 +47,7 @@ export function MainPage() {
   // 旧 useFirebaseSyncContext の prepare/completeDirectTransaction / pushImmediate は
   // Phase 2 でこのフックに置換済み（Phase 3 で context 自体を撤廃）。
   const writer = useSessionWriterWithToast(toast);
+  const isGameStateLoaded = useSyncStatusStore((s) => s.isGameStateLoaded);
   const { players } = usePlayerStore();
   const { courts, matchHistory, finishGame } = useGameStore();
   const { useStayDurationPriority, continuousMatchMode, prioritizeDiversity, recordScores, practiceType } = useSettingsStore();
@@ -106,10 +108,12 @@ export function MainPage() {
   // ブロック条件成立時に連続モードを強制OFF
   useEffect(() => {
     if (!prioritizeDiversity || !continuousMatchMode) return;
+    // 初回 onSnapshot 前は players/courts が空のため誤判定を避ける
+    if (session?.createdBy && !isGameStateLoaded) return;
     if (checkContinuousBlock(players, courts, prioritizeDiversity, gameMode).blocked) {
       void writer.setContinuousMatchMode(false);
     }
-  }, [prioritizeDiversity, continuousMatchMode, courts, players, writer, gameMode]);
+  }, [prioritizeDiversity, continuousMatchMode, courts, players, writer, gameMode, session?.createdBy, isGameStateLoaded]);
 
   // Ctrl+Z / Ctrl+Y キーボードショートカット
   useEffect(() => {
@@ -128,13 +132,16 @@ export function MainPage() {
   }, [undo, redo]);
 
   // config.courtCount と courts.length を同期（オンラインモード時）
+  // 初回 onSnapshot 受信前に走ると空配列を「正規」と誤認して Firestore を上書きするので
+  // isGameStateLoaded をガードに使う。
   useEffect(() => {
     if (!session?.createdBy) return; // ローカルモードでは不要
+    if (!isGameStateLoaded) return;
     const configCourtCount = session.config.courtCount || 1;
     if (courts.length !== configCourtCount) {
       void writer.resizeCourts(configCourtCount);
     }
-  }, [session?.config.courtCount, courts.length, session?.createdBy, writer]);
+  }, [session?.config.courtCount, courts.length, session?.createdBy, writer, isGameStateLoaded]);
 
   // PWAバッジ更新：支払い予定額を表示
   useEffect(() => {

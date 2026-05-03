@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { clearPresence, getSession, joinSession, leaveSession, subscribeToGameState, subscribeToSession } from '../services/sessionService';
-import { useFirebaseSyncContext } from '../contexts/FirebaseSyncContext';
 import { getErrorMessage } from '../lib/errorHandler';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { requestNotificationPermission } from '../lib/notifications';
@@ -47,7 +46,6 @@ export function SessionJoinPage() {
 
   const initializeSession = useSessionStore((state) => state.initialize);
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
-  const { prepareDirectTransaction } = useFirebaseSyncContext();
 
   // PWAバッジをクリア（セッション参加前）
   useEffect(() => {
@@ -153,7 +151,6 @@ export function SessionJoinPage() {
       previousSession.id !== sessionId &&
       previousSession.createdBy
     ) {
-      prepareDirectTransaction();
       if (previousUser) {
         void Promise.allSettled([
           leaveSession(previousSession.id, previousUser),

@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { Player } from '../types/player';
 
 interface PlayerInput {
@@ -30,9 +29,7 @@ interface PlayerState {
   setAllPlayersResting: () => void;
 }
 
-export const usePlayerStore = create<PlayerState>()(
-  persist(
-    (set, get) => ({
+export const usePlayerStore = create<PlayerState>()((set, get) => ({
       players: [],
       addPlayers: (inputs) => {
         const existingNames = new Set(get().players.map((p) => p.name.trim()));
@@ -168,9 +165,4 @@ export const usePlayerStore = create<PlayerState>()(
             isResting: true,
           })),
         })),
-    }),
-    {
-      name: 'badminton-players',
-    }
-  )
-);
+}));

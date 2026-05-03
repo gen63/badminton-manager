@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { Reservation } from '../types/reservation';
 
 interface ReservationState {
@@ -10,9 +9,7 @@ interface ReservationState {
   clearReservations: () => void;
 }
 
-export const useReservationStore = create<ReservationState>()(
-  persist(
-    (set) => ({
+export const useReservationStore = create<ReservationState>()((set) => ({
       reservations: [],
 
       addReservation: (playerIds, createdBy) =>
@@ -47,9 +44,4 @@ export const useReservationStore = create<ReservationState>()(
         })),
 
       clearReservations: () => set({ reservations: [] }),
-    }),
-    {
-      name: 'badminton-reservations',
-    }
-  )
-);
+}));
