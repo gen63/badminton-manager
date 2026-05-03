@@ -17,6 +17,16 @@ interface PlayerState {
   clearPlayers: () => void;
   toggleOperationStatus: (id: string, field: 'payment' | 'roster' | 'checkin') => void;
   setPaymentAmount: (id: string, amount: number) => void;
+  /**
+   * 支払い情報を 1 setState で原子的に更新する（金額・payment トグル・timestamp）。
+   * `setPaymentAmount` → `toggleOperationStatus` の 2-step 呼び出しを置き換える。
+   */
+  applyPayment: (id: string, amount: number) => void;
+  /**
+   * 指定 ID 群の `gamesPlayed` をストアの最新状態から +1 し、`lastPlayedAt` を更新する。
+   * 試合終了時の楽観的更新で、React render closure の stale `players` を読まないようにする。
+   */
+  incrementGamesPlayed: (ids: string[], lastPlayedAt: number) => void;
   setAllPlayersResting: () => void;
 }
 
@@ -123,6 +133,34 @@ export const usePlayerStore = create<PlayerState>()(
             p.id === id ? { ...p, paymentAmount: amount } : p
           ),
         })),
+      applyPayment: (id, amount) =>
+        set((state) => ({
+          players: state.players.map((p) => {
+            if (p.id !== id) return p;
+            const current = p.operationStatus || { payment: false, roster: false, checkin: false };
+            const newPayment = !current.payment;
+            const updates: Partial<Player> = {
+              paymentAmount: amount,
+              operationStatus: { ...current, payment: newPayment },
+            };
+            if (newPayment) {
+              updates.paymentTimestamp = Date.now();
+            }
+            return { ...p, ...updates };
+          }),
+        })),
+      incrementGamesPlayed: (ids, lastPlayedAt) =>
+        set((state) => {
+          if (ids.length === 0) return state;
+          const idSet = new Set(ids);
+          return {
+            players: state.players.map((p) =>
+              idSet.has(p.id)
+                ? { ...p, gamesPlayed: p.gamesPlayed + 1, lastPlayedAt }
+                : p
+            ),
+          };
+        }),
       setAllPlayersResting: () =>
         set((state) => ({
           players: state.players.map((p) => ({

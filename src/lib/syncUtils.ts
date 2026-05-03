@@ -114,61 +114,143 @@ export function shouldApplyRemoteData(params: {
 }
 
 /**
- * IDベースの3-wayマージ（汎用）
+ * 1段ネストしたオブジェクト（`operationStatus` 等）の sub-field 3-way マージ
  *
- * base（最後の同期状態）を基準に、ローカルで変更されたアイテムはlocal版を採用し、
- * ローカルで変更されていないアイテムはremote版を採用する。
- * これにより、他クライアントの変更を保持しつつ自分の変更を優先できる。
+ * 各サブフィールドを独立に scalar 3-way する。これにより、
+ * `operationStatus.payment` と `operationStatus.roster` を 2 端末が同時にトグル
+ * しても両方残せる。
  */
-function mergeById<T extends { id: string | number }>(
+function mergeNestedObject<T extends Record<string, unknown>>(
+  base: T | undefined,
+  local: T | undefined,
+  remote: T | undefined,
+): T | undefined {
+  if (local === undefined && remote === undefined) return undefined;
+  if (local === undefined) return remote;
+  if (remote === undefined) return local;
+
+  const result: Record<string, unknown> = {};
+  const keys = new Set<string>([
+    ...Object.keys(base ?? {}),
+    ...Object.keys(local),
+    ...Object.keys(remote),
+  ]);
+  for (const key of keys) {
+    const baseVal = base?.[key];
+    const localVal = local[key];
+    const remoteVal = remote[key];
+    const localChanged = !base || JSON.stringify(baseVal) !== JSON.stringify(localVal);
+    const value = localChanged ? localVal : remoteVal;
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result as T;
+}
+
+/**
+ * 単一エンティティのフィールド粒度 3-way マージ
+ *
+ * `id` は不変。`nestedKeys` で指定したキーは {@link mergeNestedObject} で
+ * sub-field 3-way、それ以外は scalar 3-way（`mergeCourt` のスカラ部と同じ規則）。
+ *
+ * これにより、同じ player / match / reservation に対して 2 端末が異なるフィールド
+ * を同時編集しても、両方の変更が共存できる（オブジェクト全体比較による巻き戻り防止）。
+ */
+function mergeEntity<T extends { id: string | number }>(
+  base: T | undefined,
+  local: T,
+  remote: T,
+  options?: { nestedKeys?: ReadonlyArray<keyof T> },
+): T {
+  const nestedKeys = new Set<string>(
+    (options?.nestedKeys ?? []).map((k) => String(k)),
+  );
+  const result: Record<string, unknown> = {};
+  const allKeys = new Set<string>([
+    ...Object.keys(base ?? {}),
+    ...Object.keys(local),
+    ...Object.keys(remote),
+  ]);
+
+  for (const key of allKeys) {
+    if (key === 'id') continue;
+    const baseVal = (base as Record<string, unknown> | undefined)?.[key];
+    const localVal = (local as Record<string, unknown>)[key];
+    const remoteVal = (remote as Record<string, unknown>)[key];
+
+    if (nestedKeys.has(key)) {
+      const merged = mergeNestedObject(
+        baseVal as Record<string, unknown> | undefined,
+        localVal as Record<string, unknown> | undefined,
+        remoteVal as Record<string, unknown> | undefined,
+      );
+      if (merged !== undefined) result[key] = merged;
+      continue;
+    }
+
+    const localChanged = !base || JSON.stringify(baseVal) !== JSON.stringify(localVal);
+    const value = localChanged ? localVal : remoteVal;
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+
+  result.id = local.id;
+  return result as T;
+}
+
+/**
+ * id ベース配列のフィールド粒度 3-way マージ
+ *
+ * 配列の追加/削除セマンティクスは旧 `mergeById` と完全に同じ:
+ *   - local にあって remote に無い: base に無ければ「ローカル新規追加」→ 残す。
+ *     base にあれば「リモート削除」→ 落とす。
+ *   - remote にあって local に無い: base に無ければ「リモート新規追加」→ 追加。
+ *     base にあれば「ローカル削除」→ 落とす。
+ *
+ * 3 者交差するアイテムは {@link mergeEntity} でフィールド粒度 3-way する。
+ * これが旧 `mergeById` の `JSON.stringify(baseItem) !== JSON.stringify(localItem)`
+ * による「片方ロスト → 後発 push で巻き戻り」を解消する核心の差分。
+ */
+function mergeEntitiesById<T extends { id: string | number }>(
   base: T[] | undefined,
   local: T[],
   remote: T[],
+  options?: { nestedKeys?: ReadonlyArray<keyof T> },
 ): T[] {
   if (!base) return local;
 
-  const baseMap = new Map(base.map(item => [item.id, item]));
-  const remoteMap = new Map(remote.map(item => [item.id, item]));
+  const baseMap = new Map(base.map((item) => [item.id, item]));
+  const remoteMap = new Map(remote.map((item) => [item.id, item]));
 
   const result: T[] = [];
   const seen = new Set<string | number>();
 
-  // 1. ローカル配列の順序を基準にする
   for (const localItem of local) {
     seen.add(localItem.id);
     const baseItem = baseMap.get(localItem.id);
     const remoteItem = remoteMap.get(localItem.id);
 
     if (!remoteItem) {
-      // リモートに存在しない
       if (!baseItem) {
-        // baseにもない → ローカルで新規追加 → 追加
-        result.push(localItem);
+        result.push(localItem); // ローカル新規追加
       }
-      // baseにある → リモートで削除された → 削除（追加しない）
+      // baseItem あり → リモートで削除済み → 落とす
       continue;
     }
 
-    // リモートにも存在する
-    const localChanged = !baseItem || JSON.stringify(baseItem) !== JSON.stringify(localItem);
-    if (localChanged) {
-      result.push(localItem); // ローカル変更を優先
-    } else {
-      result.push(remoteItem); // ローカル未変更 → リモート版を採用
-    }
+    result.push(mergeEntity(baseItem, localItem, remoteItem, options));
   }
 
-  // 2. リモートにのみ存在するアイテム（他クライアントが追加）
   for (const remoteItem of remote) {
     if (seen.has(remoteItem.id)) continue;
     seen.add(remoteItem.id);
-
     const baseItem = baseMap.get(remoteItem.id);
     if (!baseItem) {
-      // baseにもない → リモートで新規追加 → 追加
-      result.push(remoteItem);
+      result.push(remoteItem); // リモート新規追加
     }
-    // baseにある → ローカルで削除された → 削除（追加しない）
+    // baseItem あり → ローカルで削除済み → 落とす
   }
 
   return result;
@@ -448,49 +530,19 @@ function dedupPlayersAcrossCourts<T extends CourtLike>(
 }
 
 /**
- * matchHistory専用マージ（和集合 + 時系列ソート）
+ * matchHistory 専用マージ
  *
- * matchHistoryはappend-onlyの性質を持つため、IDベースの和集合で十分。
- * ローカルで変更（スコア編集等）されたものはローカル版を優先。
+ * `mergeEntitiesById` でフィールド粒度 3-way マージしたうえで `startedAt` 昇順
+ * ソートする。これにより同じ試合の `scoreA` / `scoreB` を 2 人が同時編集しても
+ * 両方残る（旧実装は JSON 全体比較で片方ロストしていた）。
  */
 function mergeMatchHistory<T extends { id: string; startedAt?: number }>(
   base: T[] | undefined,
   local: T[],
   remote: T[],
 ): T[] {
-  if (!base) return local;
-
-  const baseMap = new Map(base.map(m => [m.id, m]));
-  const localMap = new Map(local.map(m => [m.id, m]));
-  const result = new Map<string, T>();
-
-  // ローカルのアイテムを追加（変更含む）
-  for (const item of local) {
-    result.set(item.id, item);
-  }
-
-  // リモートのアイテムを追加（ローカルに無いもの、かつローカルで削除されていないもの）
-  for (const remoteItem of remote) {
-    if (result.has(remoteItem.id)) {
-      // 両方にある場合: ローカルで変更されていればローカル版、そうでなければリモート版
-      const baseItem = baseMap.get(remoteItem.id);
-      const localItem = localMap.get(remoteItem.id)!;
-      const localChanged = !baseItem || JSON.stringify(baseItem) !== JSON.stringify(localItem);
-      if (!localChanged) {
-        result.set(remoteItem.id, remoteItem);
-      }
-    } else {
-      // ローカルに無い場合
-      const baseItem = baseMap.get(remoteItem.id);
-      if (!baseItem) {
-        // baseにも無い → リモートで新規追加 → 追加
-        result.set(remoteItem.id, remoteItem);
-      }
-      // baseにある → ローカルで削除 → 追加しない
-    }
-  }
-
-  return Array.from(result.values()).sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
+  const merged = mergeEntitiesById(base, local, remote);
+  return merged.slice().sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
 }
 
 /**
@@ -548,14 +600,16 @@ export function mergeGameState(
   if (!base) return local;
 
   return {
-    players: mergeById(base.players, local.players, remote.players),
+    players: mergeEntitiesById(base.players, local.players, remote.players, {
+      nestedKeys: ['operationStatus' as keyof SyncGameState['players'][number]],
+    }),
     courts: mergeCourts(
       base.courts as unknown as CourtLike[],
       local.courts as unknown as CourtLike[],
       remote.courts as unknown as CourtLike[],
     ) as unknown as typeof local.courts,
     matchHistory: mergeMatchHistory(base.matchHistory, local.matchHistory, remote.matchHistory),
-    reservations: mergeById(base.reservations, local.reservations, remote.reservations),
+    reservations: mergeEntitiesById(base.reservations, local.reservations, remote.reservations),
     settings: mergeSettings(base.settings, local.settings, remote.settings),
   };
 }
