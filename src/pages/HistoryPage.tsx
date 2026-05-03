@@ -4,6 +4,7 @@ import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useSessionWriter } from '../hooks/useSessionWriter';
 import { formatTime, copyToClipboard } from '../lib/utils';
 import { formatLocalDate } from '../lib/sessionArchive';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
@@ -199,8 +200,9 @@ function MatchList({
 
 export function HistoryPage() {
   const navigate = useNavigate();
-  const { matchHistory, removeMatch } = useGameStore();
+  const { matchHistory } = useGameStore();
   const { players } = usePlayerStore();
+  const writer = useSessionWriter();
   const { session, isCreator, currentUser } = useSessionStore();
   const isAdmin = isCreator();
   const { gasWebAppUrl, recordScores } = useSettingsStore();
@@ -256,8 +258,8 @@ export function HistoryPage() {
     navigate(`/score/${matchId}`, { state: { from: '/history' } });
   };
 
-  const handleDelete = (matchId: string) => {
-    removeMatch(matchId);
+  const handleDelete = async (matchId: string) => {
+    await writer.removeMatch(matchId);
   };
 
   const handleCopyHistory = async () => {

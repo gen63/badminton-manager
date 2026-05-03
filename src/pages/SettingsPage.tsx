@@ -7,6 +7,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useUndoStore } from '../stores/undoStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
+import { useSessionWriter } from '../hooks/useSessionWriter';
 import { deleteSession, updateSession as updateFirebaseSession, updateCreator } from '../services/sessionService';
 import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { clearAppBadge } from '../lib/badge';
@@ -30,12 +31,11 @@ export function SettingsPage() {
 
   const userIsAdmin = isAdmin();
   const userIsCreator = isCreator();
-  const { players, clearPlayers, setAllPlayersResting } = usePlayerStore();
-  const { clearHistory, resetAllCourts } = useGameStore();
-  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType, setPracticeType } = useSettingsStore();
+  const { players } = usePlayerStore();
+  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType } = useSettingsStore();
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
-  const { clearReservations } = useReservationStore();
+  const writer = useSessionWriter();
 
   // オンラインモードかどうか
   const isOnlineMode = !!session?.createdBy;
@@ -73,7 +73,7 @@ export function SettingsPage() {
     setTimeout(() => setSessionIdCopied(false), 2000);
   };
 
-  const handleMatchReset = () => {
+  const handleMatchReset = async () => {
     const confirmed = window.confirm(
       '試合をリセットしますか？\n\n' +
       '以下がリセットされます：\n' +
@@ -88,22 +88,14 @@ export function SettingsPage() {
 
     if (!confirmed) return;
 
-    // コートをすべてクリア
-    resetAllCourts();
-    
-    // 全員を休憩状態に
-    setAllPlayersResting();
-    
-    // 試合履歴をクリア
-    clearHistory();
-    
-    // 予約をクリア
-    clearReservations();
-    
-    // 会計記録をクリア
+    // 共有ゲーム状態（コート / プレイヤー休憩 / 履歴 / 予約）を順次更新
+    await writer.resetAllCourts();
+    await writer.setAllPlayersResting();
+    await writer.clearHistory();
+    await writer.clearReservations();
+
+    // ローカル専用ストアもクリア
     clearRecords();
-    
-    // Undoスタックをクリア
     clearUndo();
   };
 
@@ -131,17 +123,18 @@ export function SettingsPage() {
       }
     }
 
-    // ローカルストアをクリア
-    clearHistory();
-    clearPlayers();
+    // ローカルストアをクリア（共有セッションは Firestore document 削除済みなので、
+    // 残りのローカル zustand を空にしてから clearSession で離脱）
+    useGameStore.setState({ matchHistory: [], courts: [] });
+    usePlayerStore.setState({ players: [] });
+    useReservationStore.setState({ reservations: [] });
     clearUndo();
     clearRecords();
-    clearReservations();
     clearSession();
-    
+
     // PWAバッジをクリア
     await clearAppBadge();
-    
+
     navigate('/');
   };
 
@@ -160,11 +153,11 @@ export function SettingsPage() {
         console.error('Failed to delete session from Firestore:', error);
       }
     }
-    clearHistory();
-    clearPlayers();
+    useGameStore.setState({ matchHistory: [], courts: [] });
+    usePlayerStore.setState({ players: [] });
+    useReservationStore.setState({ reservations: [] });
     clearUndo();
     clearRecords();
-    clearReservations();
     clearSession();
     await clearAppBadge();
     navigate('/');
@@ -280,7 +273,7 @@ export function SettingsPage() {
                 {(['単', '複', '楽'] as const).map((type) => (
                   <button
                     key={type}
-                    onClick={() => setPracticeType(type)}
+                    onClick={() => void writer.setPracticeType(type)}
                     className={`flex-1 select-button text-xs px-2 ${
                       practiceType === type ? 'select-button-active' : 'select-button-inactive'
                     }`}
@@ -329,7 +322,7 @@ export function SettingsPage() {
               <label className="text-xs font-semibold text-gray-700 mb-1.5 block">勝敗記録</label>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setRecordScores(true)}
+                  onClick={() => void writer.setRecordScores(true)}
                   className={`flex-1 select-button text-xs px-2 ${
                     recordScores
                       ? 'select-button-active'
@@ -340,7 +333,7 @@ export function SettingsPage() {
                   ON
                 </button>
                 <button
-                  onClick={() => setRecordScores(false)}
+                  onClick={() => void writer.setRecordScores(false)}
                   className={`flex-1 select-button text-xs px-2 ${
                     !recordScores
                       ? 'select-button-active'

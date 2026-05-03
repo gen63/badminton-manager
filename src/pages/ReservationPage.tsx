@@ -5,6 +5,7 @@ import { useReservationStore } from '../stores/reservationStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
+import { useSessionWriter } from '../hooks/useSessionWriter';
 import { ReservationAddModal } from '../components/ReservationAddModal';
 import { BottomNav } from '../components/BottomNav';
 import { EmptyState } from '../components/EmptyState';
@@ -15,7 +16,8 @@ export function ReservationPage() {
   const { session, currentUser } = useSessionStore();
   const { players } = usePlayerStore();
   const { courts } = useGameStore();
-  const { reservations, addReservation, removeReservation } = useReservationStore();
+  const { reservations } = useReservationStore();
+  const writer = useSessionWriter();
   const [showAdd, setShowAdd] = useState(false);
   const [showFulfilled, setShowFulfilled] = useState(false);
 
@@ -42,8 +44,8 @@ export function ReservationPage() {
       <ReservationAddModal
         players={players}
         getPlayerName={getPlayerName}
-        onConfirm={(playerIds) => {
-          addReservation(playerIds, currentUser || undefined);
+        onConfirm={async (playerIds) => {
+          await writer.addReservation(playerIds, currentUser || undefined);
           setShowAdd(false);
         }}
         onCancel={() => setShowAdd(false)}
@@ -119,7 +121,7 @@ export function ReservationPage() {
                   </span>
                 </div>
                 <button
-                  onClick={() => removeReservation(reservation.id)}
+                  onClick={() => void writer.removeReservation(reservation.id)}
                   className="w-7 h-7 rounded-full hover:bg-red-100 text-muted-foreground hover:text-red-600 flex items-center justify-center transition-colors"
                 >
                   <Trash2 size={14} />

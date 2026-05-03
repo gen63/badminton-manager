@@ -252,6 +252,10 @@ export function computeSetAllPlayersResting(state: GameState): GameState {
   };
 }
 
+export function computeClearPlayers(state: GameState): GameState {
+  return { ...state, players: [] };
+}
+
 // =============================================================================
 // Courts: pure compute
 // =============================================================================
@@ -336,6 +340,13 @@ export function computeClearCourt(state: GameState, courtId: number): GameState 
   };
 }
 
+export function computeResetAllCourts(state: GameState): GameState {
+  return {
+    ...state,
+    courts: state.courts.map((c) => ({ ...c, ...EMPTY_COURT_STATE, restingPlayerIds: [] })),
+  };
+}
+
 // =============================================================================
 // Match history: pure compute
 // =============================================================================
@@ -368,6 +379,10 @@ export function computeUpdateMatchScore(
         : { ...m, scoreA, scoreB, winner };
     }),
   };
+}
+
+export function computeClearHistory(state: GameState): GameState {
+  return { ...state, matchHistory: [] };
 }
 
 // =============================================================================
@@ -519,6 +534,18 @@ export function startGame(sessionId: string, courtId: number) {
 
 export function clearCourt(sessionId: string, courtId: number) {
   return mutateGameState(sessionId, (s) => computeClearCourt(s, courtId));
+}
+
+export function resetAllCourts(sessionId: string) {
+  return mutateGameState(sessionId, computeResetAllCourts);
+}
+
+export function clearPlayers(sessionId: string) {
+  return mutateGameState(sessionId, computeClearPlayers);
+}
+
+export function clearHistory(sessionId: string) {
+  return mutateGameState(sessionId, computeClearHistory);
 }
 
 export function addMatch(sessionId: string, match: Match) {
