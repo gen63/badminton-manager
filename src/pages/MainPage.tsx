@@ -1248,6 +1248,9 @@ export function MainPage() {
             const allInA = winnerIds.every((id) => teamASet.has(id));
             const allInB = winnerIds.every((id) => teamBSet.has(id));
             if (!allInA && !allInB) {
+              // WINNER1 fix: WinnerSelectModal 側で異チーム選択は予防済みだが、
+              // 万一呼ばれた場合は無言で閉じずトースト通知してスコア未保存を可視化する。
+              toast.error('勝者が同じチームではありません。スコアは記録されませんでした');
               setPendingScoreMatch(null);
               return;
             }
