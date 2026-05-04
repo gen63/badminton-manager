@@ -169,20 +169,24 @@ export function SettingsPage() {
     navigate('/');
   };
 
-  const updateAdmins = async (updatedAdmins: string[]) => {
-    if (!session.id) return;
+  // ADMIN1 fix: 失敗時に選択内容を維持できるよう成否を返す
+  const updateAdmins = async (updatedAdmins: string[]): Promise<boolean> => {
+    if (!session.id) return false;
     try {
       await updateFirebaseSession(session.id, { admins: updatedAdmins });
       useSessionStore.getState().updateSession({ admins: updatedAdmins });
+      return true;
     } catch (error) {
       console.error('Failed to update admins:', error);
       toast.error('管理者の更新に失敗しました');
+      return false;
     }
   };
 
   const handleAddAdmins = async () => {
     if (selectedAdmins.length === 0) return;
-    await updateAdmins([...(session.admins || []), ...selectedAdmins]);
+    const ok = await updateAdmins([...(session.admins || []), ...selectedAdmins]);
+    if (!ok) return; // 失敗時はモーダルと選択を維持してリトライできるようにする
     setSelectedAdmins([]);
     setShowAddAdminModal(false);
   };

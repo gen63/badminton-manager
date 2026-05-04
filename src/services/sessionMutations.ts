@@ -178,7 +178,28 @@ export function computeAddPlayers(
 }
 
 export function computeRemovePlayer(state: GameState, playerId: string): GameState {
-  return { ...state, players: state.players.filter((p) => p.id !== playerId) };
+  // DATA1 fix: プレイヤーを消すときに court / reservation の参照も整合的に更新する。
+  // - court.teamA / teamB の該当 slot を空文字に
+  // - court.restingPlayerIds から除外
+  // - reservation.playerIds から除外し、空になった予約は削除
+  // matchHistory はそのまま（履歴上の名前は表示時に「未設定」フォールバック）。
+  const blankTeam = (team: [string, string]): [string, string] => [
+    team[0] === playerId ? '' : team[0],
+    team[1] === playerId ? '' : team[1],
+  ];
+  return {
+    ...state,
+    players: state.players.filter((p) => p.id !== playerId),
+    courts: state.courts.map((c) => ({
+      ...c,
+      teamA: blankTeam(c.teamA),
+      teamB: blankTeam(c.teamB),
+      restingPlayerIds: c.restingPlayerIds?.filter((id) => id !== playerId),
+    })),
+    reservations: state.reservations
+      .map((r) => ({ ...r, playerIds: r.playerIds.filter((id) => id !== playerId) }))
+      .filter((r) => r.playerIds.length > 0),
+  };
 }
 
 export function computeUpdatePlayer(
@@ -434,6 +455,17 @@ export function computeAddReservation(
   now: number,
   createdBy?: string,
 ): GameState {
+  // DATA4 fix: 重複 ID を除き、存在しない / 空文字 ID も除く。空になったら no-op。
+  const validIds = new Set(state.players.map((p) => p.id));
+  const dedup: string[] = [];
+  const seen = new Set<string>();
+  for (const pid of playerIds) {
+    if (!pid || !validIds.has(pid) || seen.has(pid)) continue;
+    seen.add(pid);
+    dedup.push(pid);
+  }
+  if (dedup.length === 0) return state;
+
   const maxOrder = state.reservations.reduce(
     (max, r) => Math.max(max, r.orderNumber ?? 0),
     0,
@@ -441,7 +473,7 @@ export function computeAddReservation(
   const reservation: Reservation = {
     id,
     orderNumber: maxOrder + 1,
-    playerIds,
+    playerIds: dedup,
     status: 'pending',
     createdAt: now,
     fulfilledAt: 0,
@@ -462,10 +494,13 @@ export function computeFulfillReservation(
   reservationId: string,
   now: number = Date.now(),
 ): GameState {
+  // RES1 fix: 既に fulfilled な予約に再度呼ばれても fulfilledAt を上書きしない
   return {
     ...state,
     reservations: state.reservations.map((r) =>
-      r.id === reservationId ? { ...r, status: 'fulfilled', fulfilledAt: now } : r,
+      r.id === reservationId && r.status === 'pending'
+        ? { ...r, status: 'fulfilled', fulfilledAt: now }
+        : r,
     ),
   };
 }
@@ -818,7 +853,13 @@ export async function finishMatchAndContinue(
   courtId: number,
   matchStartedAt: number,
   options: FinishGameOptions,
-): Promise<{ result: 'success' | 'already_finished'; writtenState?: GameState }> {
+): Promise<{
+  result: 'success' | 'already_finished';
+  writtenState?: GameState;
+  /** 連続モード配置の結果（成功 / ブロック理由）。GAMEOPS4: 呼び出し側で toast 表示用。 */
+  continuousNextApplied?: boolean;
+  continuousError?: string;
+}> {
   if (matchStartedAt <= 0) {
     throw new SessionError(
       'matchStartedAt が無効です（試合が開始されていません）',
@@ -846,17 +887,22 @@ export async function finishMatchAndContinue(
 
       const remoteSettings = remote.settings;
       const gameMode = gameModeFromPracticeType(remoteSettings?.practiceType);
-      const next = computeFinishAndContinue(remote, courtId, {
+      const computed = computeFinishAndContinue(remote, courtId, {
         continuousMatchMode: remoteSettings?.continuousMatchMode ?? false,
         useStayDurationPriority: options.useStayDurationPriority,
         prioritizeDiversity: options.prioritizeDiversity,
         gameMode,
         matchId: options.matchId,
-      }).newState;
+      });
 
-      transaction.update(ref, buildGameStatePayload(next));
+      transaction.update(ref, buildGameStatePayload(computed.newState));
 
-      return { result: 'success' as const, writtenState: next };
+      return {
+        result: 'success' as const,
+        writtenState: computed.newState,
+        continuousNextApplied: computed.continuousNextApplied,
+        continuousError: computed.continuousError,
+      };
     });
   } catch (error: unknown) {
     if ((error as { code?: string })?.code === 'aborted') {

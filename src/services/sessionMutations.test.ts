@@ -161,6 +161,38 @@ describe('sessionMutations - players', () => {
     expect(next.players.map((p) => p.id)).toEqual(['b']);
   });
 
+  it('computeRemovePlayer: コート上のプレイヤー参照を空にする (DATA1)', () => {
+    const state = baseState({
+      players: [makePlayer('a'), makePlayer('b'), makePlayer('c'), makePlayer('d')],
+      courts: [
+        makeCourt(1, {
+          teamA: ['a', 'b'],
+          teamB: ['c', 'd'],
+          restingPlayerIds: ['a'],
+        }),
+      ],
+    });
+    const next = computeRemovePlayer(state, 'a');
+    expect(next.courts[0].teamA).toEqual(['', 'b']);
+    expect(next.courts[0].teamB).toEqual(['c', 'd']);
+    expect(next.courts[0].restingPlayerIds).toEqual([]);
+  });
+
+  it('computeRemovePlayer: 予約から削除し、空になった予約は破棄 (DATA1)', () => {
+    const state = baseState({
+      players: [makePlayer('a'), makePlayer('b')],
+      reservations: [
+        { id: 'r1', orderNumber: 1, playerIds: ['a', 'b'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+        { id: 'r2', orderNumber: 2, playerIds: ['a'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+      ],
+    });
+    const next = computeRemovePlayer(state, 'a');
+    // r1 は b だけ残る
+    expect(next.reservations.find((r) => r.id === 'r1')?.playerIds).toEqual(['b']);
+    // r2 は空になるので破棄
+    expect(next.reservations.find((r) => r.id === 'r2')).toBeUndefined();
+  });
+
   it('computeUpdatePlayer', () => {
     const state = baseState({ players: [makePlayer('a', { name: 'Alice' })] });
     const next = computeUpdatePlayer(state, 'a', { name: 'Alice2', gender: 'F' });
@@ -463,6 +495,7 @@ describe('sessionMutations - match history', () => {
 describe('sessionMutations - reservations', () => {
   it('computeAddReservation: orderNumber は max+1', () => {
     const state = baseState({
+      players: [makePlayer('p1'), makePlayer('p2'), makePlayer('p3')],
       reservations: [
         { id: 'r1', orderNumber: 5, playerIds: ['p1'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
       ],
@@ -478,6 +511,26 @@ describe('sessionMutations - reservations', () => {
       fulfilledAt: 0,
       createdBy: 'admin',
     });
+  });
+
+  it('computeAddReservation: 重複 ID / 存在しない ID / 空文字を弾く (DATA4)', () => {
+    const state = baseState({
+      players: [makePlayer('p1'), makePlayer('p2')],
+    });
+    const next = computeAddReservation(
+      state,
+      ['p1', 'p1', 'ghost', '', 'p2'],
+      'r1',
+      1000,
+    );
+    expect(next.reservations).toHaveLength(1);
+    expect(next.reservations[0].playerIds).toEqual(['p1', 'p2']);
+  });
+
+  it('computeAddReservation: 全部無効なら no-op', () => {
+    const state = baseState({ players: [makePlayer('p1')] });
+    const next = computeAddReservation(state, ['ghost', ''], 'r1', 1000);
+    expect(next).toBe(state);
   });
 
   it('computeRemoveReservation', () => {

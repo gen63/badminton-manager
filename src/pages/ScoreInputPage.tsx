@@ -22,9 +22,15 @@ export function ScoreInputPage() {
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
   
-  const [scoreA, setScoreA] = useState(0);
-  const [scoreB, setScoreB] = useState(0);
-  const [inputHistory, setInputHistory] = useState<string[]>([]);
+  // SCORE1 fix: 編集モードでは既存スコアを初期値に。新規記録（scoreA=0,
+  // scoreB=0, winner なし）の場合は空からスタート。
+  const hasExistingScore =
+    !!match && !(match.scoreA === 0 && match.scoreB === 0 && !match.winner);
+  const [scoreA, setScoreA] = useState(() => match?.scoreA ?? 0);
+  const [scoreB, setScoreB] = useState(() => match?.scoreB ?? 0);
+  const [inputHistory, setInputHistory] = useState<string[]>(() =>
+    hasExistingScore ? [String(match!.scoreA), String(match!.scoreB)] : [],
+  );
   const [selectedPlayer, setSelectedPlayer] = useState<{
     position: number;
   } | null>(null);

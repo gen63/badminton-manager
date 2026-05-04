@@ -388,8 +388,9 @@ export function AccountingCalcPage() {
                   <input
                     type="number"
                     value={maleFee || ''}
+                    min="0"
                     onChange={(e) => {
-                      const v = parseInt(e.target.value) || 0;
+                      const v = Math.max(0, parseInt(e.target.value, 10) || 0);
                       setMaleFee(v);
                       saveAll({ maleFee: v });
                     }}
@@ -412,7 +413,7 @@ export function AccountingCalcPage() {
                   type="number"
                   value={maleCount || ''}
                   onChange={(e) => {
-                    const newValue = Math.max(0, parseInt(e.target.value) || 0);
+                    const newValue = Math.max(0, parseInt(e.target.value, 10) || 0);
                     setMaleCount(newValue);
                     saveAll({ maleCount: newValue });
                   }}
@@ -444,8 +445,9 @@ export function AccountingCalcPage() {
                   <input
                     type="number"
                     value={femaleFee || ''}
+                    min="0"
                     onChange={(e) => {
-                      const v = parseInt(e.target.value) || 0;
+                      const v = Math.max(0, parseInt(e.target.value, 10) || 0);
                       setFemaleFee(v);
                       saveAll({ femaleFee: v });
                     }}
@@ -468,7 +470,7 @@ export function AccountingCalcPage() {
                   type="number"
                   value={femaleCount || ''}
                   onChange={(e) => {
-                    const newValue = Math.max(0, parseInt(e.target.value) || 0);
+                    const newValue = Math.max(0, parseInt(e.target.value, 10) || 0);
                     setFemaleCount(newValue);
                     saveAll({ femaleCount: newValue });
                   }}
@@ -492,7 +494,7 @@ export function AccountingCalcPage() {
                   type="number"
                   value={exemptCount || ''}
                   onChange={(e) => {
-                    const newValue = Math.max(0, parseInt(e.target.value) || 0);
+                    const newValue = Math.max(0, parseInt(e.target.value, 10) || 0);
                     setExemptCount(newValue);
                     saveAll({ exemptCount: newValue });
                   }}
@@ -529,8 +531,9 @@ export function AccountingCalcPage() {
                   <input
                     type="number"
                     value={gymCost || ''}
+                    min="0"
                     onChange={(e) => {
-                      const v = parseInt(e.target.value) || 0;
+                      const v = Math.max(0, parseInt(e.target.value, 10) || 0);
                       setGymCost(v);
                       saveAll({ gymCost: v });
                     }}
@@ -563,8 +566,9 @@ export function AccountingCalcPage() {
                   <input
                     type="number"
                     value={shuttlePrice || ''}
+                    min="0"
                     onChange={(e) => {
-                      const v = parseInt(e.target.value) || 0;
+                      const v = Math.max(0, parseInt(e.target.value, 10) || 0);
                       setShuttlePrice(v);
                       saveAll({ shuttlePrice: v });
                     }}
@@ -646,7 +650,7 @@ export function AccountingCalcPage() {
                       type="number"
                       value={Math.abs(otherAmount) || ''}
                       onChange={(e) => {
-                        const absValue = Math.abs(parseInt(e.target.value) || 0);
+                        const absValue = Math.abs(parseInt(e.target.value, 10) || 0);
                         const newValue = otherAmount < 0 ? -absValue : absValue;
                         setOtherAmount(newValue);
                         saveAll({ otherAmount: newValue });

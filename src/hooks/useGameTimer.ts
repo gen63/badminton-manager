@@ -10,11 +10,18 @@ export function useGameTimer(startedAt: number | null, isPlaying: boolean) {
   useEffect(() => {
     if (!isPlaying || !startedAt) return;
 
+    // TIMER1 fix: 初回 interval 発火 (1s) までの間、古い `now` が使われて elapsed が
+    // 一瞬ズレる。マイクロタスクで 1 回 tick して即座に再 render させる。
+    // (setState in effect lint を避けるため setTimeout に包む)
+    const initial = setTimeout(() => setNow(Date.now()), 0);
     const interval = setInterval(() => {
       setNow(Date.now());
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
   }, [startedAt, isPlaying]);
 
   const elapsed = isPlaying && startedAt ? Math.max(0, now - startedAt) : 0;

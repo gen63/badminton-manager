@@ -39,15 +39,26 @@ export function SessionSelectPage() {
   useEffect(() => {
     if (!isFirebaseConfigured()) return;
 
+    // SESSION1 fix: devMode 切替中に古い fetch が後から resolve すると
+    // 新リストを上書きしてしまうので cancelled フラグで遮断する。
+    let cancelled = false;
     listRecentActiveSessions(50, { includeArchived: devMode })
       .then((data) => {
+        if (cancelled) return;
         setSessions(data);
       })
       .catch((err) => {
+        if (cancelled) return;
         console.error('[SessionSelect] Failed to fetch sessions:', err);
         setError('セッション一覧の取得に失敗しました');
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [devMode]);
 
   // Firebase未設定時はローカルモードにリダイレクト（レンダーで即時、フラッシュなし）

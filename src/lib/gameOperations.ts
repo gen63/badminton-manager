@@ -181,12 +181,30 @@ export function computeFinishAndContinue(
     }
   }
 
+  // GAMEOPS1: 連続配置で消化された予約を fulfilled マークする。
+  // (handleAutoAssign と同じロジックを composite に組み込む)
+  let updatedReservations = state.reservations;
+  if (continuousNextApplied) {
+    const placedCourt = updatedCourts.find(c => c.id === courtId);
+    if (placedCourt) {
+      const placedIds = new Set(
+        [...placedCourt.teamA, ...placedCourt.teamB].filter(id => id && id.trim()),
+      );
+      const fulfilledNow = now;
+      updatedReservations = state.reservations.map(r =>
+        r.status === 'pending' && r.playerIds.every(id => placedIds.has(id))
+          ? { ...r, status: 'fulfilled' as const, fulfilledAt: fulfilledNow }
+          : r,
+      );
+    }
+  }
+
   return {
     newState: {
       players: updatedPlayers,
       courts: updatedCourts,
       matchHistory: updatedMatchHistory,
-      reservations: state.reservations,
+      reservations: updatedReservations,
     },
     continuousNextApplied,
     continuousError,

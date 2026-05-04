@@ -8,6 +8,9 @@ export interface UndoEntry {
   players: Player[];
   matchHistory: Match[];
   reservations?: Reservation[];
+  /** sync 系の設定。snapshot 後にユーザーが変えても undo で巻き戻したい */
   continuousMatchMode?: boolean;
+  recordScores?: boolean;
+  practiceType?: '単' | '複' | '楽';
   timestamp: number;
 }

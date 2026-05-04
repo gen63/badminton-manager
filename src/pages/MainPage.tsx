@@ -111,12 +111,16 @@ export function MainPage() {
 
   // モーダル表示中にsession.informationが更新されたら、メンバー閲覧時のみ同期
   // 管理者の編集中テキストは上書きしない
+  // INFO2 fix: 管理者が text を更新すると readBy がリセットされる仕様のため、
+  // メンバーは閲覧中に新 text に切り替わったタイミングで再度 markRead する。
+  // しないと「読んでいる最中の更新」で閉じた後に未読バッジが復活する。
   useEffect(() => {
     if (showInformationModal && session?.information?.text && !isAdmin()) {
       setInformationText(session.information.text);
+      void markInformationAsRead();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- isAdmin is a stable Zustand selector
-  }, [session?.information?.text, showInformationModal]);
+  }, [session?.information?.text, showInformationModal, markInformationAsRead]);
 
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -829,7 +833,7 @@ export function MainPage() {
                             const teamBSnapshot = currentCourt.teamB;
 
                             try {
-                              const { result } = await sm.finishMatchAndContinue(
+                              const res = await sm.finishMatchAndContinue(
                                 session.id,
                                 court.id,
                                 matchStartedAt,
@@ -839,9 +843,19 @@ export function MainPage() {
                                   prioritizeDiversity,
                                 },
                               );
-                              if (result === 'already_finished') {
+                              if (res.result === 'already_finished') {
                                 toast.info('他のユーザーが既に終了しました');
                                 return;
+                              }
+                              // GAMEOPS4: 連続モードがブロックされた理由をユーザーに伝える
+                              if (continuousMatchMode && !res.continuousNextApplied) {
+                                if (res.continuousError === 'diversity_block') {
+                                  toast.warning('待機人数が少ないため連続モードを停止しました');
+                                } else if (res.continuousError === 'not_enough_players') {
+                                  toast.info('待機中のプレイヤーが足りないため次の試合は配置されません');
+                                } else if (res.continuousError === 'assignment_failed') {
+                                  toast.error('連続配置に失敗しました');
+                                }
                               }
                             } catch (err) {
                               console.error('[FinishGame] Transaction failed:', err);
@@ -1238,6 +1252,9 @@ export function MainPage() {
             const allInA = winnerIds.every((id) => teamASet.has(id));
             const allInB = winnerIds.every((id) => teamBSet.has(id));
             if (!allInA && !allInB) {
+              // WINNER1 fix: WinnerSelectModal 側で異チーム選択は予防済みだが、
+              // 万一呼ばれた場合は無言で閉じずトースト通知してスコア未保存を可視化する。
+              toast.error('勝者が同じチームではありません。スコアは記録されませんでした');
               setPendingScoreMatch(null);
               return;
             }

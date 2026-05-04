@@ -178,7 +178,7 @@ describe('getStreaks', () => {
   });
 
   it('1勝で連勝1', () => {
-    // matchHistoryは新しい順（先頭が最新）
+    // matchHistory は古い順（先頭が最も古い、末尾が最新）
     const matches = [
       createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15),
     ];
@@ -190,10 +190,10 @@ describe('getStreaks', () => {
   });
 
   it('二連勝で連勝2', () => {
-    // 新しい順: match2が先頭
+    // 古い順: match1 が先頭、match2（最新）が末尾
     const matches = [
+      createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15), // 1試合目（古）
       createMatch(['p1', 'p2'], ['p5', 'p6'], 21, 15), // 2試合目（最新）
-      createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15), // 1試合目
     ];
     const streaks = getStreaks(matches);
     expect(streaks.get('p1')).toBe(2);
@@ -202,8 +202,8 @@ describe('getStreaks', () => {
 
   it('勝ち→負けで連勝リセット', () => {
     const matches = [
+      createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15), // 1試合目: p1勝ち（古）
       createMatch(['p3', 'p4'], ['p1', 'p2'], 21, 15), // 2試合目: p1負け（最新）
-      createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15), // 1試合目: p1勝ち
     ];
     const streaks = getStreaks(matches);
     expect(streaks.get('p1')).toBe(-1);
@@ -211,12 +211,23 @@ describe('getStreaks', () => {
 
   it('三連勝で連勝3', () => {
     const matches = [
-      createMatch(['p1', 'p2'], ['p7', 'p8'], 21, 15), // 3試合目（最新）
+      createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15), // 1試合目（古）
       createMatch(['p1', 'p2'], ['p5', 'p6'], 21, 15), // 2試合目
-      createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15), // 1試合目
+      createMatch(['p1', 'p2'], ['p7', 'p8'], 21, 15), // 3試合目（最新）
     ];
     const streaks = getStreaks(matches);
     expect(streaks.get('p1')).toBe(3);
+  });
+
+  it('負け→勝ち→勝ち の場合、連勝 2（直近 2 試合勝ち）', () => {
+    // 順序バグの retort case
+    const matches = [
+      createMatch(['p3', 'p4'], ['p1', 'p2'], 21, 15), // 1試合目: p1負け（古）
+      createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15), // 2試合目: p1勝ち
+      createMatch(['p1', 'p2'], ['p5', 'p6'], 21, 15), // 3試合目: p1勝ち（最新）
+    ];
+    const streaks = getStreaks(matches);
+    expect(streaks.get('p1')).toBe(2);
   });
 });
 
@@ -278,10 +289,10 @@ describe('applyStreakSwaps', () => {
   });
 
   it('二連勝で1つ上+グループ1つ分上に移動', () => {
-    // D が二連勝: matchHistoryは新しい順
+    // D が二連勝: matchHistory は古い順（先頭が最も古い）
     const matches = [
+      createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 1試合目（古）
       createMatch(['D', 'X'], ['Y', 'Z'], 21, 15), // 2試合目（最新）
-      createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 1試合目
     ];
     const order = applyStreakSwaps(
       ['A', 'B', 'C', 'D', 'E', 'F'],
@@ -295,8 +306,8 @@ describe('applyStreakSwaps', () => {
   it('二連敗でceil(gs/2)ずつ下に移動', () => {
     // D が二連敗 (stepSize=2, dropAmount=ceil(2/2)=1)
     const matches = [
+      createMatch(['W', 'V'], ['D', 'X'], 21, 15), // 1試合目（古）
       createMatch(['Y', 'Z'], ['D', 'X'], 21, 15), // 2試合目（最新）
-      createMatch(['W', 'V'], ['D', 'X'], 21, 15), // 1試合目
     ];
     const order = applyStreakSwaps(
       ['A', 'B', 'C', 'D', 'E', 'F'],
@@ -309,9 +320,9 @@ describe('applyStreakSwaps', () => {
 
   it('三連勝で1勝+2連勝+1勝の移動', () => {
     const matches = [
-      createMatch(['D', 'X'], ['Y', 'Z'], 21, 15), // 3試合目（最新）
+      createMatch(['D', 'X'], ['U', 'T'], 21, 15), // 1試合目（古）
       createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 2試合目
-      createMatch(['D', 'X'], ['U', 'T'], 21, 15), // 1試合目
+      createMatch(['D', 'X'], ['Y', 'Z'], 21, 15), // 3試合目（最新）
     ];
     const order = applyStreakSwaps(
       ['A', 'B', 'C', 'D', 'E', 'F'],
@@ -325,10 +336,10 @@ describe('applyStreakSwaps', () => {
 
   it('四連勝でも既にtopなら変化なし', () => {
     const matches = [
-      createMatch(['D', 'X'], ['Y', 'Z'], 21, 15), // 4試合目（最新）
-      createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 3試合目
+      createMatch(['D', 'X'], ['S', 'R'], 21, 15), // 1試合目（古）
       createMatch(['D', 'X'], ['U', 'T'], 21, 15), // 2試合目
-      createMatch(['D', 'X'], ['S', 'R'], 21, 15), // 1試合目
+      createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 3試合目
+      createMatch(['D', 'X'], ['Y', 'Z'], 21, 15), // 4試合目（最新）
     ];
     const order = applyStreakSwaps(
       ['A', 'B', 'C', 'D', 'E', 'F'],
@@ -340,8 +351,8 @@ describe('applyStreakSwaps', () => {
 
   it('最上位での二連勝は変化なし', () => {
     const matches = [
-      createMatch(['A', 'X'], ['Y', 'Z'], 21, 15),
       createMatch(['A', 'X'], ['W', 'V'], 21, 15),
+      createMatch(['A', 'X'], ['Y', 'Z'], 21, 15),
     ];
     const order = applyStreakSwaps(
       ['A', 'B', 'C'],
@@ -353,8 +364,8 @@ describe('applyStreakSwaps', () => {
 
   it('最下位での敗北はそれ以上下がらない', () => {
     const matches = [
-      createMatch(['Y', 'Z'], ['C', 'X'], 21, 15),
       createMatch(['W', 'V'], ['C', 'X'], 21, 15),
+      createMatch(['Y', 'Z'], ['C', 'X'], 21, 15),
     ];
     const order = applyStreakSwaps(
       ['A', 'B', 'C'],
@@ -366,8 +377,8 @@ describe('applyStreakSwaps', () => {
 
   it('勝ち→負けで上昇分を降下が相殺', () => {
     const matches = [
+      createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 1試合目: D勝ち（古）
       createMatch(['Y', 'Z'], ['D', 'X'], 21, 15), // 2試合目: D負け（最新）
-      createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 1試合目: D勝ち
     ];
     const order = applyStreakSwaps(
       ['A', 'B', 'C', 'D', 'E', 'F'],
