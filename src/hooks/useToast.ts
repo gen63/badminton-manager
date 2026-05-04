@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import type { ToastType } from '../components/Toast';
 
 interface ToastState {
@@ -20,13 +20,16 @@ export function useToast() {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
-  return {
-    toasts,
-    showToast,
-    hideToast,
-    success: (message: string, duration?: number) => showToast(message, 'success', duration),
-    error: (message: string, duration?: number) => showToast(message, 'error', duration),
-    info: (message: string, duration?: number) => showToast(message, 'info', duration),
-    warning: (message: string, duration?: number) => showToast(message, 'warning', duration),
-  };
+  // TOAST1 fix: success/error/info/warning を memoize しないと、戻り値が毎
+  // レンダー新オブジェクトになる。useToastErrorHandler が toast を dep にする
+  // ので、毎レンダー writer の callback 全部が再生成されていた。
+  const success = useCallback((message: string, duration?: number) => showToast(message, 'success', duration), [showToast]);
+  const error = useCallback((message: string, duration?: number) => showToast(message, 'error', duration), [showToast]);
+  const info = useCallback((message: string, duration?: number) => showToast(message, 'info', duration), [showToast]);
+  const warning = useCallback((message: string, duration?: number) => showToast(message, 'warning', duration), [showToast]);
+
+  return useMemo(
+    () => ({ toasts, showToast, hideToast, success, error, info, warning }),
+    [toasts, showToast, hideToast, success, error, info, warning],
+  );
 }
