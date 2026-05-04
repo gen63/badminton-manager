@@ -15,6 +15,7 @@ import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { timestampToMillis } from '../lib/firestoreUtils';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
@@ -31,20 +32,8 @@ const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 /** 試合開始通知の重複防止（プロセス全体で共有） */
 const notifiedMatches = new Set<string>();
 
-/** Firestore Timestamp / number / { seconds } のいずれかから ms を取り出す */
-function timestampToMillis(value: unknown): number {
-  if (typeof value === 'number') return value;
-  if (value && typeof value === 'object') {
-    const seconds = (value as { seconds?: number }).seconds;
-    if (typeof seconds === 'number') return seconds * 1000;
-  }
-  return 0;
-}
-
 export function useFirebaseSync() {
-  const session = useSessionStore((s) => s.session);
-  const sessionId = session?.id;
-  const isShared = !!session?.createdBy;
+  const sessionId = useSessionStore((s) => s.session?.id);
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -59,8 +48,8 @@ export function useFirebaseSync() {
   const sessionDeletedNotified = useRef(false);
 
   useEffect(() => {
-    if (!isShared || !sessionId || !db) {
-      // 非共有ではローダーは即「読み込み済み」扱い（待機する Firestore がない）
+    if (!sessionId || !db) {
+      // セッション未選択 / Firebase 未設定では「読み込み済み」扱い（待機する Firestore なし）
       useSyncStatusStore.getState().setGameStateLoaded(true);
       return;
     }
@@ -170,7 +159,7 @@ export function useFirebaseSync() {
       // 通知済みセットはセッション切替時にクリア（新セッションでは再通知してよい）
       notifiedMatches.clear();
     };
-  }, [isShared, sessionId]);
+  }, [sessionId]);
 }
 
 /** 自分がメンバーのコートで試合が新規開始されたら通知を出す */

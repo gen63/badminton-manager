@@ -19,7 +19,7 @@
   - 履歴画面から試合結果をアップロード
 - ✅ **チェックイン** - 全員休憩で開始、到着した人を待機に切り替え
 - ✅ **お知らせ機能** - 管理者アナウンス + 参加者の既読管理
-- ✅ **LocalStorage保存** - ブラウザ内でデータ永続化（ローカルモード）
+- ✅ **オフライン対応** - Firestore SDK の IndexedDB cache で読み取り可（書き込みは復帰待ち）
 
 #### コート配置
 - ✅ **自動配置機能**
@@ -114,8 +114,8 @@
   - React Router v7（ルーティング）
 
 - **データ保存**
-  - LocalStorage（Phase 0）
-  - Firebase Firestore（オンラインモード用）
+  - Firebase Firestore（真実のソース、`runTransaction` 駆動）
+  - Firestore SDK の IndexedDB cache でオフライン読み取り対応
 
 - **その他**
   - Firebase（Firestore リアルタイム同期）
@@ -437,5 +437,5 @@ Gen (@genzwift)
 
 ---
 
-**開発状況**: ローカルモード + オンラインモード（Firebase同期）実装済み
-**最終更新**: 2026-03-10
+**開発状況**: Firestore 一本化（Phase 1-5 リファクタ完了、ローカルモード廃止）
+**最終更新**: 2026-05-04

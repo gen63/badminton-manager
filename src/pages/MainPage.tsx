@@ -36,16 +36,12 @@ export function MainPage() {
   const navigate = useNavigate();
   const { session, updateConfig, currentUser, isAdmin, updateInformation, markInformationAsRead } = useSessionStore();
 
-  // オンラインモード時のリアルタイム同期
-  const isSharedSession = !!session?.createdBy;
-  useRealtimeSession(isSharedSession ? session?.id ?? null : null);
-  usePresence(isSharedSession ? session?.id ?? null : null, currentUser);
+  // セッションのリアルタイム同期 / プレゼンス
+  useRealtimeSession(session?.id ?? null);
+  usePresence(session?.id ?? null, currentUser);
   const remotePresence = usePresenceStore((s) => s.remotePresence);
   const toast = useToast();
-  // 書き込みは useSessionWriter（共有時は sessionMutations.X 経由のトランザクション、
-  // 非共有時は zustand store action にフォールバック）。エラーは既存の toast に通知。
-  // 旧 useFirebaseSyncContext の prepare/completeDirectTransaction / pushImmediate は
-  // Phase 2 でこのフックに置換済み（Phase 3 で context 自体を撤廃）。
+  // 書き込みは sessionMutations.X 経由のトランザクション。エラーは toast に通知。
   const writer = useSessionWriterWithToast(toast);
   const isGameStateLoaded = useSyncStatusStore((s) => s.isGameStateLoaded);
   const { players } = usePlayerStore();
@@ -655,7 +651,7 @@ export function MainPage() {
       </header>
 
       {/* プレゼンス表示（他ユーザーが画面を開いている/操作中のとき） */}
-      {isSharedSession && (
+      {session?.id && (
         <div className="flex justify-center px-4 pt-2 pointer-events-none">
           <PresenceIndicator presence={remotePresence} currentUser={currentUser} />
         </div>

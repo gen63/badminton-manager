@@ -15,10 +15,8 @@ interface PlayerState {
   updatePlayer: (id: string, updates: Partial<Player>) => void;
   clearPlayers: () => void;
   toggleOperationStatus: (id: string, field: 'payment' | 'roster' | 'checkin') => void;
-  setPaymentAmount: (id: string, amount: number) => void;
   /**
    * 支払い情報を 1 setState で原子的に更新する（金額・payment トグル・timestamp）。
-   * `setPaymentAmount` → `toggleOperationStatus` の 2-step 呼び出しを置き換える。
    */
   applyPayment: (id: string, amount: number) => void;
   /**
@@ -123,12 +121,6 @@ export const usePlayerStore = create<PlayerState>()((set, get) => ({
           ...updates,
         };
       }),
-    })),
-  setPaymentAmount: (id, amount) =>
-    set((state) => ({
-      players: state.players.map((p) =>
-        p.id === id ? { ...p, paymentAmount: amount } : p
-      ),
     })),
   applyPayment: (id, amount) =>
     set((state) => ({

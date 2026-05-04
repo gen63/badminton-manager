@@ -7,6 +7,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
+import { EMPTY_COURT_STATE } from '../types/court';
 import { parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { clearPresence, createSession, leaveSession } from '../services/sessionService';
@@ -73,7 +74,6 @@ export function SessionCreate() {
   const [selectedCreatorName, setSelectedCreatorName] = useState('');
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
   const { addPlayers } = usePlayerStore();
-  const initializeCourts = useGameStore((state) => state.initializeCourts);
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType, setPracticeType } = useSettingsStore();
@@ -123,64 +123,45 @@ export function SessionCreate() {
     if (result.success) {
       // 入力欄に名前があるかチェック
       const hasInputNames = playerNames.trim().length > 0;
-      
-      let inputs: { name: string; rating?: number; gender?: 'M' | 'F' }[];
-      let hasAllRatings = false;
-      
+
       if (!hasInputNames) {
-        // パターン1: 入力欄が空 → 今まで通り全データ取得
+        // パターン1: 入力欄が空 → Sheets の全メンバーをそのまま入力欄に流し込む
         setPlayerNames(membersToText(result.members));
-        hasAllRatings = result.members.length > 0 &&
+        const allRated = result.members.length > 0 &&
           result.members.every(m => m.rating != null && m.rating >= 1);
-        
-        inputs = result.members.map((member) => ({
-          name: member.name,
-          rating: member.rating,
-          gender: member.gender,
-        }));
+        setAllRated(allRated);
       } else {
-        // パターン2: 入力欄に名前あり → 性別だけを補完
+        // パターン2: 入力欄に名前あり → Sheets の性別情報で入力欄を補完
         const inputLines = playerNames
           .split('\n')
           .map(line => parsePlayerInput(line))
           .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
-        
-        // Sheetsから取得した性別情報でマッチング
+
         const sheetsMembersMap = new Map(
           result.members.map(m => [m.name, m.gender])
         );
-        
-        inputs = inputLines.map((input) => {
+
+        const merged = inputLines.map((input) => {
           const genderFromSheets = sheetsMembersMap.get(input.name);
           return {
             name: input.name,
-            rating: input.rating, // 入力済みのレーティングがあればそれを使う（なければundefined）
-            gender: input.gender || genderFromSheets, // 入力済みの性別優先、なければSheetsから補完
+            rating: input.rating,
+            gender: input.gender || genderFromSheets,
           };
         });
-        
-        // 入力欄を更新（性別が補完された状態）
-        const updatedText = inputs.map((input) => {
+
+        const updatedText = merged.map((input) => {
           const parts = [input.name];
-          if (input.gender) {
-            parts.push(input.gender === 'M' ? '男' : '女');
-          }
-          if (input.rating) {
-            parts.push(String(input.rating));
-          }
+          if (input.gender) parts.push(input.gender === 'M' ? '男' : '女');
+          if (input.rating) parts.push(String(input.rating));
           return parts.join('  ');
         }).join('\n');
         setPlayerNames(updatedText);
-        
-        hasAllRatings = false; // 名前入力モードではレーティングは不要
+        setAllRated(false); // 名前入力モードではレーティングは不要
       }
-      
-      setAllRated(hasAllRatings);
-      
-      // Phase 4 では Firebase 必須なので auto-create による無名セッション作成は廃止。
-      // パターン 1（入力欄が空）でも、ユーザーが「作成」ボタンから handleCreate を
-      // 呼ぶ流れに統一する（作成者名選択モーダルを通って Firebase セッションを作る）。
-      setIsLoadingMembers(false);
+
+      // Phase 4 で auto-create を廃止したので auto-fetch は入力欄を埋めるだけ。
+      // ユーザーが「作成」ボタンを押すと handleCreate で Firebase セッションが作られる。
     } else {
       setLoadError(result.message);
     }
@@ -236,53 +217,48 @@ export function SessionCreate() {
     }
 
     // Firebase にセッション作成
-    {
-      try {
-        const creatorName = selectedCreatorName;
-        const registeredPlayers = playerInputs.map((p) => p.name);
-        const sessionId = await createSession({
-          config: sessionConfig,
-          createdBy: creatorName,
-          participants: [creatorName],
-          status: 'active',
-          registeredPlayers,
-        });
+    try {
+      const creatorName = selectedCreatorName;
+      const registeredPlayers = playerInputs.map((p) => p.name);
+      const sessionId = await createSession({
+        config: sessionConfig,
+        createdBy: creatorName,
+        participants: [creatorName],
+        status: 'active',
+        registeredPlayers,
+      });
 
-        initializeSession({
-          id: sessionId,
-          config: sessionConfig,
-          createdAt: now,
-          updatedAt: now,
-          createdBy: creatorName,
-          participants: [creatorName],
-          status: 'active',
-          registeredPlayers,
-        });
-        setCurrentUser(creatorName); // 自動入室
-        initializeCourts(adjustedCourtCount);
+      initializeSession({
+        id: sessionId,
+        config: sessionConfig,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: creatorName,
+        participants: [creatorName],
+        status: 'active',
+        registeredPlayers,
+      });
+      setCurrentUser(creatorName); // 自動入室
 
-        // 初期ゲーム状態をFirestoreにpush（参加者がすぐ取得できるように）
-        const { players } = usePlayerStore.getState();
-        const { courts, matchHistory } = useGameStore.getState();
-        const { recordScores: initialRecordScores, continuousMatchMode: initialContinuousMatchMode, practiceType: initialPracticeType } =
-          useSettingsStore.getState();
-        await initializeGameState(sessionId, {
-          players,
-          courts,
-          matchHistory,
-          reservations: [],
-          settings: {
-            recordScores: initialRecordScores,
-            continuousMatchMode: initialContinuousMatchMode,
-            practiceType: initialPracticeType,
-          },
-        });
+      // 初期 gameState を Firestore に書き込む（onSnapshot がローカルに反映する）
+      const initialCourts = Array.from({ length: adjustedCourtCount }, (_, i) => ({
+        id: i + 1,
+        ...EMPTY_COURT_STATE,
+      }));
+      const { recordScores, continuousMatchMode, practiceType } = useSettingsStore.getState();
+      const { players } = usePlayerStore.getState();
+      await initializeGameState(sessionId, {
+        players,
+        courts: initialCourts,
+        matchHistory: [],
+        reservations: [],
+        settings: { recordScores, continuousMatchMode, practiceType },
+      });
 
-        setCreatedSessionId(sessionId);
-        requestNotificationPermission();
-      } catch (err) {
-        setLoadError(getErrorMessage(err));
-      }
+      setCreatedSessionId(sessionId);
+      requestNotificationPermission();
+    } catch (err) {
+      setLoadError(getErrorMessage(err));
     }
   };
 

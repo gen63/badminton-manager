@@ -15,7 +15,7 @@ import { copyToClipboard } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, WifiOff, QrCode, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, QrCode, Copy, Check } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -37,16 +37,13 @@ export function SettingsPage() {
   const { clearRecords } = useAccountingStore();
   const writer = useSessionWriterWithToast(toast);
 
-  // オンラインモードかどうか
-  const isOnlineMode = !!session?.createdBy;
-
   if (!session) {
     navigate('/');
     return null;
   }
 
-  // オンラインモードで currentUser が未設定の場合はローディング
-  if (isOnlineMode && !currentUser) {
+  // currentUser が未設定の場合はローディング（参加直後の僅かな期間）
+  if (!currentUser) {
     return (
       <div className="bg-app h-screen flex items-center justify-center">
         <div className="text-center">
@@ -113,13 +110,12 @@ export function SettingsPage() {
 
     if (!confirmed) return;
 
-    // Firebase共有セッションの場合、Firestoreドキュメントを削除
-    if (session.id && session.createdBy) {
+    // Firestore document を削除（失敗してもローカルクリアは続行）
+    if (session.id) {
       try {
         await deleteSession(session.id);
       } catch (error) {
         console.error('Failed to delete session from Firestore:', error);
-        // エラーが出てもローカルはクリアする
       }
     }
 
@@ -146,7 +142,7 @@ export function SettingsPage() {
     );
     if (!confirmed) return;
 
-    if (session.id && session.createdBy) {
+    if (session.id) {
       try {
         await deleteSession(session.id);
       } catch (error) {
@@ -164,7 +160,7 @@ export function SettingsPage() {
   };
 
   const updateAdmins = async (updatedAdmins: string[]) => {
-    if (!session.id || !session.createdBy) return;
+    if (!session.id) return;
     try {
       await updateFirebaseSession(session.id, { admins: updatedAdmins });
       useSessionStore.getState().updateSession({ admins: updatedAdmins });
@@ -401,45 +397,31 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* モード表示 */}
-        <div className={`card p-4 ${session.createdBy ? 'bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200' : 'bg-gradient-to-br from-gray-50 to-slate-50 border-2 border-gray-200'}`}>
+        {/* オンラインモード表示（Phase 4 でローカルモード廃止） */}
+        <div className="card p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
           <div className="flex items-center gap-3 mb-3">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${session.createdBy ? 'bg-blue-500' : 'bg-gray-500'}`}>
-              {session.createdBy ? (
-                <Wifi size={20} className="text-white" />
-              ) : (
-                <WifiOff size={20} className="text-white" />
-              )}
+            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-500">
+              <Wifi size={20} className="text-white" />
             </div>
             <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-foreground">
-                  {session.createdBy ? 'オンラインモード' : 'ローカルモード'}
-                </h3>
-              </div>
+              <h3 className="text-base font-bold text-foreground">オンラインモード</h3>
               <p className="text-xs text-muted-foreground">
-                {session.createdBy 
-                  ? 'リアルタイム同期中・複数デバイスで共有'
-                  : 'このデバイスのみで使用中'
-                }
+                リアルタイム同期中・複数デバイスで共有
               </p>
             </div>
           </div>
-          
-          {/* オンラインモード時のみセッション情報表示ボタン */}
-          {session.createdBy && (
-            <button
-              onClick={() => setShowSessionInfo(true)}
-              className="w-full btn-secondary flex items-center justify-center gap-2 text-sm"
-            >
-              <QrCode size={16} />
-              セッション情報を表示
-            </button>
-          )}
+
+          <button
+            onClick={() => setShowSessionInfo(true)}
+            className="w-full btn-secondary flex items-center justify-center gap-2 text-sm"
+          >
+            <QrCode size={16} />
+            セッション情報を表示
+          </button>
         </div>
 
-        {/* セッション管理（オンラインモード: 管理者のみ） */}
-        {userIsAdmin && session.createdBy && (
+        {/* セッション管理（管理者のみ） */}
+        {userIsAdmin && (
           <div className="card p-4">
             <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
               <span className="w-6 h-6 rounded-lg bg-purple-100 flex items-center justify-center">
@@ -476,8 +458,8 @@ export function SettingsPage() {
           </div>
         )}
 
-        {/* 管理者管理（オンラインモード: 作成者のみ） */}
-        {userIsCreator && session.createdBy && (
+        {/* 管理者管理（作成者のみ） */}
+        {userIsCreator && (
           <div className="card p-4">
             <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
               <span className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center">
@@ -555,7 +537,7 @@ export function SettingsPage() {
           </div>
         )}
 
-        {devMode && session.createdBy && (
+        {devMode && (
           <div className="card p-4 border-2 border-dashed border-gray-400">
             <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
               <span className="w-6 h-6 rounded-lg bg-gray-200 flex items-center justify-center">

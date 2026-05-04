@@ -19,8 +19,8 @@ import {
   runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import { SessionError } from '../lib/errorHandler';
+import { requireDb, sanitize } from '../lib/firestoreUtils';
 import { computeFirstMatchStartedAt } from '../lib/sessionArchive';
 import { computeFinishAndContinue, gameModeFromPracticeType } from '../lib/gameOperations';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
@@ -28,21 +28,6 @@ import type { Player } from '../types/player';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import type { GameState } from './sessionService';
-
-/** Firestore の `undefined` 不可制約を回避するため deep clone でフィルタ */
-function sanitize<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj));
-}
-
-function requireDb() {
-  if (!db) {
-    throw new SessionError(
-      'Firebase が初期化されていません。設定を確認してください。',
-      'no-firestore',
-    );
-  }
-  return db;
-}
 
 /**
  * `runTransaction(read → apply → write)` の汎用ラッパー。

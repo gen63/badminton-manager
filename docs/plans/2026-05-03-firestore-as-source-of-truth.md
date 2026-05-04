@@ -1,5 +1,10 @@
 # Firestore を真実のソースに一本化（A+B リファクタ）
 
+> **Status: 2026-05-04 Phase 1-5 完了**。Phase 1 = sessionMutations API 集約、
+> Phase 2 = UI 切替、Phase 3 = onSnapshot 直結 + persist 撤去、Phase 4 = ローカル
+> モード廃止、Phase 5 = 死コード削除 + ドキュメント整備。各 Phase は独立ブランチで
+> commit / push 済み（`claude/firestore-only-phase1` ～ `phase5`）。
+
 ## Context（背景）
 
 これまでの sync 系バグ（court 巻き戻り / 同期重複 / matchHistory ワイプ /

@@ -142,17 +142,8 @@ describe('useFirebaseSync - onSnapshot direct setState', () => {
     expect(useSyncStatusStore.getState().isGameStateLoaded).toBe(true);
   });
 
-  it('非共有セッションでは loading=true で即返す（subscribe しない）', () => {
-    useSessionStore.setState({
-      session: {
-        id: 'local',
-        config: { courtCount: 1, targetScore: 21, practiceStartTime: NOW },
-        createdAt: NOW,
-        updatedAt: NOW,
-        // createdBy 無し → 非共有
-      },
-      currentUser: null,
-    });
+  it('セッション未選択では loading=true で即返す（subscribe しない）', () => {
+    useSessionStore.setState({ session: null, currentUser: null });
     renderHook(() => useFirebaseSync());
 
     expect(mockOnSnapshot).not.toHaveBeenCalled();

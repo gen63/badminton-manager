@@ -29,6 +29,7 @@ import type { Court } from '../types/court';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import { SessionError } from '../lib/errorHandler';
+import { requireDb, sanitize } from '../lib/firestoreUtils';
 import { computeFirstMatchStartedAt, isSessionVisible } from '../lib/sessionArchive';
 
 /** セッションレベルの設定（Firebase同期対象） */
@@ -45,17 +46,6 @@ export interface GameState {
   matchHistory: Match[];
   reservations: Reservation[];
   settings?: SyncSettings;
-}
-
-/** Firebase が初期化されていることを保証する。Phase 4 で必須化。 */
-function requireDb() {
-  if (!db) {
-    throw new SessionError(
-      'Firebase が初期化されていません。設定を確認してください。',
-      'firebase-not-configured',
-    );
-  }
-  return db;
 }
 
 /** セッションID生成（6文字の英数字） */
@@ -262,7 +252,12 @@ export async function joinSession(
   });
 }
 
-/** participants から自分を除去する。createdBy は変更しない。 */
+/**
+ * participants から自分を除去する。createdBy は変更しない。
+ *
+ * fire-and-forget 用途（unmount cleanup / セッション切替時の旧セッション離脱）で
+ * 呼ばれるため、Firebase 未設定や transaction 失敗は throw せず warn で握り潰す。
+ */
 export async function leaveSession(sessionId: string, playerName: string): Promise<void> {
   if (!sessionId || !playerName) return;
   if (!db) return;
@@ -291,11 +286,6 @@ export async function updateCreator(sessionId: string, newCreator: string): Prom
     throw new SessionError('新しい作成者名を指定してください', 'invalid-name');
   }
   await updateSession(sessionId, { createdBy: newCreator });
-}
-
-/** undefinedをnullに変換（Firestoreはundefinedを受け付けない） */
-function sanitize<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj));
 }
 
 /** ゲーム状態をFirestoreに同期（管理者が呼ぶ） */
@@ -366,11 +356,12 @@ export async function deleteSession(sessionId: string): Promise<void> {
 }
 
 /**
- * プレゼンスエントリを書き込み
+ * プレゼンスエントリを書き込み（fire-and-forget）
  *
  * - ユーザー名に `.` が含まれてもキー階層が壊れないよう `FieldPath` を使用
  * - `updatedAt` は意図的に更新しない（TTL カウントと onSnapshot 経路の無駄トリガを避けるため）
- * - Firestore 未設定時・無効な引数は no-op
+ * - Firestore 未設定 / 無効な引数 / 書き込み失敗 はすべて silent（warn）。
+ *   ハートビート系は失敗してもアプリの主要機能を止めないことが優先。
  */
 export async function writePresence(
   sessionId: string,
@@ -400,7 +391,9 @@ export async function writePresence(
 }
 
 /**
- * プレゼンスエントリを削除（unmount/非表示時）
+ * プレゼンスエントリを削除（unmount/非表示時、fire-and-forget）
+ *
+ * `writePresence` と同じく Firebase 未設定 / 失敗は silent（warn）。
  */
 export async function clearPresence(sessionId: string, username: string): Promise<void> {
   if (!db) return;
@@ -419,10 +412,10 @@ export async function clearPresence(sessionId: string, username: string): Promis
 }
 
 /**
- * 古いプレゼンスエントリを一括削除（漂流対策）
+ * 古いプレゼンスエントリを一括削除（漂流対策、fire-and-forget）
  *
- * マウント時に1回のみ呼び出す想定。
- * `lastSeenAt` が `thresholdMs` より古いエントリを `deleteField` で削除。
+ * マウント時に1回のみ呼び出す想定。`lastSeenAt` が閾値より古いエントリを
+ * `deleteField` で削除。Firebase 未設定 / 失敗は silent（warn）。
  */
 export async function pruneStalePresence(
   sessionId: string,

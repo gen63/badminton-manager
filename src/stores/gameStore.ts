@@ -12,7 +12,6 @@ interface GameState {
   startGame: (courtId: number) => void;
   finishGame: (courtId: number, scoreA: number, scoreB: number, matchId?: string) => void;
   resetAllCourts: () => void;
-  addToHistory: (match: Match) => void;
   clearHistory: () => void;
   removeMatch: (matchId: string) => void;
 }
@@ -124,10 +123,6 @@ export const useGameStore = create<GameState>()((set) => ({
         ...c,
         ...EMPTY_COURT_STATE,
       })),
-    })),
-  addToHistory: (match) =>
-    set((state) => ({
-      matchHistory: [...state.matchHistory, match],
     })),
   clearHistory: () => set({ matchHistory: [] }),
   removeMatch: (matchId) =>
