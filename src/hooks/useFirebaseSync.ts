@@ -112,34 +112,48 @@ export function useFirebaseSync() {
 
         // 試合開始通知（前後比較）— setState 前に oldCourts を撮る
         const oldCourts = useGameStore.getState().courts;
-        checkMatchStartNotifications(oldCourts, gameState.courts ?? []);
+        if (gameState.courts !== undefined) {
+          checkMatchStartNotifications(oldCourts, gameState.courts);
+        }
 
-        // 直接 setState（merge なし）
-        usePlayerStore.setState({ players: gameState.players ?? [] });
-        useGameStore.setState({
-          courts: gameState.courts ?? [],
-          matchHistory: gameState.matchHistory ?? [],
-        });
-        useReservationStore.setState({ reservations: gameState.reservations ?? [] });
+        // 直接 setState（merge なし）。フィールドが remote に欠損している場合は
+        // ローカルを触らない（古い document が新フィールドを空で上書きするのを防ぐ）。
+        if (gameState.players !== undefined) {
+          usePlayerStore.setState({ players: gameState.players });
+        }
+        const gameUpdates: Partial<{ courts: typeof gameState.courts; matchHistory: typeof gameState.matchHistory }> = {};
+        if (gameState.courts !== undefined) gameUpdates.courts = gameState.courts;
+        if (gameState.matchHistory !== undefined) gameUpdates.matchHistory = gameState.matchHistory;
+        if (Object.keys(gameUpdates).length > 0) {
+          useGameStore.setState(gameUpdates);
+        }
+        if (gameState.reservations !== undefined) {
+          useReservationStore.setState({ reservations: gameState.reservations });
+        }
 
-        // 同期対象の設定フィールドのみ反映（端末ローカル設定は触らない）
+        // 同期対象の設定フィールドのみ反映（端末ローカル設定は触らない）。
+        // setPracticeType は副作用付き（'単'→prioritizeDiversity:false, '楽'→true）なので
+        // 必ず action 経由で呼ぶ。recordScores / continuousMatchMode は副作用なしだが
+        // 一貫性のため同様に action 経由に統一。
         if (gameState.settings) {
-          const patch: Partial<{
-            recordScores: boolean;
-            continuousMatchMode: boolean;
-            practiceType: '単' | '複' | '楽';
-          }> = {};
-          if (gameState.settings.recordScores !== undefined) {
-            patch.recordScores = gameState.settings.recordScores;
+          const s = useSettingsStore.getState();
+          if (
+            gameState.settings.recordScores !== undefined &&
+            gameState.settings.recordScores !== s.recordScores
+          ) {
+            s.setRecordScores(gameState.settings.recordScores);
           }
-          if (gameState.settings.continuousMatchMode !== undefined) {
-            patch.continuousMatchMode = gameState.settings.continuousMatchMode;
+          if (
+            gameState.settings.continuousMatchMode !== undefined &&
+            gameState.settings.continuousMatchMode !== s.continuousMatchMode
+          ) {
+            s.setContinuousMatchMode(gameState.settings.continuousMatchMode);
           }
-          if (gameState.settings.practiceType !== undefined) {
-            patch.practiceType = gameState.settings.practiceType;
-          }
-          if (Object.keys(patch).length > 0) {
-            useSettingsStore.setState(patch);
+          if (
+            gameState.settings.practiceType !== undefined &&
+            gameState.settings.practiceType !== s.practiceType
+          ) {
+            s.setPracticeType(gameState.settings.practiceType);
           }
         }
 
