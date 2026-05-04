@@ -3,6 +3,9 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
+import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
+import { useToast } from '../hooks/useToast';
+import { Toast } from '../components/Toast';
 import { X, Trash2, LogOut } from 'lucide-react';
 
 export function ScoreInputPage() {
@@ -16,6 +19,8 @@ export function ScoreInputPage() {
   const match = matchHistory.find((m) => m.id === matchId);
   const session = useSessionStore((state) => state.session);
   const targetScore = session?.config.targetScore || 21;
+  const toast = useToast();
+  const writer = useSessionWriterWithToast(toast);
   
   const [scoreA, setScoreA] = useState(0);
   const [scoreB, setScoreB] = useState(0);
@@ -35,44 +40,38 @@ export function ScoreInputPage() {
     return players.find((p) => p.id === playerId)?.name || '未設定';
   };
 
-  const handlePlayerTap = (position: number) => {
+  const handlePlayerTap = async (position: number) => {
     if (!selectedPlayer) {
       setSelectedPlayer({ position });
-    } else if (selectedPlayer.position === position) {
-      setSelectedPlayer(null);
-    } else {
-      if (isMatchSingles) {
-        // シングルス: position 0 と 1 のみ (teamA[0] と teamB[0])
-        const p = [match.teamA[0], match.teamB[0]];
-        const temp = p[selectedPlayer.position];
-        p[selectedPlayer.position] = p[position];
-        p[position] = temp;
-
-        const updatedHistory = matchHistory.map((m) =>
-          m.id === matchId
-            ? { ...m, teamA: [p[0], ''] as [string, string], teamB: [p[1], ''] as [string, string] }
-            : m
-        );
-        useGameStore.setState({ matchHistory: updatedHistory });
-      } else {
-        const allPlayers = [...match.teamA, ...match.teamB];
-        const temp = allPlayers[selectedPlayer.position];
-        allPlayers[selectedPlayer.position] = allPlayers[position];
-        allPlayers[position] = temp;
-
-        const updatedHistory = matchHistory.map((m) =>
-          m.id === matchId
-            ? {
-                ...m,
-                teamA: [allPlayers[0], allPlayers[1]] as [string, string],
-                teamB: [allPlayers[2], allPlayers[3]] as [string, string],
-              }
-            : m
-        );
-        useGameStore.setState({ matchHistory: updatedHistory });
-      }
-      setSelectedPlayer(null);
+      return;
     }
+    if (selectedPlayer.position === position) {
+      setSelectedPlayer(null);
+      return;
+    }
+    if (!matchId) return;
+
+    if (isMatchSingles) {
+      // シングルス: position 0 (teamA[0]) と position 1 (teamB[0]) のみ
+      const p = [match.teamA[0], match.teamB[0]];
+      const temp = p[selectedPlayer.position];
+      p[selectedPlayer.position] = p[position];
+      p[position] = temp;
+      await writer.updateMatch(matchId, {
+        teamA: [p[0], ''] as [string, string],
+        teamB: [p[1], ''] as [string, string],
+      });
+    } else {
+      const allPlayers = [...match.teamA, ...match.teamB];
+      const temp = allPlayers[selectedPlayer.position];
+      allPlayers[selectedPlayer.position] = allPlayers[position];
+      allPlayers[position] = temp;
+      await writer.updateMatch(matchId, {
+        teamA: [allPlayers[0], allPlayers[1]] as [string, string],
+        teamB: [allPlayers[2], allPlayers[3]] as [string, string],
+      });
+    }
+    setSelectedPlayer(null);
   };
 
   const handleNumberClick = (num: number) => {
@@ -124,7 +123,7 @@ export function ScoreInputPage() {
     return null; // バリデーションOK
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (inputHistory.length !== 2) {
       alert('両チームのスコアを入力してください');
       return;
@@ -135,14 +134,10 @@ export function ScoreInputPage() {
       alert(validationError);
       return;
     }
+    if (!matchId) return;
 
     const winner = (scoreA > scoreB ? 'A' : scoreB > scoreA ? 'B' : undefined) as 'A' | 'B' | undefined;
-
-    useGameStore.setState((state) => ({
-      matchHistory: state.matchHistory.map((m) =>
-        m.id === matchId ? { ...m, scoreA, scoreB, winner } : m
-      ),
-    }));
+    await writer.updateMatchScore(matchId, scoreA, scoreB, winner);
     navigate(fromPage);
   };
 
@@ -326,6 +321,13 @@ export function ScoreInputPage() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* トースト通知（writer エラー用） */}
+      <div className="fixed bottom-20 left-0 right-0 z-50 flex flex-col items-center gap-2 pointer-events-none">
+        {toast.toasts.map((t) => (
+          <Toast key={t.id} message={t.message} type={t.type} onClose={() => toast.hideToast(t.id)} />
+        ))}
       </div>
     </div>
   );

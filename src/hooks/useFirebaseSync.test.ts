@@ -217,6 +217,76 @@ describe('useFirebaseSync - settings 反映の副作用', () => {
   });
 });
 
+describe('useFirebaseSync - session-level fields (H1 統合)', () => {
+  it('config / participants / accounting / information を sessionStore に反映する', () => {
+    setSharedSession();
+    renderHook(() => useFirebaseSync());
+
+    act(() => {
+      emit({
+        updatedAt: NOW,
+        config: { courtCount: 3, targetScore: 21, practiceStartTime: NOW - 1000 },
+        participants: ['Alice', 'Bob'],
+        accounting: { maleFee: 800, femaleFee: 600 },
+      });
+    });
+
+    const session = useSessionStore.getState().session;
+    expect(session?.config.courtCount).toBe(3);
+    expect(session?.participants).toEqual(['Alice', 'Bob']);
+    expect(session?.accounting?.maleFee).toBe(800);
+  });
+
+  it('information の readBy 未定義時は空配列にフォールバック', () => {
+    setSharedSession();
+    renderHook(() => useFirebaseSync());
+
+    act(() => {
+      emit({
+        updatedAt: NOW,
+        information: { text: 'hello', updatedAt: NOW, updatedBy: 'Alice' },
+      });
+    });
+
+    const info = useSessionStore.getState().session?.information;
+    expect(info?.text).toBe('hello');
+    expect(info?.readBy).toEqual([]);
+  });
+});
+
+describe('useFirebaseSync - 同一値 setState スキップ (H3)', () => {
+  it('同じ players 配列を再受信しても setState を発火しない', () => {
+    setSharedSession();
+    const initialPlayers = [
+      { id: 'p1', name: 'Alice', isResting: false, gamesPlayed: 0, lastPlayedAt: 0, activatedAt: 0 },
+    ];
+    usePlayerStore.setState({ players: initialPlayers });
+
+    let setStateCount = 0;
+    const unsubSpy = usePlayerStore.subscribe(() => {
+      setStateCount += 1;
+    });
+
+    renderHook(() => useFirebaseSync());
+
+    // 構造的に等しいが参照は別の配列を送る
+    act(() => {
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          players: JSON.parse(JSON.stringify(initialPlayers)),
+          courts: [],
+          matchHistory: [],
+          reservations: [],
+        },
+      });
+    });
+
+    expect(setStateCount).toBe(0);
+    unsubSpy();
+  });
+});
+
 describe('useFirebaseSync - 欠損フィールドのガード', () => {
   it('reservations が undefined の remote document はローカル reservations を変えない', () => {
     setSharedSession();

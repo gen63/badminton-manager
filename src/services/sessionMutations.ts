@@ -8,9 +8,6 @@
  *     を実行し、書き込まれた最終 `GameState` を返す。
  *   - 競合（aborted）は `SessionError('conflict')` に変換。
  *
- * Phase 1 ではこの API を「追加するだけ」で、既存のページ実装は未変更のまま。
- * Phase 2 で各書き込み呼び出しを順次このモジュール経由に置き換える。
- *
  * 詳細は `docs/plans/2026-05-03-firestore-as-source-of-truth.md` を参照。
  */
 
@@ -29,6 +26,16 @@ import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import type { GameState } from './sessionService';
 
+/** transaction.update の payload 型（gameState を主に書き込む） */
+function buildGameStatePayload(next: GameState): Record<string, unknown> {
+  return {
+    gameState: sanitize(next),
+    updatedAt: serverTimestamp(),
+    registeredPlayers: next.players.map((p) => p.name),
+    firstMatchStartedAt: computeFirstMatchStartedAt(next.matchHistory),
+  };
+}
+
 /**
  * `runTransaction(read → apply → write)` の汎用ラッパー。
  *
@@ -41,8 +48,9 @@ import type { GameState } from './sessionService';
  *   - Firestore aborted: `SessionError('conflict')`（他のエラーは素通し）
  *
  * 注意: Firestore は内部でトランザクションを最大 5 回まで自動リトライするので、
- * `apply` は副作用フリーであるべき。UUID や時刻は wrapper のクロージャで
- * 1 度だけ生成して `apply` に渡せば、リトライしても同じ値が使われ idempotent。
+ * `apply` は **idempotent** であるべき（同じ入力に対して同じ出力 + 副作用が安全に
+ * 繰り返せる）。UUID や時刻は wrapper のクロージャで 1 度だけ生成して `apply` に
+ * 渡せば、リトライしても同じ値が使われる。
  */
 async function mutateGameState(
   sessionId: string,
@@ -63,15 +71,45 @@ async function mutateGameState(
       }
 
       const next = apply(remote);
-
-      transaction.update(ref, {
-        gameState: sanitize(next),
-        updatedAt: serverTimestamp(),
-        registeredPlayers: next.players.map((p) => p.name),
-        firstMatchStartedAt: computeFirstMatchStartedAt(next.matchHistory),
-      });
-
+      transaction.update(ref, buildGameStatePayload(next));
       return next;
+    });
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === 'aborted') {
+      throw new SessionError(
+        '他のユーザーが更新しました。もう一度お試しください',
+        'conflict',
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * 既存の remote `gameState` を無視して `state` で **上書き** する。
+ *
+ * 用途:
+ *   - 新規セッション初期化（`createSession` 直後、まだ `gameState` フィールドが無い）
+ *   - undo / redo（保存されたスナップショットを丸ごと復元する）
+ *
+ * `mutateGameState` と異なり `gameState` 未初期化でも throw しない。
+ * セッション document 自体は存在している必要がある。
+ */
+export async function overwriteGameState(
+  sessionId: string,
+  state: GameState,
+): Promise<GameState> {
+  const _db = requireDb();
+  const ref = doc(_db, 'sessions', sessionId);
+
+  try {
+    return await runTransaction(_db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) {
+        throw new SessionError('セッションが見つかりません', 'not-found');
+      }
+      transaction.update(ref, buildGameStatePayload(state));
+      return state;
     });
   } catch (error: unknown) {
     if ((error as { code?: string })?.code === 'aborted') {
@@ -585,17 +623,115 @@ export function setPracticeType(sessionId: string, value: '単' | '複' | '楽')
   return mutateGameState(sessionId, (s) => computeSetSetting(s, 'practiceType', value));
 }
 
+// =============================================================================
+// Match: 汎用 update（B2/B4 修正で追加）
+// =============================================================================
+
 /**
- * 初回 gameState を上書きする（セッション作成直後、参加者に共有するための初期 push）。
- * 通常は `mutateGameState` で remote をマージするが、こちらは「初期化」用途で
- * remote を無視して `initial` で上書きする。
+ * `matchHistory` の特定 match を partial update する。
+ * `updateMatchScore` よりも汎用的で、`teamA` / `teamB` の swap や `winner` の
+ * リセットも 1 transaction で行える。
  */
-export function initializeGameState(sessionId: string, initial: GameState) {
-  return mutateGameState(sessionId, () => initial);
+export function updateMatch(
+  sessionId: string,
+  matchId: string,
+  updates: Omit<Partial<Match>, 'id'>,
+) {
+  return mutateGameState(sessionId, (state) => ({
+    ...state,
+    matchHistory: state.matchHistory.map((m) =>
+      m.id === matchId ? { ...m, ...updates, id: m.id } : m,
+    ),
+  }));
 }
 
 // =============================================================================
-// Composite operations: 試合終了（既存 finishGameTransaction を取り込み）
+// Composite operations
+// =============================================================================
+
+/**
+ * Auto-assign で複数のコート更新と予約消化を **1 transaction** で実行する。
+ *
+ * 旧実装は writer.fulfillReservation × N + writer.updateCourt × M を sequential
+ * await していたため、N+M 回の round-trip + 中間状態の露出があった。
+ * これを単一 transaction にまとめてアトミックにする（H4）。
+ */
+export interface AutoAssignSpec {
+  courtId: number;
+  teamA: [string, string];
+  teamB: [string, string];
+  isPlaying: boolean;
+  startedAt: number;
+}
+
+export function autoAssignAndFulfill(
+  sessionId: string,
+  assignments: AutoAssignSpec[],
+  fulfilledReservationIds: string[],
+  now: number = Date.now(),
+) {
+  return mutateGameState(sessionId, (state) => {
+    let next = state;
+    for (const id of fulfilledReservationIds) {
+      next = computeFulfillReservation(next, id, now);
+    }
+    for (const a of assignments) {
+      next = computeUpdateCourt(next, a.courtId, {
+        teamA: a.teamA,
+        teamB: a.teamB,
+        scoreA: 0,
+        scoreB: 0,
+        isPlaying: a.isPlaying,
+        startedAt: a.startedAt,
+        finishedAt: 0,
+      });
+    }
+    return next;
+  });
+}
+
+/**
+ * `gameState.courts` のリサイズ + `session.config.courtCount` を **1 transaction** で
+ * 同期更新する（H6）。旧実装は 2 回の write でアトミック性が失われていた。
+ */
+export async function resizeCourtsWithConfig(
+  sessionId: string,
+  count: number,
+): Promise<GameState> {
+  const _db = requireDb();
+  const ref = doc(_db, 'sessions', sessionId);
+
+  try {
+    return await runTransaction(_db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) {
+        throw new SessionError('セッションが見つかりません', 'not-found');
+      }
+      const remote = snap.data().gameState as GameState | undefined;
+      if (!remote) {
+        throw new SessionError('セッションの状態が初期化されていません', 'invalid-state');
+      }
+
+      const next = computeResizeCourts(remote, count);
+      transaction.update(ref, {
+        ...buildGameStatePayload(next),
+        'config.courtCount': count,
+      });
+      return next;
+    });
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === 'aborted') {
+      throw new SessionError(
+        '他のユーザーが更新しました。もう一度お試しください',
+        'conflict',
+      );
+    }
+    throw error;
+  }
+}
+
+// =============================================================================
+// Composite operations: 試合終了
 // =============================================================================
 
 export interface FinishGameOptions {
@@ -658,12 +794,7 @@ export async function finishMatchAndContinue(
         matchId: options.matchId,
       }).newState;
 
-      transaction.update(ref, {
-        gameState: sanitize(next),
-        updatedAt: serverTimestamp(),
-        registeredPlayers: next.players.map((p) => p.name),
-        firstMatchStartedAt: computeFirstMatchStartedAt(next.matchHistory),
-      });
+      transaction.update(ref, buildGameStatePayload(next));
 
       return { result: 'success' as const, writtenState: next };
     });

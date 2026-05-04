@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
-import { clearPresence, getSession, joinSession, leaveSession, subscribeToGameState, subscribeToSession } from '../services/sessionService';
+import { clearPresence, getSession, joinSession, leaveSession, subscribeToSession } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { requestNotificationPermission } from '../lib/notifications';
@@ -197,38 +197,10 @@ export function SessionJoinPage() {
       });
       setCurrentUser(selectedName);
 
-      // Firestoreからゲーム状態を取得してローカルストアにセット
-      const unsub = subscribeToGameState(sessionId, (gameState) => {
-        if (gameState) {
-          // Firebaseデータで上書き（古いlocalStorageデータをクリア）
-          usePlayerStore.setState({ players: gameState.players });
-          useGameStore.setState({
-            courts: gameState.courts,
-            matchHistory: gameState.matchHistory,
-          });
-          if (gameState.reservations) {
-            useReservationStore.setState({ reservations: gameState.reservations });
-          }
-          unsub();
-          // レンダリング完了を待ってからナビゲート
-          setTimeout(() => navigate('/main'), 0);
-        } else {
-          // データがない場合（新規セッション）は空で初期化
-          usePlayerStore.setState({ players: [] });
-          useGameStore.setState({ courts: [], matchHistory: [] });
-          useReservationStore.setState({ reservations: [] });
-          unsub();
-          // レンダリング完了を待ってからナビゲート
-          setTimeout(() => navigate('/main'), 0);
-        }
-      });
-
-      // タイムアウト: 5秒以内にデータ取れなかったらエラー
-      setTimeout(() => {
-        unsub();
-        setError('セッションデータの取得に失敗しました。もう一度お試しください。');
-        setJoining(false);
-      }, 5000);
+      // App level の useFirebaseSync が session/gameState を購読する（H8 修正で
+      // 個別 subscribeToGameState は撤去）。/main マウント後に onSnapshot で
+      // ストアが埋まる。
+      navigate('/main');
     } catch (err) {
       setError(getErrorMessage(err));
       setJoining(false);

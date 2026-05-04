@@ -5,6 +5,7 @@ import * as sm from '../services/sessionMutations';
 import { SessionError } from '../lib/errorHandler';
 import type { Player } from '../types/player';
 import type { Court } from '../types/court';
+import type { Match } from '../types/match';
 
 /**
  * セッションのゲーム状態への書き込みを 1 つの API に集約するフック。
@@ -109,6 +110,20 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  const resizeCourtsWithConfig = useCallback(
+    (count: number) =>
+      handle('resizeCourtsWithConfig', (sid) => sm.resizeCourtsWithConfig(sid, count)),
+    [handle],
+  );
+
+  const autoAssignAndFulfill = useCallback(
+    (assignments: sm.AutoAssignSpec[], fulfilledReservationIds: string[]) =>
+      handle('autoAssignAndFulfill', (sid) =>
+        sm.autoAssignAndFulfill(sid, assignments, fulfilledReservationIds),
+      ),
+    [handle],
+  );
+
   const removeCourtById = useCallback(
     (courtId: number) => handle('removeCourt', (sid) => sm.removeCourt(sid, courtId)),
     [handle],
@@ -146,6 +161,12 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       handle('updateMatchScore', (sid) =>
         sm.updateMatchScore(sid, matchId, scoreA, scoreB, winner),
       ),
+    [handle],
+  );
+
+  const updateMatch = useCallback(
+    (matchId: string, updates: Omit<Partial<Match>, 'id'>) =>
+      handle('updateMatch', (sid) => sm.updateMatch(sid, matchId, updates)),
     [handle],
   );
 
@@ -211,14 +232,17 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       // courts
       initializeCourts,
       resizeCourts,
+      resizeCourtsWithConfig,
       removeCourtById,
       updateCourt,
       startGame,
       resetAllCourts,
+      autoAssignAndFulfill,
       // match history
       clearHistory,
       removeMatch,
       updateMatchScore,
+      updateMatch,
       // reservations
       addReservation,
       removeReservation,
@@ -242,13 +266,16 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       clearPlayers,
       initializeCourts,
       resizeCourts,
+      resizeCourtsWithConfig,
       removeCourtById,
       updateCourt,
       startGame,
       resetAllCourts,
+      autoAssignAndFulfill,
       clearHistory,
       removeMatch,
       updateMatchScore,
+      updateMatch,
       addReservation,
       removeReservation,
       fulfillReservation,

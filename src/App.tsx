@@ -12,11 +12,13 @@ import { ReservationPage } from './pages/ReservationPage';
 import { SessionJoinPage } from './pages/SessionJoinPage';
 import { PWAPrompt } from './components/PWAPrompt';
 import { FirebaseSyncMount } from './components/FirebaseSyncMount';
+import { FirebaseConfigBanner } from './components/FirebaseConfigBanner';
 
 function App() {
   return (
     <BrowserRouter basename="/badminton-manager">
       <FirebaseSyncMount>
+        <FirebaseConfigBanner />
         <Routes>
           <Route path="/" element={<SessionSelectPage />} />
           <Route path="/local" element={<SessionCreate />} />

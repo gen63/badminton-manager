@@ -55,6 +55,10 @@ import {
   applyPayment,
   addPlayers,
   finishMatchAndContinue,
+  overwriteGameState,
+  updateMatch,
+  autoAssignAndFulfill,
+  resizeCourtsWithConfig,
 } from './sessionMutations';
 import type { GameState } from './sessionService';
 import type { Player } from '../types/player';
@@ -710,5 +714,183 @@ describe('sessionMutations - finishMatchAndContinue', () => {
         prioritizeDiversity: false,
       }),
     ).rejects.toBeInstanceOf(SessionError);
+  });
+});
+
+// =============================================================================
+// Phase 6: overwriteGameState（mutateGameState を使わず remote.gameState 未初期化でも動く）
+// =============================================================================
+
+describe('sessionMutations - overwriteGameState (B1 fix)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('remote.gameState が未定義でも書き込み成功する（新規セッション初期化）', async () => {
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      // createSession 直後の doc: gameState フィールド無し
+      data: () => ({ id: 'sess', config: {}, createdBy: 'Alice' }),
+      ref: { __docRef: true },
+    });
+
+    const initial = baseState({
+      players: [makePlayer('p1', { name: 'Alice' })],
+      courts: [makeCourt(1)],
+    });
+
+    const result = await overwriteGameState('sess', initial);
+
+    expect(result).toBe(initial);
+    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    expect(updateArgs.gameState.players).toHaveLength(1);
+    expect(updateArgs.registeredPlayers).toEqual(['Alice']);
+  });
+
+  it('snap.exists()=false なら not-found を throw（書き込み無し）', async () => {
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => false,
+      data: () => undefined,
+      ref: { __docRef: true },
+    });
+    await expect(overwriteGameState('missing', baseState())).rejects.toMatchObject({
+      code: 'not-found',
+    });
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('aborted を SessionError("conflict") に変換', async () => {
+    mockRunTransaction.mockImplementationOnce(async () => {
+      const err = new Error('aborted') as Error & { code?: string };
+      err.code = 'aborted';
+      throw err;
+    });
+    await expect(overwriteGameState('s', baseState())).rejects.toMatchObject({
+      code: 'conflict',
+    });
+  });
+});
+
+// =============================================================================
+// Phase 6: updateMatch（B2/B4 修正で追加）
+// =============================================================================
+
+describe('sessionMutations - updateMatch (B2/B4 fix)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('match の partial update（teamA/teamB swap）', async () => {
+    const state = baseState({
+      matchHistory: [makeMatch('m1', { teamA: ['a', 'b'], teamB: ['c', 'd'] })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await updateMatch('s', 'm1', { teamA: ['c', 'd'], teamB: ['a', 'b'] });
+
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    expect(updateArgs.gameState.matchHistory[0]).toMatchObject({
+      teamA: ['c', 'd'],
+      teamB: ['a', 'b'],
+    });
+  });
+
+  it('id を上書きしない（updates.id を渡しても match.id は維持）', async () => {
+    const state = baseState({
+      matchHistory: [makeMatch('m1', { scoreA: 0, scoreB: 0 })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await updateMatch('s', 'm1', { scoreA: 21, scoreB: 19, winner: 'A' } as Partial<Match>);
+
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    expect(updateArgs.gameState.matchHistory[0]).toMatchObject({
+      id: 'm1',
+      scoreA: 21,
+      scoreB: 19,
+      winner: 'A',
+    });
+  });
+});
+
+// =============================================================================
+// Phase 6: autoAssignAndFulfill（H4 fix）
+// =============================================================================
+
+describe('sessionMutations - autoAssignAndFulfill (H4 fix)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('予約消化と複数コート更新を 1 transaction でまとめる', async () => {
+    const state = baseState({
+      courts: [makeCourt(1), makeCourt(2)],
+      reservations: [
+        { id: 'r1', orderNumber: 1, playerIds: ['p1'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+      ],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await autoAssignAndFulfill(
+      's',
+      [
+        { courtId: 1, teamA: ['a', 'b'], teamB: ['c', 'd'], isPlaying: true, startedAt: 5000 },
+        { courtId: 2, teamA: ['e', 'f'], teamB: ['g', 'h'], isPlaying: false, startedAt: 0 },
+      ],
+      ['r1'],
+      5000,
+    );
+
+    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
+    const next = mockTransactionUpdate.mock.calls[0][1].gameState;
+    expect(next.reservations[0].status).toBe('fulfilled');
+    expect(next.reservations[0].fulfilledAt).toBe(5000);
+    expect(next.courts[0]).toMatchObject({ teamA: ['a', 'b'], isPlaying: true, startedAt: 5000 });
+    expect(next.courts[1]).toMatchObject({ teamA: ['e', 'f'], isPlaying: false });
+  });
+});
+
+// =============================================================================
+// Phase 6: resizeCourtsWithConfig（H6 fix）
+// =============================================================================
+
+describe('sessionMutations - resizeCourtsWithConfig (H6 fix)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('gameState.courts と config.courtCount を 1 transaction で更新', async () => {
+    const state = baseState({
+      courts: [makeCourt(1)],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state, config: { courtCount: 1 } }),
+      ref: { __docRef: true },
+    });
+
+    await resizeCourtsWithConfig('s', 3);
+
+    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    expect(updateArgs['config.courtCount']).toBe(3);
+    expect(updateArgs.gameState.courts).toHaveLength(3);
   });
 });

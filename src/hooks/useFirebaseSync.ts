@@ -22,15 +22,23 @@ import { useReservationStore } from '../stores/reservationStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
+import { usePresenceStore } from '../stores/presenceStore';
 import { notifyMatchStart } from '../lib/notifications';
 import { useToast } from './useToast';
 import type { Court } from '../types/court';
 import type { GameState } from '../services/sessionService';
+import type { Session } from '../types/session';
 
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 /** 試合開始通知の重複防止（プロセス全体で共有） */
 const notifiedMatches = new Set<string>();
+
+/** 浅い参照差分があるかを JSON 比較で判定（H3 setState スキップ用） */
+function jsonEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 
 export function useFirebaseSync() {
   const sessionId = useSessionStore((s) => s.session?.id);
@@ -74,6 +82,27 @@ export function useFirebaseSync() {
         const data = snap.data();
         const updatedAtMs = timestampToMillis(data.updatedAt);
 
+        // === セッションレベルのフィールドを sessionStore に反映（H1: useRealtimeSession 統合） ===
+        const information = data.information
+          ? {
+              ...(data.information as NonNullable<Session['information']>),
+              readBy: (data.information as { readBy?: string[] }).readBy ?? [],
+            }
+          : undefined;
+        useSessionStore.getState().updateSession({
+          config: data.config as Session['config'],
+          participants: data.participants as string[] | undefined,
+          registeredPlayers: data.registeredPlayers as string[] | undefined,
+          admins: data.admins as string[] | undefined,
+          status: data.status as Session['status'],
+          information,
+          accounting: data.accounting as Session['accounting'],
+        });
+        // プレゼンスは揮発ストアへ
+        usePresenceStore.getState().setRemotePresence(
+          (data.presence as Session['presence']) ?? {},
+        );
+
         // TTL（最終更新から 30 日経過）チェック
         if (updatedAtMs > 0 && Date.now() - updatedAtMs > TTL_MS) {
           toastRef.current.warning('セッションの有効期限（最終アクセスから1か月）が切れました');
@@ -107,17 +136,31 @@ export function useFirebaseSync() {
 
         // 直接 setState（merge なし）。フィールドが remote に欠損している場合は
         // ローカルを触らない（古い document が新フィールドを空で上書きするのを防ぐ）。
+        // 値が同じ場合は JSON 比較でスキップして無駄な再レンダーを抑止する（H3）。
         if (gameState.players !== undefined) {
-          usePlayerStore.setState({ players: gameState.players });
+          const cur = usePlayerStore.getState().players;
+          if (!jsonEqual(cur, gameState.players)) {
+            usePlayerStore.setState({ players: gameState.players });
+          }
         }
-        const gameUpdates: Partial<{ courts: typeof gameState.courts; matchHistory: typeof gameState.matchHistory }> = {};
-        if (gameState.courts !== undefined) gameUpdates.courts = gameState.courts;
-        if (gameState.matchHistory !== undefined) gameUpdates.matchHistory = gameState.matchHistory;
-        if (Object.keys(gameUpdates).length > 0) {
-          useGameStore.setState(gameUpdates);
+        if (gameState.courts !== undefined || gameState.matchHistory !== undefined) {
+          const curState = useGameStore.getState();
+          const courtsChanged = gameState.courts !== undefined &&
+            !jsonEqual(curState.courts, gameState.courts);
+          const historyChanged = gameState.matchHistory !== undefined &&
+            !jsonEqual(curState.matchHistory, gameState.matchHistory);
+          if (courtsChanged || historyChanged) {
+            useGameStore.setState({
+              courts: courtsChanged ? gameState.courts! : curState.courts,
+              matchHistory: historyChanged ? gameState.matchHistory! : curState.matchHistory,
+            });
+          }
         }
         if (gameState.reservations !== undefined) {
-          useReservationStore.setState({ reservations: gameState.reservations });
+          const cur = useReservationStore.getState().reservations;
+          if (!jsonEqual(cur, gameState.reservations)) {
+            useReservationStore.setState({ reservations: gameState.reservations });
+          }
         }
 
         // 同期対象の設定フィールドのみ反映（端末ローカル設定は触らない）。
@@ -150,6 +193,8 @@ export function useFirebaseSync() {
       },
       (error) => {
         console.error('[FirebaseSync] GameState subscription error:', error);
+        // 同期切断はユーザーに気づかせる（permission-denied / unavailable 等）
+        toastRef.current.error('同期エラー: 再接続中です。ネットワークを確認してください');
       },
     );
 

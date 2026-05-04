@@ -11,7 +11,7 @@ import { EMPTY_COURT_STATE } from '../types/court';
 import { parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { clearPresence, createSession, leaveSession } from '../services/sessionService';
-import { initializeGameState } from '../services/sessionMutations';
+import { overwriteGameState } from '../services/sessionMutations';
 import { getErrorMessage } from '../lib/errorHandler';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { requestNotificationPermission } from '../lib/notifications';
@@ -73,7 +73,6 @@ export function SessionCreate() {
   const [showCreatorSelect, setShowCreatorSelect] = useState(false);
   const [selectedCreatorName, setSelectedCreatorName] = useState('');
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
-  const { addPlayers } = usePlayerStore();
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType, setPracticeType } = useSettingsStore();
@@ -169,36 +168,13 @@ export function SessionCreate() {
   };
 
   const handleCreate = async () => {
-    // 旧オンラインセッションに居る場合、ローカルクリアによる空 push を抑止しつつ
-    // 旧セッションの participants から自分を除去する（fire-and-forget）
-    const previousSession = useSessionStore.getState().session;
-    const previousUser = useSessionStore.getState().currentUser;
-    if (previousSession?.id && previousSession.createdBy && previousUser) {
-      void Promise.allSettled([
-        leaveSession(previousSession.id, previousUser),
-        clearPresence(previousSession.id, previousUser),
-      ]);
-    }
-
-    // 重要: 新規セッション作成前に古いデータを完全クリア
-    // （前のセッションのデータが残らないように）
-    usePlayerStore.getState().clearPlayers();
-    useGameStore.getState().clearHistory();
-    useReservationStore.getState().clearReservations();
-    useAccountingStore.getState().clearRecords();
-    useUndoStore.getState().clearAll();
-
-    // プレイヤー名をパース
+    // プレイヤー名をパース（ローカルストアに触らずに直接パース）
     const playerInputs = playerNames.trim()
       ? playerNames
           .split('\n')
           .map((line) => parsePlayerInput(line))
           .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null)
       : [];
-
-    if (playerInputs.length > 0) {
-      addPlayers(playerInputs);
-    }
 
     const adjustedCourtCount = 1;
     const now = Date.now();
@@ -210,13 +186,23 @@ export function SessionCreate() {
       gym: selectedGym || undefined,
     };
 
-    // 作成者名が未選択の場合は選択画面へ
+    // 作成者名が未選択の場合は選択画面へ（ここまで sideeffect なし）
     if (!selectedCreatorName) {
       setShowCreatorSelect(true);
       return;
     }
 
-    // Firebase にセッション作成
+    // 旧オンラインセッションに居れば離脱処理（fire-and-forget）
+    const previousSession = useSessionStore.getState().session;
+    const previousUser = useSessionStore.getState().currentUser;
+    if (previousSession?.id && previousSession.createdBy && previousUser) {
+      void Promise.allSettled([
+        leaveSession(previousSession.id, previousUser),
+        clearPresence(previousSession.id, previousUser),
+      ]);
+    }
+
+    // Firebase にセッション作成（H10: ローカルクリアは createSession 成功後）
     try {
       const creatorName = selectedCreatorName;
       const registeredPlayers = playerInputs.map((p) => p.name);
@@ -228,6 +214,40 @@ export function SessionCreate() {
         registeredPlayers,
       });
 
+      // 成功した時点で初めてローカル状態をリセット（前セッションは Firestore に残る）
+      usePlayerStore.getState().clearPlayers();
+      useGameStore.getState().clearHistory();
+      useReservationStore.getState().clearReservations();
+      useAccountingStore.getState().clearRecords();
+      useUndoStore.getState().clearAll();
+
+      // 初期 gameState を構築（ローカルストア経由ではなく直接配列を組み立てる）
+      const initialPlayers = playerInputs.map((input) => ({
+        id: crypto.randomUUID(),
+        name: input.name,
+        rating: input.rating,
+        gender: input.gender,
+        isResting: true,
+        gamesPlayed: 0,
+        lastPlayedAt: 0,
+        activatedAt: 0,
+      }));
+      const initialCourts = Array.from({ length: adjustedCourtCount }, (_, i) => ({
+        id: i + 1,
+        ...EMPTY_COURT_STATE,
+      }));
+      const { recordScores, continuousMatchMode, practiceType } = useSettingsStore.getState();
+
+      // 初期 gameState を Firestore に書き込む（onSnapshot がローカルに反映する）
+      await overwriteGameState(sessionId, {
+        players: initialPlayers,
+        courts: initialCourts,
+        matchHistory: [],
+        reservations: [],
+        settings: { recordScores, continuousMatchMode, practiceType },
+      });
+
+      // session を local sessionStore にセット（onSnapshot 購読のトリガー）
       initializeSession({
         id: sessionId,
         config: sessionConfig,
@@ -238,22 +258,7 @@ export function SessionCreate() {
         status: 'active',
         registeredPlayers,
       });
-      setCurrentUser(creatorName); // 自動入室
-
-      // 初期 gameState を Firestore に書き込む（onSnapshot がローカルに反映する）
-      const initialCourts = Array.from({ length: adjustedCourtCount }, (_, i) => ({
-        id: i + 1,
-        ...EMPTY_COURT_STATE,
-      }));
-      const { recordScores, continuousMatchMode, practiceType } = useSettingsStore.getState();
-      const { players } = usePlayerStore.getState();
-      await initializeGameState(sessionId, {
-        players,
-        courts: initialCourts,
-        matchHistory: [],
-        reservations: [],
-        settings: { recordScores, continuousMatchMode, practiceType },
-      });
+      setCurrentUser(creatorName);
 
       setCreatedSessionId(sessionId);
       requestNotificationPermission();
