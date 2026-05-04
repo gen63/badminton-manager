@@ -212,6 +212,10 @@ export function SessionJoinPage() {
       // 個別 subscribeToGameState は撤去）。CON4: 初回 onSnapshot で
       // isGameStateLoaded=true になるまで待ってから /main へ navigate
       // するとデータ未到着の空 UI を見せなくて済む。
+      // JOIN2 fix: polling 前に明示的に false にしないと、前セッションでの
+      // true 値を読んで即 navigate されてしまう（useFirebaseSync の effect 再実行が
+      // この同期 path より遅い場合がある）。
+      useSyncStatusStore.getState().setGameStateLoaded(false);
       const startedAt = Date.now();
       const TIMEOUT_MS = 5000;
       const POLL_MS = 50;

@@ -23,7 +23,10 @@ export function usePresence(sessionId: string | null, currentUser: string | null
   // ハートビート/タップの最終書き込み時刻（書き込み節約のため ref 管理）
   const lastWriteAtRef = useRef<number>(0);
   const lastTapWriteAtRef = useRef<number>(0);
-  const prunedRef = useRef<boolean>(false);
+  // PRES1 fix: セッション ID 単位で「prune 済みか」を記録。
+  // 旧実装は hook lifetime で 1 度しか prune しなかったため、セッション切替後の
+  // 漂流エントリが掃除されなかった。
+  const prunedSessionsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!sessionId || !currentUser) return;
@@ -87,9 +90,9 @@ export function usePresence(sessionId: string | null, currentUser: string | null
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('beforeunload', handleBeforeUnload);
 
-    // マウント時に1回だけ漂流エントリを掃除
-    if (!prunedRef.current) {
-      prunedRef.current = true;
+    // マウント時に1回だけ漂流エントリを掃除（セッション ID 単位で 1 回ずつ）
+    if (!prunedSessionsRef.current.has(sessionId)) {
+      prunedSessionsRef.current.add(sessionId);
       // 少し遅延させて subscribeToSession が初期プレゼンスを流し込むのを待つ
       pruneTimerId = setTimeout(() => {
         pruneTimerId = null;
