@@ -111,12 +111,16 @@ export function MainPage() {
 
   // モーダル表示中にsession.informationが更新されたら、メンバー閲覧時のみ同期
   // 管理者の編集中テキストは上書きしない
+  // INFO2 fix: 管理者が text を更新すると readBy がリセットされる仕様のため、
+  // メンバーは閲覧中に新 text に切り替わったタイミングで再度 markRead する。
+  // しないと「読んでいる最中の更新」で閉じた後に未読バッジが復活する。
   useEffect(() => {
     if (showInformationModal && session?.information?.text && !isAdmin()) {
       setInformationText(session.information.text);
+      void markInformationAsRead();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- isAdmin is a stable Zustand selector
-  }, [session?.information?.text, showInformationModal]);
+  }, [session?.information?.text, showInformationModal, markInformationAsRead]);
 
   const heightLockTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
