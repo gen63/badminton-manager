@@ -455,6 +455,17 @@ export function computeAddReservation(
   now: number,
   createdBy?: string,
 ): GameState {
+  // DATA4 fix: 重複 ID を除き、存在しない / 空文字 ID も除く。空になったら no-op。
+  const validIds = new Set(state.players.map((p) => p.id));
+  const dedup: string[] = [];
+  const seen = new Set<string>();
+  for (const pid of playerIds) {
+    if (!pid || !validIds.has(pid) || seen.has(pid)) continue;
+    seen.add(pid);
+    dedup.push(pid);
+  }
+  if (dedup.length === 0) return state;
+
   const maxOrder = state.reservations.reduce(
     (max, r) => Math.max(max, r.orderNumber ?? 0),
     0,
@@ -462,7 +473,7 @@ export function computeAddReservation(
   const reservation: Reservation = {
     id,
     orderNumber: maxOrder + 1,
-    playerIds,
+    playerIds: dedup,
     status: 'pending',
     createdAt: now,
     fulfilledAt: 0,

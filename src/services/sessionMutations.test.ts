@@ -495,6 +495,7 @@ describe('sessionMutations - match history', () => {
 describe('sessionMutations - reservations', () => {
   it('computeAddReservation: orderNumber は max+1', () => {
     const state = baseState({
+      players: [makePlayer('p1'), makePlayer('p2'), makePlayer('p3')],
       reservations: [
         { id: 'r1', orderNumber: 5, playerIds: ['p1'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
       ],
@@ -510,6 +511,26 @@ describe('sessionMutations - reservations', () => {
       fulfilledAt: 0,
       createdBy: 'admin',
     });
+  });
+
+  it('computeAddReservation: 重複 ID / 存在しない ID / 空文字を弾く (DATA4)', () => {
+    const state = baseState({
+      players: [makePlayer('p1'), makePlayer('p2')],
+    });
+    const next = computeAddReservation(
+      state,
+      ['p1', 'p1', 'ghost', '', 'p2'],
+      'r1',
+      1000,
+    );
+    expect(next.reservations).toHaveLength(1);
+    expect(next.reservations[0].playerIds).toEqual(['p1', 'p2']);
+  });
+
+  it('computeAddReservation: 全部無効なら no-op', () => {
+    const state = baseState({ players: [makePlayer('p1')] });
+    const next = computeAddReservation(state, ['ghost', ''], 'r1', 1000);
+    expect(next).toBe(state);
   });
 
   it('computeRemoveReservation', () => {
