@@ -494,10 +494,13 @@ export function computeFulfillReservation(
   reservationId: string,
   now: number = Date.now(),
 ): GameState {
+  // RES1 fix: 既に fulfilled な予約に再度呼ばれても fulfilledAt を上書きしない
   return {
     ...state,
     reservations: state.reservations.map((r) =>
-      r.id === reservationId ? { ...r, status: 'fulfilled', fulfilledAt: now } : r,
+      r.id === reservationId && r.status === 'pending'
+        ? { ...r, status: 'fulfilled', fulfilledAt: now }
+        : r,
     ),
   };
 }
