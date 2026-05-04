@@ -29,6 +29,11 @@ if (hasConfig) {
   } catch (error) {
     console.error('[Firebase] Initialization failed:', error);
   }
+} else {
+  // Phase 4: Firebase は必須。.env の VITE_FIREBASE_* を設定する必要がある。
+  console.error(
+    '[Firebase] Configuration missing. Please set VITE_FIREBASE_API_KEY and VITE_FIREBASE_PROJECT_ID in .env',
+  );
 }
 
 export function isFirebaseConfigured(): boolean {

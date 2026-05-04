@@ -29,11 +29,7 @@ vi.mock('firebase/firestore', async () => {
   return {
     ...actual,
     doc: vi.fn(() => ({ __docRef: true })),
-    onSnapshot: (
-      ref: unknown,
-      onNext: SnapHandler,
-      onError?: unknown,
-    ) => mockOnSnapshot(ref, onNext, onError),
+    onSnapshot: (ref: unknown, onNext: SnapHandler) => mockOnSnapshot(ref, onNext),
     // TTL テストで sessionService.deleteSession 経由で deleteDoc が呼ばれる
     deleteDoc: vi.fn(() => Promise.resolve()),
   };

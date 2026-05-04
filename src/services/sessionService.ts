@@ -1,7 +1,8 @@
 /**
  * セッション管理サービス
  *
- * Firestore実装（Firebase未設定時はlocalStorageフォールバック）
+ * Phase 4 で Firestore 必須化。Firebase 未設定時は起動エラー（`db` が null
+ * のため `requireDb()` で例外）。localStorage フォールバックは廃止済み。
  */
 
 import {
@@ -46,8 +47,16 @@ export interface GameState {
   settings?: SyncSettings;
 }
 
-/** Firestoreが使えるかどうか */
-const useFirestore = !!db;
+/** Firebase が初期化されていることを保証する。Phase 4 で必須化。 */
+function requireDb() {
+  if (!db) {
+    throw new SessionError(
+      'Firebase が初期化されていません。設定を確認してください。',
+      'firebase-not-configured',
+    );
+  }
+  return db;
+}
 
 /** セッションID生成（6文字の英数字） */
 function generateFirebaseSessionId(): string {
@@ -89,20 +98,14 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
 
 /** セッションを作成 */
 export async function createSession(session: Partial<Session>): Promise<string> {
-  // Firebaseが設定されていない場合はエラー
-  if (!useFirestore) {
-    throw new SessionError(
-      'オンラインセッション機能が利用できません。Firebase設定を確認してください。',
-      'firebase-not-configured'
-    );
-  }
+  const _db = requireDb();
 
   // セッションID衝突を避けるため、最大3回リトライ
   const maxRetries = 3;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     const sessionId = generateFirebaseSessionId();
-    const docRef = doc(db!, 'sessions', sessionId);
-    
+    const docRef = doc(_db, 'sessions', sessionId);
+
     try {
       // 既存のセッションIDをチェック
       const existingDoc = await getDoc(docRef);
@@ -120,7 +123,7 @@ export async function createSession(session: Partial<Session>): Promise<string> 
         status: session.status || 'active',
         participants: session.participants ?? [],
       });
-      
+
       return sessionId;
     } catch (error) {
       if (attempt === maxRetries - 1) {
@@ -143,16 +146,10 @@ export async function createSession(session: Partial<Session>): Promise<string> 
 
 /** セッションを取得 */
 export async function getSession(sessionId: string): Promise<Session | null> {
-  if (useFirestore) {
-    const docSnap = await getDoc(doc(db!, 'sessions', sessionId));
-    if (!docSnap.exists()) return null;
-    return docToSession(sessionId, docSnap.data());
-  }
-
-  // フォールバック: localStorage
-  const data = localStorage.getItem(`firebase_session_${sessionId}`);
-  if (!data) return null;
-  return JSON.parse(data) as Session;
+  const _db = requireDb();
+  const docSnap = await getDoc(doc(_db, 'sessions', sessionId));
+  if (!docSnap.exists()) return null;
+  return docToSession(sessionId, docSnap.data());
 }
 
 /** セッションをリアルタイム監視 */
@@ -160,31 +157,20 @@ export function subscribeToSession(
   sessionId: string,
   callback: (session: Session | null) => void,
 ): () => void {
-  if (useFirestore) {
-    return onSnapshot(
-      doc(db!, 'sessions', sessionId),
-      (snap) => {
-        if (snap.exists()) {
-          callback(docToSession(sessionId, snap.data()));
-        } else {
-          callback(null);
-        }
-      },
-      (error) => {
-        console.error('Session subscription error:', error);
-      },
-    );
-  }
-
-  // フォールバック: 2秒ポーリング
-  const interval = setInterval(async () => {
-    const session = await getSession(sessionId);
-    callback(session);
-  }, 2000);
-
-  getSession(sessionId).then(callback);
-
-  return () => clearInterval(interval);
+  const _db = requireDb();
+  return onSnapshot(
+    doc(_db, 'sessions', sessionId),
+    (snap) => {
+      if (snap.exists()) {
+        callback(docToSession(sessionId, snap.data()));
+      } else {
+        callback(null);
+      }
+    },
+    (error) => {
+      console.error('Session subscription error:', error);
+    },
+  );
 }
 
 /** セッション状態を更新 */
@@ -192,22 +178,12 @@ export async function updateSession(
   sessionId: string,
   updates: Partial<Session>,
 ): Promise<void> {
-  if (useFirestore) {
-    const docRef = doc(db!, 'sessions', sessionId);
-    await updateDoc(docRef, {
-      ...updates,
-      updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
-    });
-    return;
-  }
-
-  // フォールバック: localStorage
-  const session = await getSession(sessionId);
-  if (!session) {
-    throw new SessionError(`セッション ${sessionId} が見つかりません`, 'not-found');
-  }
-  const updated = { ...session, ...updates, updatedAt: Date.now() };
-  localStorage.setItem(`firebase_session_${sessionId}`, JSON.stringify(updated));
+  const _db = requireDb();
+  const docRef = doc(_db, 'sessions', sessionId);
+  await updateDoc(docRef, {
+    ...updates,
+    updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
+  });
 }
 
 /** bot 作成セッションの sentinel 値。最初にログインした人が作成者に昇格する */
@@ -222,107 +198,78 @@ export async function joinSession(
   if (!playerName.trim()) {
     throw new SessionError('参加者名を入力してください', 'invalid-name');
   }
+  const _db = requireDb();
+  const docRef = doc(_db, 'sessions', sessionId);
 
-  if (useFirestore) {
-    const docRef = doc(db!, 'sessions', sessionId);
+  return await runTransaction(_db, async (transaction) => {
+    const snap = await transaction.get(docRef);
+    if (!snap.exists()) {
+      throw new SessionError(`セッション ${sessionId} が見つかりません`, 'not-found');
+    }
 
-    return await runTransaction(db!, async (transaction) => {
-      const snap = await transaction.get(docRef);
-      if (!snap.exists()) {
-        throw new SessionError(`セッション ${sessionId} が見つかりません`, 'not-found');
+    const data = snap.data();
+    const participants = (data.participants as string[] | undefined) ?? [];
+    const isAlreadyJoined = participants.includes(playerName);
+
+    if (isAlreadyJoined && !options?.force) {
+      return { isAlreadyJoined: true };
+    }
+
+    // participants配列を更新
+    let newParticipants: string[];
+    if (isAlreadyJoined && options?.force) {
+      newParticipants = [...participants.filter((name) => name !== playerName), playerName];
+    } else {
+      newParticipants = [...participants, playerName];
+    }
+
+    const updates: Record<string, unknown> = {
+      participants: newParticipants,
+      updatedAt: serverTimestamp(),
+    };
+
+    // bot 作成セッション: 最初にログインした人を作成者に自動昇格
+    // transaction 内なので同時入室でも先着 1 人のみ昇格する
+    let newCreator: string | undefined;
+    if (data.createdBy === AUTO_SESSION_BOT_CREATOR) {
+      updates.createdBy = playerName;
+      newCreator = playerName;
+    }
+
+    // gameState.playersに未登録の場合、新規プレイヤーとして追加
+    // dot notationでplayersのみ更新し、courts/matchHistory等を上書きしない
+    const gameState = data.gameState as GameState | undefined;
+    if (gameState) {
+      const playerExists = gameState.players.some((p) => p.name === playerName);
+      if (!playerExists) {
+        const newPlayer: Player = {
+          id: crypto.randomUUID(),
+          name: playerName,
+          gender: options?.gender,
+          isResting: true,
+          gamesPlayed: 0,
+          lastPlayedAt: 0,
+          activatedAt: 0,
+        };
+        const newPlayers = [...gameState.players, newPlayer];
+        updates['gameState.players'] = sanitize(newPlayers);
+        updates.registeredPlayers = newPlayers.map((p) => p.name);
       }
+    }
 
-      const data = snap.data();
-      const participants = (data.participants as string[] | undefined) ?? [];
-      const isAlreadyJoined = participants.includes(playerName);
-
-      if (isAlreadyJoined && !options?.force) {
-        return { isAlreadyJoined: true };
-      }
-
-      // participants配列を更新
-      let newParticipants: string[];
-      if (isAlreadyJoined && options?.force) {
-        newParticipants = [...participants.filter((name) => name !== playerName), playerName];
-      } else {
-        newParticipants = [...participants, playerName];
-      }
-
-      const updates: Record<string, unknown> = {
-        participants: newParticipants,
-        updatedAt: serverTimestamp(),
-      };
-
-      // bot 作成セッション: 最初にログインした人を作成者に自動昇格
-      // transaction 内なので同時入室でも先着 1 人のみ昇格する
-      let newCreator: string | undefined;
-      if (data.createdBy === AUTO_SESSION_BOT_CREATOR) {
-        updates.createdBy = playerName;
-        newCreator = playerName;
-      }
-
-      // gameState.playersに未登録の場合、新規プレイヤーとして追加
-      // dot notationでplayersのみ更新し、courts/matchHistory等を上書きしない
-      const gameState = data.gameState as GameState | undefined;
-      if (gameState) {
-        const playerExists = gameState.players.some((p) => p.name === playerName);
-        if (!playerExists) {
-          const newPlayer: Player = {
-            id: crypto.randomUUID(),
-            name: playerName,
-            gender: options?.gender,
-            isResting: true,
-            gamesPlayed: 0,
-            lastPlayedAt: 0,
-            activatedAt: 0,
-          };
-          const newPlayers = [...gameState.players, newPlayer];
-          updates['gameState.players'] = sanitize(newPlayers);
-          updates.registeredPlayers = newPlayers.map((p) => p.name);
-        }
-      }
-
-      transaction.update(docRef, updates);
-      return { isAlreadyJoined: false, newCreator };
-    });
-  }
-
-  // フォールバック: localStorage
-  const session = await getSession(sessionId);
-  if (!session) {
-    throw new SessionError(`セッション ${sessionId} が見つかりません`, 'not-found');
-  }
-
-  const isAlreadyJoined = session.participants?.includes(playerName) ?? false;
-  if (isAlreadyJoined && !options?.force) {
-    return { isAlreadyJoined: true };
-  }
-
-  let participants = session.participants ?? [];
-  if (isAlreadyJoined && options?.force) {
-    participants = participants.filter((name) => name !== playerName);
-  }
-  participants = [...participants, playerName];
-
-  const updates: Partial<Session> = { participants };
-  let newCreator: string | undefined;
-  if (session.createdBy === AUTO_SESSION_BOT_CREATOR) {
-    updates.createdBy = playerName;
-    newCreator = playerName;
-  }
-
-  await updateSession(sessionId, updates);
-  return { isAlreadyJoined: false, newCreator };
+    transaction.update(docRef, updates);
+    return { isAlreadyJoined: false, newCreator };
+  });
 }
 
 /** participants から自分を除去する。createdBy は変更しない。 */
 export async function leaveSession(sessionId: string, playerName: string): Promise<void> {
   if (!sessionId || !playerName) return;
-  if (!useFirestore) return;
+  if (!db) return;
 
-  const docRef = doc(db!, 'sessions', sessionId);
+  const docRef = doc(db, 'sessions', sessionId);
   try {
-    await runTransaction(db!, async (transaction) => {
+    await runTransaction(db, async (transaction) => {
       const snap = await transaction.get(docRef);
       if (!snap.exists()) return;
       const data = snap.data();
@@ -356,9 +303,8 @@ export async function syncGameState(
   sessionId: string,
   gameState: GameState,
 ): Promise<void> {
-  if (!useFirestore) return;
-
-  const docRef = doc(db!, 'sessions', sessionId);
+  const _db = requireDb();
+  const docRef = doc(_db, 'sessions', sessionId);
   const registeredPlayers = gameState.players.map((p) => p.name);
   await updateDoc(docRef, {
     gameState: sanitize(gameState),
@@ -373,10 +319,9 @@ export function subscribeToGameState(
   sessionId: string,
   callback: (gameState: GameState | null) => void,
 ): () => void {
-  if (!useFirestore) return () => {};
-
+  const _db = requireDb();
   return onSnapshot(
-    doc(db!, 'sessions', sessionId),
+    doc(_db, 'sessions', sessionId),
     (snap) => {
       if (snap.exists()) {
         const data = snap.data();
@@ -396,13 +341,13 @@ export async function listRecentActiveSessions(
   count = 50,
   options?: { includeArchived?: boolean },
 ): Promise<Session[]> {
-  if (!useFirestore) return [];
+  const _db = requireDb();
 
   // NOTE: statusフィルターなし（現状セッション終了機能が未実装のため全セッションがactive）
   // 単一フィールドorderByのみで複合インデックス不要
   // 12h自動アーカイブ判定はクライアント側でフィルタ（Firestore OR queryを避けるため）
   const q = query(
-    collection(db!, 'sessions'),
+    collection(_db, 'sessions'),
     orderBy('updatedAt', 'desc'),
     limit(count),
   );
@@ -415,14 +360,9 @@ export async function listRecentActiveSessions(
 
 /** セッションを削除（Firestoreドキュメントを完全削除） */
 export async function deleteSession(sessionId: string): Promise<void> {
-  if (useFirestore) {
-    const docRef = doc(db!, 'sessions', sessionId);
-    await deleteDoc(docRef);
-    return;
-  }
-
-  // フォールバック: localStorage
-  localStorage.removeItem(`firebase_session_${sessionId}`);
+  const _db = requireDb();
+  const docRef = doc(_db, 'sessions', sessionId);
+  await deleteDoc(docRef);
 }
 
 /**
@@ -437,12 +377,12 @@ export async function writePresence(
   username: string,
   patch: Partial<PresenceEntry>,
 ): Promise<void> {
-  if (!useFirestore) return;
+  if (!db) return;
   if (!sessionId || !username) return;
   const entries = Object.entries(patch);
   if (entries.length === 0) return;
 
-  const docRef = doc(db!, 'sessions', sessionId);
+  const docRef = doc(db, 'sessions', sessionId);
   // updateDoc の可変長 (FieldPath, value)... 形式で書き込み
   const args: unknown[] = [];
   for (const [key, value] of entries) {
@@ -463,10 +403,10 @@ export async function writePresence(
  * プレゼンスエントリを削除（unmount/非表示時）
  */
 export async function clearPresence(sessionId: string, username: string): Promise<void> {
-  if (!useFirestore) return;
+  if (!db) return;
   if (!sessionId || !username) return;
 
-  const docRef = doc(db!, 'sessions', sessionId);
+  const docRef = doc(db, 'sessions', sessionId);
   try {
     await (updateDoc as (...args: unknown[]) => Promise<void>)(
       docRef,
@@ -488,10 +428,10 @@ export async function pruneStalePresence(
   sessionId: string,
   staleUsernames: string[],
 ): Promise<void> {
-  if (!useFirestore) return;
+  if (!db) return;
   if (!sessionId || staleUsernames.length === 0) return;
 
-  const docRef = doc(db!, 'sessions', sessionId);
+  const docRef = doc(db, 'sessions', sessionId);
   const args: unknown[] = [];
   for (const username of staleUsernames) {
     args.push(new FieldPath('presence', username), deleteField());

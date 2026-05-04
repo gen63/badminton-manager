@@ -49,7 +49,7 @@ export function MainPage() {
   const writer = useSessionWriterWithToast(toast);
   const isGameStateLoaded = useSyncStatusStore((s) => s.isGameStateLoaded);
   const { players } = usePlayerStore();
-  const { courts, matchHistory, finishGame } = useGameStore();
+  const { courts, matchHistory } = useGameStore();
   const { useStayDurationPriority, continuousMatchMode, prioritizeDiversity, recordScores, practiceType } = useSettingsStore();
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
@@ -335,54 +335,8 @@ export function MainPage() {
     setPaymentModalPlayer(null);
   };
 
-  const handleContinuousNext = async (courtId: number) => {
-    const { courts, matchHistory } = useGameStore.getState();
-    const { players } = usePlayerStore.getState();
-    const { useStayDurationPriority, prioritizeDiversity, practiceType } = useSettingsStore.getState();
-    const gm = gameModeFromPracticeType(practiceType);
-
-    // 最新の待機プレイヤーを計算
-    const playersInCourts = new Set(
-      courts.flatMap(c => [...c.teamA, ...c.teamB]).filter(id => id?.trim())
-    );
-    const waitingPlayers = players.filter(
-      p => !p.isResting && !playersInCourts.has(p.id)
-    );
-
-    // ブロックチェック
-    const block = checkContinuousBlock(players, courts, prioritizeDiversity, gm);
-    if (block.blocked) {
-      if (block.reason === 'diversity_block') await writer.setContinuousMatchMode(false);
-      return;
-    }
-
-    if (waitingPlayers.length < getMinWaitingCount(gm)) {
-      toast.error('待機中のプレイヤーが足りません');
-      return;
-    }
-
-    // 配置アルゴリズム実行
-    const assignments = assignCourts(waitingPlayers, 1, matchHistory, {
-      targetCourtIds: [courtId],
-      totalCourtCount: courts.length,
-      useStayDurationPriority,
-      reservations: reservations,
-      gameMode: gm,
-    });
-
-    if (assignments[0]) {
-      await writer.updateCourt(courtId, {
-        ...EMPTY_COURT_STATE,
-        teamA: assignments[0].teamA,
-        teamB: assignments[0].teamB,
-      });
-      await writer.startGame(courtId);
-    } else {
-      toast.error('配置アルゴリズムでエラーが発生しました');
-    }
-  };
-
-
+  // Phase 4: 試合終了の連続モードは sm.finishMatchAndContinue が transaction 内で
+  // computeFinishAndContinue を実行するため、ローカルでの handleContinuousNext は不要。
 
   const waitingCount = sortedWaitingPlayers.length;
   const shouldBlockAssignment = shouldBlockForDiversity(
@@ -857,12 +811,12 @@ export function MainPage() {
                       {court.isPlaying ? (
                         <button
                           onClick={async () => {
+                            if (!session?.id) return;
                             const currentCourt = courts.find((c) => c.id === court.id);
                             if (!currentCourt) return;
 
                             const matchStartedAt = currentCourt.startedAt;
                             const matchId = crypto.randomUUID();
-                            const isOnline = !!(session?.id && session?.createdBy);
 
                             // Undo 用に試合終了前の状態を保存
                             pushUndo();
@@ -872,50 +826,25 @@ export function MainPage() {
                             const teamASnapshot = currentCourt.teamA;
                             const teamBSnapshot = currentCourt.teamB;
 
-                            if (isOnline) {
-                              try {
-                                const { result } = await sm.finishMatchAndContinue(
-                                  session!.id,
-                                  court.id,
-                                  matchStartedAt,
-                                  {
-                                    matchId,
-                                    useStayDurationPriority,
-                                    prioritizeDiversity,
-                                  },
-                                );
-                                if (result === 'already_finished') {
-                                  toast.info('他のユーザーが既に終了しました');
-                                  return;
-                                }
-                              } catch (err) {
-                                console.error('[FinishGame] Transaction failed:', err);
-                                toast.error('試合終了の同期に失敗しました');
+                            try {
+                              const { result } = await sm.finishMatchAndContinue(
+                                session.id,
+                                court.id,
+                                matchStartedAt,
+                                {
+                                  matchId,
+                                  useStayDurationPriority,
+                                  prioritizeDiversity,
+                                },
+                              );
+                              if (result === 'already_finished') {
+                                toast.info('他のユーザーが既に終了しました');
                                 return;
                               }
-                            } else {
-                              // ローカルモード: 既存の楽観更新パスを維持
-                              finishGame(court.id, 0, 0, matchId);
-                              const activePlayerIds = [...currentCourt.teamA, ...currentCourt.teamB].filter(id => id);
-                              usePlayerStore.getState().incrementGamesPlayed(activePlayerIds, Date.now());
-                              if (currentCourt.restingPlayerIds && currentCourt.restingPlayerIds.length > 0) {
-                                currentCourt.restingPlayerIds.forEach((playerId: string) => {
-                                  usePlayerStore.getState().updatePlayer(playerId, { isResting: true });
-                                });
-                              }
-                              useGameStore.getState().updateCourt(court.id, {
-                                teamA: ['', ''],
-                                teamB: ['', ''],
-                                scoreA: 0,
-                                scoreB: 0,
-                                isPlaying: false,
-                                startedAt: 0,
-                                finishedAt: 0,
-                                restingPlayerIds: [],
-                              });
-                              if (continuousMatchMode) {
-                                await handleContinuousNext(court.id);
-                              }
+                            } catch (err) {
+                              console.error('[FinishGame] Transaction failed:', err);
+                              toast.error('試合終了の同期に失敗しました');
+                              return;
                             }
 
                             if (recordScores) {

@@ -7,7 +7,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
-import { generateSessionId, parsePlayerInput } from '../lib/utils';
+import { parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { clearPresence, createSession, leaveSession } from '../services/sessionService';
 import { initializeGameState } from '../services/sessionMutations';
@@ -65,11 +65,9 @@ const getInitialGym = () => {
 export function SessionCreate() {
   const navigate = useNavigate();
   const location = useLocation();
-  const setSession = useSessionStore((state) => state.setSession);
   const initializeSession = useSessionStore((state) => state.initialize);
 
-  // オンラインモード判定
-  const isPhase1Mode = location.pathname === '/session/create';
+  // Phase 4 で常に Firebase 共有セッションを作成する（ローカルモード廃止）
   const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
   const [showCreatorSelect, setShowCreatorSelect] = useState(false);
   const [selectedCreatorName, setSelectedCreatorName] = useState('');
@@ -179,50 +177,9 @@ export function SessionCreate() {
       
       setAllRated(hasAllRatings);
       
-      // パターン1のみ自動開始（入力欄が空だった場合）
-      if (!hasInputNames && inputs.length > 0) {
-        // 旧オンラインセッションに居る場合は離脱処理を投げる（fire-and-forget）
-        const previousSession = useSessionStore.getState().session;
-        const previousUser = useSessionStore.getState().currentUser;
-        if (previousSession?.id && previousSession.createdBy && previousUser) {
-          void Promise.allSettled([
-            leaveSession(previousSession.id, previousUser),
-            clearPresence(previousSession.id, previousUser),
-          ]);
-        }
-
-        addPlayers(inputs);
-
-        const adjustedCourtCount = 1;
-        const sessionId = generateSessionId();
-        const now = Date.now();
-        const practiceTime = new Date(practiceDateTime).getTime();
-        const session = {
-          id: sessionId,
-          config: {
-            courtCount: adjustedCourtCount,
-            targetScore,
-            practiceStartTime: practiceTime,
-            gym: selectedGym || undefined,
-          },
-          createdAt: now,
-          updatedAt: now,
-        };
-
-        setSession(session);
-        initializeCourts(adjustedCourtCount);
-
-        // ローディング状態を解除してから遷移
-        setIsLoadingMembers(false);
-        
-        // 少し待ってから遷移（状態更新の完了を待つ）
-        setTimeout(() => {
-          navigate('/main');
-        }, 100);
-        return;
-      }
-      
-      // パターン2（名前入力済み）の場合は、性別補完後に留まる
+      // Phase 4 では Firebase 必須なので auto-create による無名セッション作成は廃止。
+      // パターン 1（入力欄が空）でも、ユーザーが「作成」ボタンから handleCreate を
+      // 呼ぶ流れに統一する（作成者名選択モーダルを通って Firebase セッションを作る）。
       setIsLoadingMembers(false);
     } else {
       setLoadError(result.message);
@@ -272,14 +229,14 @@ export function SessionCreate() {
       gym: selectedGym || undefined,
     };
 
-    // オンラインモード: 作成者名が未選択の場合は選択画面へ
-    if (isPhase1Mode && !selectedCreatorName) {
+    // 作成者名が未選択の場合は選択画面へ
+    if (!selectedCreatorName) {
       setShowCreatorSelect(true);
       return;
     }
 
-    // オンラインモード: Firebaseにセッション作成
-    if (isPhase1Mode) {
+    // Firebase にセッション作成
+    {
       try {
         const creatorName = selectedCreatorName;
         const registeredPlayers = playerInputs.map((p) => p.name);
@@ -326,21 +283,7 @@ export function SessionCreate() {
       } catch (err) {
         setLoadError(getErrorMessage(err));
       }
-      return;
     }
-
-    // ローカルモード: LocalStorageのみ
-    const sessionId = generateSessionId();
-    const session = {
-      id: sessionId,
-      config: sessionConfig,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    setSession(session);
-    initializeCourts(adjustedCourtCount);
-    navigate('/main');
   };
 
   // オンラインモード: 作成者名選択画面（セッション作成前）
