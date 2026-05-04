@@ -161,6 +161,38 @@ describe('sessionMutations - players', () => {
     expect(next.players.map((p) => p.id)).toEqual(['b']);
   });
 
+  it('computeRemovePlayer: コート上のプレイヤー参照を空にする (DATA1)', () => {
+    const state = baseState({
+      players: [makePlayer('a'), makePlayer('b'), makePlayer('c'), makePlayer('d')],
+      courts: [
+        makeCourt(1, {
+          teamA: ['a', 'b'],
+          teamB: ['c', 'd'],
+          restingPlayerIds: ['a'],
+        }),
+      ],
+    });
+    const next = computeRemovePlayer(state, 'a');
+    expect(next.courts[0].teamA).toEqual(['', 'b']);
+    expect(next.courts[0].teamB).toEqual(['c', 'd']);
+    expect(next.courts[0].restingPlayerIds).toEqual([]);
+  });
+
+  it('computeRemovePlayer: 予約から削除し、空になった予約は破棄 (DATA1)', () => {
+    const state = baseState({
+      players: [makePlayer('a'), makePlayer('b')],
+      reservations: [
+        { id: 'r1', orderNumber: 1, playerIds: ['a', 'b'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+        { id: 'r2', orderNumber: 2, playerIds: ['a'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+      ],
+    });
+    const next = computeRemovePlayer(state, 'a');
+    // r1 は b だけ残る
+    expect(next.reservations.find((r) => r.id === 'r1')?.playerIds).toEqual(['b']);
+    // r2 は空になるので破棄
+    expect(next.reservations.find((r) => r.id === 'r2')).toBeUndefined();
+  });
+
   it('computeUpdatePlayer', () => {
     const state = baseState({ players: [makePlayer('a', { name: 'Alice' })] });
     const next = computeUpdatePlayer(state, 'a', { name: 'Alice2', gender: 'F' });

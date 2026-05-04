@@ -178,7 +178,28 @@ export function computeAddPlayers(
 }
 
 export function computeRemovePlayer(state: GameState, playerId: string): GameState {
-  return { ...state, players: state.players.filter((p) => p.id !== playerId) };
+  // DATA1 fix: プレイヤーを消すときに court / reservation の参照も整合的に更新する。
+  // - court.teamA / teamB の該当 slot を空文字に
+  // - court.restingPlayerIds から除外
+  // - reservation.playerIds から除外し、空になった予約は削除
+  // matchHistory はそのまま（履歴上の名前は表示時に「未設定」フォールバック）。
+  const blankTeam = (team: [string, string]): [string, string] => [
+    team[0] === playerId ? '' : team[0],
+    team[1] === playerId ? '' : team[1],
+  ];
+  return {
+    ...state,
+    players: state.players.filter((p) => p.id !== playerId),
+    courts: state.courts.map((c) => ({
+      ...c,
+      teamA: blankTeam(c.teamA),
+      teamB: blankTeam(c.teamB),
+      restingPlayerIds: c.restingPlayerIds?.filter((id) => id !== playerId),
+    })),
+    reservations: state.reservations
+      .map((r) => ({ ...r, playerIds: r.playerIds.filter((id) => id !== playerId) }))
+      .filter((r) => r.playerIds.length > 0),
+  };
 }
 
 export function computeUpdatePlayer(
