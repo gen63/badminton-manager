@@ -818,7 +818,13 @@ export async function finishMatchAndContinue(
   courtId: number,
   matchStartedAt: number,
   options: FinishGameOptions,
-): Promise<{ result: 'success' | 'already_finished'; writtenState?: GameState }> {
+): Promise<{
+  result: 'success' | 'already_finished';
+  writtenState?: GameState;
+  /** 連続モード配置の結果（成功 / ブロック理由）。GAMEOPS4: 呼び出し側で toast 表示用。 */
+  continuousNextApplied?: boolean;
+  continuousError?: string;
+}> {
   if (matchStartedAt <= 0) {
     throw new SessionError(
       'matchStartedAt が無効です（試合が開始されていません）',
@@ -846,17 +852,22 @@ export async function finishMatchAndContinue(
 
       const remoteSettings = remote.settings;
       const gameMode = gameModeFromPracticeType(remoteSettings?.practiceType);
-      const next = computeFinishAndContinue(remote, courtId, {
+      const computed = computeFinishAndContinue(remote, courtId, {
         continuousMatchMode: remoteSettings?.continuousMatchMode ?? false,
         useStayDurationPriority: options.useStayDurationPriority,
         prioritizeDiversity: options.prioritizeDiversity,
         gameMode,
         matchId: options.matchId,
-      }).newState;
+      });
 
-      transaction.update(ref, buildGameStatePayload(next));
+      transaction.update(ref, buildGameStatePayload(computed.newState));
 
-      return { result: 'success' as const, writtenState: next };
+      return {
+        result: 'success' as const,
+        writtenState: computed.newState,
+        continuousNextApplied: computed.continuousNextApplied,
+        continuousError: computed.continuousError,
+      };
     });
   } catch (error: unknown) {
     if ((error as { code?: string })?.code === 'aborted') {

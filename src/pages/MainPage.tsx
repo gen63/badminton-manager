@@ -829,7 +829,7 @@ export function MainPage() {
                             const teamBSnapshot = currentCourt.teamB;
 
                             try {
-                              const { result } = await sm.finishMatchAndContinue(
+                              const res = await sm.finishMatchAndContinue(
                                 session.id,
                                 court.id,
                                 matchStartedAt,
@@ -839,9 +839,19 @@ export function MainPage() {
                                   prioritizeDiversity,
                                 },
                               );
-                              if (result === 'already_finished') {
+                              if (res.result === 'already_finished') {
                                 toast.info('他のユーザーが既に終了しました');
                                 return;
+                              }
+                              // GAMEOPS4: 連続モードがブロックされた理由をユーザーに伝える
+                              if (continuousMatchMode && !res.continuousNextApplied) {
+                                if (res.continuousError === 'diversity_block') {
+                                  toast.warning('待機人数が少ないため連続モードを停止しました');
+                                } else if (res.continuousError === 'not_enough_players') {
+                                  toast.info('待機中のプレイヤーが足りないため次の試合は配置されません');
+                                } else if (res.continuousError === 'assignment_failed') {
+                                  toast.error('連続配置に失敗しました');
+                                }
                               }
                             } catch (err) {
                               console.error('[FinishGame] Transaction failed:', err);

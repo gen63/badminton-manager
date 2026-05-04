@@ -22,30 +22,33 @@ interface UndoState {
 }
 
 function createCurrentSnapshot(): UndoEntry {
+  const settings = useSettingsStore.getState();
   return {
     courts: structuredClone(useGameStore.getState().courts),
     players: structuredClone(usePlayerStore.getState().players),
     matchHistory: structuredClone(useGameStore.getState().matchHistory),
     reservations: structuredClone(useReservationStore.getState().reservations),
-    continuousMatchMode: useSettingsStore.getState().continuousMatchMode,
+    // UNDO5: sync 系の全設定を撮る（undo 後にユーザーが設定を変えても巻き戻せる）
+    continuousMatchMode: settings.continuousMatchMode,
+    recordScores: settings.recordScores,
+    practiceType: settings.practiceType,
     timestamp: Date.now(),
   };
 }
 
 /** UndoEntry から Firestore に書き戻す GameState を組み立てる */
 function entryToGameState(entry: UndoEntry): GameState {
-  const settingsStore = useSettingsStore.getState();
+  const current = useSettingsStore.getState();
   return {
     players: structuredClone(entry.players),
     courts: structuredClone(entry.courts),
     matchHistory: structuredClone(entry.matchHistory),
     reservations: entry.reservations ? structuredClone(entry.reservations) : [],
+    // entry に含まれていない設定は現状維持（旧 entry 互換）
     settings: {
-      // sync 系の設定は entry に含まれているもの以外は現状維持
-      recordScores: settingsStore.recordScores,
-      continuousMatchMode:
-        entry.continuousMatchMode ?? settingsStore.continuousMatchMode,
-      practiceType: settingsStore.practiceType,
+      recordScores: entry.recordScores ?? current.recordScores,
+      continuousMatchMode: entry.continuousMatchMode ?? current.continuousMatchMode,
+      practiceType: entry.practiceType ?? current.practiceType,
     },
   };
 }
@@ -79,36 +82,39 @@ export const useUndoStore = create<UndoState>()((set, get) => ({
   },
 
   undo: async () => {
-    const { undoStack, redoStack } = get();
-    if (undoStack.length === 0) return false;
+    const stackAtStart = get().undoStack;
+    if (stackAtStart.length === 0) return false;
 
     const current = createCurrentSnapshot();
-    const target = undoStack[undoStack.length - 1];
+    const target = stackAtStart[stackAtStart.length - 1];
 
     const ok = await applyToFirestore(target);
     if (!ok) return false;
 
-    set({
-      undoStack: undoStack.slice(0, -1),
-      redoStack: [...redoStack, current],
-    });
+    // UNDO1: await の間に並行 pushUndo が走った可能性があるため、
+    // set 時点の最新 stack に対して target を取り除く（functional update）。
+    // target をリファレンス比較で除く（同一 snapshot は object identity で一意）。
+    set((state) => ({
+      undoStack: state.undoStack.filter((e) => e !== target),
+      redoStack: [...state.redoStack, current],
+    }));
     return true;
   },
 
   redo: async () => {
-    const { undoStack, redoStack } = get();
-    if (redoStack.length === 0) return false;
+    const stackAtStart = get().redoStack;
+    if (stackAtStart.length === 0) return false;
 
     const current = createCurrentSnapshot();
-    const target = redoStack[redoStack.length - 1];
+    const target = stackAtStart[stackAtStart.length - 1];
 
     const ok = await applyToFirestore(target);
     if (!ok) return false;
 
-    set({
-      undoStack: [...undoStack, current],
-      redoStack: redoStack.slice(0, -1),
-    });
+    set((state) => ({
+      undoStack: [...state.undoStack, current],
+      redoStack: state.redoStack.filter((e) => e !== target),
+    }));
     return true;
   },
 

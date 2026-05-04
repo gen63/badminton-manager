@@ -15,14 +15,15 @@ const COURT_PROBABILITIES_2: Record<'upper' | 'lower', number[]> = {
 /**
  * 各プレイヤーの連勝/連敗数を算出
  * 正の値=連勝数、負の値=連敗数
+ *
+ * 入力 `matchHistory` は **古い順**（先頭が最も古い、末尾が最新）を前提とする。
+ * `computeFinishAndContinue` 等が `[...prev, newMatch]` で末尾に追加するため、
+ * production の matchHistory は常に古い順で並んでいる。
  */
 export function getStreaks(matchHistory: Match[]): Map<string, number> {
   const streaks = new Map<string, number>();
 
-  // matchHistoryは新しい順（先頭が最新）の前提で、古い順に処理する
-  const chronological = [...matchHistory].reverse();
-
-  for (const match of chronological) {
+  for (const match of matchHistory) {
     const winners = match.winner === 'A' ? match.teamA : match.teamB;
     const losers = match.winner === 'A' ? match.teamB : match.teamA;
 
@@ -70,6 +71,8 @@ export function buildInitialOrder(players: Player[]): string[] {
  * - 2連勝ごと: グループ1つ分上に移動
  * - 敗北: ceil(groupSize/2) 下に移動
  * groupCount: グループ数（3コート=3, 2コート=2）
+ *
+ * `matchHistory` は **古い順**（先頭が最も古い、末尾が最新）を前提とする。
  */
 export function applyStreakSwaps(
   initialOrder: string[],
@@ -80,13 +83,10 @@ export function applyStreakSwaps(
   const stepSize = Math.max(1, Math.floor(order.length / groupCount));
   const dropAmount = Math.max(1, Math.ceil(stepSize / 2));
 
-  // 古い順に処理
-  const chronological = [...matchHistory].reverse();
-
   // 各プレイヤーの連勝カウント（処理中の累積）
   const streaks = new Map<string, number>();
 
-  for (const match of chronological) {
+  for (const match of matchHistory) {
     const winners = match.winner === 'A' ? match.teamA : match.teamB;
     const losers = match.winner === 'A' ? match.teamB : match.teamA;
 
@@ -203,6 +203,8 @@ function groupPlayers2Court(
 /**
  * 候補4人それぞれの直近3試合と、4人中3人以上が重複するかチェック
  * グローバル直近N試合ではなく、各個人の視点で判定する
+ *
+ * `matchHistory` は **古い順**（末尾が最新）。末尾から走査して直近 3 試合を見る。
  */
 function hasSimilarRecentMatch(
   fourPlayerIds: string[],
@@ -210,8 +212,9 @@ function hasSimilarRecentMatch(
 ): boolean {
   for (const playerId of fourPlayerIds) {
     let found = 0;
-    for (const match of matchHistory) {
-      if (found >= 3) break;  // 直近3試合をチェック（変更: 2→3）
+    for (let i = matchHistory.length - 1; i >= 0; i--) {
+      if (found >= 3) break;  // 直近3試合をチェック
+      const match = matchHistory[i];
       const matchMembers = [...match.teamA, ...match.teamB];
       if (!matchMembers.includes(playerId)) continue;
       found++;
