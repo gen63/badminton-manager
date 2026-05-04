@@ -752,9 +752,10 @@ export function AccountingPage() {
                   </button>
                   <input
                     type="number"
+                    min="0"
                     value={maleFee || ''}
                     onChange={(e) => {
-                      const newValue = parseInt(e.target.value) || 0;
+                      const newValue = Math.max(0, parseInt(e.target.value, 10) || 0);
                       setMaleFee(newValue);
                       saveAllInputs({ maleFee: newValue });
                     }}
@@ -777,7 +778,7 @@ export function AccountingPage() {
                   type="number"
                   value={maleCount || ''}
                   onChange={(e) => {
-                    const newValue = Math.max(0, parseInt(e.target.value) || 0);
+                    const newValue = Math.max(0, parseInt(e.target.value, 10) || 0);
                     setMaleCount(newValue);
                     saveAllInputs({ maleCount: newValue });
                   }}
@@ -808,9 +809,10 @@ export function AccountingPage() {
                   </button>
                   <input
                     type="number"
+                    min="0"
                     value={femaleFee || ''}
                     onChange={(e) => {
-                      const newValue = parseInt(e.target.value) || 0;
+                      const newValue = Math.max(0, parseInt(e.target.value, 10) || 0);
                       setFemaleFee(newValue);
                       saveAllInputs({ femaleFee: newValue });
                     }}
@@ -833,7 +835,7 @@ export function AccountingPage() {
                   type="number"
                   value={femaleCount || ''}
                   onChange={(e) => {
-                    const newValue = Math.max(0, parseInt(e.target.value) || 0);
+                    const newValue = Math.max(0, parseInt(e.target.value, 10) || 0);
                     setFemaleCount(newValue);
                     saveAllInputs({ femaleCount: newValue });
                   }}
@@ -857,7 +859,7 @@ export function AccountingPage() {
                   type="number"
                   value={exemptCount || ''}
                   onChange={(e) => {
-                    const newValue = Math.max(0, parseInt(e.target.value) || 0);
+                    const newValue = Math.max(0, parseInt(e.target.value, 10) || 0);
                     setExemptCount(newValue);
                     saveAllInputs({ exemptCount: newValue });
                   }}
@@ -893,9 +895,10 @@ export function AccountingPage() {
                   </button>
                   <input
                     type="number"
+                    min="0"
                     value={gymCost || ''}
                     onChange={(e) => {
-                      const newValue = parseInt(e.target.value) || 0;
+                      const newValue = Math.max(0, parseInt(e.target.value, 10) || 0);
                       setGymCost(newValue);
                       saveAllInputs({ gymCost: newValue });
                     }}
@@ -927,9 +930,10 @@ export function AccountingPage() {
                 <div className="flex items-center gap-2 flex-1">
                   <input
                     type="number"
+                    min="0"
                     value={shuttlePrice || ''}
                     onChange={(e) => {
-                      const newValue = parseInt(e.target.value) || 0;
+                      const newValue = Math.max(0, parseInt(e.target.value, 10) || 0);
                       setShuttlePrice(newValue);
                       saveAllInputs({ shuttlePrice: newValue });
                     }}
@@ -1011,7 +1015,7 @@ export function AccountingPage() {
                       type="number"
                       value={Math.abs(otherAmount) || ''}
                       onChange={(e) => {
-                        const absValue = Math.abs(parseInt(e.target.value) || 0);
+                        const absValue = Math.abs(parseInt(e.target.value, 10) || 0);
                         const newValue = otherAmount < 0 ? -absValue : absValue;
                         setOtherAmount(newValue);
                         saveAllInputs({ otherAmount: newValue });

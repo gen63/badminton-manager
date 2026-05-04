@@ -265,11 +265,23 @@ export function HistoryPage() {
     await writer.removeMatch(matchId);
   };
 
+  // CSV1 fix: RFC 4180 のエスケープ。`,`/`"`/`\n`/`\r` を含むフィールドは
+  // ダブルクォートで囲み、内部の `"` は `""` に置き換える。
+  const csvEscape = (value: string | number): string => {
+    const s = String(value);
+    if (/[",\n\r]/.test(s)) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  };
+
   const handleCopyHistory = async () => {
     const dateStr = formatLocalDate(session?.config.practiceStartTime ?? Date.now());
     const gymName = session?.config.gym || '';
 
-    let text = '日付,場所,A選手1,A選手2,B選手1,B選手2,スコアA,スコアB,試合時間\n';
+    const headers = ['日付', '場所', 'A選手1', 'A選手2', 'B選手1', 'B選手2', 'スコアA', 'スコアB', '試合時間'];
+    const lines: string[] = [headers.map(csvEscape).join(',')];
+
     matchHistory.forEach((match) => {
       const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
       const a1 = getPlayerName(match.teamA[0]);
@@ -277,9 +289,11 @@ export function HistoryPage() {
       const b1 = getPlayerName(match.teamB[0]);
       const b2 = isMatchSingles ? '' : getPlayerName(match.teamB[1]);
       const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
-      text += `${dateStr},${gymName},${a1},${a2},${b1},${b2},${match.scoreA},${match.scoreB},${duration}\n`;
+      const row = [dateStr, gymName, a1, a2, b1, b2, match.scoreA, match.scoreB, duration];
+      lines.push(row.map(csvEscape).join(','));
     });
 
+    const text = lines.join('\n') + '\n';
     const success = await copyToClipboard(text);
     if (!success) {
       toast.error('コピーに失敗しました');

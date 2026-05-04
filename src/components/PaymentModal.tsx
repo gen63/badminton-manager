@@ -16,12 +16,13 @@ export function PaymentModal({ playerName, defaultAmount, onConfirm, onCancel }:
   }, [defaultAmount]);
 
   const handleConfirm = () => {
-    const numAmount = parseInt(amount) || 0;
+    // NUM1/3 fix: radix 明示 + 負値防止
+    const numAmount = Math.max(0, parseInt(amount, 10) || 0);
     onConfirm(numAmount);
   };
 
   const handleIncrement = (delta: number) => {
-    const current = parseInt(amount) || 0;
+    const current = Math.max(0, parseInt(amount, 10) || 0);
     const newAmount = Math.max(0, current + delta);
     setAmount(newAmount.toString());
   };
@@ -52,6 +53,7 @@ export function PaymentModal({ playerName, defaultAmount, onConfirm, onCancel }:
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-medium text-muted-foreground">¥</span>
             <input
               type="number"
+              min="0"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="input-field pl-8 text-lg font-medium text-right"
