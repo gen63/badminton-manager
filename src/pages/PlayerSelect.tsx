@@ -70,7 +70,11 @@ export function PlayerSelect() {
         if (result.skipped.length > 0) {
           toast.warning(`重複スキップ: ${result.skipped.join('、')}`);
         }
-        setNewPlayerNames('');
+        // PLAYER1 fix: writer 内部 error 時 result は {added:0, skipped:[]} で返る。
+        // 入力済みテキストを失わせないよう「実際に処理された」場合のみクリアする。
+        if (result.added > 0 || result.skipped.length > 0) {
+          setNewPlayerNames('');
+        }
       }
     }
   };
