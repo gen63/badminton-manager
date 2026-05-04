@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
+import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { clearPresence, getSession, joinSession, leaveSession, subscribeToSession } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
+import { isValidSessionId } from '../lib/inputValidation';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
@@ -86,6 +88,15 @@ export function SessionJoinPage() {
 
   useEffect(() => {
     if (!sessionId) return;
+    // SEC3: 不正な形式の sessionId は早期エラー（任意 ID で getSession を叩かない）
+    if (!isValidSessionId(sessionId)) {
+      // エフェクト内の同期 setState を避けるため microtask で遅延
+      queueMicrotask(() => {
+        setError('セッションIDの形式が正しくありません');
+        setLoading(false);
+      });
+      return;
+    }
 
     // 初回取得
     getSession(sessionId)
@@ -198,8 +209,16 @@ export function SessionJoinPage() {
       setCurrentUser(selectedName);
 
       // App level の useFirebaseSync が session/gameState を購読する（H8 修正で
-      // 個別 subscribeToGameState は撤去）。/main マウント後に onSnapshot で
-      // ストアが埋まる。
+      // 個別 subscribeToGameState は撤去）。CON4: 初回 onSnapshot で
+      // isGameStateLoaded=true になるまで待ってから /main へ navigate
+      // するとデータ未到着の空 UI を見せなくて済む。
+      const startedAt = Date.now();
+      const TIMEOUT_MS = 5000;
+      const POLL_MS = 50;
+      while (!useSyncStatusStore.getState().isGameStateLoaded) {
+        if (Date.now() - startedAt > TIMEOUT_MS) break;
+        await new Promise((r) => setTimeout(r, POLL_MS));
+      }
       navigate('/main');
     } catch (err) {
       setError(getErrorMessage(err));

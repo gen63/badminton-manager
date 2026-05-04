@@ -20,6 +20,7 @@ import { SessionError } from '../lib/errorHandler';
 import { requireDb, sanitize } from '../lib/firestoreUtils';
 import { computeFirstMatchStartedAt } from '../lib/sessionArchive';
 import { computeFinishAndContinue, gameModeFromPracticeType } from '../lib/gameOperations';
+import { sanitizePlayerName } from '../lib/inputValidation';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
@@ -149,7 +150,8 @@ export function computeAddPlayers(
   const additions: Player[] = [];
 
   inputs.forEach((input, idx) => {
-    const name = input.name.trim();
+    // SEC2: 制御文字 / zero-width 除去 + 32 文字打ち切り
+    const name = sanitizePlayerName(input.name);
     if (!name) return;
     if (existing.has(name) || seen.has(name)) {
       skipped.push(name);
@@ -184,10 +186,23 @@ export function computeUpdatePlayer(
   playerId: string,
   updates: Omit<Partial<Player>, 'id'>,
 ): GameState {
+  // SEC2: name が含まれる場合 sanitize（rename 経由で攻撃文字列が入るのを防ぐ）
+  let safeUpdates = updates;
+  if (typeof updates.name === 'string') {
+    const cleaned = sanitizePlayerName(updates.name);
+    if (cleaned === null) {
+      // 不正な name は更新しない
+      const { name: _name, ...rest } = updates;
+      void _name;
+      safeUpdates = rest;
+    } else {
+      safeUpdates = { ...updates, name: cleaned };
+    }
+  }
   return {
     ...state,
     players: state.players.map((p) =>
-      p.id === playerId ? { ...p, ...updates, id: p.id } : p,
+      p.id === playerId ? { ...p, ...safeUpdates, id: p.id } : p,
     ),
   };
 }

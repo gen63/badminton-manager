@@ -54,6 +54,7 @@ export function ReservationModal({
           <h2 className="text-lg font-bold text-foreground">予約一覧</h2>
           <button
             onClick={onClose}
+            aria-label="閉じる"
             className="w-8 h-8 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground transition-colors"
           >
             <X size={20} />

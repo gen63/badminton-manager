@@ -9,6 +9,7 @@ import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { parsePlayerInput } from '../lib/utils';
+import { isValidSessionId } from '../lib/inputValidation';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { clearPresence, createSession, leaveSession } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
@@ -104,7 +105,8 @@ export function SessionCreate() {
 
   const handleJoinSession = () => {
     const id = joinSessionId.trim().toUpperCase();
-    if (id.length === 6) {
+    // SEC3: 形式チェックを通過したものだけ navigate
+    if (isValidSessionId(id)) {
       navigate(`/session/${id}`);
     }
   };

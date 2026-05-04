@@ -12,10 +12,15 @@ import { create } from 'zustand';
  */
 interface SyncStatusState {
   isGameStateLoaded: boolean;
+  /** onSnapshot エラーで購読が切れている疑いがあるか（ERR2 用） */
+  syncError: string | null;
   setGameStateLoaded: (loaded: boolean) => void;
+  setSyncError: (msg: string | null) => void;
 }
 
 export const useSyncStatusStore = create<SyncStatusState>((set) => ({
   isGameStateLoaded: false,
+  syncError: null,
   setGameStateLoaded: (loaded) => set({ isGameStateLoaded: loaded }),
+  setSyncError: (msg) => set({ syncError: msg }),
 }));

@@ -646,6 +646,7 @@ export function MainPage() {
               <button
                 onClick={() => navigate('/settings')}
                 className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+                aria-label="設定"
               >
                 <Settings size={18} />
               </button>

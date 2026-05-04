@@ -64,10 +64,15 @@ export function useFirebaseSync() {
 
     sessionDeletedNotified.current = false;
     useSyncStatusStore.getState().setGameStateLoaded(false);
+    useSyncStatusStore.getState().setSyncError(null);
 
     const unsub = onSnapshot(
       doc(db, 'sessions', sessionId),
       (snap) => {
+        // 再受信が成功したらエラーバナーをクリア（一時的な切断から回復した場合）
+        if (useSyncStatusStore.getState().syncError) {
+          useSyncStatusStore.getState().setSyncError(null);
+        }
         // セッション削除
         if (!snap.exists()) {
           if (!sessionDeletedNotified.current) {
@@ -193,8 +198,15 @@ export function useFirebaseSync() {
       },
       (error) => {
         console.error('[FirebaseSync] GameState subscription error:', error);
-        // 同期切断はユーザーに気づかせる（permission-denied / unavailable 等）
-        toastRef.current.error('同期エラー: 再接続中です。ネットワークを確認してください');
+        // ERR2: 永続バナーで同期切断を伝える（toast は消えてしまうため）
+        const code = (error as { code?: string })?.code ?? 'unknown';
+        const detail =
+          code === 'permission-denied'
+            ? '権限がありません'
+            : code === 'unavailable'
+            ? 'Firestore に接続できません'
+            : '同期エラー';
+        useSyncStatusStore.getState().setSyncError(`${detail} (${code})`);
       },
     );
 
