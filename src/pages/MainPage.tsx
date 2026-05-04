@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
+import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
 import { PlayerAddInput } from '../components/PlayerAddInput';
@@ -13,11 +14,12 @@ import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
 import { useReservationStore } from '../stores/reservationStore';
-import { useRealtimeSession } from '../hooks/useRealtimeSession';
 import { usePresence } from '../hooks/usePresence';
 import { usePresenceStore } from '../stores/presenceStore';
 import { PresenceIndicator } from '../components/PresenceIndicator';
-import { useFirebaseSyncContext } from '../contexts/FirebaseSyncContext';
+import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
+import { useGuardedAction } from '../hooks/useGuardedAction';
+import * as sm from '../services/sessionMutations';
 import { PaymentModal } from '../components/PaymentModal';
 import { WinnerSelectModal } from '../components/WinnerSelectModal';
 import { CourtTimer } from '../components/CourtTimer';
@@ -32,18 +34,40 @@ const BUG_REPORT_TEMPLATE = '発生画面：\n期待値：\n実際：';
 
 export function MainPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, currentUser, isAdmin, updateInformation, markInformationAsRead } = useSessionStore();
+  const session = useSessionStore((s) => s.session);
+  const updateConfig = useSessionStore((s) => s.updateConfig);
+  const currentUser = useSessionStore((s) => s.currentUser);
+  const isAdmin = useSessionStore((s) => s.isAdmin);
+  const updateInformation = useSessionStore((s) => s.updateInformation);
+  const markInformationAsRead = useSessionStore((s) => s.markInformationAsRead);
 
-  // オンラインモード時のリアルタイム同期
-  const isSharedSession = !!session?.createdBy;
-  useRealtimeSession(isSharedSession ? session?.id ?? null : null);
-  usePresence(isSharedSession ? session?.id ?? null : null, currentUser);
+  // useFirebaseSync (App level) が session/gameState/presence の onSnapshot を統合管理。
+  // ここではプレゼンスの送出だけ行う。
+  usePresence(session?.id ?? null, currentUser);
   const remotePresence = usePresenceStore((s) => s.remotePresence);
-  const { prepareDirectTransaction, completeDirectTransaction, pushImmediate } = useFirebaseSyncContext();
-  const { players, toggleRest, updatePlayer, addPlayers, toggleOperationStatus, applyPayment, incrementGamesPlayed } = usePlayerStore();
-  const { courts, matchHistory, updateCourt, startGame, finishGame, resizeCourts, removeCourtById } =
-    useGameStore();
-  const { useStayDurationPriority, continuousMatchMode, setContinuousMatchMode, prioritizeDiversity, recordScores, practiceType } = useSettingsStore();
+  const toast = useToast();
+  // 書き込みは sessionMutations.X 経由のトランザクション。エラーは toast に通知。
+  const writer = useSessionWriterWithToast(toast);
+  const isGameStateLoaded = useSyncStatusStore((s) => s.isGameStateLoaded);
+
+  // 連続クリックでトグルが打ち消し合うのを防ぐガード（CON1）。
+  const continuousModeToggle = useGuardedAction(async (next: boolean) => {
+    await writer.setContinuousMatchMode(next);
+  });
+  const rosterToggle = useGuardedAction(async (playerId: string) => {
+    await writer.toggleOperationStatus(playerId, 'roster');
+  });
+  const paymentToggle = useGuardedAction(async (playerId: string, amount: number) => {
+    await writer.applyPayment(playerId, amount);
+  });
+  const players = usePlayerStore((s) => s.players);
+  const courts = useGameStore((s) => s.courts);
+  const matchHistory = useGameStore((s) => s.matchHistory);
+  const useStayDurationPriority = useSettingsStore((s) => s.useStayDurationPriority);
+  const continuousMatchMode = useSettingsStore((s) => s.continuousMatchMode);
+  const prioritizeDiversity = useSettingsStore((s) => s.prioritizeDiversity);
+  const recordScores = useSettingsStore((s) => s.recordScores);
+  const practiceType = useSettingsStore((s) => s.practiceType);
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
   // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
@@ -52,13 +76,16 @@ export function MainPage() {
 
   // total active players cache used by flow-priority checks
   const totalActiveCount = players.filter(p => !p.isResting).length;
-  const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
-  const { reservations, fulfillReservation } = useReservationStore();
+  const undoStack = useUndoStore((s) => s.undoStack);
+  const redoStack = useUndoStore((s) => s.redoStack);
+  const pushUndo = useUndoStore((s) => s.pushUndo);
+  const undo = useUndoStore((s) => s.undo);
+  const redo = useUndoStore((s) => s.redo);
+  const reservations = useReservationStore((s) => s.reservations);
   const practiceDefaults =
     PRACTICE_TYPE_OPTIONS.find((t) => t.value === practiceType) ?? PRACTICE_TYPE_OPTIONS[0];
   const maleFee = session?.accounting?.maleFee ?? practiceDefaults.maleFee;
   const femaleFee = session?.accounting?.femaleFee ?? practiceDefaults.femaleFee;
-  const toast = useToast();
   const [selectedPlayer, setSelectedPlayer] = useState<{
     id: string;
     courtId?: number;
@@ -102,10 +129,12 @@ export function MainPage() {
   // ブロック条件成立時に連続モードを強制OFF
   useEffect(() => {
     if (!prioritizeDiversity || !continuousMatchMode) return;
+    // 初回 onSnapshot 前は players/courts が空のため誤判定を避ける
+    if (session?.createdBy && !isGameStateLoaded) return;
     if (checkContinuousBlock(players, courts, prioritizeDiversity, gameMode).blocked) {
-      setContinuousMatchMode(false);
+      void writer.setContinuousMatchMode(false);
     }
-  }, [prioritizeDiversity, continuousMatchMode, courts, players, setContinuousMatchMode, gameMode]);
+  }, [prioritizeDiversity, continuousMatchMode, courts, players, writer, gameMode, session?.createdBy, isGameStateLoaded]);
 
   // Ctrl+Z / Ctrl+Y キーボードショートカット
   useEffect(() => {
@@ -113,10 +142,10 @@ export function MainPage() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        undo();
+        void undo();
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault();
-        redo();
+        void redo();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -124,13 +153,16 @@ export function MainPage() {
   }, [undo, redo]);
 
   // config.courtCount と courts.length を同期（オンラインモード時）
+  // 初回 onSnapshot 受信前に走ると空配列を「正規」と誤認して Firestore を上書きするので
+  // isGameStateLoaded をガードに使う。
   useEffect(() => {
     if (!session?.createdBy) return; // ローカルモードでは不要
+    if (!isGameStateLoaded) return;
     const configCourtCount = session.config.courtCount || 1;
     if (courts.length !== configCourtCount) {
-      resizeCourts(configCourtCount);
+      void writer.resizeCourts(configCourtCount);
     }
-  }, [session?.config.courtCount, courts.length, session?.createdBy, resizeCourts]);
+  }, [session?.config.courtCount, courts.length, session?.createdBy, writer, isGameStateLoaded]);
 
   // PWAバッジ更新：支払い予定額を表示
   useEffect(() => {
@@ -196,22 +228,17 @@ export function MainPage() {
     return null;
   }
 
-  const handleClearCourt = (courtId: number) => {
+  const handleClearCourt = async (courtId: number) => {
     pushUndo();
-    updateCourt(courtId, EMPTY_COURT_STATE);
+    await writer.updateCourt(courtId, EMPTY_COURT_STATE);
   };
 
   const handleAddCourt = async () => {
     if (courts.length >= 3) return;
     const newCount = courts.length + 1;
-    const isOnline = !!(session?.id && session?.createdBy);
 
-    if (isOnline) {
-      prepareDirectTransaction();
-    }
-
-    resizeCourts(newCount);
-    updateConfig({ courtCount: newCount });
+    // gameState.courts と session.config.courtCount を 1 transaction でアトミックに（H6）
+    await writer.resizeCourtsWithConfig(newCount);
 
     // コート増加後に待機人数が不足する場合、連続モードをOFF
     if (continuousMatchMode) {
@@ -219,18 +246,7 @@ export function MainPage() {
       const waitingAfter = activeCount - newCount * playersPerCourt;
       const threshold = prioritizeDiversity ? getMinWaitingCount(gameMode) : 2;
       if (waitingAfter < threshold) {
-        setContinuousMatchMode(false);
-      }
-    }
-
-    if (isOnline) {
-      try {
-        const written = await pushImmediate();
-        completeDirectTransaction(written ?? undefined);
-      } catch (err) {
-        console.error('[handleAddCourt] Failed to sync:', err);
-        toast.error('同期に失敗しました');
-        completeDirectTransaction();
+        await writer.setContinuousMatchMode(false);
       }
     }
   };
@@ -242,30 +258,16 @@ export function MainPage() {
     const hasPlayers = court.teamA[0] && court.teamA[0] !== '';
     if (hasPlayers || court.isPlaying) return;
 
-    const isOnline = !!(session?.id && session?.createdBy);
-
-    if (isOnline) {
-      prepareDirectTransaction();
-    }
-
-    removeCourtById(courtId);
+    // 特定の court id を削除する必要があるので resize ではなく removeCourt を使う。
+    // gameState.courts と session.config.courtCount の更新は 2 transaction だが、
+    // 空コートのみ削除可能で実害は小さいので Phase 6 ではそのまま許容する。
+    await writer.removeCourtById(courtId);
     updateConfig({ courtCount: courts.length - 1 });
-
-    if (isOnline) {
-      try {
-        const written = await pushImmediate();
-        completeDirectTransaction(written ?? undefined);
-      } catch (err) {
-        console.error('[handleRemoveCourt] Failed to sync:', err);
-        toast.error('同期に失敗しました');
-        completeDirectTransaction();
-      }
-    }
   };
 
   const pendingReservations = reservations.filter(r => r.status === 'pending');
 
-  const handleAutoAssign = (courtId?: number) => {
+  const handleAutoAssign = async (courtId?: number) => {
     try {
       let courtsToAssign: number[];
       if (courtId) {
@@ -303,24 +305,23 @@ export function MainPage() {
       );
 
       // 予約消化判定: 予約メンバー全員が配置されたら fulfilled
-      for (const reservation of pendingReservations) {
-        if (reservation.playerIds.every(id => assignedPlayerIds.has(id))) {
-          fulfillReservation(reservation.id);
-        }
-      }
+      const fulfilledIds = pendingReservations
+        .filter((r) => r.playerIds.every((id) => assignedPlayerIds.has(id)))
+        .map((r) => r.id);
 
+      // 1 transaction で予約消化 + 全コート割当（H4 修正）
       const isBulk = !courtId;
-      assignments.forEach((assignment) => {
-        updateCourt(assignment.courtId, {
-          teamA: assignment.teamA,
-          teamB: assignment.teamB,
-          scoreA: 0,
-          scoreB: 0,
+      const startedAt = isBulk ? Date.now() : 0;
+      await writer.autoAssignAndFulfill(
+        assignments.map((a) => ({
+          courtId: a.courtId,
+          teamA: a.teamA,
+          teamB: a.teamB,
           isPlaying: isBulk,
-          startedAt: isBulk ? Date.now() : 0,
-          finishedAt: 0,
-        });
-      });
+          startedAt,
+        })),
+        fulfilledIds,
+      );
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -330,8 +331,8 @@ export function MainPage() {
     }
   };
 
-  const handleStartGame = (courtId: number) => {
-    startGame(courtId);
+  const handleStartGame = async (courtId: number) => {
+    await writer.startGame(courtId);
   };
 
   const handlePaymentClick = (playerId: string) => {
@@ -351,60 +352,14 @@ export function MainPage() {
     });
   };
 
-  const handlePaymentConfirm = (amount: number) => {
+  const handlePaymentConfirm = async (amount: number) => {
     if (!paymentModalPlayer) return;
-    applyPayment(paymentModalPlayer.id, amount);
+    await paymentToggle.run(paymentModalPlayer.id, amount);
     setPaymentModalPlayer(null);
   };
 
-  const handleContinuousNext = (courtId: number) => {
-    const { courts, matchHistory, updateCourt, startGame } = useGameStore.getState();
-    const { players } = usePlayerStore.getState();
-    const { useStayDurationPriority, prioritizeDiversity, practiceType } = useSettingsStore.getState();
-    const gm = gameModeFromPracticeType(practiceType);
-
-    // 最新の待機プレイヤーを計算
-    const playersInCourts = new Set(
-      courts.flatMap(c => [...c.teamA, ...c.teamB]).filter(id => id?.trim())
-    );
-    const waitingPlayers = players.filter(
-      p => !p.isResting && !playersInCourts.has(p.id)
-    );
-
-    // ブロックチェック
-    const block = checkContinuousBlock(players, courts, prioritizeDiversity, gm);
-    if (block.blocked) {
-      if (block.reason === 'diversity_block') setContinuousMatchMode(false);
-      return;
-    }
-
-    if (waitingPlayers.length < getMinWaitingCount(gm)) {
-      toast.error('待機中のプレイヤーが足りません');
-      return;
-    }
-
-    // 配置アルゴリズム実行
-    const assignments = assignCourts(waitingPlayers, 1, matchHistory, {
-      targetCourtIds: [courtId],
-      totalCourtCount: courts.length,
-      useStayDurationPriority,
-      reservations: reservations,
-      gameMode: gm,
-    });
-
-    if (assignments[0]) {
-      updateCourt(courtId, {
-        ...EMPTY_COURT_STATE,
-        teamA: assignments[0].teamA,
-        teamB: assignments[0].teamB,
-      });
-      startGame(courtId);
-    } else {
-      toast.error('配置アルゴリズムでエラーが発生しました');
-    }
-  };
-
-
+  // Phase 4: 試合終了の連続モードは sm.finishMatchAndContinue が transaction 内で
+  // computeFinishAndContinue を実行するため、ローカルでの handleContinuousNext は不要。
 
   const waitingCount = sortedWaitingPlayers.length;
   const shouldBlockAssignment = shouldBlockForDiversity(
@@ -428,37 +383,13 @@ export function MainPage() {
   const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= playersPerCourt;
   const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * playersPerCourt;
 
-  const handleSwapPlayer = (courtId: number, position: number, newPlayerId: string) => {
-    const court = courts.find((c) => c.id === courtId);
-    if (!court) return;
-
-    const newTeamA = [...court.teamA];
-    const newTeamB = [...court.teamB];
-
-    if (position < 2) {
-      newTeamA[position] = newPlayerId;
-    } else {
-      newTeamB[position - 2] = newPlayerId;
-    }
-
-    const newPlayer = players.find((p) => p.id === newPlayerId);
-    const restingPlayerIds = [...(court.restingPlayerIds || [])];
-    if (newPlayer?.isResting && !restingPlayerIds.includes(newPlayerId)) {
-      restingPlayerIds.push(newPlayerId);
-    }
-
-    updateCourt(courtId, {
-      teamA: [newTeamA[0], newTeamA[1]],
-      teamB: [newTeamB[0], newTeamB[1]],
-      restingPlayerIds,
-    });
-
-    if (newPlayer?.isResting) {
-      updatePlayer(newPlayerId, { isResting: false });
-    }
+  const handleSwapPlayer = async (courtId: number, position: number, newPlayerId: string) => {
+    if (position < 0 || position > 3) return;
+    // CON2: コート更新と isResting=false への遷移を 1 transaction でアトミックに
+    await writer.swapPlayer(courtId, position as 0 | 1 | 2 | 3, newPlayerId);
   };
 
-  const handleToggleRestWithLock = (playerId: string) => {
+  const handleToggleRestWithLock = async (playerId: string) => {
     const player = players.find(p => p.id === playerId);
 
     if (player?.isResting) {
@@ -482,7 +413,7 @@ export function MainPage() {
       }, 300);
     }
 
-    toggleRest(playerId);
+    await writer.toggleRest(playerId);
 
     // 休憩に入る場合（toggleRest前のisResting=false）、コート数を自動縮小
     // コート数変更・連続モード操作は管理者のみに限定（一般ユーザの休憩切替が間接的に
@@ -491,18 +422,18 @@ export function MainPage() {
       const activeCount = players.filter(p => !p.isResting && p.id !== playerId).length;
       const recommended = getRecommendedCourtCount(activeCount, courts.length, playersPerCourt);
       if (recommended < courts.length) {
-        resizeCourts(recommended);
+        await writer.resizeCourts(recommended);
         updateConfig({ courtCount: recommended });
       }
 
       const waitingAfterRest = players.filter(p => !p.isResting && p.id !== playerId && !playersInCourts.has(p.id)).length;
       if (waitingAfterRest <= 1 && continuousMatchMode) {
-        setContinuousMatchMode(false);
+        await writer.setContinuousMatchMode(false);
       }
     }
   };
 
-  const handlePlayerTap = (
+  const handlePlayerTap = async (
     playerId: string,
     courtId?: number,
     position?: number
@@ -513,11 +444,12 @@ export function MainPage() {
     if (player?.isResting) {
       // コート上のメンバーが選択されている場合のみ交換
       if (selectedPlayer?.courtId !== undefined && selectedPlayer?.position !== undefined) {
-        handleSwapPlayer(selectedPlayer.courtId, selectedPlayer.position, playerId);
+        const swapPromise = handleSwapPlayer(selectedPlayer.courtId, selectedPlayer.position, playerId);
         setSelectedPlayer(null);
+        await swapPromise;
       } else {
         // それ以外（選択なし or 待機中メンバー選択）は復帰のみ
-        toggleRest(playerId);
+        void writer.toggleRest(playerId);
         setSelectedPlayer(null);
       }
       return;
@@ -543,7 +475,7 @@ export function MainPage() {
             allPlayers[selectedPlayer.position] = allPlayers[position];
             allPlayers[position] = temp;
 
-            updateCourt(courtId, {
+            await writer.updateCourt(courtId, {
               teamA: [allPlayers[0], allPlayers[1]],
               teamB: [allPlayers[2], allPlayers[3]],
             });
@@ -559,11 +491,11 @@ export function MainPage() {
             allPlayers1[selectedPlayer.position] = allPlayers2[position];
             allPlayers2[position] = temp;
 
-            updateCourt(selectedPlayer.courtId!, {
+            await writer.updateCourt(selectedPlayer.courtId!, {
               teamA: [allPlayers1[0], allPlayers1[1]],
               teamB: [allPlayers1[2], allPlayers1[3]],
             });
-            updateCourt(courtId, {
+            await writer.updateCourt(courtId, {
               teamA: [allPlayers2[0], allPlayers2[1]],
               teamB: [allPlayers2[2], allPlayers2[3]],
             });
@@ -573,24 +505,24 @@ export function MainPage() {
         selectedPlayer.courtId !== undefined &&
         selectedPlayer.position !== undefined
       ) {
-        handleSwapPlayer(
+        await handleSwapPlayer(
           selectedPlayer.courtId,
           selectedPlayer.position,
           playerId
         );
       } else if (courtId !== undefined && position !== undefined) {
-        handleSwapPlayer(courtId, position, selectedPlayer.id);
+        await handleSwapPlayer(courtId, position, selectedPlayer.id);
       }
       setSelectedPlayer(null);
     }
   };
 
   const handleUndo = () => {
-    undo();
+    void undo();
   };
 
   const handleRedo = () => {
-    redo();
+    void redo();
   };
 
   const handleSendBugReport = async () => {
@@ -625,8 +557,8 @@ export function MainPage() {
           <div className="flex items-center gap-1">
             {isAdmin() && (
               <button
-                onClick={() => setContinuousMatchMode(!continuousMatchMode)}
-                disabled={shouldBlockContinuous}
+                onClick={() => void continuousModeToggle.run(!continuousMatchMode)}
+                disabled={shouldBlockContinuous || continuousModeToggle.isPending}
                 className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
                   continuousMatchMode
                     ? 'bg-green-50 text-green-700 border border-green-200'
@@ -714,6 +646,7 @@ export function MainPage() {
               <button
                 onClick={() => navigate('/settings')}
                 className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+                aria-label="設定"
               >
                 <Settings size={18} />
               </button>
@@ -723,7 +656,7 @@ export function MainPage() {
       </header>
 
       {/* プレゼンス表示（他ユーザーが画面を開いている/操作中のとき） */}
-      {isSharedSession && (
+      {session?.id && (
         <div className="flex justify-center px-4 pt-2 pointer-events-none">
           <PresenceIndicator presence={remotePresence} currentUser={currentUser} />
         </div>
@@ -753,8 +686,9 @@ export function MainPage() {
                   {status.payment ? '✓' : ''}支払
                 </button>
                 <button
-                  onClick={() => toggleOperationStatus(currentPlayer.id, 'roster')}
-                  className="text-xs py-1 px-3 rounded-lg font-medium transition-colors"
+                  onClick={() => void rosterToggle.run(currentPlayer.id)}
+                  disabled={rosterToggle.isPending}
+                  className="text-xs py-1 px-3 rounded-lg font-medium transition-colors disabled:opacity-50"
                   style={{
                     backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
                     color: status.roster ? '#ffffff' : '#6b7280',
@@ -879,91 +813,49 @@ export function MainPage() {
                       {court.isPlaying ? (
                         <button
                           onClick={async () => {
+                            if (!session?.id) return;
                             const currentCourt = courts.find((c) => c.id === court.id);
                             if (!currentCourt) return;
 
-                            // べき等キーをキャプチャ（この試合の一意識別子）
                             const matchStartedAt = currentCourt.startedAt;
-                            // matchIdを事前生成（楽観的更新とトランザクションで同じIDを使用）
                             const matchId = crypto.randomUUID();
 
-                            // オンラインモード: push抑止してからローカル更新
-                            const isOnline = session?.id && session?.createdBy;
-                            if (isOnline) {
-                              prepareDirectTransaction();
-                            }
-
-                            // 楽観的ローカル更新（即座にUIに反映）
+                            // Undo 用に試合終了前の状態を保存
                             pushUndo();
-                            finishGame(court.id, 0, 0, matchId);
-                            // ストアの最新状態から +1 する（render closure の stale players を読まない）
-                            const activePlayerIds = [...court.teamA, ...court.teamB].filter(id => id);
-                            incrementGamesPlayed(activePlayerIds, Date.now());
-                            if (court.restingPlayerIds && court.restingPlayerIds.length > 0) {
-                              court.restingPlayerIds.forEach((playerId: string) => {
-                                updatePlayer(playerId, { isResting: true });
-                              });
-                            }
-                            updateCourt(court.id, {
-                              teamA: ['', ''],
-                              teamB: ['', ''],
-                              scoreA: 0,
-                              scoreB: 0,
-                              isPlaying: false,
-                              startedAt: 0,
-                              finishedAt: 0,
-                              restingPlayerIds: [],
-                            });
-                            if (continuousMatchMode) {
-                              handleContinuousNext(court.id);
+
+                            // スコア記録ONなら結果入力モーダルを表示（Firestore 書き込み前に
+                            // capture しておく — 書き込み後は currentCourt.teamA/B が空になる）
+                            const teamASnapshot = currentCourt.teamA;
+                            const teamBSnapshot = currentCourt.teamB;
+
+                            try {
+                              const { result } = await sm.finishMatchAndContinue(
+                                session.id,
+                                court.id,
+                                matchStartedAt,
+                                {
+                                  matchId,
+                                  useStayDurationPriority,
+                                  prioritizeDiversity,
+                                },
+                              );
+                              if (result === 'already_finished') {
+                                toast.info('他のユーザーが既に終了しました');
+                                return;
+                              }
+                            } catch (err) {
+                              console.error('[FinishGame] Transaction failed:', err);
+                              toast.error('試合終了の同期に失敗しました');
+                              return;
                             }
 
-                            // スコア記録ONなら結果入力モーダルを表示
                             if (recordScores) {
                               setPendingScoreMatch({
                                 matchId,
                                 courtId: court.id,
-                                teamA: currentCourt.teamA,
-                                teamB: currentCourt.teamB,
+                                teamA: teamASnapshot,
+                                teamB: teamBSnapshot,
                               });
-                            }
-
-                            // オンラインモード: べき等Transaction実行
-                            if (isOnline) {
-                              try {
-                                const { finishGameTransaction } = await import('../services/sessionService');
-                                const { computeFinishAndContinue, gameModeFromPracticeType } = await import('../lib/gameOperations');
-
-                                const { result, writtenState } = await finishGameTransaction(
-                                  session!.id,
-                                  court.id,
-                                  matchStartedAt,
-                                  (remoteState) => {
-                                    // リモートの設定値を優先（他ユーザーがOFFにした場合を反映）
-                                    const remoteSettings = remoteState.settings;
-                                    const remoteGameMode = gameModeFromPracticeType(
-                                      remoteSettings?.practiceType ?? practiceType,
-                                    );
-                                    return computeFinishAndContinue(remoteState, court.id, {
-                                      continuousMatchMode: remoteSettings?.continuousMatchMode ?? continuousMatchMode,
-                                      useStayDurationPriority,
-                                      prioritizeDiversity,
-                                      gameMode: remoteGameMode,
-                                      matchId,
-                                    }).newState;
-                                  }
-                                );
-
-                                if (result === 'already_finished') {
-                                  toast.info('他のユーザーが既に終了しました');
-                                }
-                                // トランザクションが書き込んだ状態を渡す
-                                completeDirectTransaction(writtenState);
-                              } catch (err) {
-                                console.error('[FinishGame] Transaction failed:', err);
-                                // エラー時はフォールバック（ローカル状態から取得）
-                                completeDirectTransaction();
-                              }
                             }
                           }}
                           className="w-full min-h-[44px] bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
@@ -1140,8 +1032,8 @@ export function MainPage() {
             {showAddPlayer && (
               <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
                 <PlayerAddInput
-                  onAdd={(name, gender) => {
-                    const result = addPlayers([{ name, gender }]);
+                  onAdd={async (name, gender) => {
+                    const result = await writer.addPlayers([{ name, gender }]);
                     if (result.skipped.length > 0) {
                       toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
                     }
@@ -1336,7 +1228,7 @@ export function MainPage() {
           teamB={pendingScoreMatch.teamB}
           getPlayerName={(id) => players.find((p) => p.id === id)?.name || '未設定'}
           getPlayerGender={(id) => players.find((p) => p.id === id)?.gender}
-          onConfirm={(winnerIds) => {
+          onConfirm={async (winnerIds) => {
             if (winnerIds === 'unknown') {
               setPendingScoreMatch(null);
               return;
@@ -1353,11 +1245,9 @@ export function MainPage() {
             const scoreA = winner === 'A' ? 100 : 99;
             const scoreB = winner === 'B' ? 100 : 99;
             const matchId = pendingScoreMatch.matchId;
-            useGameStore.setState((state) => ({
-              matchHistory: state.matchHistory.map((m) =>
-                m.id === matchId ? { ...m, scoreA, scoreB, winner } : m
-              ),
-            }));
+            // Phase 6: 共有ストアではなく Firestore transaction 経由で書き込む
+            // （local setState だけだと次の onSnapshot で消える B4 修正）
+            await writer.updateMatchScore(matchId, scoreA, scoreB, winner);
             setPendingScoreMatch(null);
           }}
           onCancel={() => setPendingScoreMatch(null)}

@@ -7,10 +7,11 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
-import { generateSessionId, parsePlayerInput } from '../lib/utils';
+import { EMPTY_COURT_STATE } from '../types/court';
+import { parsePlayerInput } from '../lib/utils';
+import { isValidSessionId } from '../lib/inputValidation';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
-import { clearPresence, createSession, leaveSession, syncGameStateWithTransaction } from '../services/sessionService';
-import { useFirebaseSyncContext } from '../contexts/FirebaseSyncContext';
+import { clearPresence, createSession, leaveSession } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { requestNotificationPermission } from '../lib/notifications';
@@ -65,18 +66,13 @@ const getInitialGym = () => {
 export function SessionCreate() {
   const navigate = useNavigate();
   const location = useLocation();
-  const setSession = useSessionStore((state) => state.setSession);
   const initializeSession = useSessionStore((state) => state.initialize);
-  const { prepareDirectTransaction } = useFirebaseSyncContext();
 
-  // オンラインモード判定
-  const isPhase1Mode = location.pathname === '/session/create';
+  // Phase 4 で常に Firebase 共有セッションを作成する（ローカルモード廃止）
   const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
   const [showCreatorSelect, setShowCreatorSelect] = useState(false);
   const [selectedCreatorName, setSelectedCreatorName] = useState('');
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
-  const { addPlayers } = usePlayerStore();
-  const initializeCourts = useGameStore((state) => state.initializeCourts);
 
   const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType, setPracticeType } = useSettingsStore();
@@ -109,7 +105,8 @@ export function SessionCreate() {
 
   const handleJoinSession = () => {
     const id = joinSessionId.trim().toUpperCase();
-    if (id.length === 6) {
+    // SEC3: 形式チェックを通過したものだけ navigate
+    if (isValidSessionId(id)) {
       navigate(`/session/${id}`);
     }
   };
@@ -126,108 +123,45 @@ export function SessionCreate() {
     if (result.success) {
       // 入力欄に名前があるかチェック
       const hasInputNames = playerNames.trim().length > 0;
-      
-      let inputs: { name: string; rating?: number; gender?: 'M' | 'F' }[];
-      let hasAllRatings = false;
-      
+
       if (!hasInputNames) {
-        // パターン1: 入力欄が空 → 今まで通り全データ取得
+        // パターン1: 入力欄が空 → Sheets の全メンバーをそのまま入力欄に流し込む
         setPlayerNames(membersToText(result.members));
-        hasAllRatings = result.members.length > 0 &&
+        const allRated = result.members.length > 0 &&
           result.members.every(m => m.rating != null && m.rating >= 1);
-        
-        inputs = result.members.map((member) => ({
-          name: member.name,
-          rating: member.rating,
-          gender: member.gender,
-        }));
+        setAllRated(allRated);
       } else {
-        // パターン2: 入力欄に名前あり → 性別だけを補完
+        // パターン2: 入力欄に名前あり → Sheets の性別情報で入力欄を補完
         const inputLines = playerNames
           .split('\n')
           .map(line => parsePlayerInput(line))
           .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
-        
-        // Sheetsから取得した性別情報でマッチング
+
         const sheetsMembersMap = new Map(
           result.members.map(m => [m.name, m.gender])
         );
-        
-        inputs = inputLines.map((input) => {
+
+        const merged = inputLines.map((input) => {
           const genderFromSheets = sheetsMembersMap.get(input.name);
           return {
             name: input.name,
-            rating: input.rating, // 入力済みのレーティングがあればそれを使う（なければundefined）
-            gender: input.gender || genderFromSheets, // 入力済みの性別優先、なければSheetsから補完
+            rating: input.rating,
+            gender: input.gender || genderFromSheets,
           };
         });
-        
-        // 入力欄を更新（性別が補完された状態）
-        const updatedText = inputs.map((input) => {
+
+        const updatedText = merged.map((input) => {
           const parts = [input.name];
-          if (input.gender) {
-            parts.push(input.gender === 'M' ? '男' : '女');
-          }
-          if (input.rating) {
-            parts.push(String(input.rating));
-          }
+          if (input.gender) parts.push(input.gender === 'M' ? '男' : '女');
+          if (input.rating) parts.push(String(input.rating));
           return parts.join('  ');
         }).join('\n');
         setPlayerNames(updatedText);
-        
-        hasAllRatings = false; // 名前入力モードではレーティングは不要
+        setAllRated(false); // 名前入力モードではレーティングは不要
       }
-      
-      setAllRated(hasAllRatings);
-      
-      // パターン1のみ自動開始（入力欄が空だった場合）
-      if (!hasInputNames && inputs.length > 0) {
-        // 旧オンラインセッションに居る場合、ローカルクリアによる空 push を抑止しつつ離脱
-        const previousSession = useSessionStore.getState().session;
-        const previousUser = useSessionStore.getState().currentUser;
-        if (previousSession?.id && previousSession.createdBy) {
-          prepareDirectTransaction();
-          if (previousUser) {
-            void Promise.allSettled([
-              leaveSession(previousSession.id, previousUser),
-              clearPresence(previousSession.id, previousUser),
-            ]);
-          }
-        }
 
-        addPlayers(inputs);
-
-        const adjustedCourtCount = 1;
-        const sessionId = generateSessionId();
-        const now = Date.now();
-        const practiceTime = new Date(practiceDateTime).getTime();
-        const session = {
-          id: sessionId,
-          config: {
-            courtCount: adjustedCourtCount,
-            targetScore,
-            practiceStartTime: practiceTime,
-            gym: selectedGym || undefined,
-          },
-          createdAt: now,
-          updatedAt: now,
-        };
-
-        setSession(session);
-        initializeCourts(adjustedCourtCount);
-
-        // ローディング状態を解除してから遷移
-        setIsLoadingMembers(false);
-        
-        // 少し待ってから遷移（状態更新の完了を待つ）
-        setTimeout(() => {
-          navigate('/main');
-        }, 100);
-        return;
-      }
-      
-      // パターン2（名前入力済み）の場合は、性別補完後に留まる
-      setIsLoadingMembers(false);
+      // Phase 4 で auto-create を廃止したので auto-fetch は入力欄を埋めるだけ。
+      // ユーザーが「作成」ボタンを押すと handleCreate で Firebase セッションが作られる。
     } else {
       setLoadError(result.message);
     }
@@ -235,39 +169,13 @@ export function SessionCreate() {
   };
 
   const handleCreate = async () => {
-    // 旧オンラインセッションに居る場合、ローカルクリアによる空 push を抑止しつつ
-    // 旧セッションの participants から自分を除去する（fire-and-forget）
-    const previousSession = useSessionStore.getState().session;
-    const previousUser = useSessionStore.getState().currentUser;
-    if (previousSession?.id && previousSession.createdBy) {
-      prepareDirectTransaction();
-      if (previousUser) {
-        void Promise.allSettled([
-          leaveSession(previousSession.id, previousUser),
-          clearPresence(previousSession.id, previousUser),
-        ]);
-      }
-    }
-
-    // 重要: 新規セッション作成前に古いデータを完全クリア
-    // （前のセッションのデータが残らないように）
-    usePlayerStore.getState().clearPlayers();
-    useGameStore.getState().clearHistory();
-    useReservationStore.getState().clearReservations();
-    useAccountingStore.getState().clearRecords();
-    useUndoStore.getState().clearAll();
-
-    // プレイヤー名をパース
+    // プレイヤー名をパース（ローカルストアに触らずに直接パース）
     const playerInputs = playerNames.trim()
       ? playerNames
           .split('\n')
           .map((line) => parsePlayerInput(line))
           .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null)
       : [];
-
-    if (playerInputs.length > 0) {
-      addPlayers(playerInputs);
-    }
 
     const adjustedCourtCount = 1;
     const now = Date.now();
@@ -279,75 +187,88 @@ export function SessionCreate() {
       gym: selectedGym || undefined,
     };
 
-    // オンラインモード: 作成者名が未選択の場合は選択画面へ
-    if (isPhase1Mode && !selectedCreatorName) {
+    // 作成者名が未選択の場合は選択画面へ（ここまで sideeffect なし）
+    if (!selectedCreatorName) {
       setShowCreatorSelect(true);
       return;
     }
 
-    // オンラインモード: Firebaseにセッション作成
-    if (isPhase1Mode) {
-      try {
-        const creatorName = selectedCreatorName;
-        const registeredPlayers = playerInputs.map((p) => p.name);
-        const sessionId = await createSession({
-          config: sessionConfig,
-          createdBy: creatorName,
-          participants: [creatorName],
-          status: 'active',
-          registeredPlayers,
-        });
-
-        initializeSession({
-          id: sessionId,
-          config: sessionConfig,
-          createdAt: now,
-          updatedAt: now,
-          createdBy: creatorName,
-          participants: [creatorName],
-          status: 'active',
-          registeredPlayers,
-        });
-        setCurrentUser(creatorName); // 自動入室
-        initializeCourts(adjustedCourtCount);
-
-        // 初期ゲーム状態をFirestoreにpush（参加者がすぐ取得できるように）
-        const { players } = usePlayerStore.getState();
-        const { courts, matchHistory } = useGameStore.getState();
-        const { recordScores: initialRecordScores, continuousMatchMode: initialContinuousMatchMode, practiceType: initialPracticeType } =
-          useSettingsStore.getState();
-        await syncGameStateWithTransaction(sessionId, {
-          players,
-          courts,
-          matchHistory,
-          reservations: [],
-          settings: {
-            recordScores: initialRecordScores,
-            continuousMatchMode: initialContinuousMatchMode,
-            practiceType: initialPracticeType,
-          },
-        });
-
-        setCreatedSessionId(sessionId);
-        requestNotificationPermission();
-      } catch (err) {
-        setLoadError(getErrorMessage(err));
-      }
-      return;
+    // 旧オンラインセッションに居れば離脱処理（fire-and-forget）
+    const previousSession = useSessionStore.getState().session;
+    const previousUser = useSessionStore.getState().currentUser;
+    if (previousSession?.id && previousSession.createdBy && previousUser) {
+      void Promise.allSettled([
+        leaveSession(previousSession.id, previousUser),
+        clearPresence(previousSession.id, previousUser),
+      ]);
     }
 
-    // ローカルモード: LocalStorageのみ
-    const sessionId = generateSessionId();
-    const session = {
-      id: sessionId,
-      config: sessionConfig,
-      createdAt: now,
-      updatedAt: now,
-    };
+    // Firebase にセッション作成（CON3: gameState と同時に setDoc）
+    try {
+      const creatorName = selectedCreatorName;
+      const registeredPlayers = playerInputs.map((p) => p.name);
 
-    setSession(session);
-    initializeCourts(adjustedCourtCount);
-    navigate('/main');
+      // 初期 gameState を構築
+      const initialPlayers = playerInputs.map((input) => ({
+        id: crypto.randomUUID(),
+        name: input.name,
+        rating: input.rating,
+        gender: input.gender,
+        isResting: true,
+        gamesPlayed: 0,
+        lastPlayedAt: 0,
+        activatedAt: 0,
+      }));
+      const initialCourts = Array.from({ length: adjustedCourtCount }, (_, i) => ({
+        id: i + 1,
+        ...EMPTY_COURT_STATE,
+      }));
+      const { recordScores, continuousMatchMode, practiceType } = useSettingsStore.getState();
+      const initialGameState = {
+        players: initialPlayers,
+        courts: initialCourts,
+        matchHistory: [],
+        reservations: [],
+        settings: { recordScores, continuousMatchMode, practiceType },
+      };
+
+      // session + gameState を 1 回の setDoc で書き込む（孤立 doc を防ぐ）
+      const sessionId = await createSession(
+        {
+          config: sessionConfig,
+          createdBy: creatorName,
+          participants: [creatorName],
+          status: 'active',
+          registeredPlayers,
+        },
+        initialGameState,
+      );
+
+      // 成功した時点で初めてローカル状態をリセット（前セッションは Firestore に残る）
+      usePlayerStore.getState().clearPlayers();
+      useGameStore.getState().clearHistory();
+      useReservationStore.getState().clearReservations();
+      useAccountingStore.getState().clearRecords();
+      useUndoStore.getState().clearAll();
+
+      // session を local sessionStore にセット（onSnapshot 購読のトリガー）
+      initializeSession({
+        id: sessionId,
+        config: sessionConfig,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: creatorName,
+        participants: [creatorName],
+        status: 'active',
+        registeredPlayers,
+      });
+      setCurrentUser(creatorName);
+
+      setCreatedSessionId(sessionId);
+      requestNotificationPermission();
+    } catch (err) {
+      setLoadError(getErrorMessage(err));
+    }
   };
 
   // オンラインモード: 作成者名選択画面（セッション作成前）

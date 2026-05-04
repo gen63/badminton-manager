@@ -1,5 +1,10 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-import { getFirestore, type Firestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  type Firestore,
+} from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
@@ -18,17 +23,22 @@ const hasConfig = firebaseConfig.apiKey && firebaseConfig.projectId;
 if (hasConfig) {
   try {
     app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
-
-    // オフライン対応：IndexedDBを使ってローカルキャッシュを有効化
-    enableIndexedDbPersistence(db).catch((err) => {
-      if (err.code !== 'failed-precondition' && err.code !== 'unimplemented') {
-        console.error('[Firebase] Offline persistence failed:', err);
-      }
+    // Phase 8 / PERF4: 旧 enableIndexedDbPersistence は v12 で deprecated。
+    // initializeFirestore + persistentLocalCache に移行。複数タブで同じ
+    // セッションを開いてもキャッシュを共有できる multipleTabManager を有効化。
+    db = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
     });
   } catch (error) {
     console.error('[Firebase] Initialization failed:', error);
   }
+} else {
+  // Phase 4: Firebase は必須。.env の VITE_FIREBASE_* を設定する必要がある。
+  console.error(
+    '[Firebase] Configuration missing. Please set VITE_FIREBASE_API_KEY and VITE_FIREBASE_PROJECT_ID in .env',
+  );
 }
 
 export function isFirebaseConfigured(): boolean {

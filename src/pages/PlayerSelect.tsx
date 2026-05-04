@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
+import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
+import { useGuardedAction } from '../hooks/useGuardedAction';
 import { buildInitialOrder, applyStreakSwaps } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
@@ -16,14 +18,22 @@ import { PlayerEditModal } from '../components/PlayerEditModal';
 
 export function PlayerSelect() {
   const navigate = useNavigate();
-  const { players, addPlayers, removePlayer, updatePlayer, toggleOperationStatus, applyPayment } = usePlayerStore();
-  const { matchHistory } = useGameStore();
-  const { session, isCreator } = useSessionStore();
-  const { practiceType } = useSettingsStore();
+  const players = usePlayerStore((s) => s.players);
+  const matchHistory = useGameStore((s) => s.matchHistory);
+  const session = useSessionStore((s) => s.session);
+  const isCreator = useSessionStore((s) => s.isCreator);
+  const practiceType = useSettingsStore((s) => s.practiceType);
   const isTabMode = !!session;
   const isAdmin = isCreator();
   const [newPlayerNames, setNewPlayerNames] = useState('');
   const toast = useToast();
+  const writer = useSessionWriterWithToast(toast);
+  const rosterToggle = useGuardedAction(async (playerId: string) => {
+    await writer.toggleOperationStatus(playerId, 'roster');
+  });
+  const paymentToggle = useGuardedAction(async (playerId: string, amount: number) => {
+    await writer.applyPayment(playerId, amount);
+  });
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
   const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F' } | null>(null);
   const [paidCollapsed, setPaidCollapsed] = useState(true);
@@ -47,7 +57,7 @@ export function PlayerSelect() {
     return bPos - aPos;
   });
 
-  const handleAddPlayers = () => {
+  const handleAddPlayers = async () => {
     if (newPlayerNames.trim()) {
       // 改行で分割して、パース
       const inputs = newPlayerNames
@@ -56,7 +66,7 @@ export function PlayerSelect() {
         .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
 
       if (inputs.length > 0) {
-        const result = addPlayers(inputs);
+        const result = await writer.addPlayers(inputs);
         if (result.skipped.length > 0) {
           toast.warning(`重複スキップ: ${result.skipped.join('、')}`);
         }
@@ -69,21 +79,21 @@ export function PlayerSelect() {
     navigate('/settings');
   };
 
-  const handleDelete = (player: { id: string; name: string }) => {
+  const handleDelete = async (player: { id: string; name: string }) => {
     if (playersInHistory.has(player.id)) {
       toast.warning(`${player.name}は試合履歴があるため削除できません`);
       return;
     }
-    removePlayer(player.id);
+    await writer.removePlayer(player.id);
   };
 
   const handleEdit = (player: { id: string; name: string; gender?: 'M' | 'F' }) => {
     setEditModalPlayer({ id: player.id, name: player.name, gender: player.gender });
   };
 
-  const handleEditSave = (name: string, gender?: 'M' | 'F') => {
+  const handleEditSave = async (name: string, gender?: 'M' | 'F') => {
     if (!editModalPlayer) return;
-    updatePlayer(editModalPlayer.id, { name, gender });
+    await writer.updatePlayer(editModalPlayer.id, { name, gender });
     setEditModalPlayer(null);
   };
 
@@ -104,9 +114,9 @@ export function PlayerSelect() {
     });
   };
 
-  const handlePaymentConfirm = (amount: number) => {
+  const handlePaymentConfirm = async (amount: number) => {
     if (!paymentModalPlayer) return;
-    applyPayment(paymentModalPlayer.id, amount);
+    await paymentToggle.run(paymentModalPlayer.id, amount);
     setPaymentModalPlayer(null);
   };
 
@@ -153,8 +163,9 @@ export function PlayerSelect() {
           {status.payment ? '✓' : ''}支払
         </button>
         <button
-          onClick={() => toggleOperationStatus(player.id, 'roster')}
-          className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1"
+          onClick={() => void rosterToggle.run(player.id)}
+          disabled={rosterToggle.isPending}
+          className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
           style={{
             backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
             color: status.roster ? '#ffffff' : '#6b7280',

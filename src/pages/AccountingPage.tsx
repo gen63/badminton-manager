@@ -23,12 +23,17 @@ import {
 
 export function AccountingPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, updateAccounting, isAdmin: isAdminFn } = useSessionStore();
-  const { players } = usePlayerStore();
-  const { matchHistory } = useGameStore();
-  const { records, addRecord } = useAccountingStore();
+  const session = useSessionStore((s) => s.session);
+  const updateConfig = useSessionStore((s) => s.updateConfig);
+  const updateAccounting = useSessionStore((s) => s.updateAccounting);
+  const isAdminFn = useSessionStore((s) => s.isAdmin);
+  const players = usePlayerStore((s) => s.players);
+  const matchHistory = useGameStore((s) => s.matchHistory);
+  const records = useAccountingStore((s) => s.records);
+  const addRecord = useAccountingStore((s) => s.addRecord);
   const savedAccounting = session?.accounting;
-  const { accountingWebAppUrl, practiceType: defaultPracticeType } = useSettingsStore();
+  const accountingWebAppUrl = useSettingsStore((s) => s.accountingWebAppUrl);
+  const defaultPracticeType = useSettingsStore((s) => s.practiceType);
   const toast = useToast();
   const isAdmin = isAdminFn();
 

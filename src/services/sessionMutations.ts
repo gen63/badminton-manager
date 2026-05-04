@@ -1,0 +1,870 @@
+/**
+ * セッションのゲーム状態への変更を、すべて Firestore transaction で表現する API。
+ *
+ * 設計:
+ *   - 純粋な compute 関数（`compute*`）が次の `GameState` を計算する。
+ *     これは Firestore に依存せずユニットテスト可能。
+ *   - トランザクショナルラッパー（動詞で命名）が `runTransaction(read → compute → write)`
+ *     を実行し、書き込まれた最終 `GameState` を返す。
+ *   - 競合（aborted）は `SessionError('conflict')` に変換。
+ *
+ * 詳細は `docs/plans/2026-05-03-firestore-as-source-of-truth.md` を参照。
+ */
+
+import {
+  doc,
+  runTransaction,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { SessionError } from '../lib/errorHandler';
+import { requireDb, sanitize } from '../lib/firestoreUtils';
+import { computeFirstMatchStartedAt } from '../lib/sessionArchive';
+import { computeFinishAndContinue, gameModeFromPracticeType } from '../lib/gameOperations';
+import { sanitizePlayerName } from '../lib/inputValidation';
+import { EMPTY_COURT_STATE, type Court } from '../types/court';
+import type { Player } from '../types/player';
+import type { Match } from '../types/match';
+import type { Reservation } from '../types/reservation';
+import type { GameState } from './sessionService';
+
+/** transaction.update の payload 型（gameState を主に書き込む） */
+function buildGameStatePayload(next: GameState): Record<string, unknown> {
+  return {
+    gameState: sanitize(next),
+    updatedAt: serverTimestamp(),
+    registeredPlayers: next.players.map((p) => p.name),
+    firstMatchStartedAt: computeFirstMatchStartedAt(next.matchHistory),
+  };
+}
+
+/**
+ * `runTransaction(read → apply → write)` の汎用ラッパー。
+ *
+ * `apply(remoteState)` が次の `GameState` を返すと、それを `gameState` フィールドに
+ * 書き込み、`updatedAt` / `registeredPlayers` / `firstMatchStartedAt` も同時更新する。
+ *
+ * エラー変換:
+ *   - セッション未存在: `SessionError('not-found')`
+ *   - gameState 未初期化: `SessionError('invalid-state')`
+ *   - Firestore aborted: `SessionError('conflict')`（他のエラーは素通し）
+ *
+ * 注意: Firestore は内部でトランザクションを最大 5 回まで自動リトライするので、
+ * `apply` は **idempotent** であるべき（同じ入力に対して同じ出力 + 副作用が安全に
+ * 繰り返せる）。UUID や時刻は wrapper のクロージャで 1 度だけ生成して `apply` に
+ * 渡せば、リトライしても同じ値が使われる。
+ */
+async function mutateGameState(
+  sessionId: string,
+  apply: (state: GameState) => GameState,
+): Promise<GameState> {
+  const _db = requireDb();
+  const ref = doc(_db, 'sessions', sessionId);
+
+  try {
+    return await runTransaction(_db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) {
+        throw new SessionError('セッションが見つかりません', 'not-found');
+      }
+      const remote = snap.data().gameState as GameState | undefined;
+      if (!remote) {
+        throw new SessionError('セッションの状態が初期化されていません', 'invalid-state');
+      }
+
+      const next = apply(remote);
+      transaction.update(ref, buildGameStatePayload(next));
+      return next;
+    });
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === 'aborted') {
+      throw new SessionError(
+        '他のユーザーが更新しました。もう一度お試しください',
+        'conflict',
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * 既存の remote `gameState` を無視して `state` で **上書き** する。
+ *
+ * 用途:
+ *   - 新規セッション初期化（`createSession` 直後、まだ `gameState` フィールドが無い）
+ *   - undo / redo（保存されたスナップショットを丸ごと復元する）
+ *
+ * `mutateGameState` と異なり `gameState` 未初期化でも throw しない。
+ * セッション document 自体は存在している必要がある。
+ */
+export async function overwriteGameState(
+  sessionId: string,
+  state: GameState,
+): Promise<GameState> {
+  const _db = requireDb();
+  const ref = doc(_db, 'sessions', sessionId);
+
+  try {
+    return await runTransaction(_db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) {
+        throw new SessionError('セッションが見つかりません', 'not-found');
+      }
+      transaction.update(ref, buildGameStatePayload(state));
+      return state;
+    });
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === 'aborted') {
+      throw new SessionError(
+        '他のユーザーが更新しました。もう一度お試しください',
+        'conflict',
+      );
+    }
+    throw error;
+  }
+}
+
+// =============================================================================
+// Players: pure compute
+// =============================================================================
+
+export interface PlayerInput {
+  name: string;
+  rating?: number;
+  gender?: 'M' | 'F';
+}
+
+const DEFAULT_OP_STATUS: NonNullable<Player['operationStatus']> = {
+  payment: false,
+  roster: false,
+  checkin: false,
+};
+
+export function computeAddPlayers(
+  state: GameState,
+  inputs: PlayerInput[],
+  newIds: string[] = [],
+): { state: GameState; added: number; skipped: string[] } {
+  const existing = new Set(state.players.map((p) => p.name.trim()));
+  const seen = new Set<string>();
+  const skipped: string[] = [];
+  const additions: Player[] = [];
+
+  inputs.forEach((input, idx) => {
+    // SEC2: 制御文字 / zero-width 除去 + 32 文字打ち切り
+    const name = sanitizePlayerName(input.name);
+    if (!name) return;
+    if (existing.has(name) || seen.has(name)) {
+      skipped.push(name);
+      return;
+    }
+    seen.add(name);
+    additions.push({
+      id: newIds[idx] ?? crypto.randomUUID(),
+      name,
+      rating: input.rating,
+      gender: input.gender,
+      isResting: true,
+      gamesPlayed: 0,
+      lastPlayedAt: 0,
+      activatedAt: 0,
+    });
+  });
+
+  return {
+    state: { ...state, players: [...state.players, ...additions] },
+    added: additions.length,
+    skipped,
+  };
+}
+
+export function computeRemovePlayer(state: GameState, playerId: string): GameState {
+  return { ...state, players: state.players.filter((p) => p.id !== playerId) };
+}
+
+export function computeUpdatePlayer(
+  state: GameState,
+  playerId: string,
+  updates: Omit<Partial<Player>, 'id'>,
+): GameState {
+  // SEC2: name が含まれる場合 sanitize（rename 経由で攻撃文字列が入るのを防ぐ）
+  let safeUpdates = updates;
+  if (typeof updates.name === 'string') {
+    const cleaned = sanitizePlayerName(updates.name);
+    if (cleaned === null) {
+      // 不正な name は更新しない
+      const { name: _name, ...rest } = updates;
+      void _name;
+      safeUpdates = rest;
+    } else {
+      safeUpdates = { ...updates, name: cleaned };
+    }
+  }
+  return {
+    ...state,
+    players: state.players.map((p) =>
+      p.id === playerId ? { ...p, ...safeUpdates, id: p.id } : p,
+    ),
+  };
+}
+
+export function computeToggleRest(
+  state: GameState,
+  playerId: string,
+  now: number = Date.now(),
+): GameState {
+  return {
+    ...state,
+    players: state.players.map((p) => {
+      if (p.id !== playerId) return p;
+      const newIsResting = !p.isResting;
+      const newActivatedAt = !newIsResting && p.activatedAt === 0 ? now : p.activatedAt;
+      return { ...p, isResting: newIsResting, activatedAt: newActivatedAt };
+    }),
+  };
+}
+
+export function computeToggleOperationStatus(
+  state: GameState,
+  playerId: string,
+  field: 'payment' | 'roster' | 'checkin',
+  now: number = Date.now(),
+): GameState {
+  return {
+    ...state,
+    players: state.players.map((p) => {
+      if (p.id !== playerId) return p;
+      const current = p.operationStatus ?? DEFAULT_OP_STATUS;
+      const newValue = !current[field];
+      const updates: Partial<Player> = {
+        operationStatus: { ...current, [field]: newValue },
+      };
+      if (field === 'payment' && newValue) {
+        updates.paymentTimestamp = now;
+      }
+      return { ...p, ...updates };
+    }),
+  };
+}
+
+export function computeApplyPayment(
+  state: GameState,
+  playerId: string,
+  amount: number,
+  now: number = Date.now(),
+): GameState {
+  return {
+    ...state,
+    players: state.players.map((p) => {
+      if (p.id !== playerId) return p;
+      const current = p.operationStatus ?? DEFAULT_OP_STATUS;
+      const newPayment = !current.payment;
+      const updates: Partial<Player> = {
+        paymentAmount: amount,
+        operationStatus: { ...current, payment: newPayment },
+      };
+      if (newPayment) updates.paymentTimestamp = now;
+      return { ...p, ...updates };
+    }),
+  };
+}
+
+export function computeIncrementGamesPlayed(
+  state: GameState,
+  ids: string[],
+  lastPlayedAt: number,
+): GameState {
+  if (ids.length === 0) return state;
+  const idSet = new Set(ids);
+  return {
+    ...state,
+    players: state.players.map((p) =>
+      idSet.has(p.id) ? { ...p, gamesPlayed: p.gamesPlayed + 1, lastPlayedAt } : p,
+    ),
+  };
+}
+
+export function computeSetAllPlayersResting(state: GameState): GameState {
+  return {
+    ...state,
+    players: state.players.map((p) => ({ ...p, isResting: true })),
+  };
+}
+
+export function computeClearPlayers(state: GameState): GameState {
+  return { ...state, players: [] };
+}
+
+// =============================================================================
+// Courts: pure compute
+// =============================================================================
+
+export function computeInitializeCourts(state: GameState, count: number): GameState {
+  return {
+    ...state,
+    courts: Array.from({ length: count }, (_, i) => ({
+      id: i + 1,
+      ...EMPTY_COURT_STATE,
+    })),
+  };
+}
+
+export function computeResizeCourts(state: GameState, count: number): GameState {
+  const existing = state.courts;
+  if (count >= existing.length) {
+    const newCourts: Court[] = Array.from({ length: count - existing.length }, (_, i) => ({
+      id: existing.length + i + 1,
+      ...EMPTY_COURT_STATE,
+    }));
+    return { ...state, courts: [...existing, ...newCourts] };
+  }
+  const isCourtActive = (c: Court) => c.isPlaying || (c.teamA[0] && c.teamA[0] !== '');
+  const activeCourts = existing.filter(isCourtActive);
+  const emptyCourts = existing.filter((c) => !isCourtActive(c));
+  if (activeCourts.length >= count) {
+    const kept = activeCourts.slice(0, count);
+    return {
+      ...state,
+      courts: kept
+        .sort((a, b) => a.id - b.id)
+        .map((c, i) => ({ ...c, id: i + 1 })),
+    };
+  }
+  const kept = [...activeCourts, ...emptyCourts.slice(0, count - activeCourts.length)];
+  return {
+    ...state,
+    courts: kept.sort((a, b) => a.id - b.id).map((c, i) => ({ ...c, id: i + 1 })),
+  };
+}
+
+export function computeRemoveCourt(state: GameState, courtId: number): GameState {
+  return {
+    ...state,
+    courts: state.courts
+      .filter((c) => c.id !== courtId)
+      .map((c, i) => ({ ...c, id: i + 1 })),
+  };
+}
+
+export function computeUpdateCourt(
+  state: GameState,
+  courtId: number,
+  updates: Partial<Court>,
+): GameState {
+  return {
+    ...state,
+    courts: state.courts.map((c) => (c.id === courtId ? { ...c, ...updates } : c)),
+  };
+}
+
+export function computeStartGame(
+  state: GameState,
+  courtId: number,
+  now: number = Date.now(),
+): GameState {
+  return {
+    ...state,
+    courts: state.courts.map((c) =>
+      c.id === courtId ? { ...c, isPlaying: true, startedAt: now } : c,
+    ),
+  };
+}
+
+export function computeClearCourt(state: GameState, courtId: number): GameState {
+  return {
+    ...state,
+    courts: state.courts.map((c) =>
+      c.id === courtId ? { ...c, ...EMPTY_COURT_STATE, restingPlayerIds: [] } : c,
+    ),
+  };
+}
+
+export function computeResetAllCourts(state: GameState): GameState {
+  return {
+    ...state,
+    courts: state.courts.map((c) => ({ ...c, ...EMPTY_COURT_STATE, restingPlayerIds: [] })),
+  };
+}
+
+// =============================================================================
+// Match history: pure compute
+// =============================================================================
+
+export function computeAddMatch(state: GameState, match: Match): GameState {
+  return { ...state, matchHistory: [...state.matchHistory, match] };
+}
+
+export function computeRemoveMatch(state: GameState, matchId: string): GameState {
+  return {
+    ...state,
+    matchHistory: state.matchHistory.filter((m) => m.id !== matchId),
+  };
+}
+
+export function computeUpdateMatchScore(
+  state: GameState,
+  matchId: string,
+  scoreA: number,
+  scoreB: number,
+  winner?: 'A' | 'B',
+): GameState {
+  return {
+    ...state,
+    matchHistory: state.matchHistory.map((m) => {
+      if (m.id !== matchId) return m;
+      // winner 未指定なら既存値を保持（undefined で上書きして消さない）
+      return winner === undefined
+        ? { ...m, scoreA, scoreB }
+        : { ...m, scoreA, scoreB, winner };
+    }),
+  };
+}
+
+export function computeClearHistory(state: GameState): GameState {
+  return { ...state, matchHistory: [] };
+}
+
+// =============================================================================
+// Reservations: pure compute
+// =============================================================================
+
+export function computeAddReservation(
+  state: GameState,
+  playerIds: string[],
+  id: string,
+  now: number,
+  createdBy?: string,
+): GameState {
+  const maxOrder = state.reservations.reduce(
+    (max, r) => Math.max(max, r.orderNumber ?? 0),
+    0,
+  );
+  const reservation: Reservation = {
+    id,
+    orderNumber: maxOrder + 1,
+    playerIds,
+    status: 'pending',
+    createdAt: now,
+    fulfilledAt: 0,
+    createdBy,
+  };
+  return { ...state, reservations: [...state.reservations, reservation] };
+}
+
+export function computeRemoveReservation(state: GameState, reservationId: string): GameState {
+  return {
+    ...state,
+    reservations: state.reservations.filter((r) => r.id !== reservationId),
+  };
+}
+
+export function computeFulfillReservation(
+  state: GameState,
+  reservationId: string,
+  now: number = Date.now(),
+): GameState {
+  return {
+    ...state,
+    reservations: state.reservations.map((r) =>
+      r.id === reservationId ? { ...r, status: 'fulfilled', fulfilledAt: now } : r,
+    ),
+  };
+}
+
+export function computeClearReservations(state: GameState): GameState {
+  return { ...state, reservations: [] };
+}
+
+// =============================================================================
+// Settings: pure compute
+// =============================================================================
+
+export function computeSetSetting<K extends keyof NonNullable<GameState['settings']>>(
+  state: GameState,
+  key: K,
+  value: NonNullable<GameState['settings']>[K],
+): GameState {
+  return {
+    ...state,
+    settings: { ...(state.settings ?? {}), [key]: value },
+  };
+}
+
+// =============================================================================
+// Transactional wrappers: 各 user-facing operation を runTransaction で
+// =============================================================================
+
+/**
+ * プレイヤーを追加する。`compute` の `added` / `skipped` を呼び出し側に返すので、
+ * トースト表示等で「N 人追加 / M 人スキップ」を伝えられる。
+ *
+ * UUID は wrapper のクロージャで先に生成し、transaction リトライ時も同じ ID
+ * が使われるようにする（idempotent）。
+ */
+export async function addPlayers(
+  sessionId: string,
+  inputs: PlayerInput[],
+): Promise<{ state: GameState; added: number; skipped: string[] }> {
+  const ids = inputs.map(() => crypto.randomUUID());
+  let lastResult: { added: number; skipped: string[] } = { added: 0, skipped: [] };
+  const state = await mutateGameState(sessionId, (s) => {
+    const computed = computeAddPlayers(s, inputs, ids);
+    lastResult = { added: computed.added, skipped: computed.skipped };
+    return computed.state;
+  });
+  return { state, ...lastResult };
+}
+
+export function removePlayer(sessionId: string, playerId: string) {
+  return mutateGameState(sessionId, (s) => computeRemovePlayer(s, playerId));
+}
+
+export function updatePlayer(sessionId: string, playerId: string, updates: Partial<Player>) {
+  return mutateGameState(sessionId, (s) => computeUpdatePlayer(s, playerId, updates));
+}
+
+export function toggleRest(sessionId: string, playerId: string) {
+  return mutateGameState(sessionId, (s) => computeToggleRest(s, playerId));
+}
+
+export function toggleOperationStatus(
+  sessionId: string,
+  playerId: string,
+  field: 'payment' | 'roster' | 'checkin',
+) {
+  return mutateGameState(sessionId, (s) => computeToggleOperationStatus(s, playerId, field));
+}
+
+export function applyPayment(sessionId: string, playerId: string, amount: number) {
+  return mutateGameState(sessionId, (s) => computeApplyPayment(s, playerId, amount));
+}
+
+export function incrementGamesPlayed(
+  sessionId: string,
+  ids: string[],
+  lastPlayedAt: number = Date.now(),
+) {
+  return mutateGameState(sessionId, (s) => computeIncrementGamesPlayed(s, ids, lastPlayedAt));
+}
+
+export function setAllPlayersResting(sessionId: string) {
+  return mutateGameState(sessionId, computeSetAllPlayersResting);
+}
+
+export function initializeCourts(sessionId: string, count: number) {
+  return mutateGameState(sessionId, (s) => computeInitializeCourts(s, count));
+}
+
+export function resizeCourts(sessionId: string, count: number) {
+  return mutateGameState(sessionId, (s) => computeResizeCourts(s, count));
+}
+
+export function removeCourt(sessionId: string, courtId: number) {
+  return mutateGameState(sessionId, (s) => computeRemoveCourt(s, courtId));
+}
+
+export function updateCourt(sessionId: string, courtId: number, updates: Partial<Court>) {
+  return mutateGameState(sessionId, (s) => computeUpdateCourt(s, courtId, updates));
+}
+
+export function startGame(sessionId: string, courtId: number) {
+  return mutateGameState(sessionId, (s) => computeStartGame(s, courtId));
+}
+
+export function clearCourt(sessionId: string, courtId: number) {
+  return mutateGameState(sessionId, (s) => computeClearCourt(s, courtId));
+}
+
+export function resetAllCourts(sessionId: string) {
+  return mutateGameState(sessionId, computeResetAllCourts);
+}
+
+export function clearPlayers(sessionId: string) {
+  return mutateGameState(sessionId, computeClearPlayers);
+}
+
+export function clearHistory(sessionId: string) {
+  return mutateGameState(sessionId, computeClearHistory);
+}
+
+export function addMatch(sessionId: string, match: Match) {
+  return mutateGameState(sessionId, (s) => computeAddMatch(s, match));
+}
+
+export function removeMatch(sessionId: string, matchId: string) {
+  return mutateGameState(sessionId, (s) => computeRemoveMatch(s, matchId));
+}
+
+export function updateMatchScore(
+  sessionId: string,
+  matchId: string,
+  scoreA: number,
+  scoreB: number,
+  winner?: 'A' | 'B',
+) {
+  return mutateGameState(sessionId, (s) =>
+    computeUpdateMatchScore(s, matchId, scoreA, scoreB, winner),
+  );
+}
+
+export function addReservation(sessionId: string, playerIds: string[], createdBy?: string) {
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  return mutateGameState(sessionId, (s) =>
+    computeAddReservation(s, playerIds, id, now, createdBy),
+  );
+}
+
+export function removeReservation(sessionId: string, reservationId: string) {
+  return mutateGameState(sessionId, (s) => computeRemoveReservation(s, reservationId));
+}
+
+export function fulfillReservation(sessionId: string, reservationId: string) {
+  return mutateGameState(sessionId, (s) => computeFulfillReservation(s, reservationId));
+}
+
+export function clearReservations(sessionId: string) {
+  return mutateGameState(sessionId, computeClearReservations);
+}
+
+export function setRecordScores(sessionId: string, value: boolean) {
+  return mutateGameState(sessionId, (s) => computeSetSetting(s, 'recordScores', value));
+}
+
+export function setContinuousMatchMode(sessionId: string, value: boolean) {
+  return mutateGameState(sessionId, (s) => computeSetSetting(s, 'continuousMatchMode', value));
+}
+
+export function setPracticeType(sessionId: string, value: '単' | '複' | '楽') {
+  return mutateGameState(sessionId, (s) => computeSetSetting(s, 'practiceType', value));
+}
+
+// =============================================================================
+// Match: 汎用 update（B2/B4 修正で追加）
+// =============================================================================
+
+/**
+ * `matchHistory` の特定 match を partial update する。
+ * `updateMatchScore` よりも汎用的で、`teamA` / `teamB` の swap や `winner` の
+ * リセットも 1 transaction で行える。
+ */
+export function updateMatch(
+  sessionId: string,
+  matchId: string,
+  updates: Omit<Partial<Match>, 'id'>,
+) {
+  return mutateGameState(sessionId, (state) => ({
+    ...state,
+    matchHistory: state.matchHistory.map((m) =>
+      m.id === matchId ? { ...m, ...updates, id: m.id } : m,
+    ),
+  }));
+}
+
+// =============================================================================
+// Composite operations
+// =============================================================================
+
+/**
+ * Auto-assign で複数のコート更新と予約消化を **1 transaction** で実行する。
+ *
+ * 旧実装は writer.fulfillReservation × N + writer.updateCourt × M を sequential
+ * await していたため、N+M 回の round-trip + 中間状態の露出があった。
+ * これを単一 transaction にまとめてアトミックにする（H4）。
+ */
+export interface AutoAssignSpec {
+  courtId: number;
+  teamA: [string, string];
+  teamB: [string, string];
+  isPlaying: boolean;
+  startedAt: number;
+}
+
+export function autoAssignAndFulfill(
+  sessionId: string,
+  assignments: AutoAssignSpec[],
+  fulfilledReservationIds: string[],
+  now: number = Date.now(),
+) {
+  return mutateGameState(sessionId, (state) => {
+    let next = state;
+    for (const id of fulfilledReservationIds) {
+      next = computeFulfillReservation(next, id, now);
+    }
+    for (const a of assignments) {
+      next = computeUpdateCourt(next, a.courtId, {
+        teamA: a.teamA,
+        teamB: a.teamB,
+        scoreA: 0,
+        scoreB: 0,
+        isPlaying: a.isPlaying,
+        startedAt: a.startedAt,
+        finishedAt: 0,
+      });
+    }
+    return next;
+  });
+}
+
+/**
+ * コート上のプレイヤーを入れ替えながら、休憩中だったプレイヤーを待機状態に
+ * 戻す処理を **1 transaction** にまとめる（CON2）。
+ *
+ * 旧実装は updateCourt + updatePlayer の 2 transaction で、間に
+ * 「コートに置かれているのに isResting=true」という不整合状態が一瞬観測
+ * できる窓があった。
+ */
+export function swapPlayer(
+  sessionId: string,
+  courtId: number,
+  position: 0 | 1 | 2 | 3,
+  newPlayerId: string,
+) {
+  return mutateGameState(sessionId, (state) => {
+    const court = state.courts.find((c) => c.id === courtId);
+    if (!court) return state;
+
+    const newTeamA: [string, string] = [court.teamA[0], court.teamA[1]];
+    const newTeamB: [string, string] = [court.teamB[0], court.teamB[1]];
+    if (position === 0 || position === 1) {
+      newTeamA[position] = newPlayerId;
+    } else {
+      // position === 2 || 3
+      newTeamB[(position - 2) as 0 | 1] = newPlayerId;
+    }
+
+    const newPlayer = state.players.find((p) => p.id === newPlayerId);
+    const restingPlayerIds = [...(court.restingPlayerIds ?? [])];
+    if (newPlayer?.isResting && !restingPlayerIds.includes(newPlayerId)) {
+      restingPlayerIds.push(newPlayerId);
+    }
+
+    let next: GameState = computeUpdateCourt(state, courtId, {
+      teamA: newTeamA,
+      teamB: newTeamB,
+      restingPlayerIds,
+    });
+    if (newPlayer?.isResting) {
+      next = computeUpdatePlayer(next, newPlayerId, { isResting: false });
+    }
+    return next;
+  });
+}
+
+/**
+ * `gameState.courts` のリサイズ + `session.config.courtCount` を **1 transaction** で
+ * 同期更新する（H6）。旧実装は 2 回の write でアトミック性が失われていた。
+ */
+export async function resizeCourtsWithConfig(
+  sessionId: string,
+  count: number,
+): Promise<GameState> {
+  const _db = requireDb();
+  const ref = doc(_db, 'sessions', sessionId);
+
+  try {
+    return await runTransaction(_db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) {
+        throw new SessionError('セッションが見つかりません', 'not-found');
+      }
+      const remote = snap.data().gameState as GameState | undefined;
+      if (!remote) {
+        throw new SessionError('セッションの状態が初期化されていません', 'invalid-state');
+      }
+
+      const next = computeResizeCourts(remote, count);
+      transaction.update(ref, {
+        ...buildGameStatePayload(next),
+        'config.courtCount': count,
+      });
+      return next;
+    });
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === 'aborted') {
+      throw new SessionError(
+        '他のユーザーが更新しました。もう一度お試しください',
+        'conflict',
+      );
+    }
+    throw error;
+  }
+}
+
+// =============================================================================
+// Composite operations: 試合終了
+// =============================================================================
+
+export interface FinishGameOptions {
+  matchId: string;
+  useStayDurationPriority: boolean;
+  prioritizeDiversity: boolean;
+}
+
+/**
+ * 試合終了 + 連続モード配置を 1 transaction で実行する。
+ *
+ * `startedAt` をべき等キーとして二重終了を防ぐ。リモート側で既に終了済み
+ * （isPlaying=false または startedAt が変わっている）の場合は `already_finished`
+ * を返し、書き込みは行わない。
+ *
+ * 既存の `sessionService.finishGameTransaction` の置き換え版。
+ * `gameStore.finishGame`（楽観更新版）と区別するため、composite であることを
+ * 明示する名前にしている。
+ *
+ * 設定（continuousMatchMode / practiceType）はリモート状態を優先採用する。
+ */
+export async function finishMatchAndContinue(
+  sessionId: string,
+  courtId: number,
+  matchStartedAt: number,
+  options: FinishGameOptions,
+): Promise<{ result: 'success' | 'already_finished'; writtenState?: GameState }> {
+  if (matchStartedAt <= 0) {
+    throw new SessionError(
+      'matchStartedAt が無効です（試合が開始されていません）',
+      'invalid-arg',
+    );
+  }
+
+  const _db = requireDb();
+  const ref = doc(_db, 'sessions', sessionId);
+
+  try {
+    return await runTransaction(_db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) {
+        throw new SessionError('セッションが見つかりません', 'not-found');
+      }
+      const remote = snap.data().gameState as GameState | undefined;
+      if (!remote) {
+        throw new SessionError('セッションの状態が初期化されていません', 'invalid-state');
+      }
+      const remoteCourt = remote.courts.find((c) => c.id === courtId);
+      if (!remoteCourt?.isPlaying || remoteCourt.startedAt !== matchStartedAt) {
+        return { result: 'already_finished' as const };
+      }
+
+      const remoteSettings = remote.settings;
+      const gameMode = gameModeFromPracticeType(remoteSettings?.practiceType);
+      const next = computeFinishAndContinue(remote, courtId, {
+        continuousMatchMode: remoteSettings?.continuousMatchMode ?? false,
+        useStayDurationPriority: options.useStayDurationPriority,
+        prioritizeDiversity: options.prioritizeDiversity,
+        gameMode,
+        matchId: options.matchId,
+      }).newState;
+
+      transaction.update(ref, buildGameStatePayload(next));
+
+      return { result: 'success' as const, writtenState: next };
+    });
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === 'aborted') {
+      throw new SessionError(
+        '他のユーザーが更新しました。もう一度お試しください',
+        'conflict',
+      );
+    }
+    throw error;
+  }
+}

@@ -84,6 +84,7 @@ export function PlayerAddInput({ onAdd, placeholder = 'こば', className = '' }
         <>
           <button
             onClick={handleConfirm}
+            aria-label="追加"
             className="min-w-[44px] h-11 px-3 bg-primary text-primary-foreground rounded-xl text-sm font-medium
                      hover:bg-primary/90 active:bg-primary/80 active:scale-[0.98]
                      transition-all duration-150 flex items-center justify-center"
@@ -92,6 +93,7 @@ export function PlayerAddInput({ onAdd, placeholder = 'こば', className = '' }
           </button>
           <button
             onClick={handleCancel}
+            aria-label="キャンセル"
             className="min-w-[44px] h-11 px-3 bg-muted text-muted-foreground rounded-xl text-sm font-medium
                      hover:bg-muted/80 active:scale-[0.98]
                      transition-all duration-150 flex items-center justify-center"
