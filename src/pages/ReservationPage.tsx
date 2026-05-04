@@ -13,10 +13,11 @@ import { isPlayerReady as checkPlayerReady, getReservationStatus, inferDoublesCa
 
 export function ReservationPage() {
   const navigate = useNavigate();
-  const { session, currentUser } = useSessionStore();
-  const { players } = usePlayerStore();
-  const { courts } = useGameStore();
-  const { reservations } = useReservationStore();
+  const session = useSessionStore((s) => s.session);
+  const currentUser = useSessionStore((s) => s.currentUser);
+  const players = usePlayerStore((s) => s.players);
+  const courts = useGameStore((s) => s.courts);
+  const reservations = useReservationStore((s) => s.reservations);
   const writer = useSessionWriter();
   const [showAdd, setShowAdd] = useState(false);
   const [showFulfilled, setShowFulfilled] = useState(false);

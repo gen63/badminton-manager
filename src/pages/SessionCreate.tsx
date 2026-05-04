@@ -11,7 +11,6 @@ import { EMPTY_COURT_STATE } from '../types/court';
 import { parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { clearPresence, createSession, leaveSession } from '../services/sessionService';
-import { overwriteGameState } from '../services/sessionMutations';
 import { getErrorMessage } from '../lib/errorHandler';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { requestNotificationPermission } from '../lib/notifications';
@@ -202,26 +201,12 @@ export function SessionCreate() {
       ]);
     }
 
-    // Firebase にセッション作成（H10: ローカルクリアは createSession 成功後）
+    // Firebase にセッション作成（CON3: gameState と同時に setDoc）
     try {
       const creatorName = selectedCreatorName;
       const registeredPlayers = playerInputs.map((p) => p.name);
-      const sessionId = await createSession({
-        config: sessionConfig,
-        createdBy: creatorName,
-        participants: [creatorName],
-        status: 'active',
-        registeredPlayers,
-      });
 
-      // 成功した時点で初めてローカル状態をリセット（前セッションは Firestore に残る）
-      usePlayerStore.getState().clearPlayers();
-      useGameStore.getState().clearHistory();
-      useReservationStore.getState().clearReservations();
-      useAccountingStore.getState().clearRecords();
-      useUndoStore.getState().clearAll();
-
-      // 初期 gameState を構築（ローカルストア経由ではなく直接配列を組み立てる）
+      // 初期 gameState を構築
       const initialPlayers = playerInputs.map((input) => ({
         id: crypto.randomUUID(),
         name: input.name,
@@ -237,15 +222,32 @@ export function SessionCreate() {
         ...EMPTY_COURT_STATE,
       }));
       const { recordScores, continuousMatchMode, practiceType } = useSettingsStore.getState();
-
-      // 初期 gameState を Firestore に書き込む（onSnapshot がローカルに反映する）
-      await overwriteGameState(sessionId, {
+      const initialGameState = {
         players: initialPlayers,
         courts: initialCourts,
         matchHistory: [],
         reservations: [],
         settings: { recordScores, continuousMatchMode, practiceType },
-      });
+      };
+
+      // session + gameState を 1 回の setDoc で書き込む（孤立 doc を防ぐ）
+      const sessionId = await createSession(
+        {
+          config: sessionConfig,
+          createdBy: creatorName,
+          participants: [creatorName],
+          status: 'active',
+          registeredPlayers,
+        },
+        initialGameState,
+      );
+
+      // 成功した時点で初めてローカル状態をリセット（前セッションは Firestore に残る）
+      usePlayerStore.getState().clearPlayers();
+      useGameStore.getState().clearHistory();
+      useReservationStore.getState().clearReservations();
+      useAccountingStore.getState().clearRecords();
+      useUndoStore.getState().clearAll();
 
       // session を local sessionStore にセット（onSnapshot 購読のトリガー）
       initializeSession({

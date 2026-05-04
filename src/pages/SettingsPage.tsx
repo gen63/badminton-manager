@@ -19,7 +19,12 @@ import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, QrCode, Copy
 
 export function SettingsPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, clearSession, isCreator, isAdmin, currentUser } = useSessionStore();
+  const session = useSessionStore((s) => s.session);
+  const updateConfig = useSessionStore((s) => s.updateConfig);
+  const clearSession = useSessionStore((s) => s.clearSession);
+  const isCreator = useSessionStore((s) => s.isCreator);
+  const isAdmin = useSessionStore((s) => s.isAdmin);
+  const currentUser = useSessionStore((s) => s.currentUser);
   const [showSessionInfo, setShowSessionInfo] = useState(false);
   const [sessionIdCopied, setSessionIdCopied] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
@@ -31,8 +36,13 @@ export function SettingsPage() {
 
   const userIsAdmin = isAdmin();
   const userIsCreator = isCreator();
-  const { players } = usePlayerStore();
-  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType } = useSettingsStore();
+  const players = usePlayerStore((s) => s.players);
+  const useStayDurationPriority = useSettingsStore((s) => s.useStayDurationPriority);
+  const setUseStayDurationPriority = useSettingsStore((s) => s.setUseStayDurationPriority);
+  const recordScores = useSettingsStore((s) => s.recordScores);
+  const prioritizeDiversity = useSettingsStore((s) => s.prioritizeDiversity);
+  const setPrioritizeDiversity = useSettingsStore((s) => s.setPrioritizeDiversity);
+  const practiceType = useSettingsStore((s) => s.practiceType);
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
   const writer = useSessionWriterWithToast(toast);

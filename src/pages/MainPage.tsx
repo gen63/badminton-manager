@@ -18,6 +18,7 @@ import { usePresence } from '../hooks/usePresence';
 import { usePresenceStore } from '../stores/presenceStore';
 import { PresenceIndicator } from '../components/PresenceIndicator';
 import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
+import { useGuardedAction } from '../hooks/useGuardedAction';
 import * as sm from '../services/sessionMutations';
 import { PaymentModal } from '../components/PaymentModal';
 import { WinnerSelectModal } from '../components/WinnerSelectModal';
@@ -33,7 +34,12 @@ const BUG_REPORT_TEMPLATE = '発生画面：\n期待値：\n実際：';
 
 export function MainPage() {
   const navigate = useNavigate();
-  const { session, updateConfig, currentUser, isAdmin, updateInformation, markInformationAsRead } = useSessionStore();
+  const session = useSessionStore((s) => s.session);
+  const updateConfig = useSessionStore((s) => s.updateConfig);
+  const currentUser = useSessionStore((s) => s.currentUser);
+  const isAdmin = useSessionStore((s) => s.isAdmin);
+  const updateInformation = useSessionStore((s) => s.updateInformation);
+  const markInformationAsRead = useSessionStore((s) => s.markInformationAsRead);
 
   // useFirebaseSync (App level) が session/gameState/presence の onSnapshot を統合管理。
   // ここではプレゼンスの送出だけ行う。
@@ -43,9 +49,25 @@ export function MainPage() {
   // 書き込みは sessionMutations.X 経由のトランザクション。エラーは toast に通知。
   const writer = useSessionWriterWithToast(toast);
   const isGameStateLoaded = useSyncStatusStore((s) => s.isGameStateLoaded);
-  const { players } = usePlayerStore();
-  const { courts, matchHistory } = useGameStore();
-  const { useStayDurationPriority, continuousMatchMode, prioritizeDiversity, recordScores, practiceType } = useSettingsStore();
+
+  // 連続クリックでトグルが打ち消し合うのを防ぐガード（CON1）。
+  const continuousModeToggle = useGuardedAction(async (next: boolean) => {
+    await writer.setContinuousMatchMode(next);
+  });
+  const rosterToggle = useGuardedAction(async (playerId: string) => {
+    await writer.toggleOperationStatus(playerId, 'roster');
+  });
+  const paymentToggle = useGuardedAction(async (playerId: string, amount: number) => {
+    await writer.applyPayment(playerId, amount);
+  });
+  const players = usePlayerStore((s) => s.players);
+  const courts = useGameStore((s) => s.courts);
+  const matchHistory = useGameStore((s) => s.matchHistory);
+  const useStayDurationPriority = useSettingsStore((s) => s.useStayDurationPriority);
+  const continuousMatchMode = useSettingsStore((s) => s.continuousMatchMode);
+  const prioritizeDiversity = useSettingsStore((s) => s.prioritizeDiversity);
+  const recordScores = useSettingsStore((s) => s.recordScores);
+  const practiceType = useSettingsStore((s) => s.practiceType);
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
   // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
@@ -54,8 +76,12 @@ export function MainPage() {
 
   // total active players cache used by flow-priority checks
   const totalActiveCount = players.filter(p => !p.isResting).length;
-  const { undoStack, redoStack, pushUndo, undo, redo } = useUndoStore();
-  const { reservations } = useReservationStore();
+  const undoStack = useUndoStore((s) => s.undoStack);
+  const redoStack = useUndoStore((s) => s.redoStack);
+  const pushUndo = useUndoStore((s) => s.pushUndo);
+  const undo = useUndoStore((s) => s.undo);
+  const redo = useUndoStore((s) => s.redo);
+  const reservations = useReservationStore((s) => s.reservations);
   const practiceDefaults =
     PRACTICE_TYPE_OPTIONS.find((t) => t.value === practiceType) ?? PRACTICE_TYPE_OPTIONS[0];
   const maleFee = session?.accounting?.maleFee ?? practiceDefaults.maleFee;
@@ -328,7 +354,7 @@ export function MainPage() {
 
   const handlePaymentConfirm = async (amount: number) => {
     if (!paymentModalPlayer) return;
-    await writer.applyPayment(paymentModalPlayer.id, amount);
+    await paymentToggle.run(paymentModalPlayer.id, amount);
     setPaymentModalPlayer(null);
   };
 
@@ -358,33 +384,9 @@ export function MainPage() {
   const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * playersPerCourt;
 
   const handleSwapPlayer = async (courtId: number, position: number, newPlayerId: string) => {
-    const court = courts.find((c) => c.id === courtId);
-    if (!court) return;
-
-    const newTeamA = [...court.teamA];
-    const newTeamB = [...court.teamB];
-
-    if (position < 2) {
-      newTeamA[position] = newPlayerId;
-    } else {
-      newTeamB[position - 2] = newPlayerId;
-    }
-
-    const newPlayer = players.find((p) => p.id === newPlayerId);
-    const restingPlayerIds = [...(court.restingPlayerIds || [])];
-    if (newPlayer?.isResting && !restingPlayerIds.includes(newPlayerId)) {
-      restingPlayerIds.push(newPlayerId);
-    }
-
-    await writer.updateCourt(courtId, {
-      teamA: [newTeamA[0], newTeamA[1]],
-      teamB: [newTeamB[0], newTeamB[1]],
-      restingPlayerIds,
-    });
-
-    if (newPlayer?.isResting) {
-      await writer.updatePlayer(newPlayerId, { isResting: false });
-    }
+    if (position < 0 || position > 3) return;
+    // CON2: コート更新と isResting=false への遷移を 1 transaction でアトミックに
+    await writer.swapPlayer(courtId, position as 0 | 1 | 2 | 3, newPlayerId);
   };
 
   const handleToggleRestWithLock = async (playerId: string) => {
@@ -555,8 +557,8 @@ export function MainPage() {
           <div className="flex items-center gap-1">
             {isAdmin() && (
               <button
-                onClick={() => void writer.setContinuousMatchMode(!continuousMatchMode)}
-                disabled={shouldBlockContinuous}
+                onClick={() => void continuousModeToggle.run(!continuousMatchMode)}
+                disabled={shouldBlockContinuous || continuousModeToggle.isPending}
                 className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
                   continuousMatchMode
                     ? 'bg-green-50 text-green-700 border border-green-200'
@@ -683,8 +685,9 @@ export function MainPage() {
                   {status.payment ? '✓' : ''}支払
                 </button>
                 <button
-                  onClick={() => void writer.toggleOperationStatus(currentPlayer.id, 'roster')}
-                  className="text-xs py-1 px-3 rounded-lg font-medium transition-colors"
+                  onClick={() => void rosterToggle.run(currentPlayer.id)}
+                  disabled={rosterToggle.isPending}
+                  className="text-xs py-1 px-3 rounded-lg font-medium transition-colors disabled:opacity-50"
                   style={{
                     backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
                     color: status.roster ? '#ffffff' : '#6b7280',

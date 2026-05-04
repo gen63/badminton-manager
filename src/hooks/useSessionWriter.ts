@@ -124,6 +124,12 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  const swapPlayer = useCallback(
+    (courtId: number, position: 0 | 1 | 2 | 3, newPlayerId: string) =>
+      handle('swapPlayer', (sid) => sm.swapPlayer(sid, courtId, position, newPlayerId)),
+    [handle],
+  );
+
   const removeCourtById = useCallback(
     (courtId: number) => handle('removeCourt', (sid) => sm.removeCourt(sid, courtId)),
     [handle],
@@ -238,6 +244,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       startGame,
       resetAllCourts,
       autoAssignAndFulfill,
+      swapPlayer,
       // match history
       clearHistory,
       removeMatch,
@@ -272,6 +279,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       startGame,
       resetAllCourts,
       autoAssignAndFulfill,
+      swapPlayer,
       clearHistory,
       removeMatch,
       updateMatchScore,

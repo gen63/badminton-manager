@@ -59,6 +59,7 @@ import {
   updateMatch,
   autoAssignAndFulfill,
   resizeCourtsWithConfig,
+  swapPlayer,
 } from './sessionMutations';
 import type { GameState } from './sessionService';
 import type { Player } from '../types/player';
@@ -869,6 +870,63 @@ describe('sessionMutations - autoAssignAndFulfill (H4 fix)', () => {
 // =============================================================================
 // Phase 6: resizeCourtsWithConfig（H6 fix）
 // =============================================================================
+
+// =============================================================================
+// Phase 7: swapPlayer composite (CON2 fix)
+// =============================================================================
+
+describe('sessionMutations - swapPlayer (CON2 fix)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('コート上のプレイヤーを入れ替えながら、休憩中だったプレイヤーを 1 transaction で待機状態に戻す', async () => {
+    const state = baseState({
+      players: [
+        makePlayer('p1', { isResting: false }),
+        makePlayer('rest', { isResting: true }),
+      ],
+      courts: [makeCourt(1, { teamA: ['p1', ''], teamB: ['', ''] })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await swapPlayer('s', 1, 0, 'rest');
+
+    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
+    const next = mockTransactionUpdate.mock.calls[0][1].gameState;
+    expect(next.courts[0].teamA[0]).toBe('rest');
+    expect(next.courts[0].restingPlayerIds).toContain('rest');
+    // 休憩中プレイヤーは isResting=false に切り替わる
+    expect(next.players.find((p: { id: string }) => p.id === 'rest').isResting).toBe(false);
+  });
+
+  it('既に待機中のプレイヤーを swap しても restingPlayerIds に追加せず isResting も触らない', async () => {
+    const state = baseState({
+      players: [
+        makePlayer('p1', { isResting: false }),
+        makePlayer('p2', { isResting: false }),
+      ],
+      courts: [makeCourt(1, { teamA: ['p1', ''], teamB: ['', ''] })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await swapPlayer('s', 1, 1, 'p2');
+
+    const next = mockTransactionUpdate.mock.calls[0][1].gameState;
+    expect(next.courts[0].teamA).toEqual(['p1', 'p2']);
+    expect(next.courts[0].restingPlayerIds ?? []).not.toContain('p2');
+    expect(next.players.find((p: { id: string }) => p.id === 'p2').isResting).toBe(false);
+  });
+});
 
 describe('sessionMutations - resizeCourtsWithConfig (H6 fix)', () => {
   beforeEach(() => {

@@ -86,8 +86,18 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
   };
 }
 
-/** セッションを作成 */
-export async function createSession(session: Partial<Session>): Promise<string> {
+/**
+ * セッションを作成する。
+ *
+ * `gameState` を同時に渡すと session document と gameState が **1 回の書き込み**
+ * で揃う。これを渡さない場合は session のみ作成され、後から
+ * `overwriteGameState` で gameState を初期化する必要がある（CON3 修正で
+ * 同梱書き込みを推奨）。
+ */
+export async function createSession(
+  session: Partial<Session>,
+  gameState?: GameState,
+): Promise<string> {
   const _db = requireDb();
 
   // セッションID衝突を避けるため、最大3回リトライ
@@ -104,15 +114,22 @@ export async function createSession(session: Partial<Session>): Promise<string> 
         continue; // 次のIDで再試行
       }
 
-      // IDが未使用なら作成
-      await setDoc(docRef, {
+      // IDが未使用なら作成。gameState が渡されていれば同梱して 1 回の setDoc で
+      // 全フィールドを一発書き込み（CON3 修正）。
+      const payload: Record<string, unknown> = {
         ...session,
         id: sessionId,
-        createdAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
-        updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
         status: session.status || 'active',
         participants: session.participants ?? [],
-      });
+      };
+      if (gameState) {
+        payload.gameState = sanitize(gameState);
+        payload.registeredPlayers = gameState.players.map((p) => p.name);
+        payload.firstMatchStartedAt = computeFirstMatchStartedAt(gameState.matchHistory);
+      }
+      await setDoc(docRef, payload);
 
       return sessionId;
     } catch (error) {

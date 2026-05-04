@@ -200,11 +200,14 @@ function MatchList({
 
 export function HistoryPage() {
   const navigate = useNavigate();
-  const { matchHistory } = useGameStore();
-  const { players } = usePlayerStore();
-  const { session, isCreator, currentUser } = useSessionStore();
+  const matchHistory = useGameStore((s) => s.matchHistory);
+  const players = usePlayerStore((s) => s.players);
+  const session = useSessionStore((s) => s.session);
+  const isCreator = useSessionStore((s) => s.isCreator);
+  const currentUser = useSessionStore((s) => s.currentUser);
   const isAdmin = isCreator();
-  const { gasWebAppUrl, recordScores } = useSettingsStore();
+  const gasWebAppUrl = useSettingsStore((s) => s.gasWebAppUrl);
+  const recordScores = useSettingsStore((s) => s.recordScores);
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
   const [isUploading, setIsUploading] = useState(false);

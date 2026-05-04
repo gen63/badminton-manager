@@ -691,6 +691,51 @@ export function autoAssignAndFulfill(
 }
 
 /**
+ * コート上のプレイヤーを入れ替えながら、休憩中だったプレイヤーを待機状態に
+ * 戻す処理を **1 transaction** にまとめる（CON2）。
+ *
+ * 旧実装は updateCourt + updatePlayer の 2 transaction で、間に
+ * 「コートに置かれているのに isResting=true」という不整合状態が一瞬観測
+ * できる窓があった。
+ */
+export function swapPlayer(
+  sessionId: string,
+  courtId: number,
+  position: 0 | 1 | 2 | 3,
+  newPlayerId: string,
+) {
+  return mutateGameState(sessionId, (state) => {
+    const court = state.courts.find((c) => c.id === courtId);
+    if (!court) return state;
+
+    const newTeamA: [string, string] = [court.teamA[0], court.teamA[1]];
+    const newTeamB: [string, string] = [court.teamB[0], court.teamB[1]];
+    if (position === 0 || position === 1) {
+      newTeamA[position] = newPlayerId;
+    } else {
+      // position === 2 || 3
+      newTeamB[(position - 2) as 0 | 1] = newPlayerId;
+    }
+
+    const newPlayer = state.players.find((p) => p.id === newPlayerId);
+    const restingPlayerIds = [...(court.restingPlayerIds ?? [])];
+    if (newPlayer?.isResting && !restingPlayerIds.includes(newPlayerId)) {
+      restingPlayerIds.push(newPlayerId);
+    }
+
+    let next: GameState = computeUpdateCourt(state, courtId, {
+      teamA: newTeamA,
+      teamB: newTeamB,
+      restingPlayerIds,
+    });
+    if (newPlayer?.isResting) {
+      next = computeUpdatePlayer(next, newPlayerId, { isResting: false });
+    }
+    return next;
+  });
+}
+
+/**
  * `gameState.courts` のリサイズ + `session.config.courtCount` を **1 transaction** で
  * 同期更新する（H6）。旧実装は 2 回の write でアトミック性が失われていた。
  */
