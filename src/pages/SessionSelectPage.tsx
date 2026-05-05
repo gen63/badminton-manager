@@ -52,10 +52,12 @@ export function SessionSelectPage() {
     setEditingSession(session);
     setEditingText(session.information?.text ?? '');
     setEditingPracticeType(session.practiceType ?? '');
+    // 別セッションの編集を開くたびに前回のエラーをクリア
+    setError('');
   };
 
   const handleSave = async () => {
-    if (!editingSession) return;
+    if (!editingSession || saving) return;
     const trimmed = editingText.trim();
     const initialInfoText = editingSession.information?.text ?? '';
     const initialPracticeType = editingSession.practiceType ?? '';
@@ -70,11 +72,16 @@ export function SessionSelectPage() {
 
     setSaving(true);
     setError('');
+    // 部分成功時の再試行で同じ書き込みを繰り返さないため、ステップ毎に
+    // ローカルスナップショットを進める。
+    let localEditing: Session = editingSession;
     try {
       // 1) 練習種別（gameState.settings.practiceType）— sessionMutations のトランザクションで書き込み
       if (practiceTypeChanged) {
         const nextPracticeType = editingPracticeType as PracticeType;
         await setPracticeTypeMutation(editingSession.id, nextPracticeType);
+        localEditing = { ...localEditing, practiceType: nextPracticeType };
+        setEditingSession(localEditing);
         setSessions((prev) =>
           prev.map((s) =>
             s.id === editingSession.id ? { ...s, practiceType: nextPracticeType } : s,
@@ -87,6 +94,8 @@ export function SessionSelectPage() {
           await updateSession(editingSession.id, {
             information: deleteField() as unknown as Session['information'],
           });
+          localEditing = { ...localEditing, information: undefined };
+          setEditingSession(localEditing);
           setSessions((prev) =>
             prev.map((s) => (s.id === editingSession.id ? { ...s, information: undefined } : s)),
           );
@@ -100,6 +109,8 @@ export function SessionSelectPage() {
             ...(currentUser ? { updatedBy: currentUser } : {}),
           };
           await updateSession(editingSession.id, { information: newInformation });
+          localEditing = { ...localEditing, information: newInformation };
+          setEditingSession(localEditing);
           setSessions((prev) =>
             prev.map((s) =>
               s.id === editingSession.id ? { ...s, information: newInformation } : s,
@@ -110,7 +121,11 @@ export function SessionSelectPage() {
       setEditingSession(null);
     } catch (err) {
       console.error('[SessionSelect] Failed to save session info:', err);
-      setError('セッション情報の保存に失敗しました');
+      // SessionError 等の具体メッセージがあればそれを表示
+      const message = err instanceof Error && err.message
+        ? err.message
+        : 'セッション情報の保存に失敗しました';
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -344,6 +359,14 @@ export function SessionSelectPage() {
                 />
               </div>
             </div>
+
+            {/* 保存失敗時のエラーをモーダル内にも表示（黒背景でページ上部のエラーが
+                見えなくなるため） */}
+            {error && (
+              <div className="bg-destructive/10 border border-destructive/20 text-destructive px-3 py-2 rounded-lg text-xs mb-3">
+                {error}
+              </div>
+            )}
 
             <div className="flex gap-2">
               <button
