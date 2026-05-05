@@ -3,11 +3,15 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { deleteField } from 'firebase/firestore';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { listRecentActiveSessions, updateSession } from '../services/sessionService';
+import { setPracticeType as setPracticeTypeMutation } from '../services/sessionMutations';
 import { clearAppBadge } from '../lib/badge';
 import { useDevMode } from '../hooks/useDevMode';
 import { useSessionStore } from '../stores/sessionStore';
 import type { Session } from '../types/session';
 import { Loader2, Plus, Users, MapPin, Calendar, Trophy, StickyNote, Pencil, X, Info } from 'lucide-react';
+
+type PracticeType = '単' | '複' | '楽';
+const PRACTICE_TYPES: readonly PracticeType[] = ['単', '複', '楽'];
 
 /** 日付をフォーマット（4/16(水)） */
 function formatSessionDate(practiceStartTime: number): string {
@@ -19,6 +23,19 @@ function formatSessionDate(practiceStartTime: number): string {
   return `${month}/${day}(${weekday})`;
 }
 
+/**
+ * 練習種別の表示ラベルを解決する。
+ * 1. gameState.settings.practiceType（実データ）
+ * 2. config.gameMode から派生（singles → 単 / doubles → 複）
+ * 3. どちらも無ければ「不明」
+ */
+function resolvePracticeTypeLabel(session: Session): string {
+  if (session.practiceType) return session.practiceType;
+  if (session.config.gameMode === 'singles') return '単';
+  if (session.config.gameMode === 'doubles') return '複';
+  return '不明';
+}
+
 export function SessionSelectPage() {
   const navigate = useNavigate();
   const devMode = useDevMode();
@@ -28,43 +45,74 @@ export function SessionSelectPage() {
   const [error, setError] = useState('');
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [editingText, setEditingText] = useState('');
-  const [savingInformation, setSavingInformation] = useState(false);
+  const [editingPracticeType, setEditingPracticeType] = useState<PracticeType | ''>('');
+  const [saving, setSaving] = useState(false);
 
-  const handleSaveInformation = async () => {
+  const openEdit = (session: Session) => {
+    setEditingSession(session);
+    setEditingText(session.information?.text ?? '');
+    setEditingPracticeType(session.practiceType ?? '');
+  };
+
+  const handleSave = async () => {
     if (!editingSession) return;
     const trimmed = editingText.trim();
-    setSavingInformation(true);
+    const initialInfoText = editingSession.information?.text ?? '';
+    const initialPracticeType = editingSession.practiceType ?? '';
+    const infoChanged = trimmed !== initialInfoText;
+    const practiceTypeChanged =
+      editingPracticeType !== '' && editingPracticeType !== initialPracticeType;
+
+    if (!infoChanged && !practiceTypeChanged) {
+      setEditingSession(null);
+      return;
+    }
+
+    setSaving(true);
     setError('');
     try {
-      if (!trimmed) {
-        await updateSession(editingSession.id, {
-          information: deleteField() as unknown as Session['information'],
-        });
-        setSessions((prev) =>
-          prev.map((s) => (s.id === editingSession.id ? { ...s, information: undefined } : s)),
-        );
-      } else {
-        // updatedBy は undefined を含めると Firestore（ignoreUndefinedProperties 未設定）が
-        // 例外を投げるため、currentUser がある時だけプロパティを差し込む。
-        const newInformation: NonNullable<Session['information']> = {
-          text: trimmed,
-          updatedAt: Date.now(),
-          readBy: currentUser ? [currentUser] : [],
-          ...(currentUser ? { updatedBy: currentUser } : {}),
-        };
-        await updateSession(editingSession.id, { information: newInformation });
+      // 1) 練習種別（gameState.settings.practiceType）— sessionMutations のトランザクションで書き込み
+      if (practiceTypeChanged) {
+        const nextPracticeType = editingPracticeType as PracticeType;
+        await setPracticeTypeMutation(editingSession.id, nextPracticeType);
         setSessions((prev) =>
           prev.map((s) =>
-            s.id === editingSession.id ? { ...s, information: newInformation } : s,
+            s.id === editingSession.id ? { ...s, practiceType: nextPracticeType } : s,
           ),
         );
       }
+      // 2) 周知事項（session.information）— トップレベル update
+      if (infoChanged) {
+        if (!trimmed) {
+          await updateSession(editingSession.id, {
+            information: deleteField() as unknown as Session['information'],
+          });
+          setSessions((prev) =>
+            prev.map((s) => (s.id === editingSession.id ? { ...s, information: undefined } : s)),
+          );
+        } else {
+          // updatedBy は undefined を含めると Firestore（ignoreUndefinedProperties 未設定）が
+          // 例外を投げるため、currentUser がある時だけプロパティを差し込む。
+          const newInformation: NonNullable<Session['information']> = {
+            text: trimmed,
+            updatedAt: Date.now(),
+            readBy: currentUser ? [currentUser] : [],
+            ...(currentUser ? { updatedBy: currentUser } : {}),
+          };
+          await updateSession(editingSession.id, { information: newInformation });
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === editingSession.id ? { ...s, information: newInformation } : s,
+            ),
+          );
+        }
+      }
       setEditingSession(null);
     } catch (err) {
-      console.error('[SessionSelect] Failed to save information:', err);
-      setError('周知事項の保存に失敗しました');
+      console.error('[SessionSelect] Failed to save session info:', err);
+      setError('セッション情報の保存に失敗しました');
     } finally {
-      setSavingInformation(false);
+      setSaving(false);
     }
   };
 
@@ -164,11 +212,9 @@ export function SessionSelectPage() {
                           <Users size={12} />
                           {session.participants?.length ?? 0}名参加中
                         </span>
-                        {session.practiceType && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground font-semibold">
-                            練習種別: {session.practiceType}
-                          </span>
-                        )}
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground font-semibold">
+                          練習種別: {resolvePracticeTypeLabel(session)}
+                        </span>
                         {typeof session.matchCount === 'number' && session.matchCount > 0 && (
                           <span className="flex items-center gap-1">
                             <Trophy size={12} />
@@ -195,18 +241,15 @@ export function SessionSelectPage() {
                   </div>
                 </button>
 
-                {/* 周知事項を編集する導線（開発モード限定） */}
+                {/* セッション情報を編集する導線（開発モード限定） */}
                 {devMode && (
                   <div className="border-t border-border flex justify-end">
                     <button
-                      onClick={() => {
-                        setEditingSession(session);
-                        setEditingText(session.information?.text ?? '');
-                      }}
+                      onClick={() => openEdit(session)}
                       className="text-xs text-primary inline-flex items-center gap-1 px-4 py-3 hover:bg-muted/50 transition-colors"
                     >
                       <Pencil size={12} />
-                      周知事項を編集
+                      編集
                     </button>
                   </div>
                 )}
@@ -242,48 +285,80 @@ export function SessionSelectPage() {
         </p>
       </div>
 
-      {/* 周知事項編集モーダル（開発モード限定の導線から呼び出し） */}
+      {/* セッション情報編集モーダル（開発モード限定の導線から呼び出し） */}
       {editingSession && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-card rounded-2xl p-6 max-w-md w-full max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <Info size={20} className="text-blue-600" />
-                周知事項を編集（{editingSession.id}）
+                セッション情報を編集（{editingSession.id}）
               </h3>
               <button
                 onClick={() => setEditingSession(null)}
                 className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                disabled={savingInformation}
+                disabled={saving}
               >
                 <X size={20} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto mb-4">
-              <textarea
-                value={editingText}
-                onChange={(e) => setEditingText(e.target.value)}
-                className="w-full min-h-[200px] p-3 bg-muted border border-border rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
-                placeholder="メンバーへの周知事項を入力..."
-                disabled={savingInformation}
-              />
+            <div className="flex-1 overflow-y-auto mb-4 space-y-4">
+              {/* 練習種別 */}
+              <div>
+                <label className="text-sm font-semibold text-foreground mb-2 block">
+                  練習種別
+                </label>
+                <div className="flex gap-2">
+                  {PRACTICE_TYPES.map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => setEditingPracticeType(type)}
+                      disabled={saving}
+                      className={`flex-1 py-2 rounded-xl font-semibold transition-colors disabled:opacity-50 ${
+                        editingPracticeType === type
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted text-foreground hover:bg-muted/70'
+                      }`}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+                {editingPracticeType === '' && (
+                  <p className="text-xs text-muted-foreground mt-1">未設定（保存しても変更されません）</p>
+                )}
+              </div>
+
+              {/* 周知事項 */}
+              <div>
+                <label className="text-sm font-semibold text-foreground mb-2 block">
+                  周知事項
+                </label>
+                <textarea
+                  value={editingText}
+                  onChange={(e) => setEditingText(e.target.value)}
+                  className="w-full min-h-[160px] p-3 bg-muted border border-border rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  placeholder="メンバーへの周知事項を入力..."
+                  disabled={saving}
+                />
+              </div>
             </div>
 
             <div className="flex gap-2">
               <button
                 onClick={() => setEditingSession(null)}
                 className="flex-1 btn-secondary"
-                disabled={savingInformation}
+                disabled={saving}
               >
                 キャンセル
               </button>
               <button
-                onClick={handleSaveInformation}
+                onClick={handleSave}
                 className="flex-1 btn-primary"
-                disabled={savingInformation}
+                disabled={saving}
               >
-                {savingInformation ? '保存中...' : '保存'}
+                {saving ? '保存中...' : '保存'}
               </button>
             </div>
           </div>
