@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
@@ -65,7 +65,6 @@ const getInitialGym = () => {
 
 export function SessionCreate() {
   const navigate = useNavigate();
-  const location = useLocation();
   const initializeSession = useSessionStore((state) => state.initialize);
 
   // Phase 4 で常に Firebase 共有セッションを作成する（ローカルモード廃止）
@@ -83,9 +82,7 @@ export function SessionCreate() {
   const [playerNames, setPlayerNames] = useState('');
   
   // Phase 1: セッションID参加機能
-  const [showJoinMode, setShowJoinMode] = useState(
-    !!(location.state as { showJoinMode?: boolean })?.showJoinMode
-  );
+  const [showJoinMode, setShowJoinMode] = useState(false);
   const [joinSessionId, setJoinSessionId] = useState('');
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -95,13 +92,6 @@ export function SessionCreate() {
   useEffect(() => {
     clearAppBadge();
   }, []);
-
-  // 404リダイレクト時のstateをクリア（ブラウザバック時に再表示されないように）
-  useEffect(() => {
-    if ((location.state as { showJoinMode?: boolean })?.showJoinMode) {
-      window.history.replaceState({}, '');
-    }
-  }, [location.state]);
 
   const handleJoinSession = () => {
     const id = joinSessionId.trim().toUpperCase();

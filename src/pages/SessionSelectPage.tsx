@@ -5,7 +5,7 @@ import { listRecentActiveSessions } from '../services/sessionService';
 import { clearAppBadge } from '../lib/badge';
 import { useDevMode } from '../hooks/useDevMode';
 import type { Session } from '../types/session';
-import { Loader2, Plus, LogIn, Users, MapPin, Calendar, Trophy } from 'lucide-react';
+import { Loader2, Plus, Users, MapPin, Calendar, Trophy } from 'lucide-react';
 
 /** 日付をフォーマット（4/16(水)） */
 function formatSessionDate(practiceStartTime: number): string {
@@ -158,38 +158,21 @@ export function SessionSelectPage() {
             <h3 className="text-base font-semibold text-foreground mb-1">
               アクティブなセッションがありません
             </h3>
-            <p className="text-sm text-muted-foreground">
-              新しいセッションを作成するか、セッションIDで参加してください
-            </p>
           </div>
         ) : null}
 
-        {/* アクションボタン */}
-        <div className="space-y-3 pt-2">
-          <button
-            onClick={() => navigate('/session/create')}
-            className="btn-primary w-full flex items-center justify-center gap-2"
-          >
-            <Plus size={18} />
-            新しいセッションを作成
-          </button>
-
-          <div className="flex gap-3">
+        {/* アクションボタン（開発モードのみ） */}
+        {devMode && (
+          <div className="space-y-3 pt-2">
             <button
-              onClick={() => navigate('/local', { state: { showJoinMode: true } })}
-              className="btn-secondary flex-1 flex items-center justify-center gap-2 text-sm"
+              onClick={() => navigate('/session/create')}
+              className="btn-primary w-full flex items-center justify-center gap-2"
             >
-              <LogIn size={16} />
-              IDで参加
-            </button>
-            <button
-              onClick={() => navigate('/local')}
-              className="btn-secondary flex-1 flex items-center justify-center gap-2 text-sm"
-            >
-              ローカルモード
+              <Plus size={18} />
+              新しいセッションを作成
             </button>
           </div>
-        </div>
+        )}
 
         {/* バージョン表示 */}
         <p className="text-center text-xs text-muted-foreground pt-2">
