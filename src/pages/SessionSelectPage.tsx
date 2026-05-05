@@ -5,7 +5,7 @@ import { listRecentActiveSessions } from '../services/sessionService';
 import { clearAppBadge } from '../lib/badge';
 import { useDevMode } from '../hooks/useDevMode';
 import type { Session } from '../types/session';
-import { Loader2, Plus, Users, MapPin, Calendar, Trophy } from 'lucide-react';
+import { Loader2, Plus, Users, MapPin, Calendar, Trophy, StickyNote } from 'lucide-react';
 
 /** 日付をフォーマット（4/16(水)） */
 function formatSessionDate(practiceStartTime: number): string {
@@ -17,11 +17,12 @@ function formatSessionDate(practiceStartTime: number): string {
   return `${month}/${day}(${weekday})`;
 }
 
-/** 時刻をフォーマット（19:00） */
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
+/** 練習種別の表示ラベル */
+const PRACTICE_TYPE_LABEL: Record<'単' | '複' | '楽', string> = {
+  単: 'シングルス',
+  複: 'ダブルス',
+  楽: '楽しく',
+};
 
 export function SessionSelectPage() {
   const navigate = useNavigate();
@@ -117,13 +118,10 @@ export function SessionSelectPage() {
                       <span className="flex items-center gap-1 text-sm text-muted-foreground">
                         <Calendar size={14} className="flex-shrink-0" />
                         {formatSessionDate(session.config.practiceStartTime)}
-                        {session.config.practiceStartTime > 0 && (
-                          <> {formatTime(session.config.practiceStartTime)}</>
-                        )}
                       </span>
                     </div>
 
-                    {/* 参加者数 + 種別 + 試合数 */}
+                    {/* 参加者数 + 練習種別 + 試合数 */}
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Users size={12} />
@@ -131,7 +129,7 @@ export function SessionSelectPage() {
                       </span>
                       {session.practiceType && (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground font-semibold">
-                          {session.practiceType}
+                          練習種別: {PRACTICE_TYPE_LABEL[session.practiceType]}
                         </span>
                       )}
                       {typeof session.matchCount === 'number' && session.matchCount > 0 && (
@@ -141,6 +139,16 @@ export function SessionSelectPage() {
                         </span>
                       )}
                     </div>
+
+                    {/* メモ（周知事項） */}
+                    {session.information?.text?.trim() && (
+                      <div className="mt-1.5 flex items-start gap-1 text-xs text-muted-foreground">
+                        <StickyNote size={12} className="flex-shrink-0 mt-0.5" />
+                        <span className="line-clamp-2 whitespace-pre-wrap break-words">
+                          {session.information.text}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* セッションID */}
