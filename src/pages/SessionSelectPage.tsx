@@ -207,8 +207,8 @@ export function SessionSelectPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      {/* 体育館名 + 日付 */}
-                      <div className="flex items-center gap-2 mb-1.5">
+                      {/* 1行目: 体育館 + 日付 + 練習種別 */}
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                         {session.config.gym && (
                           <span className="flex items-center gap-1 text-sm font-semibold text-foreground">
                             <MapPin size={14} className="text-primary flex-shrink-0" />
@@ -219,34 +219,32 @@ export function SessionSelectPage() {
                           <Calendar size={14} className="flex-shrink-0" />
                           {formatSessionDate(session.config.practiceStartTime)}
                         </span>
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-semibold">
+                          {resolvePracticeTypeLabel(session)}
+                        </span>
                       </div>
 
-                      {/* 参加者数 + 練習種別 + 試合数 */}
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
+                      {/* 2行目: 参加者数 + 試合数 + メモ（周知事項の最初の1行） */}
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground min-w-0">
+                        <span className="flex items-center gap-1 flex-shrink-0">
                           <Users size={12} />
-                          {session.participants?.length ?? 0}名参加中
-                        </span>
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground font-semibold">
-                          練習種別: {resolvePracticeTypeLabel(session)}
+                          {session.participants?.length ?? 0}名
                         </span>
                         {typeof session.matchCount === 'number' && session.matchCount > 0 && (
-                          <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1 flex-shrink-0">
                             <Trophy size={12} />
                             {session.matchCount}試合
                           </span>
                         )}
-                      </div>
-
-                      {/* メモ（周知事項の最初の1行） */}
-                      {session.information?.text?.trim() && (
-                        <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground min-w-0">
-                          <StickyNote size={12} className="flex-shrink-0" />
-                          <span className="truncate">
-                            {session.information.text.split('\n')[0]}
+                        {session.information?.text?.trim() && (
+                          <span className="flex items-center gap-1 min-w-0 flex-1">
+                            <StickyNote size={12} className="flex-shrink-0" />
+                            <span className="truncate">
+                              {session.information.text.split('\n')[0]}
+                            </span>
                           </span>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
 
                     {/* セッションID */}
