@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
+import { deleteField } from 'firebase/firestore';
 import { isFirebaseConfigured } from '../lib/firebase';
-import { listRecentActiveSessions } from '../services/sessionService';
+import { listRecentActiveSessions, updateSession } from '../services/sessionService';
 import { clearAppBadge } from '../lib/badge';
 import { useDevMode } from '../hooks/useDevMode';
+import { useSessionStore } from '../stores/sessionStore';
 import type { Session } from '../types/session';
-import { Loader2, Plus, Users, MapPin, Calendar, Trophy } from 'lucide-react';
+import { Loader2, Plus, Users, MapPin, Calendar, Trophy, StickyNote, Pencil, X, Info } from 'lucide-react';
 
 /** 日付をフォーマット（4/16(水)） */
 function formatSessionDate(practiceStartTime: number): string {
@@ -17,18 +19,54 @@ function formatSessionDate(practiceStartTime: number): string {
   return `${month}/${day}(${weekday})`;
 }
 
-/** 時刻をフォーマット（19:00） */
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
-
 export function SessionSelectPage() {
   const navigate = useNavigate();
   const devMode = useDevMode();
+  const currentUser = useSessionStore((s) => s.currentUser);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [editingSession, setEditingSession] = useState<Session | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [savingInformation, setSavingInformation] = useState(false);
+
+  const handleSaveInformation = async () => {
+    if (!editingSession) return;
+    const trimmed = editingText.trim();
+    setSavingInformation(true);
+    setError('');
+    try {
+      if (!trimmed) {
+        await updateSession(editingSession.id, {
+          information: deleteField() as unknown as Session['information'],
+        });
+        setSessions((prev) =>
+          prev.map((s) => (s.id === editingSession.id ? { ...s, information: undefined } : s)),
+        );
+      } else {
+        // updatedBy は undefined を含めると Firestore（ignoreUndefinedProperties 未設定）が
+        // 例外を投げるため、currentUser がある時だけプロパティを差し込む。
+        const newInformation: NonNullable<Session['information']> = {
+          text: trimmed,
+          updatedAt: Date.now(),
+          readBy: currentUser ? [currentUser] : [],
+          ...(currentUser ? { updatedBy: currentUser } : {}),
+        };
+        await updateSession(editingSession.id, { information: newInformation });
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === editingSession.id ? { ...s, information: newInformation } : s,
+          ),
+        );
+      }
+      setEditingSession(null);
+    } catch (err) {
+      console.error('[SessionSelect] Failed to save information:', err);
+      setError('周知事項の保存に失敗しました');
+    } finally {
+      setSavingInformation(false);
+    }
+  };
 
   // PWAバッジをクリア（セッション未参加状態）
   useEffect(() => {
@@ -99,56 +137,80 @@ export function SessionSelectPage() {
         {sessions.length > 0 ? (
           <div className="space-y-3">
             {sessions.map((session) => (
-              <button
-                key={session.id}
-                onClick={() => navigate(`/session/${session.id}`)}
-                className="card p-4 w-full text-left transition-all duration-150 active:scale-[0.98]"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    {/* 体育館名 + 日付 */}
-                    <div className="flex items-center gap-2 mb-1.5">
-                      {session.config.gym && (
-                        <span className="flex items-center gap-1 text-sm font-semibold text-foreground">
-                          <MapPin size={14} className="text-primary flex-shrink-0" />
-                          {session.config.gym}
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Calendar size={14} className="flex-shrink-0" />
-                        {formatSessionDate(session.config.practiceStartTime)}
-                        {session.config.practiceStartTime > 0 && (
-                          <> {formatTime(session.config.practiceStartTime)}</>
+              <div key={session.id} className="card overflow-hidden">
+                <button
+                  onClick={() => navigate(`/session/${session.id}`)}
+                  className="block w-full text-left p-4 transition-all duration-150 active:scale-[0.98]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      {/* 体育館名 + 日付 */}
+                      <div className="flex items-center gap-2 mb-1.5">
+                        {session.config.gym && (
+                          <span className="flex items-center gap-1 text-sm font-semibold text-foreground">
+                            <MapPin size={14} className="text-primary flex-shrink-0" />
+                            {session.config.gym}
+                          </span>
                         )}
-                      </span>
-                    </div>
-
-                    {/* 参加者数 + 種別 + 試合数 */}
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Users size={12} />
-                        {session.participants?.length ?? 0}名参加中
-                      </span>
-                      {session.practiceType && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground font-semibold">
-                          {session.practiceType}
+                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Calendar size={14} className="flex-shrink-0" />
+                          {formatSessionDate(session.config.practiceStartTime)}
                         </span>
-                      )}
-                      {typeof session.matchCount === 'number' && session.matchCount > 0 && (
+                      </div>
+
+                      {/* 参加者数 + 練習種別 + 試合数 */}
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
-                          <Trophy size={12} />
-                          {session.matchCount}試合
+                          <Users size={12} />
+                          {session.participants?.length ?? 0}名参加中
                         </span>
+                        {session.practiceType && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground font-semibold">
+                            練習種別: {session.practiceType}
+                          </span>
+                        )}
+                        {typeof session.matchCount === 'number' && session.matchCount > 0 && (
+                          <span className="flex items-center gap-1">
+                            <Trophy size={12} />
+                            {session.matchCount}試合
+                          </span>
+                        )}
+                      </div>
+
+                      {/* メモ（周知事項の最初の1行） */}
+                      {session.information?.text?.trim() && (
+                        <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+                          <StickyNote size={12} className="flex-shrink-0" />
+                          <span className="truncate">
+                            {session.information.text.split('\n')[0]}
+                          </span>
+                        </div>
                       )}
                     </div>
-                  </div>
 
-                  {/* セッションID */}
-                  <div className="flex-shrink-0 bg-primary/10 text-primary text-xs font-bold px-2 py-1 rounded-lg tracking-wider">
-                    {session.id}
+                    {/* セッションID */}
+                    <div className="flex-shrink-0 bg-primary/10 text-primary text-xs font-bold px-2 py-1 rounded-lg tracking-wider">
+                      {session.id}
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+
+                {/* 周知事項を編集する導線（開発モード限定） */}
+                {devMode && (
+                  <div className="border-t border-border flex justify-end">
+                    <button
+                      onClick={() => {
+                        setEditingSession(session);
+                        setEditingText(session.information?.text ?? '');
+                      }}
+                      className="text-xs text-primary inline-flex items-center gap-1 px-4 py-3 hover:bg-muted/50 transition-colors"
+                    >
+                      <Pencil size={12} />
+                      周知事項を編集
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         ) : !error ? (
@@ -179,6 +241,54 @@ export function SessionSelectPage() {
           v{__APP_VERSION__}
         </p>
       </div>
+
+      {/* 周知事項編集モーダル（開発モード限定の導線から呼び出し） */}
+      {editingSession && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-card rounded-2xl p-6 max-w-md w-full max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Info size={20} className="text-blue-600" />
+                周知事項を編集（{editingSession.id}）
+              </h3>
+              <button
+                onClick={() => setEditingSession(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                disabled={savingInformation}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto mb-4">
+              <textarea
+                value={editingText}
+                onChange={(e) => setEditingText(e.target.value)}
+                className="w-full min-h-[200px] p-3 bg-muted border border-border rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+                placeholder="メンバーへの周知事項を入力..."
+                disabled={savingInformation}
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setEditingSession(null)}
+                className="flex-1 btn-secondary"
+                disabled={savingInformation}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleSaveInformation}
+                className="flex-1 btn-primary"
+                disabled={savingInformation}
+              >
+                {savingInformation ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
