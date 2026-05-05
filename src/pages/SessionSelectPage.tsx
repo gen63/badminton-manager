@@ -246,7 +246,7 @@ export function SessionSelectPage() {
                     </div>
 
                     {/* セッションID */}
-                    <div className="flex-shrink-0 bg-primary/10 text-primary text-xs font-bold px-2 py-1 rounded-lg tracking-wider">
+                    <div className="flex-shrink-0 bg-primary/10 text-primary text-[10px] font-semibold px-1.5 py-0.5 rounded-md">
                       {session.id}
                     </div>
                   </div>
