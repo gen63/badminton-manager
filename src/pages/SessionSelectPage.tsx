@@ -34,6 +34,7 @@ export function SessionSelectPage() {
     if (!editingSession) return;
     const trimmed = editingText.trim();
     setSavingInformation(true);
+    setError('');
     try {
       if (!trimmed) {
         await updateSession(editingSession.id, {
@@ -43,11 +44,13 @@ export function SessionSelectPage() {
           prev.map((s) => (s.id === editingSession.id ? { ...s, information: undefined } : s)),
         );
       } else {
-        const newInformation = {
+        // updatedBy は undefined を含めると Firestore（ignoreUndefinedProperties 未設定）が
+        // 例外を投げるため、currentUser がある時だけプロパティを差し込む。
+        const newInformation: NonNullable<Session['information']> = {
           text: trimmed,
           updatedAt: Date.now(),
-          updatedBy: currentUser ?? undefined,
           readBy: currentUser ? [currentUser] : [],
+          ...(currentUser ? { updatedBy: currentUser } : {}),
         };
         await updateSession(editingSession.id, { information: newInformation });
         setSessions((prev) =>
@@ -194,13 +197,13 @@ export function SessionSelectPage() {
 
                 {/* 周知事項を編集する導線（開発モード限定） */}
                 {devMode && (
-                  <div className="border-t border-border px-4 py-2 flex justify-end">
+                  <div className="border-t border-border flex justify-end">
                     <button
                       onClick={() => {
                         setEditingSession(session);
                         setEditingText(session.information?.text ?? '');
                       }}
-                      className="text-xs text-primary inline-flex items-center gap-1 hover:underline"
+                      className="text-xs text-primary inline-flex items-center gap-1 px-4 py-3 hover:bg-muted/50 transition-colors"
                     >
                       <Pencil size={12} />
                       周知事項を編集
