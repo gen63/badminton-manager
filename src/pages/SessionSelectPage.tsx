@@ -19,13 +19,6 @@ function formatSessionDate(practiceStartTime: number): string {
   return `${month}/${day}(${weekday})`;
 }
 
-/** 練習種別の表示ラベル */
-const PRACTICE_TYPE_LABEL: Record<'単' | '複' | '楽', string> = {
-  単: 'シングルス',
-  複: 'ダブルス',
-  楽: '楽しく',
-};
-
 export function SessionSelectPage() {
   const navigate = useNavigate();
   const devMode = useDevMode();
@@ -170,7 +163,7 @@ export function SessionSelectPage() {
                         </span>
                         {session.practiceType && (
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground font-semibold">
-                            練習種別: {PRACTICE_TYPE_LABEL[session.practiceType]}
+                            練習種別: {session.practiceType}
                           </span>
                         )}
                         {typeof session.matchCount === 'number' && session.matchCount > 0 && (
