@@ -269,4 +269,38 @@ describe('computeFinishAndContinue', () => {
       expect(result.newState.matchHistory[0].id).toBe('existing-match');
     });
   });
+
+  // 連続モード配置が 2 回目以降も動くための回帰テスト。
+  // 旧実装では newState から settings が落ちて Firestore に書き戻され、
+  // 次回 finish 時に remoteSettings.continuousMatchMode が undefined→false に
+  // なって配置がスキップされていた。
+  describe('settings の保持（回帰テスト）', () => {
+    it('入力 state.settings が newState に残る', () => {
+      const state: GameState = {
+        ...makeBaseState(),
+        settings: {
+          recordScores: true,
+          continuousMatchMode: true,
+          practiceType: '複',
+        },
+      };
+
+      const result = computeFinishAndContinue(state, 1, {
+        ...defaultOptions,
+        continuousMatchMode: true,
+      });
+
+      expect(result.newState.settings).toEqual({
+        recordScores: true,
+        continuousMatchMode: true,
+        practiceType: '複',
+      });
+    });
+
+    it('settings 未定義の入力では newState.settings も未定義', () => {
+      const state = makeBaseState();
+      const result = computeFinishAndContinue(state, 1, defaultOptions);
+      expect(result.newState.settings).toBeUndefined();
+    });
+  });
 });

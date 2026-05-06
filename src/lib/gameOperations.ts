@@ -9,6 +9,7 @@ import type { Player } from '../types/player';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
+import type { SyncSettings } from '../services/sessionService';
 import { assignCourts } from './algorithm';
 
 /** ゲームモードに応じた1コートあたりの人数 */
@@ -54,6 +55,7 @@ export interface GameState {
   courts: Court[];
   matchHistory: Match[];
   reservations: Reservation[];
+  settings?: SyncSettings;
 }
 
 export interface FinishGameResult {
@@ -201,6 +203,7 @@ export function computeFinishAndContinue(
 
   return {
     newState: {
+      ...state,
       players: updatedPlayers,
       courts: updatedCourts,
       matchHistory: updatedMatchHistory,
