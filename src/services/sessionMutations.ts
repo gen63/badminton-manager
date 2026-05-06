@@ -553,8 +553,66 @@ export function removePlayer(sessionId: string, playerId: string) {
   return mutateGameState(sessionId, (s) => computeRemovePlayer(s, playerId));
 }
 
-export function updatePlayer(sessionId: string, playerId: string, updates: Partial<Player>) {
-  return mutateGameState(sessionId, (s) => computeUpdatePlayer(s, playerId, updates));
+/**
+ * プレイヤー情報を更新する。
+ *
+ * 名前変更時は session レベルの **`participants` / `admins` / `createdBy`** も
+ * 同一トランザクション内で旧名→新名へ置換する。これらは名前ベースの参照のため、
+ * 同期更新しないと SessionJoinPage の入室判定 / 管理者権限 / 作成者判定が
+ * 古い名前を指したまま壊れる（renamed プレイヤーが「未入室」表示になる等）。
+ */
+export async function updatePlayer(
+  sessionId: string,
+  playerId: string,
+  updates: Omit<Partial<Player>, 'id'>,
+): Promise<GameState> {
+  const _db = requireDb();
+  const ref = doc(_db, 'sessions', sessionId);
+
+  try {
+    return await runTransaction(_db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) {
+        throw new SessionError('セッションが見つかりません', 'not-found');
+      }
+      const data = snap.data();
+      const remote = data.gameState as GameState | undefined;
+      if (!remote) {
+        throw new SessionError('セッションの状態が初期化されていません', 'invalid-state');
+      }
+
+      const oldName = remote.players.find((p) => p.id === playerId)?.name;
+      const next = computeUpdatePlayer(remote, playerId, updates);
+      const newName = next.players.find((p) => p.id === playerId)?.name;
+
+      const payload: Record<string, unknown> = buildGameStatePayload(next);
+
+      if (oldName && newName && oldName !== newName) {
+        const participants = data.participants as string[] | undefined;
+        if (participants?.includes(oldName)) {
+          payload.participants = participants.map((n) => (n === oldName ? newName : n));
+        }
+        const admins = data.admins as string[] | undefined;
+        if (admins?.includes(oldName)) {
+          payload.admins = admins.map((n) => (n === oldName ? newName : n));
+        }
+        if (data.createdBy === oldName) {
+          payload.createdBy = newName;
+        }
+      }
+
+      transaction.update(ref, payload);
+      return next;
+    });
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === 'aborted') {
+      throw new SessionError(
+        '他のユーザーが更新しました。もう一度お試しください',
+        'conflict',
+      );
+    }
+    throw error;
+  }
 }
 
 export function toggleRest(sessionId: string, playerId: string) {
