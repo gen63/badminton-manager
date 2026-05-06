@@ -21,10 +21,11 @@ export function PlayerSelect() {
   const players = usePlayerStore((s) => s.players);
   const matchHistory = useGameStore((s) => s.matchHistory);
   const session = useSessionStore((s) => s.session);
-  const isCreator = useSessionStore((s) => s.isCreator);
+  const isAdminFn = useSessionStore((s) => s.isAdmin);
+  const currentUser = useSessionStore((s) => s.currentUser);
   const practiceType = useSettingsStore((s) => s.practiceType);
   const isTabMode = !!session;
-  const isAdmin = isCreator();
+  const isAdmin = isAdminFn();
   const [newPlayerNames, setNewPlayerNames] = useState('');
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
@@ -143,6 +144,12 @@ export function PlayerSelect() {
   const renderPlayerCard = (player: typeof sortedPlayers[number]) => {
     const hasHistory = playersInHistory.has(player.id);
     const status = player.operationStatus || { payment: false, roster: false, checkin: false };
+    // 編集は admin/creator か「自分自身」のみ。自分判定は currentUser（localStorage 名）と
+    // player.name の一致で行う（player ID を持たない設計のため）。
+    // ローカルモードでは従来通り全員編集可。
+    const canEdit = !isTabMode || isAdmin || player.name === currentUser;
+    // 削除は admin/creator のみ（自分自身の self-delete は誤操作リスクのため不可）。
+    const canDelete = !isTabMode || isAdmin;
     return (
       <div
         key={player.id}
@@ -151,7 +158,7 @@ export function PlayerSelect() {
         {/* 名前 (40%) */}
         <div className="flex-[2] flex items-center gap-2">
           <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
-          {(isTabMode ? isAdmin : true) && (
+          {canEdit && (
             <button
               onClick={() => handleEdit(player)}
               aria-label={`${player.name}を編集`}
@@ -160,7 +167,7 @@ export function PlayerSelect() {
               <Pencil className="w-3 h-3" />
             </button>
           )}
-          {!hasHistory && (isTabMode ? isAdmin : true) && (
+          {!hasHistory && canDelete && (
             <button
               onClick={() => handleDelete(player)}
               aria-label={`${player.name}を削除`}

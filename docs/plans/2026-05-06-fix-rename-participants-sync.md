@@ -51,6 +51,19 @@ session レベルの **`participants` / `admins` / `createdBy`** も新名に
 の presence エントリが clearPresence で即時削除され、新名で heartbeat が
 再開する。
 
+### 修正 3: 編集権限の見直し（`PlayerSelect.tsx`）
+
+ついでに編集ボタンの権限ガードを整理:
+
+- 旧: `isCreator()` のみ（変数名は `isAdmin` だが createdBy 限定）
+- 新:
+  - **編集（rename / 性別）**: admin/creator OR `player.name === currentUser`（自分自身）
+  - **削除**: admin/creator のみ（self-delete は誤操作リスクで不可）
+
+`useSessionStore.isAdmin()`（`createdBy` + `admins[]`）に揃え、admins 権限を
+持つユーザーが編集 UI を使えるよう修正。あわせて自分の名前は自分で
+直せるようにする。
+
 ## テスト
 
 `sessionMutations.test.ts` に rename 時の wrapper テストを追加:
