@@ -115,7 +115,10 @@ export function CourtCard({
 }: CourtCardProps) {
   const timer = useGameTimer(court.startedAt, court.isPlaying);
 
-  const hasPlayers = court.teamA[0] || court.teamB[0];
+  // teamA[0] だけで判定すると、teamA[0] が空文字（プレイヤー削除等で
+  // ['', 'B'] になったケース）に teamA[1] や teamB が描画されず、ダブルスでも
+  // 2 人しか見えなくなるため全スロットを見る。
+  const hasPlayers = court.teamA[0] || court.teamA[1] || court.teamB[0] || court.teamB[1];
 
   const pillProps = { selectedPlayerId, getPlayerName, getPlayerGamesPlayed, getPlayerGender, onPlayerTap, onClearSelection };
 
@@ -142,16 +145,11 @@ export function CourtCard({
       <div className="flex flex-col justify-center space-y-1" style={{ minHeight: '172px' }}>
       {hasPlayers ? (
         <>
-          {/* チームA */}
+          {/* チームA: スロット毎に判定して、teamA[0]=='' だが teamA[1] にプレイヤーが
+              残っている部分配置でも残ったプレイヤーを描画する */}
           <div className="space-y-1">
-            {court.teamA[0] ? (
-              <>
-                <PlayerPill playerId={court.teamA[0]} position={0} {...pillProps} />
-                <PlayerPill playerId={court.teamA[1]} position={1} {...pillProps} />
-              </>
-            ) : (
-              <EmptySlots />
-            )}
+            <PlayerPill playerId={court.teamA[0]} position={0} {...pillProps} />
+            <PlayerPill playerId={court.teamA[1]} position={1} {...pillProps} />
           </div>
 
           {/* VS */}
@@ -163,14 +161,8 @@ export function CourtCard({
 
           {/* チームB */}
           <div className="space-y-1">
-            {court.teamB[0] ? (
-              <>
-                <PlayerPill playerId={court.teamB[0]} position={2} {...pillProps} />
-                <PlayerPill playerId={court.teamB[1]} position={3} {...pillProps} />
-              </>
-            ) : (
-              <EmptySlots />
-            )}
+            <PlayerPill playerId={court.teamB[0]} position={2} {...pillProps} />
+            <PlayerPill playerId={court.teamB[1]} position={3} {...pillProps} />
           </div>
         </>
       ) : (

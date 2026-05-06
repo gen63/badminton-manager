@@ -215,6 +215,45 @@ describe('useFirebaseSync - settings 反映の副作用', () => {
     // setPracticeType が呼ばれていないので prioritizeDiversity は手動で書き換えた false のまま
     expect(useSettingsStore.getState().prioritizeDiversity).toBe(false);
   });
+
+  it('settings.practiceType 未設定 + config.gameMode 未設定では端末ローカル "単" を "複" に矯正する', () => {
+    // 旧セッション等で gameState.settings.practiceType が無い場合、前セッションから
+    // 持ち越した端末ローカル '単' が gameMode に流出すると、ダブルス練習でも
+    // assignCourts がシングルスフローを走らせて 2 人しか配置されない不具合になる。
+    setSharedSession();
+    useSettingsStore.setState({ practiceType: '単', prioritizeDiversity: false });
+    renderHook(() => useFirebaseSync());
+
+    act(() => {
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          players: [], courts: [], matchHistory: [], reservations: [],
+          // settings 自体が無い
+        },
+      });
+    });
+
+    expect(useSettingsStore.getState().practiceType).toBe('複');
+  });
+
+  it('settings.practiceType 未設定でも config.gameMode=singles なら "単" を維持', () => {
+    setSharedSession();
+    useSettingsStore.setState({ practiceType: '複', prioritizeDiversity: false });
+    renderHook(() => useFirebaseSync());
+
+    act(() => {
+      emit({
+        updatedAt: NOW,
+        config: { courtCount: 1, targetScore: 21, practiceStartTime: NOW, gameMode: 'singles' },
+        gameState: {
+          players: [], courts: [], matchHistory: [], reservations: [],
+        },
+      });
+    });
+
+    expect(useSettingsStore.getState().practiceType).toBe('単');
+  });
 });
 
 describe('useFirebaseSync - session-level fields (H1 統合)', () => {

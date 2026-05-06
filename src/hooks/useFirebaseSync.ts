@@ -172,8 +172,8 @@ export function useFirebaseSync() {
         // setPracticeType は副作用付き（'単'→prioritizeDiversity:false, '楽'→true）なので
         // 必ず action 経由で呼ぶ。recordScores / continuousMatchMode は副作用なしだが
         // 一貫性のため同様に action 経由に統一。
+        const s = useSettingsStore.getState();
         if (gameState.settings) {
-          const s = useSettingsStore.getState();
           if (
             gameState.settings.recordScores !== undefined &&
             gameState.settings.recordScores !== s.recordScores
@@ -186,12 +186,22 @@ export function useFirebaseSync() {
           ) {
             s.setContinuousMatchMode(gameState.settings.continuousMatchMode);
           }
-          if (
-            gameState.settings.practiceType !== undefined &&
-            gameState.settings.practiceType !== s.practiceType
-          ) {
-            s.setPracticeType(gameState.settings.practiceType);
-          }
+        }
+        // practiceType 同期: gameState.settings.practiceType が未設定（旧セッション
+        // 等）でも、前セッションから持ち越した端末ローカル値（特に '単'）が
+        // gameMode として使われ続けるとダブルス練習でも assignCourts がシングルス
+        // フローを走らせ、コート上に 2 人しか配置されない不具合になる。
+        // 未設定時は config.gameMode から派生、それも無ければ '複' を採用して
+        // セッション全員でモードを揃える。
+        const remotePracticeType = gameState.settings?.practiceType;
+        const desiredPracticeType: '単' | '複' | '楽' =
+          remotePracticeType ??
+          ((data.config as { gameMode?: 'singles' | 'doubles' } | undefined)?.gameMode ===
+          'singles'
+            ? '単'
+            : '複');
+        if (desiredPracticeType !== s.practiceType) {
+          s.setPracticeType(desiredPracticeType);
         }
 
         useSyncStatusStore.getState().setGameStateLoaded(true);
