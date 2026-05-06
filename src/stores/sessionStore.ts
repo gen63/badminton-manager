@@ -217,6 +217,25 @@ export const useSessionStore = create<SessionState>()(
     }),
     {
       name: 'badminton-session',
+      // Phase B (2026-05-06): ローカルに残すデータを最小化する方針に従い、
+      // `session` (Firestore からいつでも復元できる) は persist しない。`currentUser`
+      // (端末で誰として参加しているか) だけ残す。リロード時は session=null の
+      // ため各ページの `if (!session) navigate('/')` ガードで SessionSelectPage に
+      // 戻る → ユーザーがセッションを選び直す → SessionJoinPage で `currentUser`
+      // が自動選択される、という UX。
+      version: 1,
+      migrate: (persisted, version) => {
+        if (version < 1 && persisted && typeof persisted === 'object') {
+          // 旧 version では session 全体を localStorage に書いていた。
+          // currentUser だけ残してドロップする。
+          const obj = persisted as Record<string, unknown>;
+          return { currentUser: obj.currentUser ?? null };
+        }
+        return persisted;
+      },
+      partialize: (state) => ({
+        currentUser: state.currentUser,
+      }),
     }
   )
 );

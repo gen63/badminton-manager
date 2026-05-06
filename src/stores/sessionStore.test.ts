@@ -574,3 +574,62 @@ describe('sessionStore - Information機能', () => {
     });
   });
 });
+
+describe('sessionStore - persist (Phase B: ローカル保持を currentUser のみに縮小)', () => {
+  it('session は localStorage に書かれない (currentUser のみが書かれる)', () => {
+    useSessionStore.setState({
+      session: {
+        id: 'sess-1',
+        config: { courtCount: 2, targetScore: 21, practiceStartTime: Date.now() },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        createdBy: 'Admin',
+        accounting: { maleCount: 5 } as never,
+      },
+      currentUser: 'TestUser',
+    });
+
+    const raw = localStorage.getItem('badminton-session');
+    expect(raw).toBeTruthy();
+    const parsed = JSON.parse(raw!);
+    const stored = parsed.state ?? parsed;
+    expect(stored).not.toHaveProperty('session');
+    expect(stored).toHaveProperty('currentUser', 'TestUser');
+  });
+
+  it('migrate (version 0 → 1) で旧 persisted state から session を剥がし currentUser を残す', () => {
+    // sessionStore.ts の migrate と同じロジックを再現してテストする
+    const migrate = (persisted: unknown, version: number): unknown => {
+      if (version < 1 && persisted && typeof persisted === 'object') {
+        const obj = persisted as Record<string, unknown>;
+        return { currentUser: obj.currentUser ?? null };
+      }
+      return persisted;
+    };
+
+    const oldState = {
+      session: { id: 'sess-1', config: { courtCount: 2, targetScore: 21, practiceStartTime: 0 }, createdAt: 0, updatedAt: 0 },
+      currentUser: 'Alice',
+    };
+    const migrated = migrate(oldState, 0) as Record<string, unknown>;
+    expect(migrated).not.toHaveProperty('session');
+    expect(migrated.currentUser).toBe('Alice');
+  });
+
+  it('migrate: currentUser が無い旧データでも null で復元する', () => {
+    const migrate = (persisted: unknown, version: number): unknown => {
+      if (version < 1 && persisted && typeof persisted === 'object') {
+        const obj = persisted as Record<string, unknown>;
+        return { currentUser: obj.currentUser ?? null };
+      }
+      return persisted;
+    };
+
+    const oldState = {
+      session: { id: 'sess-1', config: { courtCount: 1, targetScore: 21, practiceStartTime: 0 }, createdAt: 0, updatedAt: 0 },
+      // currentUser 欠落
+    };
+    const migrated = migrate(oldState, 0) as Record<string, unknown>;
+    expect(migrated.currentUser).toBeNull();
+  });
+});

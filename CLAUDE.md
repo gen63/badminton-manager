@@ -28,17 +28,24 @@ npm run test:run # ユニットテスト
     で `read → compute → write`）。`src/hooks/useSessionWriter.ts` 経由で UI から呼ぶ。
   - 読み取り: `src/hooks/useFirebaseSync.ts` が `onSnapshot` を購読し、ローカル
     zustand ストアに直接 `setState` する（merge 無し）。
-- **zustand persist は使わない**（playerStore / gameStore / reservationStore）
+- **zustand persist は最小限**（ローカル保持を限りなく減らす方針）
+  - 撤廃済み (Phase 3): `playerStore` / `gameStore` / `reservationStore`
+  - **`settingsStore`** は端末ローカル設定だけ persist (Phase A / 2026-05-06):
+    - persist する: `gasWebAppUrl` / `accountingWebAppUrl` /
+      `useStayDurationPriority` / `prioritizeDiversity`
+    - persist しない: `practiceType` / `continuousMatchMode` / `recordScores`
+      (Firestore 同期対象)
+  - **`sessionStore`** は `currentUser` のみ persist (Phase B / 2026-05-06):
+    - `session` 自体は持たない。リロード時は SessionSelectPage に戻り、
+      ユーザーがセッションを選び直す。`currentUser` で SessionJoinPage の
+      名前選択を自動化。
+  - **`accountingStore`** は persist しない (Phase C / 2026-05-06):
+    - `records[]` は GAS シートが永続先。AccountingPage の「直近レコードから
+      自動入力」は撤廃済み（標準値フォールバックのみ）。
   - 真実のソースは Firestore のみ。マウント時はストア空 → 初回 onSnapshot で反映。
   - `useSyncStatusStore.isGameStateLoaded` で初回受信完了を追跡。
-- **`settingsStore` は端末ローカル設定だけ persist**（Phase A / 2026-05-06）
-  - persist する: `gasWebAppUrl` / `accountingWebAppUrl` /
-    `useStayDurationPriority` / `prioritizeDiversity`（端末固有・Firestore に
-    無い）。
-  - persist しない: `practiceType` / `continuousMatchMode` / `recordScores`
-    （Firestore 同期対象。前セッションから drift して別セッションを汚すのを
-    防ぐ）。version 1 の migrate で旧 localStorage の同期対象を剥がす。
-  - 詳細: `docs/plans/2026-05-06-settings-persist-narrowing.md`
+  - 詳細: `docs/plans/2026-05-06-settings-persist-narrowing.md` /
+    `docs/plans/2026-05-06-local-storage-minimization.md`
 - **Firebase は必須**（Phase 4）
   - `.env` に `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_PROJECT_ID` 等が必要。
   - `src/lib/firestoreUtils.ts` の `requireDb()` で未設定時に明示エラー。
