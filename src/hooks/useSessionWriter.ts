@@ -130,6 +130,14 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  const swapPositions = useCallback(
+    (
+      posA: { courtId: number; position: 0 | 1 | 2 | 3 },
+      posB: { courtId: number; position: 0 | 1 | 2 | 3 },
+    ) => handle('swapPositions', (sid) => sm.swapPositions(sid, posA, posB)),
+    [handle],
+  );
+
   const removeCourtById = useCallback(
     (courtId: number) => handle('removeCourt', (sid) => sm.removeCourt(sid, courtId)),
     [handle],
@@ -245,6 +253,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       resetAllCourts,
       autoAssignAndFulfill,
       swapPlayer,
+      swapPositions,
       // match history
       clearHistory,
       removeMatch,
@@ -280,6 +289,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       resetAllCourts,
       autoAssignAndFulfill,
       swapPlayer,
+      swapPositions,
       clearHistory,
       removeMatch,
       updateMatchScore,

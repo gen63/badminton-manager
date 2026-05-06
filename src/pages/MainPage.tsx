@@ -466,40 +466,13 @@ export function MainPage() {
         courtId !== undefined &&
         position !== undefined
       ) {
-        if (selectedPlayer.courtId === courtId) {
-          const court = courts.find((c) => c.id === courtId);
-          if (court) {
-            const allPlayers = [...court.teamA, ...court.teamB];
-            const temp = allPlayers[selectedPlayer.position];
-            allPlayers[selectedPlayer.position] = allPlayers[position];
-            allPlayers[position] = temp;
-
-            await writer.updateCourt(courtId, {
-              teamA: [allPlayers[0], allPlayers[1]],
-              teamB: [allPlayers[2], allPlayers[3]],
-            });
-          }
-        } else {
-          const court1 = courts.find((c) => c.id === selectedPlayer.courtId);
-          const court2 = courts.find((c) => c.id === courtId);
-          if (court1 && court2) {
-            const allPlayers1 = [...court1.teamA, ...court1.teamB];
-            const allPlayers2 = [...court2.teamA, ...court2.teamB];
-
-            const temp = allPlayers1[selectedPlayer.position];
-            allPlayers1[selectedPlayer.position] = allPlayers2[position];
-            allPlayers2[position] = temp;
-
-            await writer.updateCourt(selectedPlayer.courtId!, {
-              teamA: [allPlayers1[0], allPlayers1[1]],
-              teamB: [allPlayers1[2], allPlayers1[3]],
-            });
-            await writer.updateCourt(courtId, {
-              teamA: [allPlayers2[0], allPlayers2[1]],
-              teamB: [allPlayers2[2], allPlayers2[3]],
-            });
-          }
-        }
+        // CON5: 同一コート / 異コート間のスワップを 1 transaction で実行する。
+        // 旧実装は updateCourt × 2 の sequential await でレース / 部分失敗時に
+        // 同じプレイヤーが両コートに乗る不整合があった。
+        await writer.swapPositions(
+          { courtId: selectedPlayer.courtId, position: selectedPlayer.position as 0 | 1 | 2 | 3 },
+          { courtId, position: position as 0 | 1 | 2 | 3 },
+        );
       } else if (
         selectedPlayer.courtId !== undefined &&
         selectedPlayer.position !== undefined

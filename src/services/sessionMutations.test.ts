@@ -60,6 +60,7 @@ import {
   autoAssignAndFulfill,
   resizeCourtsWithConfig,
   swapPlayer,
+  swapPositions,
 } from './sessionMutations';
 import type { GameState } from './sessionService';
 import type { Player } from '../types/player';
@@ -978,6 +979,90 @@ describe('sessionMutations - swapPlayer (CON2 fix)', () => {
     expect(next.courts[0].teamA).toEqual(['p1', 'p2']);
     expect(next.courts[0].restingPlayerIds ?? []).not.toContain('p2');
     expect(next.players.find((p: { id: string }) => p.id === 'p2').isResting).toBe(false);
+  });
+});
+
+describe('sessionMutations - swapPositions (CON5 fix)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('同一コート内の 2 ポジションを 1 transaction で入れ替える', async () => {
+    const state = baseState({
+      players: [
+        makePlayer('A', { isResting: false }),
+        makePlayer('B', { isResting: false }),
+        makePlayer('C', { isResting: false }),
+        makePlayer('D', { isResting: false }),
+      ],
+      courts: [makeCourt(1, { teamA: ['A', 'B'], teamB: ['C', 'D'] })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await swapPositions('s', { courtId: 1, position: 0 }, { courtId: 1, position: 3 });
+
+    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
+    const next = mockTransactionUpdate.mock.calls[0][1].gameState;
+    // A (pos 0 = teamA[0]) と D (pos 3 = teamB[1]) が入れ替わる
+    expect(next.courts[0].teamA).toEqual(['D', 'B']);
+    expect(next.courts[0].teamB).toEqual(['C', 'A']);
+  });
+
+  it('異コート間の 2 ポジションを 1 transaction で入れ替える（同じプレイヤーが両コートに乗る不整合を防ぐ）', async () => {
+    const state = baseState({
+      players: [
+        makePlayer('A', { isResting: false }),
+        makePlayer('B', { isResting: false }),
+        makePlayer('C', { isResting: false }),
+        makePlayer('D', { isResting: false }),
+        makePlayer('E', { isResting: false }),
+        makePlayer('F', { isResting: false }),
+        makePlayer('G', { isResting: false }),
+        makePlayer('H', { isResting: false }),
+      ],
+      courts: [
+        makeCourt(1, { teamA: ['A', 'B'], teamB: ['C', 'D'] }),
+        makeCourt(2, { teamA: ['E', 'F'], teamB: ['G', 'H'] }),
+      ],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    // court 1 pos 0 (A) ⇔ court 2 pos 2 (G)
+    await swapPositions('s', { courtId: 1, position: 0 }, { courtId: 2, position: 2 });
+
+    // 1 transaction で両コートが同時に更新される
+    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
+    const next = mockTransactionUpdate.mock.calls[0][1].gameState;
+    expect(next.courts[0].teamA).toEqual(['G', 'B']);
+    expect(next.courts[0].teamB).toEqual(['C', 'D']);
+    expect(next.courts[1].teamA).toEqual(['E', 'F']);
+    expect(next.courts[1].teamB).toEqual(['A', 'H']);
+  });
+
+  it('存在しない court ID の場合は state を変更しない', async () => {
+    const state = baseState({
+      courts: [makeCourt(1, { teamA: ['A', 'B'], teamB: ['C', 'D'] })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await swapPositions('s', { courtId: 1, position: 0 }, { courtId: 99, position: 0 });
+
+    const next = mockTransactionUpdate.mock.calls[0][1].gameState;
+    expect(next.courts[0].teamA).toEqual(['A', 'B']);
+    expect(next.courts[0].teamB).toEqual(['C', 'D']);
   });
 });
 
