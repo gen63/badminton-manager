@@ -22,6 +22,8 @@ import { useGuardedAction } from '../hooks/useGuardedAction';
 import * as sm from '../services/sessionMutations';
 import { PaymentModal } from '../components/PaymentModal';
 import { WinnerSelectModal } from '../components/WinnerSelectModal';
+import { UnrecordedMatchPrompt } from '../components/UnrecordedMatchPrompt';
+import { useUnrecordedDismissStore } from '../stores/unrecordedDismissStore';
 import { CourtTimer } from '../components/CourtTimer';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
@@ -1212,6 +1214,9 @@ export function MainPage() {
           getPlayerGender={(id) => players.find((p) => p.id === id)?.gender}
           onConfirm={async (winnerIds) => {
             if (winnerIds === 'unknown') {
+              // 終了直後フローを「不明」で閉じた直後に未記録プロンプト
+              // (UnrecordedMatchPrompt) が同じ matchId を即拾わないよう抑止
+              useUnrecordedDismissStore.getState().add(pendingScoreMatch.matchId);
               setPendingScoreMatch(null);
               return;
             }
@@ -1223,6 +1228,7 @@ export function MainPage() {
               // WINNER1 fix: WinnerSelectModal 側で異チーム選択は予防済みだが、
               // 万一呼ばれた場合は無言で閉じずトースト通知してスコア未保存を可視化する。
               toast.error('勝者が同じチームではありません。スコアは記録されませんでした');
+              useUnrecordedDismissStore.getState().add(pendingScoreMatch.matchId);
               setPendingScoreMatch(null);
               return;
             }
@@ -1235,9 +1241,15 @@ export function MainPage() {
             await writer.updateMatchScore(matchId, scoreA, scoreB, winner);
             setPendingScoreMatch(null);
           }}
-          onCancel={() => setPendingScoreMatch(null)}
+          onCancel={() => {
+            useUnrecordedDismissStore.getState().add(pendingScoreMatch.matchId);
+            setPendingScoreMatch(null);
+          }}
         />
       )}
+
+      {/* 未記録の過去試合プロンプト（参加メンバーに勝敗入力を促す） */}
+      <UnrecordedMatchPrompt enabled={pendingScoreMatch === null} />
 
       <BottomNav activeTab="court" />
     </div>

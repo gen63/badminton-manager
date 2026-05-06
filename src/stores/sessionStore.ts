@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AccountingInput, Session, SessionConfig } from '../types/session';
+import { useUnrecordedDismissStore } from './unrecordedDismissStore';
 
 // 開発モード判定（useDevMode フックはコンポーネント専用のため localStorage を直読みする）
 const isDevMode = (): boolean => {
@@ -58,7 +59,10 @@ export const useSessionStore = create<SessionState>()(
           }
         }
       },
-      clearSession: () => set({ session: null, currentUser: null }),
+      clearSession: () => {
+        useUnrecordedDismissStore.getState().clear();
+        set({ session: null, currentUser: null });
+      },
       // オンラインモード
       setCurrentUser: (name) => set({ currentUser: name }),
       initialize: (session) =>
