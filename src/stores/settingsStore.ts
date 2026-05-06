@@ -43,9 +43,36 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'badminton-settings',
+      // Phase A: Firestore 同期対象 (`practiceType` / `continuousMatchMode` /
+      // `recordScores`) は localStorage に書かない。Firestore がソース・onSnapshot
+      // 受信で値が入る。前セッションから持ち越して別セッションに drift する
+      // 不具合 (例: 単→ダブルス意図のセッションでも singles フローが走る) を
+      // 原理的に消す。`useFirebaseSync` 側のフォールバックは旧セッション保険
+      // として残す。
+      version: 1,
+      migrate: (persisted, version) => {
+        if (version < 1 && persisted && typeof persisted === 'object') {
+          // 旧 version で localStorage に書かれていた同期対象を剥がす
+          const { practiceType: _pt, continuousMatchMode: _cm, recordScores: _rs, ...rest } =
+            persisted as Record<string, unknown>;
+          void _pt;
+          void _cm;
+          void _rs;
+          return rest;
+        }
+        return persisted;
+      },
+      partialize: (state) => ({
+        gasWebAppUrl: state.gasWebAppUrl,
+        accountingWebAppUrl: state.accountingWebAppUrl,
+        useStayDurationPriority: state.useStayDurationPriority,
+        prioritizeDiversity: state.prioritizeDiversity,
+      }),
       onRehydrateStorage: () => (state) => {
         // 旧バージョンで保存された localStorage から復元したとき、
         // practiceType と prioritizeDiversity の整合を取り直す。
+        // version 1 以降は practiceType を persist しないので state.practiceType は
+        // 必ずデフォルトの '複' になり下記のチェックは no-op になる。安全弁として残す。
         if (!state) return;
         if (state.practiceType === '単' && state.prioritizeDiversity !== false) {
           state.prioritizeDiversity = false;
