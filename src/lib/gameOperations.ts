@@ -201,6 +201,17 @@ export function computeFinishAndContinue(
     }
   }
 
+  // diversity ブロックで配置できなかった場合は連続モードを OFF にする。
+  // 旧実装は MainPage の useEffect が予防的に disable していたが、
+  // 試合中の待機人数（プレイ中分を引いた数）で判定していたため
+  // 「終了後なら配置できる」状況でも誤って OFF にしていた。
+  // 本来 OFF にすべきタイミング = 終了後の post-finish 状態でブロック確定時
+  // のみとし、そのロジックを transaction 内に集約する。
+  const newSettings =
+    continuousError === 'diversity_block' && state.settings
+      ? { ...state.settings, continuousMatchMode: false }
+      : state.settings;
+
   return {
     newState: {
       ...state,
@@ -208,6 +219,7 @@ export function computeFinishAndContinue(
       courts: updatedCourts,
       matchHistory: updatedMatchHistory,
       reservations: updatedReservations,
+      settings: newSettings,
     },
     continuousNextApplied,
     continuousError,
