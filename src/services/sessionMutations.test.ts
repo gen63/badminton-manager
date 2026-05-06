@@ -57,6 +57,7 @@ import {
   finishMatchAndContinue,
   overwriteGameState,
   updateMatch,
+  updatePlayer,
   autoAssignAndFulfill,
   resizeCourtsWithConfig,
   swapPlayer,
@@ -659,6 +660,82 @@ describe('sessionMutations - transactional wrapper (via applyPayment)', () => {
       throw new Error('network down');
     });
     await expect(applyPayment('s', 'p1', 800)).rejects.toThrow('network down');
+  });
+});
+
+describe('sessionMutations - updatePlayer wrapper (rename sync)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('名前変更時: participants / admins / createdBy の旧名を新名に置換する', async () => {
+    const state = baseState({
+      players: [makePlayer('p1', { name: 'Alice' }), makePlayer('p2', { name: 'Bob' })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        gameState: state,
+        participants: ['Alice', 'Bob'],
+        admins: ['Alice'],
+        createdBy: 'Alice',
+      }),
+      ref: { __docRef: true },
+    });
+
+    await updatePlayer('s', 'p1', { name: 'Alice2' });
+
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    expect(updateArgs.participants).toEqual(['Alice2', 'Bob']);
+    expect(updateArgs.admins).toEqual(['Alice2']);
+    expect(updateArgs.createdBy).toBe('Alice2');
+    expect(updateArgs.gameState.players[0].name).toBe('Alice2');
+  });
+
+  it('名前未変更時: session レベルのフィールドを書き換えない', async () => {
+    const state = baseState({ players: [makePlayer('p1', { name: 'Alice' })] });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        gameState: state,
+        participants: ['Alice'],
+        admins: ['Alice'],
+        createdBy: 'Alice',
+      }),
+      ref: { __docRef: true },
+    });
+
+    await updatePlayer('s', 'p1', { gender: 'F' });
+
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    expect(updateArgs.participants).toBeUndefined();
+    expect(updateArgs.admins).toBeUndefined();
+    expect(updateArgs.createdBy).toBeUndefined();
+    expect(updateArgs.gameState.players[0].gender).toBe('F');
+  });
+
+  it('名前変更でも旧名が含まれないフィールドは書き換えない', async () => {
+    const state = baseState({
+      players: [makePlayer('p1', { name: 'Alice' }), makePlayer('p2', { name: 'Bob' })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        gameState: state,
+        participants: ['Bob'],
+        admins: ['Bob'],
+        createdBy: 'Bob',
+      }),
+      ref: { __docRef: true },
+    });
+
+    await updatePlayer('s', 'p1', { name: 'Alice2' });
+
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    expect(updateArgs.participants).toBeUndefined();
+    expect(updateArgs.admins).toBeUndefined();
+    expect(updateArgs.createdBy).toBeUndefined();
   });
 });
 
