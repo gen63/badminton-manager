@@ -109,6 +109,16 @@ export function SessionJoinPage() {
           if (!data.registeredPlayers || data.registeredPlayers.length === 0) {
             setShowAddPlayer(true);
           }
+          // Phase B (2026-05-06): session 自体は persist しないが、`currentUser`
+          // は残しているため、その名前が登録済みプレイヤーに含まれていれば
+          // 自動選択して再入室の手間を省く。
+          const persistedUser = useSessionStore.getState().currentUser;
+          if (
+            persistedUser &&
+            data.registeredPlayers?.includes(persistedUser)
+          ) {
+            setSelectedName(persistedUser);
+          }
         }
       })
       .catch((err) => setError(getErrorMessage(err)))
