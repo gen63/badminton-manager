@@ -24,6 +24,8 @@ rename すると admin 権限 / 作成者判定が壊れる。
 
 ## 修正方針
 
+### 修正 1: Firestore 側の同期更新（`sessionMutations.ts`）
+
 `updatePlayer` トランザクションを `mutateGameState` 汎用ラッパーから外し、
 `gameState.players` の名前変更を検出した場合は同一トランザクション内で
 session レベルの **`participants` / `admins` / `createdBy`** も新名に
@@ -34,6 +36,21 @@ session レベルの **`participants` / `admins` / `createdBy`** も新名に
 - Presence (`presence[oldName]`) は heartbeat TTL で自然に消えるため触らない。
 - `information.updatedBy` / `information.readBy` は履歴的記録のため触らない。
 
+### 修正 2: localStorage `currentUser` の追従（`PlayerSelect.tsx`）
+
+修正 1 で `createdBy` / `admins` も新名に書き換わるため、自己 rename した
+ユーザーの localStorage `currentUser` が旧名のまま残ると `isCreator` /
+`isAdmin` 判定が `oldName === newCreatedBy(=newName)` で false になり、
+管理者権限が一斉に剥奪される。
+
+`PlayerSelect.handleEditSave` で writer の戻り値（確定後 `GameState`）から
+新名を取り、`currentUser === oldName` の場合のみ `setCurrentUser(newName)`
+で追従させる（自己 rename ケースを救済）。
+
+副次効果として `usePresence` の `useEffect` が deps 変化で再実行され、旧名
+の presence エントリが clearPresence で即時削除され、新名で heartbeat が
+再開する。
+
 ## テスト
 
 `sessionMutations.test.ts` に rename 時の wrapper テストを追加:
@@ -41,8 +58,21 @@ session レベルの **`participants` / `admins` / `createdBy`** も新名に
 - 名前変更時: 旧名を含む `participants` / `admins` / `createdBy` を新名へ置換
 - 名前変更時: 旧名を含まない場合は当該フィールドを書き換えない
 
-## スコープ外（将来検討）
+## 既知の限界（将来検討）
 
-- localStorage `currentUser` の自動同期（自己 rename 時に旧名のままになる問題）
-- `participants` / `admins` / `createdBy` の **player ID ベース化**
-  （より根本的だが、Firestore document の互換性破壊を伴うため別 plan で）
+### クロスブラウザ remote rename
+
+別端末の管理者が自分を rename した場合、自分の localStorage `currentUser`
+は旧名のまま残るため、上記修正 2 の救済は効かない。`isCreator` /
+`isAdmin` / `BottomNav` の自分の試合フィルタ等が壊れる。
+
+根本対応には localStorage に **player ID** も保存し、`currentUser` を ID
+で解決して name は派生フィールドにする必要がある（既存セッション互換も
+含め大きい変更）。本スコープ外。
+
+### `computeUpdatePlayer` の重複名チェック
+
+`PlayerEditModal` がクライアント側で重複名を弾くが、`computeUpdatePlayer`
+自体には重複検査が無い。並行 rename / 並行 add で重複名が入った場合、
+修正 1 の `participants.map` も新名を二重生成する可能性がある。
+本スコープ外（既存の挙動を踏襲）。

@@ -97,7 +97,23 @@ export function PlayerSelect() {
 
   const handleEditSave = async (name: string, gender?: 'M' | 'F') => {
     if (!editModalPlayer) return;
-    await writer.updatePlayer(editModalPlayer.id, { name, gender });
+    const oldName = editModalPlayer.name;
+    const result = await writer.updatePlayer(editModalPlayer.id, { name, gender });
+    // 自己 rename の場合は localStorage の currentUser を新名へ追従させる。
+    // sessionMutations.updatePlayer は createdBy / admins / participants を新名に
+    // 書き換えるため、currentUser だけ旧名のまま残ると isCreator/isAdmin /
+    // BottomNav の自分の試合フィルタ等が一斉に壊れる。result からサーバ確定後の
+    // 新名（sanitize 済み）を取り、currentUser と一致した場合のみ追従する。
+    if (result) {
+      const updated = result.players.find((p) => p.id === editModalPlayer.id);
+      if (
+        updated &&
+        updated.name !== oldName &&
+        useSessionStore.getState().currentUser === oldName
+      ) {
+        useSessionStore.getState().setCurrentUser(updated.name);
+      }
+    }
     setEditModalPlayer(null);
   };
 
