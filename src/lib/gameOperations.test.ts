@@ -200,6 +200,65 @@ describe('computeFinishAndContinue', () => {
       expect(result.continuousNextApplied).toBe(false);
       expect(result.continuousError).toBe('diversity_block');
     });
+
+    it('diversity block 発動時は settings.continuousMatchMode を OFF にする', () => {
+      const state: GameState = {
+        ...makeBaseState(),
+        settings: {
+          recordScores: true,
+          continuousMatchMode: true,
+          practiceType: '楽',
+        },
+      };
+      state.courts.push(makeCourt(2, {
+        teamA: ['p5', 'p6'],
+        teamB: ['p7', 'p8'],
+        isPlaying: true,
+        startedAt: 1710500000000,
+      }));
+      state.players = state.players.slice(0, 10);
+
+      const result = computeFinishAndContinue(state, 1, {
+        ...continuousOptions,
+        prioritizeDiversity: true,
+      });
+
+      expect(result.continuousError).toBe('diversity_block');
+      expect(result.newState.settings?.continuousMatchMode).toBe(false);
+      // 他の settings は保持
+      expect(result.newState.settings?.recordScores).toBe(true);
+      expect(result.newState.settings?.practiceType).toBe('楽');
+    });
+
+    it('not_enough_players では continuousMatchMode を OFF にしない', () => {
+      const state: GameState = {
+        players: [
+          makePlayer('p1'), makePlayer('p2'),
+          makePlayer('p3'), makePlayer('p4'),
+          makePlayer('p5'),
+        ],
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            isPlaying: true,
+            startedAt: 1710500000000,
+          }),
+        ],
+        matchHistory: [],
+        reservations: [],
+        settings: {
+          recordScores: true,
+          continuousMatchMode: true,
+          practiceType: '複',
+        },
+      };
+
+      const result = computeFinishAndContinue(state, 1, continuousOptions);
+      expect(result.continuousError).toBe('not_enough_players');
+      // not_enough_players は単に人数が足りないだけで連続モード自体は無効化しない
+      expect(result.newState.settings?.continuousMatchMode).toBe(true);
+    });
   });
 
   describe('gameModeFromPracticeType', () => {

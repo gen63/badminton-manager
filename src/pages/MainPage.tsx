@@ -25,7 +25,7 @@ import { WinnerSelectModal } from '../components/WinnerSelectModal';
 import { CourtTimer } from '../components/CourtTimer';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
-import { checkContinuousBlock, getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType } from '../lib/gameOperations';
+import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType } from '../lib/gameOperations';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 
 import { BottomNav } from '../components/BottomNav';
@@ -130,15 +130,10 @@ export function MainPage() {
     };
   }, []);
 
-  // ブロック条件成立時に連続モードを強制OFF
-  useEffect(() => {
-    if (!prioritizeDiversity || !continuousMatchMode) return;
-    // 初回 onSnapshot 前は players/courts が空のため誤判定を避ける
-    if (session?.createdBy && !isGameStateLoaded) return;
-    if (checkContinuousBlock(players, courts, prioritizeDiversity, gameMode).blocked) {
-      void writer.setContinuousMatchMode(false);
-    }
-  }, [prioritizeDiversity, continuousMatchMode, courts, players, writer, gameMode, session?.createdBy, isGameStateLoaded]);
+  // 連続モードのブロック判定は試合終了時に computeFinishAndContinue が
+  // post-finish 状態に対して行い、必要なら settings.continuousMatchMode=false に
+  // する（GAMEOPS5）。試合中のスナップショットで予防 OFF していた旧 useEffect は
+  // 「終了後なら配置可能」ケースで誤って continuous をオフにしていたため撤去。
 
   // Ctrl+Z / Ctrl+Y キーボードショートカット
   useEffect(() => {
