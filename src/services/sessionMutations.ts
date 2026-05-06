@@ -786,6 +786,71 @@ export function swapPlayer(
 }
 
 /**
+ * 2 つのコート位置 (courtId, position) を入れ替える。同一コート内 / 異コート間の
+ * どちらにも対応し、**1 transaction** で実行する（CON5）。
+ *
+ * 旧実装 (`MainPage.handlePlayerTap`) はローカル `courts` を読んで `updateCourt`
+ * を 2 回 await していたため:
+ *   - 異コート間スワップで 1 回目成功 / 2 回目失敗時に同じプレイヤーが両コート
+ *     に存在する（または片方が消える）状態になる。
+ *   - リモートが間に変わるとローカルの古い teamA/teamB を上書きし、他端末の
+ *     スワップを巻き戻すレースがあった。
+ *
+ * フレッシュなリモート状態を読んでスワップを計算するのでレース耐性もある。
+ */
+export function swapPositions(
+  sessionId: string,
+  posA: { courtId: number; position: 0 | 1 | 2 | 3 },
+  posB: { courtId: number; position: 0 | 1 | 2 | 3 },
+) {
+  return mutateGameState(sessionId, (state) => {
+    const courtA = state.courts.find((c) => c.id === posA.courtId);
+    const courtB = state.courts.find((c) => c.id === posB.courtId);
+    if (!courtA || !courtB) return state;
+
+    const getSlot = (c: Court, pos: 0 | 1 | 2 | 3): string =>
+      pos === 0 || pos === 1 ? c.teamA[pos] : c.teamB[(pos - 2) as 0 | 1];
+    const withSlot = (
+      teamA: [string, string],
+      teamB: [string, string],
+      pos: 0 | 1 | 2 | 3,
+      value: string,
+    ): { teamA: [string, string]; teamB: [string, string] } => {
+      const ta: [string, string] = [teamA[0], teamA[1]];
+      const tb: [string, string] = [teamB[0], teamB[1]];
+      if (pos === 0 || pos === 1) ta[pos] = value;
+      else tb[(pos - 2) as 0 | 1] = value;
+      return { teamA: ta, teamB: tb };
+    };
+
+    const playerAtA = getSlot(courtA, posA.position);
+    const playerAtB = getSlot(courtB, posB.position);
+
+    if (posA.courtId === posB.courtId) {
+      // 同一コート: 両ポジションを 1 回の computeUpdateCourt で更新
+      const step1 = withSlot(courtA.teamA, courtA.teamB, posA.position, playerAtB);
+      const step2 = withSlot(step1.teamA, step1.teamB, posB.position, playerAtA);
+      return computeUpdateCourt(state, posA.courtId, {
+        teamA: step2.teamA,
+        teamB: step2.teamB,
+      });
+    }
+
+    const updatedA = withSlot(courtA.teamA, courtA.teamB, posA.position, playerAtB);
+    const updatedB = withSlot(courtB.teamA, courtB.teamB, posB.position, playerAtA);
+    let next = computeUpdateCourt(state, posA.courtId, {
+      teamA: updatedA.teamA,
+      teamB: updatedA.teamB,
+    });
+    next = computeUpdateCourt(next, posB.courtId, {
+      teamA: updatedB.teamA,
+      teamB: updatedB.teamB,
+    });
+    return next;
+  });
+}
+
+/**
  * `gameState.courts` のリサイズ + `session.config.courtCount` を **1 transaction** で
  * 同期更新する（H6）。旧実装は 2 回の write でアトミック性が失われていた。
  */

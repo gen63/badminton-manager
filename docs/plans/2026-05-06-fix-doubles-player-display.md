@@ -78,9 +78,38 @@ if (desiredPracticeType !== s.practiceType) {
   - settings 無しでも config.gameMode='singles' なら `'単'` を採用する
 - 既存の practiceType 反映テスト (3 ケース) はそのまま通る
 
+## 追加で見つかった関連バグの修正
+
+### 3. `MainPage.handlePlayerTap` の異コート間スワップが非アトミック (CON5)
+
+- 旧実装は `await writer.updateCourt(courtA, ...) → await writer.updateCourt(courtB, ...)`
+  を sequential に呼んでいた。
+- 1 回目成功 / 2 回目失敗時に **同じプレイヤーが両コートに乗る不整合** が発生。
+- リモートが間に変わるとローカルから読んだ teamA/teamB を上書きし、他端末の
+  スワップを巻き戻すレースもあった。
+- 同一コート内のスワップも同様に「ローカル read → write」でレース耐性が無かった。
+
+**修正**: `sessionMutations.swapPositions(posA, posB)` を新設。1 transaction で
+リモート最新を読み、同一/異コート両方をアトミックにスワップする。
+`MainPage.handlePlayerTap` から `updateCourt × 2` を `swapPositions × 1` に置換。
+`useSessionWriter` にも露出。
+
+### 4. ダブルス予約フローの defensive guard
+
+`assignCourts` ダブルス分岐は `remainingCourtIds.shift()` を type 判定より先に
+呼んでいたため、`rsvPlayerIds.length` が 1〜4 の想定外（5 人以上 / 0 人）の
+予約が存在すると **コートを 1 つ "失う"** バグがあった（push せず fulfilled
+だけ立つ）。`ReservationAddModal` は 2〜4 に制限するため UI からは到達しないが、
+旧データ / 直接 Firestore 編集等の異常パスへの保険として、
+`length < 1 || length > 4` の予約は shift する前に skip する guard を追加。
+
 ## 非対象
 
-- `assignCourts` のダブルスフロー自体は正常動作しているため変更しない。
+- `assignCourts` のダブルスフロー本体（1〜4 人予約）は正常動作のため変更しない。
 - 予約消化ロジック (`autoAssignAndFulfill` / `computeFinishAndContinue`) も無変更。
+- `prioritizeDiversity` は意図的に端末ローカル（同期しない）。`practiceType` の
+  `'単'/'楽'` 切替時に派生して矯正されるので、同期 hub からの drift は無い。
 - localStorage の persist 廃止までは行わない (`settingsStore` は端末ローカル設定が
   混ざるため persist 維持）— 同期ポイントだけ強化。
+- シングルスモードで 3〜4 人予約が silently 無視される問題は別 plan
+  （UX として ReservationAddModal で max を 2 に絞る等の対応）。

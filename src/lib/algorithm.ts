@@ -958,8 +958,13 @@ export function assignCourts(
     if (reservedPlayers.length !== reservation.playerIds.length) continue;
     if (reservation.playerIds.some(id => reservationUsedPlayers.has(id))) continue;
 
-    const courtId = remainingCourtIds.shift()!;
     const rsvPlayerIds = reservation.playerIds;
+    // ダブルスでは 1〜4 人予約のみサポート。範囲外（旧データ等）は court を消費せず
+    // スキップして reservationAssignments も fulfill にもしない（court が "失われる"
+    // 不整合を防ぐ defensive guard）。
+    if (rsvPlayerIds.length < 1 || rsvPlayerIds.length > 4) continue;
+
+    const courtId = remainingCourtIds.shift()!;
 
     if (rsvPlayerIds.length === 4) {
       // 4人: 最初の2人 vs 残り2人で固定配置
