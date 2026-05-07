@@ -222,6 +222,17 @@ export function MainPage() {
     return playerMap.get(playerId)?.gamesPlayed || 0;
   }, [playerMap]);
 
+  // 休憩状態を切り替えてよいか。管理者は誰でも、それ以外は自分の名前と
+  // 一致する Player のみ可。CLAUDE.md の信頼モデル通り誤操作防止用 UX ガード
+  // であり、認証境界ではない（`currentUser` は localStorage の単なる文字列）。
+  const canToggleBreak = useCallback(
+    (playerName: string): boolean => {
+      if (isAdmin()) return true;
+      return !!currentUser && currentUser === playerName;
+    },
+    [isAdmin, currentUser]
+  );
+
   if (!session) {
     navigate('/');
     return null;
@@ -390,8 +401,13 @@ export function MainPage() {
 
   const handleToggleRestWithLock = async (playerId: string) => {
     const player = players.find(p => p.id === playerId);
+    if (!player) return;
+    if (!canToggleBreak(player.name)) {
+      toast.warning('他のメンバーの休憩は管理者のみ変更できます');
+      return;
+    }
 
-    if (player?.isResting) {
+    if (player.isResting) {
       setRecentlyRestoredIds(prev => new Set(prev).add(playerId));
       setTimeout(() => {
         setRecentlyRestoredIds(prev => {
@@ -417,7 +433,7 @@ export function MainPage() {
     // 休憩に入る場合（toggleRest前のisResting=false）、コート数を自動縮小
     // コート数変更・連続モード操作は管理者のみに限定（一般ユーザの休憩切替が間接的に
     // session.config.courtCount や continuousMatchMode を変更しないようガード）
-    if (!player?.isResting && isAdmin()) {
+    if (!player.isResting && isAdmin()) {
       const activeCount = players.filter(p => !p.isResting && p.id !== playerId).length;
       const recommended = getRecommendedCourtCount(activeCount, courts.length, playersPerCourt);
       if (recommended < courts.length) {
@@ -441,6 +457,13 @@ export function MainPage() {
     
     // 休憩中メンバーをタップした場合
     if (player?.isResting) {
+      // 休憩→コート / 休憩→待機いずれも isResting=true → false への遷移を伴うため
+      // 管理者または本人のみ許可（swap 経由でも他人の休憩を解除させない）
+      if (!canToggleBreak(player.name)) {
+        toast.warning('他のメンバーの休憩は管理者のみ変更できます');
+        setSelectedPlayer(null);
+        return;
+      }
       // コート上のメンバーが選択されている場合のみ交換
       if (selectedPlayer?.courtId !== undefined && selectedPlayer?.position !== undefined) {
         const swapPromise = handleSwapPlayer(selectedPlayer.courtId, selectedPlayer.position, playerId);
@@ -947,7 +970,7 @@ export function MainPage() {
                         : 'border-border'
                     }`}
                   >
-                    {!isSelected && (
+                    {!isSelected && canToggleBreak(player.name) && (
                       <div className="absolute top-1/2 -translate-y-1/2 right-1">
                         <button
                           onClick={(e) => {
