@@ -15,17 +15,24 @@
 
 ## スコープ
 
-- 削除対象は `SessionCreate.tsx` の以下のみ:
+- `SessionCreate.tsx` から削除:
   - state: `showJoinMode` / `joinSessionId`
   - 関数: `handleJoinSession`
   - `if (showJoinMode) return (...)` の描画ブロック
   - 下部アクション内「セッションIDで参加」ボタン
-  - これに伴って未使用になる import: `isValidSessionId` / `isFirebaseConfigured` /
-    `LogIn`
+  - 未使用になる import: `isValidSessionId` / `isFirebaseConfigured` / `LogIn`
+- `SessionJoinPage.tsx` から削除（手入力フォームを前提にしていた波及分）:
+  - 非 PWA 時の「PWAアプリで開くとスムーズ／自動的にこのセッションに参加できます」
+    バナー — 自動参加の裏側は SessionCreate の手入力 input に
+    `clipboard.readText()` する `onFocus` 仕掛けだったため、手入力削除で空約束に
+    なる
+  - 上記バナー専用に sessionId を自動でクリップボードコピーする `useEffect`
+  - state `clipboardCopied`、未使用になる `Copy` icon import
 - **削除しないもの**:
-  - `/session/:sessionId` ルートと `SessionJoinPage`（URL / QR 共有で必須）
+  - `/session/:sessionId` ルートと `SessionJoinPage` 本体（URL / QR 共有で必須）
   - `lib/inputValidation.ts` の `isValidSessionId`（`SessionJoinPage` で使用）
   - `SessionURLDisplay`（作成後の共有 UI）
+  - QR アコーディオン内の「セッションID: ABC123」表示（共有用の識別子として有用）
 
 ## 動作確認
 
