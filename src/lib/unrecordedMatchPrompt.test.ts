@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { pickNextUnrecordedMatchForUser } from './unrecordedMatchPrompt';
+import { activeDismissedSet } from '../stores/unrecordedDismissStore';
 import type { Match } from '../types/match';
 import type { Player } from '../types/player';
 
@@ -143,5 +144,24 @@ describe('pickNextUnrecordedMatchForUser', () => {
       new Set(['1']),
     );
     expect(res?.id).toBe('2');
+  });
+});
+
+describe('activeDismissedSet', () => {
+  it('期限が未来のものだけ含む', () => {
+    const now = 1_000_000;
+    const map = {
+      future: now + 60_000,
+      past: now - 1,
+      exact: now, // until === now は除外（until > now の厳密判定）
+    };
+    const set = activeDismissedSet(map, now);
+    expect(set.has('future')).toBe(true);
+    expect(set.has('past')).toBe(false);
+    expect(set.has('exact')).toBe(false);
+  });
+
+  it('空マップでも空集合を返す', () => {
+    expect(activeDismissedSet({}, Date.now()).size).toBe(0);
   });
 });

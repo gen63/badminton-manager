@@ -1216,7 +1216,7 @@ export function MainPage() {
             if (winnerIds === 'unknown') {
               // 終了直後フローを「不明」で閉じた直後に未記録プロンプト
               // (UnrecordedMatchPrompt) が同じ matchId を即拾わないよう抑止
-              useUnrecordedDismissStore.getState().add(pendingScoreMatch.matchId);
+              useUnrecordedDismissStore.getState().dismiss(pendingScoreMatch.matchId);
               setPendingScoreMatch(null);
               return;
             }
@@ -1228,7 +1228,7 @@ export function MainPage() {
               // WINNER1 fix: WinnerSelectModal 側で異チーム選択は予防済みだが、
               // 万一呼ばれた場合は無言で閉じずトースト通知してスコア未保存を可視化する。
               toast.error('勝者が同じチームではありません。スコアは記録されませんでした');
-              useUnrecordedDismissStore.getState().add(pendingScoreMatch.matchId);
+              useUnrecordedDismissStore.getState().dismiss(pendingScoreMatch.matchId);
               setPendingScoreMatch(null);
               return;
             }
@@ -1242,7 +1242,7 @@ export function MainPage() {
             setPendingScoreMatch(null);
           }}
           onCancel={() => {
-            useUnrecordedDismissStore.getState().add(pendingScoreMatch.matchId);
+            useUnrecordedDismissStore.getState().dismiss(pendingScoreMatch.matchId);
             setPendingScoreMatch(null);
           }}
         />
