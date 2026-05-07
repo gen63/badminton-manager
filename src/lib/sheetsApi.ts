@@ -22,6 +22,8 @@ function resolvePlayerName(
   playerId: string,
   players: Player[]
 ): string {
+  // シングルスでは teamA[1] / teamB[1] が空文字。プレースホルダで埋めず空欄のまま送る
+  if (!playerId) return '';
   return players.find((p) => p.id === playerId)?.name || '未設定';
 }
 
