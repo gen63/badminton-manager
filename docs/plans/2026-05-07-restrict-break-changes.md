@@ -19,16 +19,23 @@ UX ガードであって、セキュリティ境界ではない。サーバー�
 
 ## 影響箇所
 
-`src/pages/MainPage.tsx` のみ。`writer.toggleRest(playerId)` を呼ぶパスは 2 箇所:
+`src/pages/MainPage.tsx` のみ。`isResting` を変更しうる UI からのパスは 3 箇所:
 
-1. `handleToggleRestWithLock(playerId)` (~line 391)
-   - 待機中カードの ☕ アイコンクリック → 休憩入り
-2. `handlePlayerTap(playerId, ...)` (~line 435) の「resting 分岐」内、
-   コート選択なしで resting カードをタップした「復帰」パス (~line 451)
+1. `handleToggleRestWithLock(playerId)` — 待機中カードの ☕ アイコンクリック
+   → 休憩入り (`writer.toggleRest`)
+2. `handlePlayerTap(playerId, ...)` の「resting 分岐」内、コート選択なしで
+   resting カードをタップした「復帰」パス (`writer.toggleRest`)
+3. `handlePlayerTap` の **swap 分岐** — コート上のメンバー選択中に resting
+   カードをタップ → `writer.swapPlayer` 経由で対象プレイヤーの
+   `isResting: true → false`（CON2 のアトミック swap で休憩解除を伴う）
 
-`handlePlayerTap` の **swap 分岐** (court 上のメンバー選択中に resting カードを
-タップ) は「コート操作」の意味合いが強く、本 PR のスコープ外として触らない。
-（コート操作の権限ガードは別途整理する余地あり）
+3 つ全てにガードを入れる。3 を放置すると非管理者が「適当なコート上の人を
+選択 → 他人の休憩カードをタップ」で他人を勝手に試合復帰させる抜け道が
+残るため、本 PR ではスコープに含める。
+
+なお SettingsPage の「試合をリセット」(`writer.setAllPlayersResting`) は
+既に admin-only ページのため対応不要。`autoAssignAndFulfill` /
+`swapPositions` などコート操作系で `isResting` を変えないものは対象外。
 
 ## 設計
 
@@ -60,8 +67,9 @@ if (!canToggleBreak(player.name)) {
 }
 ```
 
-`handlePlayerTap` の `else { void writer.toggleRest(playerId); ... }` 直前にも
-同じチェック → 不可なら toast + 選択解除して return。
+`handlePlayerTap` の `if (player?.isResting)` ブロック先頭で同じチェック →
+不可なら toast + 選択解除して return（swap 分岐 / 復帰分岐の両方を一度に
+ガードできる）。
 
 ### UI（誤操作減らし）
 
@@ -74,9 +82,13 @@ if (!canToggleBreak(player.name)) {
 
 ## 非対応 / 将来検討
 
-- コート上のメンバー入れ替え (`handleSwapPlayer`) の権限制御。
+- コート ↔ コート、コート ↔ 待機 の swap (`isResting` を変えないもの) の
+  権限制御。コート操作全般の権限は別軸で整理する余地あり。
 - Firestore Security Rules によるサーバー強制（CLAUDE.md の信頼モデル方針）。
-- `currentUser` を player.id に紐付ける本格的なオーナーシップ。
+- `currentUser` を player.id に紐付ける本格的なオーナーシップ
+  （現状は名前文字列の完全一致比較）。
+- 同名プレイヤーが複数いる場合、両方とも「自分」として扱われる。
+  既存の権限モデル（`session.createdBy === currentUser`）と同じ前提。
 
 ## チェック
 

@@ -457,6 +457,13 @@ export function MainPage() {
     
     // 休憩中メンバーをタップした場合
     if (player?.isResting) {
+      // 休憩→コート / 休憩→待機いずれも isResting=true → false への遷移を伴うため
+      // 管理者または本人のみ許可（swap 経由でも他人の休憩を解除させない）
+      if (!canToggleBreak(player.name)) {
+        toast.warning('他のメンバーの休憩は管理者のみ変更できます');
+        setSelectedPlayer(null);
+        return;
+      }
       // コート上のメンバーが選択されている場合のみ交換
       if (selectedPlayer?.courtId !== undefined && selectedPlayer?.position !== undefined) {
         const swapPromise = handleSwapPlayer(selectedPlayer.courtId, selectedPlayer.position, playerId);
@@ -464,11 +471,6 @@ export function MainPage() {
         await swapPromise;
       } else {
         // それ以外（選択なし or 待機中メンバー選択）は復帰のみ
-        if (!canToggleBreak(player.name)) {
-          toast.warning('他のメンバーの休憩は管理者のみ変更できます');
-          setSelectedPlayer(null);
-          return;
-        }
         void writer.toggleRest(playerId);
         setSelectedPlayer(null);
       }
