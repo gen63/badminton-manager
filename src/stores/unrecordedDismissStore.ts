@@ -10,9 +10,6 @@ export const UNRECORDED_DISMISS_DURATION_MS = 10 * 60 * 1000;
  *
  * - localStorage に永続化（リロードしてもスヌーズが維持される）。
  * - sessionStore.clearSession でセッション切替時にクリアする。
- * - 試合終了直後の WinnerSelectModal (pendingScoreMatch) を「不明」/×で
- *   閉じたときも、同じ matchId をここに dismiss して新フローが即再表示
- *   するのを抑止する。
  */
 interface UnrecordedDismissState {
   /** matchId -> 期限タイムスタンプ (ms)。Date.now() < value の間スヌーズ中。 */

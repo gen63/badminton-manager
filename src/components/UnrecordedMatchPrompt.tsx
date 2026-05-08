@@ -13,11 +13,6 @@ import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { useToast } from '../hooks/useToast';
 import { pickNextUnrecordedMatchForUser } from '../lib/unrecordedMatchPrompt';
 
-interface Props {
-  /** true の時のみ表示。MainPage 側で pendingScoreMatch === null を渡す */
-  enabled: boolean;
-}
-
 /** スヌーズ期限切れの再評価間隔（30 秒）。 */
 const TICK_INTERVAL_MS = 30 * 1000;
 
@@ -33,7 +28,7 @@ const TICK_INTERVAL_MS = 30 * 1000;
  *
  * 動作前提: 試合記録モード (recordScores=true) かつオンラインモード。
  */
-export function UnrecordedMatchPrompt({ enabled }: Props) {
+export function UnrecordedMatchPrompt() {
   const session = useSessionStore((s) => s.session);
   const currentUser = useSessionStore((s) => s.currentUser);
   const matchHistory = useGameStore((s) => s.matchHistory);
@@ -55,7 +50,7 @@ export function UnrecordedMatchPrompt({ enabled }: Props) {
 
   const isOnlineMode = !!session?.createdBy;
   const canShow =
-    enabled && recordScores && isOnlineMode && !!currentUser && isGameStateLoaded;
+    recordScores && isOnlineMode && !!currentUser && isGameStateLoaded;
 
   const target = useMemo(() => {
     if (!canShow) return null;
