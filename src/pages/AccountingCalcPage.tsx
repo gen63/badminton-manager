@@ -59,7 +59,7 @@ function getDefaults(): CalcInput {
     maleFee: 800,
     femaleFee: 600,
     gymCost: 900,
-    shuttlePrice: 480,
+    shuttlePrice: 510,
     shuttleCount: 0,
     matchCount: 0,
     otherDescription: '',

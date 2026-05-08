@@ -47,7 +47,7 @@ export function AccountingPage() {
   const [maleFee, setMaleFee] = useState<number>(800);
   const [femaleFee, setFemaleFee] = useState<number>(600);
   const [gymCost, setGymCost] = useState<number>(900);
-  const [shuttlePrice, setShuttlePrice] = useState<number>(480);
+  const [shuttlePrice, setShuttlePrice] = useState<number>(510);
   const [shuttleCount, setShuttleCount] = useState<number>(0);
   const [matchCount, setMatchCount] = useState<number>(0);
   const [practiceType, setPracticeType] = useState<string>('複');
