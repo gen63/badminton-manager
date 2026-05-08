@@ -546,7 +546,7 @@ export function MainPage() {
             {isAdmin() && (
               <button
                 onClick={() => void continuousModeToggle.run(!continuousMatchMode)}
-                disabled={shouldBlockContinuous || continuousModeToggle.isPending}
+                disabled={(!continuousMatchMode && shouldBlockContinuous) || continuousModeToggle.isPending}
                 className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
                   continuousMatchMode
                     ? 'bg-green-50 text-green-700 border border-green-200'
