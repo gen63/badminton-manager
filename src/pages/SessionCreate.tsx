@@ -14,7 +14,6 @@ import { clearPresence, createSession, leaveSession } from '../services/sessionS
 import { getErrorMessage } from '../lib/errorHandler';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
-import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { Sparkles, Download, Loader2, Play } from 'lucide-react';
 
@@ -66,7 +65,6 @@ export function SessionCreate() {
   const initializeSession = useSessionStore((state) => state.initialize);
 
   // Phase 4 で常に Firebase 共有セッションを作成する（ローカルモード廃止）
-  const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
   const [showCreatorSelect, setShowCreatorSelect] = useState(false);
   const [selectedCreatorName, setSelectedCreatorName] = useState('');
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
@@ -241,8 +239,8 @@ export function SessionCreate() {
       });
       setCurrentUser(creatorName);
 
-      setCreatedSessionId(sessionId);
       requestNotificationPermission();
+      navigate('/main');
     } catch (err) {
       setLoadError(getErrorMessage(err));
     }
@@ -331,20 +329,6 @@ export function SessionCreate() {
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  // オンラインモード: URL表示画面
-  if (createdSessionId) {
-    return (
-      <div className="bg-app overflow-x-hidden min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-md w-full">
-          <SessionURLDisplay
-            sessionId={createdSessionId}
-            onClose={() => navigate('/main')}
-          />
         </div>
       </div>
     );
