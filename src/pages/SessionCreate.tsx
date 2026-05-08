@@ -7,6 +7,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
+import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { parsePlayerInput } from '../lib/utils';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
@@ -78,6 +79,7 @@ export function SessionCreate() {
   const [playerNames, setPlayerNames] = useState('');
 
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [allRated, setAllRated] = useState(false);
 
@@ -168,6 +170,9 @@ export function SessionCreate() {
       return;
     }
 
+    setIsCreating(true);
+    setLoadError('');
+
     // 旧オンラインセッションに居れば離脱処理（fire-and-forget）
     const previousSession = useSessionStore.getState().session;
     const previousUser = useSessionStore.getState().currentUser;
@@ -240,9 +245,24 @@ export function SessionCreate() {
       setCurrentUser(creatorName);
 
       requestNotificationPermission();
+
+      // 作成直後の race 対策: useFirebaseSync の初回 onSnapshot で
+      // isGameStateLoaded=true になるまで待ってから /main へ遷移する。
+      // 旧フロー（URL 表示画面で一旦止まる）では自然な待ち時間で吸収されて
+      // いた race を、直行に切り替えたため明示 polling で塞ぐ。
+      // SessionJoinPage の handleJoin 末尾と同じパターン。
+      useSyncStatusStore.getState().setGameStateLoaded(false);
+      const startedAt = Date.now();
+      const TIMEOUT_MS = 5000;
+      const POLL_MS = 50;
+      while (!useSyncStatusStore.getState().isGameStateLoaded) {
+        if (Date.now() - startedAt > TIMEOUT_MS) break;
+        await new Promise((r) => setTimeout(r, POLL_MS));
+      }
       navigate('/main');
     } catch (err) {
       setLoadError(getErrorMessage(err));
+      setIsCreating(false);
     }
   };
 
@@ -518,10 +538,11 @@ export function SessionCreate() {
           <div className="flex justify-center">
             <button
               onClick={handleCreate}
+              disabled={isCreating}
               className="btn-primary text-base flex items-center justify-center gap-2"
             >
-              <Sparkles size={18} />
-              開始
+              {isCreating ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+              {isCreating ? '作成中...' : '開始'}
             </button>
           </div>
         </div>
