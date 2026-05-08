@@ -953,7 +953,18 @@ export function AccountingPage() {
                   >
                     −
                   </button>
-                  <span className="text-lg font-bold text-foreground w-10 text-center">{shuttleCount}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={shuttleCount || ''}
+                    onChange={(e) => {
+                      const newValue = Math.max(0, parseInt(e.target.value, 10) || 0);
+                      setShuttleCount(newValue);
+                      saveAllInputs({ shuttleCount: newValue });
+                    }}
+                    className="w-12 text-lg font-bold text-foreground bg-card rounded px-1 py-1 text-center"
+                    inputMode="numeric"
+                  />
                   <button
                     onClick={() => {
                       const newValue = shuttleCount + 1;
