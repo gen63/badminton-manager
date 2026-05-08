@@ -53,6 +53,29 @@ describe('calculateAccountingTotals', () => {
     // (2400 - 900 + 0) / 480 = 3.125 → 3
     expect(t.shuttleUsableCount).toBe(3);
   });
+
+  it('discount（運営協力割引）を finalTotal から差し引く', () => {
+    const t = calculateAccountingTotals({ ...base, discount: 200 });
+    // incomeTotal=2400, gymCost=900, shuttle=0, other=0, discount=200
+    expect(t.finalTotal).toBe(2400 - 900 - 200);
+    expect(t.discount).toBe(200);
+  });
+
+  it('discount 未指定時は 0 として扱う', () => {
+    const t = calculateAccountingTotals(base);
+    expect(t.discount).toBe(0);
+    expect(t.finalTotal).toBe(2400 - 900);
+  });
+
+  it('shuttleUsableCount は discount を差し引いて算出する', () => {
+    const t = calculateAccountingTotals({
+      ...base,
+      shuttlePrice: 480,
+      discount: 200,
+    });
+    // (2400 - 900 - 200) / 480 = 2.708 → 2
+    expect(t.shuttleUsableCount).toBe(2);
+  });
 });
 
 describe('buildAccountingCopyText', () => {
@@ -99,6 +122,21 @@ describe('buildAccountingCopyText', () => {
     const text = buildAccountingCopyText({ ...base, exemptCount: 0 });
     // ヘッダー "(免除0 男... 女...)" は出るが "免除 0×0 = 0" の行は出ない
     expect(text).not.toMatch(/^免除 /m);
+  });
+
+  it('discount > 0 のとき支出セクションに運営協力行と合計式に -discount が出る', () => {
+    const text = buildAccountingCopyText({ ...base, discount: 200 });
+    const expenseIdx = text.indexOf('【支出】');
+    const totalIdx = text.indexOf('【合計】');
+    expect(text.indexOf('運営協力 -200')).toBeGreaterThan(expenseIdx);
+    expect(text.indexOf('運営協力 -200')).toBeLessThan(totalIdx);
+    // 合計式: 2,400-900-0-200+400 = 1,700
+    expect(text).toContain('2,400-900-0-200+400 = 1,700');
+  });
+
+  it('discount = 0 のときは運営協力行を出さない', () => {
+    const text = buildAccountingCopyText(base);
+    expect(text).not.toContain('運営協力');
   });
 
   it('otherAmount が負の場合は支出セクションに追加される', () => {
