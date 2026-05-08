@@ -212,10 +212,26 @@ export function AccountingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchHistory, players, records, gymShortName, initialized, session, savedAccounting]);
 
+  // 運営協力割引：標準会費と実支払額の差額の合計
+  // 支払い済み (payment === true) かつ 0 円でない（=免除でない）プレイヤーが対象
+  const cooperationDiscount = useMemo(() => {
+    const paidPlayers = players.filter((p) => p.operationStatus?.payment);
+    let total = 0;
+    for (const p of paidPlayers) {
+      const actual = p.paymentAmount ?? 0;
+      if (actual === 0) continue;
+      const expectedFee = p.gender === 'F' ? femaleFee : maleFee;
+      const diff = expectedFee - actual;
+      if (diff > 0) total += diff;
+    }
+    return total;
+  }, [players, maleFee, femaleFee]);
+
   // 入力値ベースの各種合計
   const totals = calculateAccountingTotals({
     exemptCount, maleCount, femaleCount, maleFee, femaleFee,
     gymCost, shuttlePrice, shuttleCount, otherAmount,
+    discount: cooperationDiscount,
   });
   const { participantCount, maleTotal, femaleTotal, incomeTotal, shuttleTotal, finalTotal } = totals;
 
@@ -318,6 +334,7 @@ export function AccountingPage() {
       practiceType,
       exemptCount, maleCount, femaleCount, maleFee, femaleFee,
       gymCost, shuttlePrice, shuttleCount, otherAmount,
+      discount: cooperationDiscount,
       matchCount, otherDescription,
       activePlayerCount,
     });
@@ -354,9 +371,9 @@ export function AccountingPage() {
       }))
     );
     
-    // アップロード用の収入・支出合計（その他をプラス/マイナスで振り分け）
+    // アップロード用の収入・支出合計（その他をプラス/マイナスで振り分け、運営協力割引を支出に加算）
     const uploadIncomeTotal = incomeTotal + (otherAmount > 0 ? otherAmount : 0);
-    const expenseTotal = gymCost + shuttleTotal + (otherAmount < 0 ? Math.abs(otherAmount) : 0);
+    const expenseTotal = gymCost + shuttleTotal + cooperationDiscount + (otherAmount < 0 ? Math.abs(otherAmount) : 0);
 
     const record = {
       id: crypto.randomUUID(),
@@ -978,6 +995,15 @@ export function AccountingPage() {
                 </div>
               </div>
             </div>
+
+            {cooperationDiscount > 0 && (
+              <div className="flex items-center justify-between bg-red-50 rounded-lg px-3 py-2">
+                <span className="text-sm text-muted-foreground">運営協力</span>
+                <span className="text-lg font-bold text-red-600">
+                  -{cooperationDiscount.toLocaleString()}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1058,6 +1084,7 @@ export function AccountingPage() {
           </div>
           <div className="text-xs text-muted-foreground mb-2 font-mono">
             {maleTotal.toLocaleString()}+{femaleTotal.toLocaleString()}-{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
+            {cooperationDiscount > 0 && `-${cooperationDiscount.toLocaleString()}`}
             {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
           </div>
           <div className={`text-4xl font-bold text-center ${finalTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
