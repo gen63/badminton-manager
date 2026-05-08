@@ -214,6 +214,98 @@ function readExistingMatchIds_(sheet) {
   return set;
 }
 
+/**
+ * 当日結果シートの重複行を削除する（matchId + 内容ハイブリッド判定）
+ * - matchId が同じ行は最初の1行だけ残す
+ * - matchId 空の行は他列（日付/場所/選手/スコア/時間）の内容で判定
+ * - matchId 持ちの行と matchId 空の行が同じ内容なら、後者を重複として削除
+ * - 行の出現順を保ったまま、最初に見つかった行を残す
+ */
+function cleanupResultsDuplicates() {
+  var ui = SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_RESULTS);
+  if (!sheet) {
+    ui.alert('「' + SHEET_RESULTS + '」シートが見つかりません');
+    return;
+  }
+
+  ensureResultsHeader_(sheet);
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 3) {
+    ui.alert('対象行がありません');
+    return;
+  }
+
+  var totalDataRows = lastRow - 1;
+  var values = sheet.getRange(2, 1, totalDataRows, RESULTS_HEADERS.length).getValues();
+  var seenIds = {};
+  var seenContents = {};
+  var kept = [];
+  var removed = 0;
+
+  for (var i = 0; i < values.length; i++) {
+    var row = values[i];
+    var matchId = row[RESULTS_MATCH_ID_COL - 1];
+    var idKey = matchId ? String(matchId) : '';
+    var contentKey = rowContentKey_(row);
+
+    var isDuplicate = (idKey && seenIds[idKey]) || seenContents[contentKey];
+    if (isDuplicate) {
+      removed++;
+      continue;
+    }
+    if (idKey) seenIds[idKey] = true;
+    seenContents[contentKey] = true;
+    kept.push(row);
+  }
+
+  if (removed === 0) {
+    ui.alert('重複は見つかりませんでした');
+    return;
+  }
+
+  var resp = ui.alert(
+    '重複削除の確認',
+    totalDataRows + ' 行のうち ' + removed + ' 件の重複を削除します。よろしいですか？',
+    ui.ButtonSet.YES_NO
+  );
+  if (resp !== ui.Button.YES) return;
+
+  if (kept.length > 0) {
+    sheet.getRange(2, 1, kept.length, RESULTS_HEADERS.length).setValues(kept);
+  }
+  var rowsToDelete = totalDataRows - kept.length;
+  if (rowsToDelete > 0) {
+    sheet.deleteRows(2 + kept.length, rowsToDelete);
+  }
+
+  ui.alert(removed + ' 件の重複行を削除しました（残り ' + kept.length + ' 件）');
+}
+
+/**
+ * 行の内容（matchId 列を除く全列）から重複判定用キーを生成
+ */
+function rowContentKey_(row) {
+  var parts = [];
+  for (var i = 0; i < RESULTS_HEADERS.length; i++) {
+    if (i === RESULTS_MATCH_ID_COL - 1) continue;
+    parts.push(String(row[i] == null ? '' : row[i]));
+  }
+  return parts.join('\x1f');
+}
+
+/**
+ * スプレッドシートを開いた時にカスタムメニューを追加
+ */
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('バドミントン')
+    .addItem('当日結果の重複を削除', 'cleanupResultsDuplicates')
+    .addToUi();
+}
+
 // ============================================================
 // LINE Bot 処理
 // ============================================================
