@@ -10,13 +10,12 @@ import { useUndoStore } from '../stores/undoStore';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { parsePlayerInput } from '../lib/utils';
-import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { clearPresence, createSession, leaveSession } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
 import { PlayerAddInput } from '../components/PlayerAddInput';
-import { Sparkles, Download, Loader2, Play } from 'lucide-react';
+import { Sparkles, Loader2, Play } from 'lucide-react';
 
 // 現在日時を取得（曜日に応じて時刻を設定）
 const getInitialDateTime = () => {
@@ -70,7 +69,6 @@ export function SessionCreate() {
   const [selectedCreatorName, setSelectedCreatorName] = useState('');
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
 
-  const gasWebAppUrl = useSettingsStore((state) => state.gasWebAppUrl);
   const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType, setPracticeType } = useSettingsStore();
 
   const [targetScore] = useState(15);
@@ -78,72 +76,13 @@ export function SessionCreate() {
   const [practiceDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
 
-  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [loadError, setLoadError] = useState('');
-  const [allRated, setAllRated] = useState(false);
 
   // PWAバッジをクリア（セッションがない状態）
   useEffect(() => {
     clearAppBadge();
   }, []);
-
-  const handleLoadFromSheets = async () => {
-    if (!gasWebAppUrl) {
-      setLoadError('設定画面でGAS Web App URLを設定してください');
-      return;
-    }
-    setIsLoadingMembers(true);
-    setLoadError('');
-    const result = await fetchMembersFromSheets(gasWebAppUrl);
-    
-    if (result.success) {
-      // 入力欄に名前があるかチェック
-      const hasInputNames = playerNames.trim().length > 0;
-
-      if (!hasInputNames) {
-        // パターン1: 入力欄が空 → Sheets の全メンバーをそのまま入力欄に流し込む
-        setPlayerNames(membersToText(result.members));
-        const allRated = result.members.length > 0 &&
-          result.members.every(m => m.rating != null && m.rating >= 1);
-        setAllRated(allRated);
-      } else {
-        // パターン2: 入力欄に名前あり → Sheets の性別情報で入力欄を補完
-        const inputLines = playerNames
-          .split('\n')
-          .map(line => parsePlayerInput(line))
-          .filter((input): input is { name: string; rating?: number; gender?: 'M' | 'F' } => input !== null);
-
-        const sheetsMembersMap = new Map(
-          result.members.map(m => [m.name, m.gender])
-        );
-
-        const merged = inputLines.map((input) => {
-          const genderFromSheets = sheetsMembersMap.get(input.name);
-          return {
-            name: input.name,
-            rating: input.rating,
-            gender: input.gender || genderFromSheets,
-          };
-        });
-
-        const updatedText = merged.map((input) => {
-          const parts = [input.name];
-          if (input.gender) parts.push(input.gender === 'M' ? '男' : '女');
-          if (input.rating) parts.push(String(input.rating));
-          return parts.join('  ');
-        }).join('\n');
-        setPlayerNames(updatedText);
-        setAllRated(false); // 名前入力モードではレーティングは不要
-      }
-
-      // Phase 4 で auto-create を廃止したので auto-fetch は入力欄を埋めるだけ。
-      // ユーザーが「作成」ボタンを押すと handleCreate で Firebase セッションが作られる。
-    } else {
-      setLoadError(result.message);
-    }
-    setIsLoadingMembers(false);
-  };
 
   const handleCreate = async () => {
     // プレイヤー名をパース（ローカルストアに触らずに直接パース）
@@ -375,42 +314,17 @@ export function SessionCreate() {
               練習参加メンバー
             </label>
             <div className="max-w-[240px]">
-              <div className="relative">
-                <textarea
-                  value={playerNames}
-                  onChange={(e) => setPlayerNames(e.target.value)}
-                  placeholder="星野真吾 男&#10;山口裕史 男&#10;佐野朋美 女"
-                  rows={3}
-                  className="textarea-field w-full pr-12"
-                  style={{ WebkitAppearance: 'none' }}
-                />
-                
-                {/* 小さいアイコンボタン */}
-                <button
-                  onClick={handleLoadFromSheets}
-                  disabled={isLoadingMembers}
-                  className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-muted hover:bg-secondary disabled:bg-muted disabled:opacity-50 flex items-center justify-center transition-colors"
-                  title="Sheetsから読み込み"
-                >
-                  {isLoadingMembers ? (
-                    <Loader2 size={14} className="animate-spin text-muted-foreground" />
-                  ) : (
-                    <Download size={14} className="text-muted-foreground" />
-                  )}
-                </button>
-              </div>
-              
-              {/* Rバッジとエラー表示 */}
-              <div className="flex items-center gap-2 mt-2">
-                {allRated && (
-                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold">
-                    R
-                  </span>
-                )}
-                {loadError && (
-                  <p className="text-xs text-red-500">{loadError}</p>
-                )}
-              </div>
+              <textarea
+                value={playerNames}
+                onChange={(e) => setPlayerNames(e.target.value)}
+                placeholder="星野真吾 男&#10;山口裕史 男&#10;佐野朋美 女"
+                rows={3}
+                className="textarea-field w-full"
+                style={{ WebkitAppearance: 'none' }}
+              />
+              {loadError && (
+                <p className="text-xs text-red-500 mt-2">{loadError}</p>
+              )}
             </div>
           </div>
 
