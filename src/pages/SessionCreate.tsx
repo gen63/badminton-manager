@@ -7,18 +7,16 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
+import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { parsePlayerInput } from '../lib/utils';
-import { isValidSessionId } from '../lib/inputValidation';
 import { fetchMembersFromSheets, membersToText } from '../lib/sheetsMembers';
 import { clearPresence, createSession, leaveSession } from '../services/sessionService';
 import { getErrorMessage } from '../lib/errorHandler';
-import { isFirebaseConfigured } from '../lib/firebase';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
-import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { PlayerAddInput } from '../components/PlayerAddInput';
-import { Sparkles, Download, Loader2, Play, LogIn } from 'lucide-react';
+import { Sparkles, Download, Loader2, Play } from 'lucide-react';
 
 // 現在日時を取得（曜日に応じて時刻を設定）
 const getInitialDateTime = () => {
@@ -68,7 +66,6 @@ export function SessionCreate() {
   const initializeSession = useSessionStore((state) => state.initialize);
 
   // Phase 4 で常に Firebase 共有セッションを作成する（ローカルモード廃止）
-  const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
   const [showCreatorSelect, setShowCreatorSelect] = useState(false);
   const [selectedCreatorName, setSelectedCreatorName] = useState('');
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
@@ -80,11 +77,9 @@ export function SessionCreate() {
   const [selectedGym] = useState(getInitialGym);
   const [practiceDateTime] = useState(getInitialDateTime);
   const [playerNames, setPlayerNames] = useState('');
-  
-  // Phase 1: セッションID参加機能
-  const [showJoinMode, setShowJoinMode] = useState(false);
-  const [joinSessionId, setJoinSessionId] = useState('');
+
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [allRated, setAllRated] = useState(false);
 
@@ -92,14 +87,6 @@ export function SessionCreate() {
   useEffect(() => {
     clearAppBadge();
   }, []);
-
-  const handleJoinSession = () => {
-    const id = joinSessionId.trim().toUpperCase();
-    // SEC3: 形式チェックを通過したものだけ navigate
-    if (isValidSessionId(id)) {
-      navigate(`/session/${id}`);
-    }
-  };
 
   const handleLoadFromSheets = async () => {
     if (!gasWebAppUrl) {
@@ -183,6 +170,9 @@ export function SessionCreate() {
       return;
     }
 
+    setIsCreating(true);
+    setLoadError('');
+
     // 旧オンラインセッションに居れば離脱処理（fire-and-forget）
     const previousSession = useSessionStore.getState().session;
     const previousUser = useSessionStore.getState().currentUser;
@@ -254,10 +244,25 @@ export function SessionCreate() {
       });
       setCurrentUser(creatorName);
 
-      setCreatedSessionId(sessionId);
       requestNotificationPermission();
+
+      // 作成直後の race 対策: useFirebaseSync の初回 onSnapshot で
+      // isGameStateLoaded=true になるまで待ってから /main へ遷移する。
+      // 旧フロー（URL 表示画面で一旦止まる）では自然な待ち時間で吸収されて
+      // いた race を、直行に切り替えたため明示 polling で塞ぐ。
+      // SessionJoinPage の handleJoin 末尾と同じパターン。
+      useSyncStatusStore.getState().setGameStateLoaded(false);
+      const startedAt = Date.now();
+      const TIMEOUT_MS = 5000;
+      const POLL_MS = 50;
+      while (!useSyncStatusStore.getState().isGameStateLoaded) {
+        if (Date.now() - startedAt > TIMEOUT_MS) break;
+        await new Promise((r) => setTimeout(r, POLL_MS));
+      }
+      navigate('/main');
     } catch (err) {
       setLoadError(getErrorMessage(err));
+      setIsCreating(false);
     }
   };
 
@@ -344,92 +349,6 @@ export function SessionCreate() {
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Phase 1: セッションID参加画面
-  if (showJoinMode) {
-    return (
-      <div className="bg-app overflow-x-hidden min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-md w-full">
-          <div className="card p-6">
-            <div className="text-center mb-6">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-3">
-                <LogIn size={24} className="text-primary" />
-              </div>
-              <h2 className="text-xl font-bold text-foreground mb-2">セッションに参加</h2>
-              <p className="text-sm text-muted-foreground">6文字のセッションIDを入力してください</p>
-            </div>
-
-            {/* セッションID入力 */}
-            <div className="mb-4">
-              <label className="label">セッションID</label>
-              <input
-                type="text"
-                inputMode="text"
-                autoCapitalize="characters"
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-                value={joinSessionId}
-                onChange={(e) => setJoinSessionId(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                placeholder="ABC123"
-                maxLength={6}
-                className="input-field text-center text-2xl font-bold tracking-wider uppercase"
-                style={{ imeMode: 'disabled' }}
-                onFocus={async () => {
-                  if (joinSessionId) return;
-                  try {
-                    const text = (await navigator.clipboard.readText()).trim().toUpperCase();
-                    if (/^[A-Z0-9]{6}$/.test(text)) {
-                      setJoinSessionId(text);
-                    }
-                  } catch {
-                    // クリップボード読み取り権限がない場合は無視
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleJoinSession();
-                }}
-              />
-            </div>
-
-            {/* ボタン */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setShowJoinMode(false);
-                  setJoinSessionId('');
-                }}
-                className="btn-secondary flex-1"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={handleJoinSession}
-                disabled={joinSessionId.length !== 6}
-                className="btn-primary flex-1"
-              >
-                参加する
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // オンラインモード: URL表示画面
-  if (createdSessionId) {
-    return (
-      <div className="bg-app overflow-x-hidden min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-md w-full">
-          <SessionURLDisplay
-            sessionId={createdSessionId}
-            onClose={() => navigate('/main')}
-          />
         </div>
       </div>
     );
@@ -616,25 +535,15 @@ export function SessionCreate() {
           })()}
 
           {/* 作成ボタン */}
-          <div className="flex justify-center gap-3">
+          <div className="flex justify-center">
             <button
               onClick={handleCreate}
+              disabled={isCreating}
               className="btn-primary text-base flex items-center justify-center gap-2"
             >
-              <Sparkles size={18} />
-              開始
+              {isCreating ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+              {isCreating ? '作成中...' : '開始'}
             </button>
-
-            {/* セッションIDで参加（Firebase設定時のみ表示） */}
-            {isFirebaseConfigured() && (
-              <button
-                onClick={() => setShowJoinMode(true)}
-                className="btn-secondary text-sm flex items-center justify-center gap-2"
-              >
-                <LogIn size={16} />
-                セッションIDで参加
-              </button>
-            )}
           </div>
         </div>
 

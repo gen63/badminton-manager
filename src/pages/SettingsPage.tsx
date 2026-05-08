@@ -9,13 +9,12 @@ import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { deleteSession, updateSession as updateFirebaseSession, updateCreator } from '../services/sessionService';
-import { SessionURLDisplay } from '../components/SessionURLDisplay';
 import { clearAppBadge } from '../lib/badge';
 import { copyToClipboard } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, QrCode, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, Copy, Check } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -25,7 +24,6 @@ export function SettingsPage() {
   const isCreator = useSessionStore((s) => s.isCreator);
   const isAdmin = useSessionStore((s) => s.isAdmin);
   const currentUser = useSessionStore((s) => s.currentUser);
-  const [showSessionInfo, setShowSessionInfo] = useState(false);
   const [sessionIdCopied, setSessionIdCopied] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
   const [selectedAdmins, setSelectedAdmins] = useState<string[]>([]);
@@ -413,7 +411,7 @@ export function SettingsPage() {
 
         {/* オンラインモード表示（Phase 4 でローカルモード廃止） */}
         <div className="card p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
-          <div className="flex items-center gap-3 mb-3">
+          <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-500">
               <Wifi size={20} className="text-white" />
             </div>
@@ -424,14 +422,6 @@ export function SettingsPage() {
               </p>
             </div>
           </div>
-
-          <button
-            onClick={() => setShowSessionInfo(true)}
-            className="w-full btn-secondary flex items-center justify-center gap-2 text-sm"
-          >
-            <QrCode size={16} />
-            セッション情報を表示
-          </button>
         </div>
 
         {/* セッション管理（管理者のみ） */}
@@ -604,18 +594,6 @@ export function SettingsPage() {
           </div>
         )}
       </div>
-
-      {/* セッション情報モーダル */}
-      {showSessionInfo && session.id && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="max-w-md w-full">
-            <SessionURLDisplay
-              sessionId={session.id}
-              onClose={() => setShowSessionInfo(false)}
-            />
-          </div>
-        </div>
-      )}
 
       {/* 管理者追加モーダル */}
       {showAddAdminModal && (

@@ -8,32 +8,17 @@ import { isValidSessionId } from '../lib/inputValidation';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
-import { copyToClipboard } from '../lib/utils';
 import { type Session } from '../types/session';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
-import { Loader2, Plus, Copy, Check, Link, ChevronDown } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+import { Loader2, Plus, ChevronDown } from 'lucide-react';
 
 export function SessionJoinPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  
-  // PWA検出
-  const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
-                (navigator as Navigator & { standalone?: boolean }).standalone;
-  
-  const [clipboardCopied, setClipboardCopied] = useState(false);
-  const [idCopied, setIdCopied] = useState(false);
-  const [urlCopied, setUrlCopied] = useState(false);
-  const [showQR, setShowQR] = useState(false);
-
-  const sessionUrl = sessionId
-    ? `${window.location.origin}/badminton-manager/session/${sessionId}`
-    : '';
 
   const [session, setSession] = useState<Session | null>(null);
   const [selectedName, setSelectedName] = useState('');
@@ -53,38 +38,6 @@ export function SessionJoinPage() {
   useEffect(() => {
     clearAppBadge();
   }, []);
-
-  // Safari検出時にセッションIDをクリップボードにコピー（試行）
-  useEffect(() => {
-    if (!sessionId || isPWA) return;
-
-    copyToClipboard(sessionId).then((ok) => {
-      if (ok) {
-        setClipboardCopied(true);
-        setTimeout(() => setClipboardCopied(false), 3000);
-      }
-    });
-  }, [sessionId, isPWA]);
-
-  const handleManualCopy = async () => {
-    if (!sessionId) return;
-    const ok = await copyToClipboard(sessionId);
-    if (ok) {
-      setClipboardCopied(true);
-      setIdCopied(true);
-      setTimeout(() => setClipboardCopied(false), 2000);
-      setTimeout(() => setIdCopied(false), 1000);
-    }
-  };
-
-  const handleCopyUrl = async () => {
-    if (!sessionUrl) return;
-    const ok = await copyToClipboard(sessionUrl);
-    if (ok) {
-      setUrlCopied(true);
-      setTimeout(() => setUrlCopied(false), 1000);
-    }
-  };
 
   useEffect(() => {
     if (!sessionId) return;
@@ -289,33 +242,6 @@ export function SessionJoinPage() {
           <h1 className="text-xl font-bold text-foreground">参加者入室</h1>
         </div>
 
-        {/* PWA案内バナー（非PWA時のみ） */}
-        {!isPWA && sessionId && (
-          <div className="card p-4 bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300">
-            <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center">
-                {clipboardCopied ? <Check size={20} className="text-white" /> : <Copy size={20} className="text-white" />}
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm font-bold text-amber-900 mb-1">
-                  {clipboardCopied ? 'セッションIDをコピーしました' : 'PWAアプリで開くとスムーズ'}
-                </h3>
-                <p className="text-xs text-amber-800 mb-2">
-                  ホーム画面の「バドミントン」アプリを開くと、自動的にこのセッションに参加できます。
-                </p>
-                <div className="flex items-center gap-2 mb-2">
-                  <button
-                    onClick={handleManualCopy}
-                    className="flex-1 bg-white/60 hover:bg-white/80 rounded px-2 py-1 text-center transition-colors active:scale-95"
-                  >
-                    <span className="text-lg font-bold text-amber-900 tracking-wider">{sessionId}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* 名前選択 */}
         <div className="card p-4">
           <label className="label">あなたの名前</label>
@@ -417,59 +343,6 @@ export function SessionJoinPage() {
             {joining ? '入室中...' : '入室する'}
           </button>
         </div>
-
-        {/* 他の参加者に共有（アコーディオン） */}
-        {sessionId && (
-          <div className="card overflow-hidden">
-            <button
-              onClick={() => setShowQR(!showQR)}
-              className="w-full flex items-center justify-between p-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <span>他の参加者に共有</span>
-              <ChevronDown
-                size={16}
-                className={`transition-transform duration-200 ${showQR ? 'rotate-180' : ''}`}
-              />
-            </button>
-            {showQR && (
-              <div className="px-4 pb-4 space-y-3">
-                <div className="text-center">
-                  {isPWA && (
-                    <p
-                      onClick={handleManualCopy}
-                      className="text-xs text-muted-foreground mb-2 cursor-pointer active:opacity-60"
-                    >
-                      {idCopied
-                        ? <span className="text-green-600">セッションIDをコピーしました</span>
-                        : <>セッションID: <span className="font-medium">{sessionId}</span></>
-                      }
-                    </p>
-                  )}
-                  <button
-                    onClick={handleCopyUrl}
-                    className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
-                  >
-                    {urlCopied ? <Check size={14} className="text-green-500" /> : <Link size={14} />}
-                    {urlCopied ? 'URLをコピーしました' : 'セッションURLをコピー'}
-                  </button>
-                </div>
-                <div className="flex justify-center">
-                  <div className="bg-white p-3 rounded-xl shadow-sm border border-border">
-                    <QRCodeSVG
-                      value={sessionUrl}
-                      size={180}
-                      level="M"
-                      includeMargin={false}
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground text-center">
-                  このQRコードを読み取ると参加できます
-                </p>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* 既に参加している場合の確認ダイアログ */}
         {showForceConfirm && (
