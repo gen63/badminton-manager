@@ -236,10 +236,7 @@ git push origin master
 - 目標点数（15/21）を選択
 - 体育館を選択（任意）
 - 練習開始日時を設定（曜日別デフォルト: 平日19時、土曜12時、日曜17時）
-- **Google Sheetsからメンバー読み込み（推奨）**
-  - GAS Web App URLを入力
-  - 「Sheetsから読み込み」ボタンで自動的にセッション開始
-- または手動で参加メンバーを入力（1行に1人、名前・性別・レーティング）
+- 参加メンバーを入力（1行に1人、名前・性別・レーティング）
 - 選択中の項目にはチェックマーク（✓）が表示
 
 ### 2. メイン画面
@@ -321,8 +318,7 @@ badminton-manager/
 │   │   ├── syncUtils.ts             # 同期ロジック（純粋関数）
 │   │   ├── utils.ts                 # ユーティリティ関数
 │   │   ├── errorHandler.ts          # エラーハンドリング
-│   │   ├── sheetsApi.ts             # Google Sheets API連携
-│   │   └── sheetsMembers.ts         # Sheetsメンバー読み込み
+│   │   └── sheetsApi.ts             # Google Sheets API連携（試合・会計データのアップロード）
 │   ├── pages/
 │   │   ├── SessionCreate.tsx        # セッション作成
 │   │   ├── SessionJoinPage.tsx      # オンラインセッション参加
@@ -364,7 +360,7 @@ badminton-manager/
 - ✅ オンラインモード（Firebase Firestore リアルタイム同期）
 - ✅ セッション共有（一覧画面で同一プロジェクトのアクティブセッションを共有）
 - ✅ 参加者管理（複数行入力 + メイン画面から追加）
-- ✅ Google Sheets連携（GAS経由でメンバー読み込み・試合結果アップロード）
+- ✅ Google Sheets連携（GAS経由で試合結果・会計データをアップロード）
 - ✅ 自動配置（ダブルス・シングルス対応）
 - ✅ 連続モード（自動配置＋自動開始）
 - ✅ 予約機能（1〜4人のコート予約キュー）
