@@ -21,9 +21,7 @@ import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { useGuardedAction } from '../hooks/useGuardedAction';
 import * as sm from '../services/sessionMutations';
 import { PaymentModal } from '../components/PaymentModal';
-import { WinnerSelectModal } from '../components/WinnerSelectModal';
 import { UnrecordedMatchPrompt } from '../components/UnrecordedMatchPrompt';
-import { useUnrecordedDismissStore } from '../stores/unrecordedDismissStore';
 import { CourtTimer } from '../components/CourtTimer';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
@@ -68,7 +66,6 @@ export function MainPage() {
   const useStayDurationPriority = useSettingsStore((s) => s.useStayDurationPriority);
   const continuousMatchMode = useSettingsStore((s) => s.continuousMatchMode);
   const prioritizeDiversity = useSettingsStore((s) => s.prioritizeDiversity);
-  const recordScores = useSettingsStore((s) => s.recordScores);
   const practiceType = useSettingsStore((s) => s.practiceType);
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
@@ -102,12 +99,6 @@ export function MainPage() {
   const [showBugReportModal, setShowBugReportModal] = useState(false);
   const [bugReportText, setBugReportText] = useState(BUG_REPORT_TEMPLATE);
   const [isSendingBugReport, setIsSendingBugReport] = useState(false);
-  const [pendingScoreMatch, setPendingScoreMatch] = useState<{
-    matchId: string;
-    courtId: number;
-    teamA: [string, string];
-    teamB: [string, string];
-  } | null>(null);
 
   const playerCardRef = useRef<HTMLDivElement>(null);
 
@@ -820,11 +811,6 @@ export function MainPage() {
                             // Undo 用に試合終了前の状態を保存
                             pushUndo();
 
-                            // スコア記録ONなら結果入力モーダルを表示（Firestore 書き込み前に
-                            // capture しておく — 書き込み後は currentCourt.teamA/B が空になる）
-                            const teamASnapshot = currentCourt.teamA;
-                            const teamBSnapshot = currentCourt.teamB;
-
                             try {
                               const res = await sm.finishMatchAndContinue(
                                 session.id,
@@ -854,15 +840,6 @@ export function MainPage() {
                               console.error('[FinishGame] Transaction failed:', err);
                               toast.error('試合終了の同期に失敗しました');
                               return;
-                            }
-
-                            if (recordScores) {
-                              setPendingScoreMatch({
-                                matchId,
-                                courtId: court.id,
-                                teamA: teamASnapshot,
-                                teamB: teamBSnapshot,
-                              });
                             }
                           }}
                           className="w-full min-h-[44px] bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
@@ -1227,52 +1204,8 @@ export function MainPage() {
         </div>
       )}
 
-      {/* 勝者選択モーダル */}
-      {pendingScoreMatch && (
-        <WinnerSelectModal
-          courtId={pendingScoreMatch.courtId}
-          teamA={pendingScoreMatch.teamA}
-          teamB={pendingScoreMatch.teamB}
-          getPlayerName={(id) => players.find((p) => p.id === id)?.name || '未設定'}
-          getPlayerGender={(id) => players.find((p) => p.id === id)?.gender}
-          onConfirm={async (winnerIds) => {
-            if (winnerIds === 'unknown') {
-              // 終了直後フローを「不明」で閉じた直後に未記録プロンプト
-              // (UnrecordedMatchPrompt) が同じ matchId を即拾わないよう抑止
-              useUnrecordedDismissStore.getState().dismiss(pendingScoreMatch.matchId);
-              setPendingScoreMatch(null);
-              return;
-            }
-            const teamASet = new Set(pendingScoreMatch.teamA.filter(Boolean));
-            const teamBSet = new Set(pendingScoreMatch.teamB.filter(Boolean));
-            const allInA = winnerIds.every((id) => teamASet.has(id));
-            const allInB = winnerIds.every((id) => teamBSet.has(id));
-            if (!allInA && !allInB) {
-              // WINNER1 fix: WinnerSelectModal 側で異チーム選択は予防済みだが、
-              // 万一呼ばれた場合は無言で閉じずトースト通知してスコア未保存を可視化する。
-              toast.error('勝者が同じチームではありません。スコアは記録されませんでした');
-              useUnrecordedDismissStore.getState().dismiss(pendingScoreMatch.matchId);
-              setPendingScoreMatch(null);
-              return;
-            }
-            const winner: 'A' | 'B' = allInA ? 'A' : 'B';
-            const scoreA = winner === 'A' ? 100 : 99;
-            const scoreB = winner === 'B' ? 100 : 99;
-            const matchId = pendingScoreMatch.matchId;
-            // Phase 6: 共有ストアではなく Firestore transaction 経由で書き込む
-            // （local setState だけだと次の onSnapshot で消える B4 修正）
-            await writer.updateMatchScore(matchId, scoreA, scoreB, winner);
-            setPendingScoreMatch(null);
-          }}
-          onCancel={() => {
-            useUnrecordedDismissStore.getState().dismiss(pendingScoreMatch.matchId);
-            setPendingScoreMatch(null);
-          }}
-        />
-      )}
-
       {/* 未記録の過去試合プロンプト（参加メンバーに勝敗入力を促す） */}
-      <UnrecordedMatchPrompt enabled={pendingScoreMatch === null} />
+      <UnrecordedMatchPrompt />
 
       <BottomNav activeTab="court" />
     </div>
