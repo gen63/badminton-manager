@@ -50,12 +50,13 @@ export function calculateAccountingTotals(input: AccountingInputValues): Account
   const participantCount = input.exemptCount + input.maleCount + input.femaleCount;
   const maleTotal = input.maleCount * input.maleFee;
   const femaleTotal = input.femaleCount * input.femaleFee;
-  const incomeTotal = maleTotal + femaleTotal;
   const shuttleTotal = input.shuttleCount * input.shuttlePrice;
   const discount = input.discount ?? 0;
-  const finalTotal = incomeTotal - input.gymCost - shuttleTotal + input.otherAmount - discount;
+  // incomeTotal は運営協力割引を差し引いた「純収入」。割引は収入の減額として扱う。
+  const incomeTotal = maleTotal + femaleTotal - discount;
+  const finalTotal = incomeTotal - input.gymCost - shuttleTotal + input.otherAmount;
   const shuttleUsableCount = input.shuttlePrice > 0
-    ? Math.max(0, Math.floor((incomeTotal - input.gymCost + input.otherAmount - discount) / input.shuttlePrice))
+    ? Math.max(0, Math.floor((incomeTotal - input.gymCost + input.otherAmount) / input.shuttlePrice))
     : 0;
   return { participantCount, maleTotal, femaleTotal, incomeTotal, shuttleTotal, finalTotal, shuttleUsableCount, discount };
 }
@@ -76,7 +77,7 @@ export interface AccountingCopyInput extends AccountingInputValues {
 /** コピー用テキストを生成（AccountingPage / AccountingCalcPage で共用） */
 export function buildAccountingCopyText(input: AccountingCopyInput): string {
   const totals = calculateAccountingTotals(input);
-  const { participantCount, incomeTotal, shuttleTotal, finalTotal, shuttleUsableCount, discount } = totals;
+  const { participantCount, maleTotal, femaleTotal, incomeTotal, shuttleTotal, finalTotal, shuttleUsableCount, discount } = totals;
   const {
     exemptCount, maleCount, femaleCount, maleFee, femaleFee,
     gymCost, shuttlePrice, shuttleCount, otherAmount,
@@ -99,6 +100,11 @@ export function buildAccountingCopyText(input: AccountingCopyInput): string {
   if (femaleLine) lines.push(femaleLine);
   if (exemptCount > 0) lines.push(`免除 ${exemptCount}×0 = 0`);
 
+  // 運営協力割引は収入の減額として表示
+  if (discount > 0) {
+    lines.push(`運営協力 -${discount.toLocaleString()}`);
+  }
+
   // その他（プラスの場合は収入に追加）
   if ((otherDescription || otherAmount !== 0) && otherAmount > 0) {
     lines.push(`${otherDescription || 'その他'} ${otherAmount.toLocaleString()}`);
@@ -114,19 +120,17 @@ export function buildAccountingCopyText(input: AccountingCopyInput): string {
     `シャトル使用数 -${shuttlePrice}×${shuttleCount} = -${shuttleTotal.toLocaleString()}`,
   );
 
-  if (discount > 0) {
-    lines.push(`運営協力 -${discount.toLocaleString()}`);
-  }
-
   // その他（マイナスの場合は支出に追加）
   if ((otherDescription || otherAmount !== 0) && otherAmount < 0) {
     lines.push(`${otherDescription || 'その他'} ${otherAmount.toLocaleString()}`);
   }
 
-  let totalFormula = `${incomeTotal.toLocaleString()}-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
+  const grossIncome = maleTotal + femaleTotal;
+  let totalFormula = `${grossIncome.toLocaleString()}`;
   if (discount > 0) {
     totalFormula += `-${discount.toLocaleString()}`;
   }
+  totalFormula += `-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
   if (otherAmount !== 0) {
     totalFormula += otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`;
   }

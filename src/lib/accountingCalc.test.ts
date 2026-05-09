@@ -54,10 +54,11 @@ describe('calculateAccountingTotals', () => {
     expect(t.shuttleUsableCount).toBe(3);
   });
 
-  it('discount（運営協力割引）を finalTotal から差し引く', () => {
+  it('discount（運営協力割引）を収入から差し引いた純収入を返す', () => {
     const t = calculateAccountingTotals({ ...base, discount: 200 });
-    // incomeTotal=2400, gymCost=900, shuttle=0, other=0, discount=200
-    expect(t.finalTotal).toBe(2400 - 900 - 200);
+    // gross = 2400, incomeTotal (net) = 2400 - 200 = 2200
+    expect(t.incomeTotal).toBe(2400 - 200);
+    expect(t.finalTotal).toBe(2400 - 200 - 900);
     expect(t.discount).toBe(200);
   });
 
@@ -124,14 +125,17 @@ describe('buildAccountingCopyText', () => {
     expect(text).not.toMatch(/^免除 /m);
   });
 
-  it('discount > 0 のとき支出セクションに運営協力行と合計式に -discount が出る', () => {
+  it('discount > 0 のとき収入セクションに運営協力行と合計式に -discount が出る', () => {
     const text = buildAccountingCopyText({ ...base, discount: 200 });
+    const incomeIdx = text.indexOf('【収入】');
     const expenseIdx = text.indexOf('【支出】');
-    const totalIdx = text.indexOf('【合計】');
-    expect(text.indexOf('運営協力 -200')).toBeGreaterThan(expenseIdx);
-    expect(text.indexOf('運営協力 -200')).toBeLessThan(totalIdx);
-    // 合計式: 2,400-900-0-200+400 = 1,700
-    expect(text).toContain('2,400-900-0-200+400 = 1,700');
+    // 運営協力は【収入】と【支出】の間（=収入セクション内）
+    expect(text.indexOf('運営協力 -200')).toBeGreaterThan(incomeIdx);
+    expect(text.indexOf('運営協力 -200')).toBeLessThan(expenseIdx);
+    // 収入合計は割引後: 2400 - 200 + 400 = 2,600
+    expect(text).toContain('収入合計 2,600');
+    // 合計式: 2,400-200-900-0+400 = 1,700
+    expect(text).toContain('2,400-200-900-0+400 = 1,700');
   });
 
   it('discount = 0 のときは運営協力行を出さない', () => {
