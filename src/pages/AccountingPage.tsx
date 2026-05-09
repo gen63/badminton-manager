@@ -371,9 +371,9 @@ export function AccountingPage() {
       }))
     );
     
-    // アップロード用の収入・支出合計（その他をプラス/マイナスで振り分け、運営協力割引を支出に加算）
+    // アップロード用の収入・支出合計（運営協力割引は incomeTotal で既に差し引かれている）
     const uploadIncomeTotal = incomeTotal + (otherAmount > 0 ? otherAmount : 0);
-    const expenseTotal = gymCost + shuttleTotal + cooperationDiscount + (otherAmount < 0 ? Math.abs(otherAmount) : 0);
+    const expenseTotal = gymCost + shuttleTotal + (otherAmount < 0 ? Math.abs(otherAmount) : 0);
 
     const record = {
       id: crypto.randomUUID(),
@@ -888,6 +888,15 @@ export function AccountingPage() {
               </div>
               <span className="text-lg font-bold text-muted-foreground">0</span>
             </div>
+
+            {cooperationDiscount > 0 && (
+              <div className="flex items-center justify-between bg-red-50 rounded-lg px-3 py-2">
+                <span className="text-sm text-muted-foreground">運営協力</span>
+                <span className="text-lg font-bold text-red-600">
+                  -{cooperationDiscount.toLocaleString()}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -995,15 +1004,6 @@ export function AccountingPage() {
                 </div>
               </div>
             </div>
-
-            {cooperationDiscount > 0 && (
-              <div className="flex items-center justify-between bg-red-50 rounded-lg px-3 py-2">
-                <span className="text-sm text-muted-foreground">運営協力</span>
-                <span className="text-lg font-bold text-red-600">
-                  -{cooperationDiscount.toLocaleString()}
-                </span>
-              </div>
-            )}
           </div>
         </div>
 
@@ -1083,8 +1083,9 @@ export function AccountingPage() {
             <h2 className="text-sm font-bold text-gray-700">合計</h2>
           </div>
           <div className="text-xs text-muted-foreground mb-2 font-mono">
-            {maleTotal.toLocaleString()}+{femaleTotal.toLocaleString()}-{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
+            {maleTotal.toLocaleString()}+{femaleTotal.toLocaleString()}
             {cooperationDiscount > 0 && `-${cooperationDiscount.toLocaleString()}`}
+            -{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
             {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
           </div>
           <div className={`text-4xl font-bold text-center ${finalTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>

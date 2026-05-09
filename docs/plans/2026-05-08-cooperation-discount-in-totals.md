@@ -85,3 +85,23 @@ const cooperationDiscount = useMemo(() => {
 - アップロードする会計レコード (`AccountingRecord`) には今回 `discount` を
   保存しない（GAS シート側のスキーマ変更が必要なため）。実態合計は
   `finalTotal - discount` として残るが、内訳としての discount は持たない。
+
+## 追補 (2026-05-09): 運営協力を収入側マイナスへ移動
+
+「運営協力割引は収入が減っているのだから収入欄に記載すべき」というレビュー
+指摘を反映。表示位置と `incomeTotal` の意味を変更する（finalTotal の数値は
+変わらない）。
+
+### 変更点
+
+- **`incomeTotal` の意味**: 「男+女会費」(gross) → 「男+女会費 − 運営協力」(net)
+  - `AccountingTotals.incomeTotal` の値が discount 分減る。
+  - finalTotal は `incomeTotal - gymCost - shuttleTotal + otherAmount` で同値。
+  - shuttleUsableCount も discount を二重に引かないよう調整。
+- **UI**: 運営協力行を【支出】→【収入】セクションに移動（免除行の下）。
+- **コピーテキスト**: 同様に【収入】側に `運営協力 -X` を出力。
+- **合計式表示**: `男+女-discount-体育館-シャトル±その他` の順序へ。
+- **アップロード**: `uploadIncomeTotal` は既に `incomeTotal + 正のその他` で済む
+  （incomeTotal が純額になるため）。`expenseTotal` から `cooperationDiscount`
+  加算を削除。GAS 側に渡る `incomeTotal` も net に変わるため、シート上の
+  解釈は「割引後の収入」となる（既存記録との互換性は破壊するが、より正確）。
