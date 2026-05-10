@@ -200,8 +200,8 @@ export const AUTO_SESSION_BOT_CREATOR = 'auto-session-bot';
 export async function joinSession(
   sessionId: string,
   playerName: string,
-  options?: { force?: boolean; gender?: 'M' | 'F' }
-): Promise<{ isAlreadyJoined: boolean; newCreator?: string }> {
+  options?: { gender?: 'M' | 'F' }
+): Promise<{ newCreator?: string }> {
   if (!playerName.trim()) {
     throw new SessionError('参加者名を入力してください', 'invalid-name');
   }
@@ -216,19 +216,12 @@ export async function joinSession(
 
     const data = snap.data();
     const participants = (data.participants as string[] | undefined) ?? [];
-    const isAlreadyJoined = participants.includes(playerName);
 
-    if (isAlreadyJoined && !options?.force) {
-      return { isAlreadyJoined: true };
-    }
-
-    // participants配列を更新
-    let newParticipants: string[];
-    if (isAlreadyJoined && options?.force) {
-      newParticipants = [...participants.filter((name) => name !== playerName), playerName];
-    } else {
-      newParticipants = [...participants, playerName];
-    }
+    // 既参加でも黙って再入室を許可（重複排除して末尾に追加）
+    const newParticipants = [
+      ...participants.filter((name) => name !== playerName),
+      playerName,
+    ];
 
     const updates: Record<string, unknown> = {
       participants: newParticipants,
@@ -265,7 +258,7 @@ export async function joinSession(
     }
 
     transaction.update(docRef, updates);
-    return { isAlreadyJoined: false, newCreator };
+    return { newCreator };
   });
 }
 
