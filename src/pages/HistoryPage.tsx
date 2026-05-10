@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
@@ -245,8 +245,7 @@ export function HistoryPage() {
   }, [hasUnscored]);
 
   if (!session) {
-    navigate('/');
-    return null;
+    return <Navigate to="/" replace />;
   }
 
   const getPlayerName = (playerId: string) => {

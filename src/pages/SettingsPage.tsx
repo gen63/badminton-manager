@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
@@ -46,8 +46,7 @@ export function SettingsPage() {
   const writer = useSessionWriterWithToast(toast);
 
   if (!session) {
-    navigate('/');
-    return null;
+    return <Navigate to="/" replace />;
   }
 
   // currentUser が未設定の場合はローディング（参加直後の僅かな期間）

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
@@ -227,8 +227,7 @@ export function MainPage() {
   );
 
   if (!session) {
-    navigate('/');
-    return null;
+    return <Navigate to="/" replace />;
   }
 
   const handleClearCourt = async (courtId: number) => {

@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { copyToClipboard } from '../lib/utils';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -22,7 +22,6 @@ import {
 } from '../lib/accountingCalc';
 
 export function AccountingPage() {
-  const navigate = useNavigate();
   const session = useSessionStore((s) => s.session);
   const updateConfig = useSessionStore((s) => s.updateConfig);
   const updateAccounting = useSessionStore((s) => s.updateAccounting);
@@ -311,8 +310,7 @@ export function AccountingPage() {
   };
 
   if (!session) {
-    navigate('/');
-    return null;
+    return <Navigate to="/" replace />;
   }
 
   const appropriateFee = calculateAppropriateFee({
