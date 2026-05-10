@@ -40,8 +40,23 @@ function jsonEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/**
+ * visibility / online で再購読をキックする最短間隔。直近の再購読から
+ * これより短い間隔で発火しても no-op。連続イベントでの過剰な再接続を防ぐ。
+ */
+const RESUBSCRIBE_THROTTLE_MS = 5_000;
+
+/**
+ * タブが hidden だった時間がこの値を超えた場合のみ visible 復帰時に再購読する。
+ * 短時間 (< 1 分) の alt-tab では Firestore WebSocket が生きている可能性が高く、
+ * 毎回再購読すると無駄なローディング点滅が起きるため。
+ * syncError が立っている / hidden 中に長時間経過した場合は短時間でも再購読する。
+ */
+const HIDDEN_DURATION_FOR_RESUBSCRIBE_MS = 60_000;
+
 export function useFirebaseSync() {
   const sessionId = useSessionStore((s) => s.session?.id);
+  const reconnectNonce = useSyncStatusStore((s) => s.reconnectNonce);
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -54,6 +69,7 @@ export function useFirebaseSync() {
   }, [toast, navigate]);
 
   const sessionDeletedNotified = useRef(false);
+  const lastResubscribeAtRef = useRef(0);
 
   useEffect(() => {
     if (!sessionId || !db) {
@@ -65,6 +81,39 @@ export function useFirebaseSync() {
     sessionDeletedNotified.current = false;
     useSyncStatusStore.getState().setGameStateLoaded(false);
     useSyncStatusStore.getState().setSyncError(null);
+
+    // マウント時に既に hidden の場合（PWA バックグラウンド起動等）は
+    // その時刻を起点にする。visible なら 0。
+    let hiddenSinceMs = document.visibilityState === 'hidden' ? Date.now() : 0;
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenSinceMs = Date.now();
+        return;
+      }
+      // visible 復帰
+      const hiddenDuration = hiddenSinceMs > 0 ? Date.now() - hiddenSinceMs : 0;
+      hiddenSinceMs = 0;
+      // 短時間の alt-tab で毎回再接続するのは過剰なので、hidden 時間がしきい値を
+      // 超えた場合 OR 既に syncError が立っている場合だけ再購読する。
+      const hasError = useSyncStatusStore.getState().syncError !== null;
+      if (!hasError && hiddenDuration < HIDDEN_DURATION_FOR_RESUBSCRIBE_MS) return;
+      const now = Date.now();
+      if (now - lastResubscribeAtRef.current < RESUBSCRIBE_THROTTLE_MS) return;
+      lastResubscribeAtRef.current = now;
+      // タブ復帰時に Firestore の WebSocket が stale な場合があるため再購読をキック。
+      // useEffect の依存に reconnectNonce を入れているのでこれだけで unsub→sub が走る。
+      useSyncStatusStore.getState().requestReconnect();
+    };
+
+    const handleOnline = () => {
+      const now = Date.now();
+      if (now - lastResubscribeAtRef.current < RESUBSCRIBE_THROTTLE_MS) return;
+      lastResubscribeAtRef.current = now;
+      useSyncStatusStore.getState().requestReconnect();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('online', handleOnline);
 
     const unsub = onSnapshot(
       doc(db, 'sessions', sessionId),
@@ -222,11 +271,13 @@ export function useFirebaseSync() {
 
     return () => {
       unsub();
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('online', handleOnline);
       useSyncStatusStore.getState().setGameStateLoaded(false);
       // 通知済みセットはセッション切替時にクリア（新セッションでは再通知してよい）
       notifiedMatches.clear();
     };
-  }, [sessionId]);
+  }, [sessionId, reconnectNonce]);
 }
 
 /** 自分がメンバーのコートで試合が新規開始されたら通知を出す */

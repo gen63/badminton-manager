@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { Plus, Trash2, ChevronDown, Users, Clock, CheckCircle2, CalendarCheck } from 'lucide-react';
 import { useReservationStore } from '../stores/reservationStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -12,7 +12,6 @@ import { EmptyState } from '../components/EmptyState';
 import { isPlayerReady as checkPlayerReady, getReservationStatus, inferDoublesCategory, getCategoryShortLabel } from '../lib/reservationUtils';
 
 export function ReservationPage() {
-  const navigate = useNavigate();
   const session = useSessionStore((s) => s.session);
   const currentUser = useSessionStore((s) => s.currentUser);
   const players = usePlayerStore((s) => s.players);
@@ -23,8 +22,7 @@ export function ReservationPage() {
   const [showFulfilled, setShowFulfilled] = useState(false);
 
   if (!session) {
-    navigate('/');
-    return null;
+    return <Navigate to="/" replace />;
   }
 
   const pendingReservations = reservations.filter(r => r.status === 'pending');
