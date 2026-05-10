@@ -28,7 +28,6 @@ export function SessionJoinPage() {
   const [loading, setLoading] = useState(!!sessionId);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(() => sessionId ? '' : 'セッションIDが指定されていません');
-  const [showForceConfirm, setShowForceConfirm] = useState(false);
   const [showJoinedMembers, setShowJoinedMembers] = useState(false);
 
   const initializeSession = useSessionStore((state) => state.initialize);
@@ -107,7 +106,7 @@ export function SessionJoinPage() {
     setError('');
   };
 
-  const handleJoin = async (force = false) => {
+  const handleJoin = async () => {
     if (!selectedName || !sessionId || !session) return;
 
     setJoining(true);
@@ -134,14 +133,7 @@ export function SessionJoinPage() {
     }
 
     try {
-      const result = await joinSession(sessionId, selectedName, { force, gender: selectedGender });
-
-      // 既に参加している場合は確認ダイアログを表示
-      if (result.isAlreadyJoined && !force) {
-        setShowForceConfirm(true);
-        setJoining(false);
-        return;
-      }
+      const result = await joinSession(sessionId, selectedName, { gender: selectedGender });
 
       requestNotificationPermission();
 
@@ -343,46 +335,6 @@ export function SessionJoinPage() {
             {joining ? '入室中...' : '入室する'}
           </button>
         </div>
-
-        {/* 既に参加している場合の確認ダイアログ */}
-        {showForceConfirm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="card p-6 max-w-sm w-full">
-              <h3 className="text-lg font-bold text-foreground mb-2">再入室の確認</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                「{selectedName}」は別のブラウザ・端末で入室中です。
-                <br />
-                <span className="text-amber-600 font-medium">
-                  こちらから入室し直しますか？
-                </span>
-                <br />
-                <span className="text-xs text-muted-foreground">
-                  ※以前のブラウザ・端末でのセッションは自動的に切断されます
-                </span>
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setShowForceConfirm(false);
-                    setError('');
-                  }}
-                  className="btn-secondary flex-1"
-                >
-                  キャンセル
-                </button>
-                <button
-                  onClick={() => {
-                    setShowForceConfirm(false);
-                    handleJoin(true);
-                  }}
-                  className="btn-primary flex-1"
-                >
-                  入室する
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
