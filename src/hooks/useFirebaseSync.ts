@@ -46,6 +46,14 @@ function jsonEqual(a: unknown, b: unknown): boolean {
  */
 const RESUBSCRIBE_THROTTLE_MS = 5_000;
 
+/**
+ * タブが hidden だった時間がこの値を超えた場合のみ visible 復帰時に再購読する。
+ * 短時間 (< 1 分) の alt-tab では Firestore WebSocket が生きている可能性が高く、
+ * 毎回再購読すると無駄なローディング点滅が起きるため。
+ * syncError が立っている / hidden 中に長時間経過した場合は短時間でも再購読する。
+ */
+const HIDDEN_DURATION_FOR_RESUBSCRIBE_MS = 60_000;
+
 export function useFirebaseSync() {
   const sessionId = useSessionStore((s) => s.session?.id);
   const reconnectNonce = useSyncStatusStore((s) => s.reconnectNonce);
@@ -74,8 +82,21 @@ export function useFirebaseSync() {
     useSyncStatusStore.getState().setGameStateLoaded(false);
     useSyncStatusStore.getState().setSyncError(null);
 
+    // マウント時に既に hidden の場合（PWA バックグラウンド起動等）は
+    // その時刻を起点にする。visible なら 0。
+    let hiddenSinceMs = document.visibilityState === 'hidden' ? Date.now() : 0;
     const handleVisibility = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (document.visibilityState === 'hidden') {
+        hiddenSinceMs = Date.now();
+        return;
+      }
+      // visible 復帰
+      const hiddenDuration = hiddenSinceMs > 0 ? Date.now() - hiddenSinceMs : 0;
+      hiddenSinceMs = 0;
+      // 短時間の alt-tab で毎回再接続するのは過剰なので、hidden 時間がしきい値を
+      // 超えた場合 OR 既に syncError が立っている場合だけ再購読する。
+      const hasError = useSyncStatusStore.getState().syncError !== null;
+      if (!hasError && hiddenDuration < HIDDEN_DURATION_FOR_RESUBSCRIBE_MS) return;
       const now = Date.now();
       if (now - lastResubscribeAtRef.current < RESUBSCRIBE_THROTTLE_MS) return;
       lastResubscribeAtRef.current = now;

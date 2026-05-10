@@ -67,13 +67,16 @@ if (!session) {
 
 実装方針:
 
-- `useEffect` 内で同じ `sessionId` に対して `subscribe()` 関数を切り出す
-- `subscribe()` は `unsub` を返す
-- `visibilitychange` (visible) と `online` イベントで `resubscribe()` を呼ぶ
-  - `resubscribe()` は現 `unsub()` → 新 `subscribe()`
-  - 直近成功受信から 30 秒以内なら no-op（連打防止）
+- `syncStatusStore.reconnectNonce` を increment すると `useFirebaseSync` の
+  `useEffect` が再実行 (unsub → 新 subscribe) する仕組み
+- `visibilitychange` (visible) と `online` イベントで `requestReconnect()` を呼ぶ
+- 過剰な再接続を抑える 2 段ガード:
+  - **Throttle**: 直近の resubscribe から 5 秒以内なら no-op
+  - **Hidden duration**: 短時間 (< 60 秒) の alt-tab では再接続しない。
+    ただし既に `syncError` が立っている場合は短時間でも再接続する
 - 副次効果: 再 subscribe 時に Firestore SDK は最新 doc を再送信するため
   `gameStateLoaded` も自動で再 true 化する
+- `online` イベントは頻繁に発火しないので duration ガードは不要、5 秒 throttle のみ
 
 ### 改善 2: render 中 `navigate` を排除し、`<Navigate>` 要素 / `useEffect` に置換
 

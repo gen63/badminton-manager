@@ -103,7 +103,7 @@ beforeEach(() => {
     practiceType: '複',
     prioritizeDiversity: false,
   });
-  useSyncStatusStore.setState({ isGameStateLoaded: false });
+  useSyncStatusStore.setState({ isGameStateLoaded: false, reconnectNonce: 0, syncError: null });
 });
 
 afterEach(() => {
@@ -360,6 +360,43 @@ describe('useFirebaseSync - 欠損フィールドのガード', () => {
     });
 
     expect(useSyncStatusStore.getState().isGameStateLoaded).toBe(true);
+  });
+});
+
+describe('useFirebaseSync - 再購読 (reconnect)', () => {
+  it('reconnectNonce を increment すると再購読する (unsub → 新 subscribe)', () => {
+    setSharedSession();
+    const { rerender } = renderHook(() => useFirebaseSync());
+
+    // 初回 subscribe
+    expect(mockOnSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockUnsub).not.toHaveBeenCalled();
+
+    // requestReconnect で nonce が +1
+    act(() => {
+      useSyncStatusStore.getState().requestReconnect();
+    });
+    rerender();
+
+    expect(mockUnsub).toHaveBeenCalledTimes(1);
+    expect(mockOnSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('再購読時に既存の syncError をクリアする (banner が消える)', () => {
+    setSharedSession();
+    const { rerender } = renderHook(() => useFirebaseSync());
+
+    act(() => {
+      useSyncStatusStore.getState().setSyncError('test error');
+    });
+    expect(useSyncStatusStore.getState().syncError).toBe('test error');
+
+    act(() => {
+      useSyncStatusStore.getState().requestReconnect();
+    });
+    rerender();
+
+    expect(useSyncStatusStore.getState().syncError).toBeNull();
   });
 });
 
