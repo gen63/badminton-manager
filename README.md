@@ -10,15 +10,17 @@
 
 #### セッション管理
 - ✅ **セッション作成** - コート数（1〜3）、点数（15/21）、ゲームモード（ダブルス/シングルス）を設定
-- ✅ **オンラインモード（Firebase）** - 6文字のセッションID生成、セッション一覧から共有、リアルタイム同期
+- ✅ **オンラインモード（Firebase）** - 6文字のセッションID生成、セッション一覧画面でアクティブセッションを共有、リアルタイム同期
 - ✅ **練習開始日時** - 曜日別デフォルト時刻（平日19時、土曜12時、日曜17時）、設定画面で変更可能
 - ✅ **参加者管理** - 複数行一括入力対応（改行区切り、レーティング・性別付き入力可）
-- ✅ **Google Sheets連携**
-  - GAS Web App URLを設定してメンバー情報を読み込み
-  - 読み込み成功時に自動的にセッション開始
-  - 履歴画面から試合結果をアップロード
+- ✅ **Google Sheets連携（試合・会計データの送信）**
+  - GAS Web App URL を設定して、履歴画面から試合結果をアップロード
+  - 会計画面から当日の収支データをアップロード
 - ✅ **チェックイン** - 全員休憩で開始、到着した人を待機に切り替え
+- ✅ **権限管理（クライアント側）** - 一般ユーザはコート増減・連続モード操作・参加者の休憩切替等を不可
+- ✅ **プレゼンス表示** - 接続中の参加者をヘッダにアイコン表示
 - ✅ **お知らせ機能** - 管理者アナウンス + 参加者の既読管理
+- ✅ **バグ報告機能** - メイン画面から Discord Webhook にテンプレ付き報告を送信
 - ✅ **オフライン対応** - Firestore SDK の IndexedDB cache で読み取り可（書き込みは復帰待ち）
 
 #### コート配置
@@ -39,19 +41,24 @@
 - ✅ **試合管理**
   - 試合開始・終了、リアルタイムタイマー表示
   - 試合終了後は自動的にプレイヤーが待機に戻る
+  - 終了直後の勝者選択モーダルは撤去、結果は履歴ページの「未入力」セクションから記録
 - ✅ **Undo/Redo** - 操作の取り消し・やり直し
 - ✅ **勝敗記録モード（設定画面で切替可能）**
   - **ON**: スコア入力画面でスコアを記録
-  - **OFF**: 試合終了時に勝者を選択（簡易モード）
+  - **OFF**: 勝者のみ選択（スコアはダミー値で保存）
 - ✅ **スコア入力**
   - 専用画面で0〜30点を選択
   - 設定点数付近（±2）をハイライト表示
   - バリデーション（同点禁止、設定点数以上必須、デュース時2点差必須）
+- ✅ **未入力試合プロンプト** - 次の試合を始める際に未入力試合があれば入力を促す
 
 #### 管理機能
-- ✅ **会計機能** - 収支管理、参加費・シャトル費用の記録
+- ✅ **会計機能** - 収支管理、参加費・シャトル費用の記録、運営協力割引、Sheetsアップロード
+  - シャトル使用数は会計ページから直接入力可能
+  - 運営協力割引は会計合計（収入側のマイナス）に反映
 - ✅ **試合履歴** - 連番付き全試合表示、編集・削除、クリップボードコピー、Sheetsアップロード
-- ✅ **ボトムナビゲーション** - 予約・プレイヤー・会計・履歴の4タブ
+  - 「自分の試合のみ」トグルで自分が参加した試合に絞り込み
+- ✅ **ボトムナビゲーション** - 予約・プレイヤー・会計・履歴の4タブ（履歴タブには未入力件数バッジ）
 
 #### UI/UX
 - ✅ **グレーベースのデザイン** - 背景薄グレー、カード白
@@ -122,9 +129,9 @@
   - lucide-react（アイコン）
 
 - **テスト**
-  - Vitest（Unit Test） - 103テストケース
+  - Vitest（Unit Test） - 約300テストケース
   - @testing-library/react（Reactコンポーネントテスト）
-  - Playwright（E2E Test） - 5シナリオ（手動実行）
+  - Playwright（E2E Test） - Firebase同期シナリオ（手動実行）
 
 - **デプロイ**
   - GitHub Pages
@@ -180,14 +187,16 @@ npm run test:ui
 npm run test:coverage
 ```
 
-**テスト内容:**
-- ✅ 配置アルゴリズム（35ケース） - `src/lib/algorithm.test.ts`
-- ✅ ユーティリティ（30ケース） - `src/lib/utils.test.ts`
-- ✅ 同期ロジック（17ケース） - `src/lib/syncUtils.test.ts`
-- ✅ セッション・お知らせ（17ケース） - `src/stores/sessionStore.test.ts`
-- ✅ 同期シナリオ（4ケース） - `src/hooks/useFirebaseSync.test.ts`
+**テスト内容（主なもの）:**
+- ✅ セッション書き込みトランザクション - `src/services/sessionMutations.test.ts`（約70ケース）
+- ✅ 配置アルゴリズム - `src/lib/algorithm.test.ts`（約36ケース）
+- ✅ ユーティリティ - `src/lib/utils.test.ts`（約31ケース）
+- ✅ セッション・お知らせ - `src/stores/sessionStore.test.ts`（約26ケース）
+- ✅ 会計計算 - `src/lib/accountingCalc.test.ts`（約23ケース）
+- ✅ 予約・試合フィルタ・ゲーム操作・入力検証・セッションアーカイブ
+- ✅ 同期シナリオ - `src/hooks/useFirebaseSync.test.ts`（約17ケース）
 
-**合計: 103テスト**
+**合計: 約300テスト（`src/` 配下）**
 
 詳細: `README_TESTS.md`
 
@@ -207,10 +216,8 @@ npm run test:e2e:ui
 ```
 
 **テスト内容:**
-- ✅ 2つのブラウザで同期動作を検証（5ケース）
-- ✅ タイムスタンプによる古いデータ拒否
-- ✅ 同時操作の競合解決
-- ✅ PWAとブラウザ間の同期
+- ✅ 2つのブラウザで Firebase 同期動作を検証
+- ✅ 競合解決・PWAとブラウザ間の同期
 
 詳細: `README_E2E.md`
 
@@ -227,6 +234,11 @@ git push origin master
 デプロイ進捗: https://github.com/gen63/badminton-manager/actions
 
 詳細な手順やチェックリストは `PROJECT.md` を参照してください。
+
+### 環境変数
+
+- `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_PROJECT_ID` 等 - Firestore 必須（未設定時は `requireDb()` でエラー）
+- `VITE_DISCORD_WEBHOOK_URL` - バグ報告機能の送信先（未設定時は送信エラーをトースト表示）
 
 ## 📱 使い方
 
@@ -271,6 +283,7 @@ git push origin master
 ### 3. 履歴画面
 
 - 連番付きで全試合を表示
+- **「自分の試合のみ」トグル** - 自分が参加した試合に絞り込み
 - **編集ボタン（✏️）** - スコアを編集
 - **削除ボタン（🗑️）** - 試合を削除（確認なし）
 - **コピーボタン** - 履歴をクリップボードにコピー
@@ -295,124 +308,151 @@ git push origin master
 badminton-manager/
 ├── src/
 │   ├── components/
-│   │   ├── BottomNav.tsx            # ボトムナビゲーション（4タブ）
-│   │   ├── CourtCard.tsx            # コートカード（タイマー付き）
-│   │   ├── CourtTimer.tsx           # コートタイマー（独立更新）
-│   │   ├── EmptyState.tsx           # 空状態表示
-│   │   ├── LoadingSpinner.tsx       # ローディング表示
-│   │   ├── PWAPrompt.tsx            # PWAインストールプロンプト
-│   │   ├── PaymentModal.tsx         # 支払い管理モーダル
-│   │   ├── PlayerSwapModal.tsx      # メンバー交換モーダル
-│   │   ├── ReservationAddModal.tsx  # 予約追加モーダル
-│   │   ├── ReservationModal.tsx     # 予約一覧モーダル
-│   │   ├── Toast.tsx                # トースト通知
-│   │   └── WinnerSelectModal.tsx    # 勝者選択モーダル
+│   │   ├── BottomNav.tsx              # ボトムナビゲーション（4タブ・未入力バッジ）
+│   │   ├── CourtCard.tsx              # コートカード（タイマー付き）
+│   │   ├── CourtTimer.tsx             # コートタイマー（独立更新）
+│   │   ├── EmptyState.tsx             # 空状態表示
+│   │   ├── ErrorBoundary.tsx          # 例外捕捉
+│   │   ├── FirebaseConfigBanner.tsx   # Firebase 未設定時の警告
+│   │   ├── FirebaseSyncMount.tsx      # onSnapshot 購読のマウント
+│   │   ├── LoadingSpinner.tsx         # ローディング表示
+│   │   ├── PWAPrompt.tsx              # PWAインストールプロンプト
+│   │   ├── PaymentModal.tsx           # 支払い管理モーダル
+│   │   ├── PlayerAddInput.tsx         # メイン画面のメンバー追加 input
+│   │   ├── PlayerEditModal.tsx        # プレイヤー編集モーダル
+│   │   ├── PlayerSwapModal.tsx        # メンバー交換モーダル
+│   │   ├── PresenceIndicator.tsx      # 接続中ユーザー表示
+│   │   ├── ReservationAddModal.tsx    # 予約追加モーダル
+│   │   ├── ReservationModal.tsx       # 予約一覧モーダル
+│   │   ├── ScoreInputModal.tsx        # スコア入力モーダル
+│   │   ├── SyncErrorBanner.tsx        # 同期エラー表示
+│   │   ├── Toast.tsx                  # トースト通知
+│   │   ├── UnrecordedMatchPrompt.tsx  # 未入力試合プロンプト
+│   │   └── WinnerSelectModal.tsx      # 勝者選択モーダル（記録OFFモード）
 │   ├── hooks/
-│   │   ├── useFirebaseSync.ts       # Firebase同期フック
-│   │   ├── useGameTimer.ts          # ゲームタイマーフック
-│   │   ├── useRealtimeSession.ts    # セッション状態監視フック
-│   │   └── useToast.ts              # トースト通知フック
+│   │   ├── useDevMode.ts              # dev mode 判定
+│   │   ├── useFirebaseSync.ts         # Firestore onSnapshot 購読
+│   │   ├── useGameTimer.ts            # ゲームタイマー
+│   │   ├── useGuardedAction.ts        # 連続クリック抑止
+│   │   ├── usePresence.ts             # プレゼンス送出
+│   │   ├── useSessionWriter.ts        # 書き込みラッパ（sessionMutations 呼び出し）
+│   │   ├── useSessionWriterToast.ts   # 書き込みラッパ + トースト
+│   │   └── useToast.ts                # トースト通知
 │   ├── lib/
-│   │   ├── algorithm.ts             # 配置アルゴリズム
-│   │   ├── firebase.ts              # Firebase初期化・設定
-│   │   ├── syncUtils.ts             # 同期ロジック（純粋関数）
-│   │   ├── utils.ts                 # ユーティリティ関数
-│   │   ├── errorHandler.ts          # エラーハンドリング
-│   │   └── sheetsApi.ts             # Google Sheets API連携（試合・会計データのアップロード）
+│   │   ├── accountingCalc.ts          # 会計計算
+│   │   ├── algorithm.ts               # 配置アルゴリズム
+│   │   ├── badge.ts                   # アプリアイコンバッジ
+│   │   ├── bugReport.ts               # Discord Webhook 送信
+│   │   ├── errorHandler.ts            # エラーハンドリング
+│   │   ├── firebase.ts                # Firebase初期化・設定
+│   │   ├── firestoreUtils.ts          # requireDb / 共通ヘルパー
+│   │   ├── gameOperations.ts          # ゲーム進行ロジック
+│   │   ├── inputValidation.ts         # 入力検証
+│   │   ├── legacyStorageMigration.ts  # 旧 localStorage 撤去
+│   │   ├── matchFilter.ts             # 試合フィルタ（自分の試合等）
+│   │   ├── notifications.ts           # ブラウザ通知
+│   │   ├── reservationUtils.ts        # 予約ロジック
+│   │   ├── sessionArchive.ts          # アーカイブ・日付フォーマット
+│   │   ├── sheetsApi.ts               # 試合・会計データの Sheets アップロード
+│   │   ├── unrecordedMatchPrompt.ts   # 未入力試合プロンプトロジック
+│   │   └── utils.ts                   # 共通ユーティリティ
 │   ├── pages/
-│   │   ├── SessionCreate.tsx        # セッション作成
-│   │   ├── SessionJoinPage.tsx      # オンラインセッション参加
-│   │   ├── MainPage.tsx             # メイン画面
-│   │   ├── PlayerSelect.tsx         # プレイヤー選択
-│   │   ├── ScoreInputPage.tsx       # スコア入力
-│   │   ├── HistoryPage.tsx          # 履歴
-│   │   ├── SettingsPage.tsx         # 設定
-│   │   ├── AccountingPage.tsx       # 会計管理
-│   │   └── ReservationPage.tsx      # 予約管理
+│   │   ├── AccountingCalcPage.tsx     # 会計計算
+│   │   ├── AccountingPage.tsx         # 会計管理
+│   │   ├── HistoryPage.tsx            # 履歴（自分の試合フィルタ付き）
+│   │   ├── MainPage.tsx               # メイン画面
+│   │   ├── PlayerSelect.tsx           # プレイヤー選択
+│   │   ├── ReservationPage.tsx        # 予約管理
+│   │   ├── ScoreInputPage.tsx         # スコア入力
+│   │   ├── SessionCreate.tsx          # セッション作成
+│   │   ├── SessionJoinPage.tsx        # セッション参加（名前選択）
+│   │   ├── SessionSelectPage.tsx      # アクティブセッション一覧
+│   │   └── SettingsPage.tsx           # 設定
 │   ├── services/
-│   │   └── sessionService.ts        # Firebaseセッション操作
+│   │   ├── sessionMutations.ts        # runTransaction による書き込み関数群
+│   │   └── sessionService.ts          # セッションの初期化・参照
 │   ├── stores/
-│   │   ├── sessionStore.ts          # セッション状態管理
-│   │   ├── playerStore.ts           # プレイヤー状態管理
-│   │   ├── gameStore.ts             # ゲーム進行管理
-│   │   ├── accountingStore.ts       # 会計データ管理
-│   │   ├── reservationStore.ts      # 予約状態管理
-│   │   ├── settingsStore.ts         # 設定管理
-│   │   └── undoStore.ts             # Undo/Redo管理
+│   │   ├── accountingStore.ts         # 会計データ管理（persist しない）
+│   │   ├── gameStore.ts               # ゲーム進行
+│   │   ├── playerStore.ts             # プレイヤー
+│   │   ├── presenceStore.ts           # プレゼンス
+│   │   ├── reservationStore.ts        # 予約
+│   │   ├── sessionStore.ts            # セッション（currentUser のみ persist）
+│   │   ├── settingsStore.ts           # 設定（端末ローカル設定のみ persist）
+│   │   ├── syncStatusStore.ts         # 同期状態
+│   │   ├── undoStore.ts               # Undo/Redo
+│   │   └── unrecordedDismissStore.ts  # 未入力試合プロンプトの dismiss
 │   └── types/
 │       ├── player.ts, court.ts, match.ts, session.ts
 │       ├── accounting.ts, reservation.ts, undo.ts
 │       └── ...
 ├── e2e/
-│   └── sync.spec.ts                 # Firebase同期E2Eテスト（5シナリオ）
-├── doc/                             # 初期設計仕様書（アーカイブ）
-├── docs/plans/                      # 設計ドキュメント・計画書
-├── README_TESTS.md                  # Unit Testガイド
-├── README_E2E.md                    # E2E Testガイド
+│   └── sync.spec.ts                   # Firebase同期E2Eテスト
+├── scripts/
+│   ├── auto-create-session.ts         # E-tomo 連携によるセッション自動作成
+│   ├── generate-icons.mjs             # アイコン生成
+│   └── simulate-court-assignment.ts   # 配置シミュレータ
+├── doc/                               # 初期設計仕様書（アーカイブ）
+├── docs/plans/                        # 設計ドキュメント・計画書
+├── README_TESTS.md                    # Unit Testガイド
+├── README_E2E.md                      # E2E Testガイド
 └── public/
-    └── manifest.json                # PWA設定
+    └── manifest.json                  # PWA設定
 ```
 
 ## 📋 実装済み機能一覧
 
 ### コア機能
-- ✅ セッション作成・管理（ローカル / オンライン）
-- ✅ オンラインモード（Firebase Firestore リアルタイム同期）
-- ✅ セッション共有（一覧画面で同一プロジェクトのアクティブセッションを共有）
-- ✅ 参加者管理（複数行入力 + メイン画面から追加）
+- ✅ セッション作成・管理（Firestore 一本化）
+- ✅ オンラインモード（Firebase Firestore リアルタイム同期、`runTransaction` 駆動）
+- ✅ セッション共有（一覧画面でアクティブセッションを共有）
+- ✅ 参加者管理（複数行入力 + メイン画面から追加 + プレイヤー編集モーダル）
 - ✅ Google Sheets連携（GAS経由で試合結果・会計データをアップロード）
 - ✅ 自動配置（ダブルス・シングルス対応）
 - ✅ 連続モード（自動配置＋自動開始）
 - ✅ 予約機能（1〜4人のコート予約キュー）
 - ✅ メンバー交換（待機中・休憩中含む）
 - ✅ ゲーム進行管理（タイマー、Undo/Redo）
-- ✅ スコア入力（専用画面）/ 勝者選択モーダル
-- ✅ 試合履歴・編集・削除・コピー
-- ✅ 会計機能（収支管理、参加費・シャトル費用記録）
+- ✅ スコア入力（専用画面 / モーダル）/ 勝者のみ記録モード
+- ✅ 未入力試合プロンプト
+- ✅ 試合履歴・編集・削除・コピー・「自分の試合のみ」フィルタ
+- ✅ 会計機能（収支管理、シャトル直接入力、運営協力割引、Sheets送信）
 - ✅ お知らせ機能（管理者アナウンス + 既読管理）
+- ✅ バグ報告機能（Discord Webhook）
+- ✅ プレゼンス表示（接続中ユーザー）
+- ✅ 一般ユーザの権限制限（コート増減・連続モード等は管理者のみ）
 
 ### UI/UX
-- ✅ ボトムナビゲーション（予約・プレイヤー・会計・履歴の4タブ）
+- ✅ ボトムナビゲーション（予約・プレイヤー・会計・履歴の4タブ・未入力件数バッジ）
 - ✅ グレーベースのモダンデザイン
 - ✅ モバイルファースト（44px+タッチターゲット、iOSセーフエリア）
 - ✅ PWA対応（Service Worker、自動更新、スプラッシュスクリーン）
 - ✅ GitHub Pagesデプロイ（GitHub Actions自動化）
 
 ### テスト（品質保証）
-- ✅ **Unit Test（103ケース）**
-  - 配置アルゴリズム（35）、ユーティリティ（30）、同期ロジック（17）
-  - セッション・お知らせ（17）、同期シナリオ（4）
-- ✅ **E2E Test（5シナリオ）** - Firebase同期の実動作検証
+- ✅ **Unit Test（約300ケース）**
+  - 書き込みトランザクション・配置アルゴリズム・会計・予約・試合フィルタ
+  - セッション/設定ストア・同期シナリオ・ゲーム操作・入力検証等
+- ✅ **E2E Test** - Firebase同期の実動作検証
 
 ## 🔜 今後の予定
 
-### Phase 1（セッション共有版）— 大部分実装済み
-- ✅ **Firebase Firestore連携** - セッション保存・読み込み
+### Phase 1（セッション共有版）— 実装済み
+- ✅ **Firebase Firestore連携** - セッション保存・読み込み（Firestore 一本化）
 - ✅ **リアルタイム同期** - 配置・スコア・状態変更を全員に即反映
-- ✅ **セッション共有（URL）** - 管理者がURL生成、参加者が入室
+- ✅ **セッション共有** - セッション一覧画面でアクティブセッションを共有
+- ✅ **一般ユーザの権限制限** - クライアント側で `isAdmin()` ベースの操作制限
 - ⏸️ セッション自動削除（48時間アクセスなし）— 未実装
 - ⏸️ FCM通知（試合開始・スコア未入力リマインダー）— 未実装
 
-## 🔐 Phase 1.5 予定（LINE認証追加）
+## 🔮 Phase 2 予定（サーバーサイド認証）
 
-**実装時期**: Phase 1の動作確認後
+**実装時期**: 必要に応じて。`docs/plans/<future>-firebase-auth.md` で別途設計。
 
-- 🔲 **LINE Login（管理者のみ）**
-  - セッション作成時にLINEログイン必須
-  - LINE UID による管理者判定（なりすまし防止）
-  - 参加者は認証不要（UX変化なし）
-
-### メリット
-- ✅ 管理者の本人確認
-- ✅ なりすまし防止
-- ✅ 参加者のUXは変わらず
-- ✅ 実装工数: 半日〜1日
-
-## 🔮 Phase 2 予定（権限管理強化版）
-
-**実装時期**: オンラインモードの実運用後、必要に応じて
-
-- 🔲 **サブ管理者機能（3段階権限）**
+- 🔲 **Firebase Anonymous Auth + UID ベース権限**
+  - クライアント側の名前比較を UID 比較に置き換え、なりすまし対策
+  - Firestore Security Rules をリポジトリ管理に
+- 🔲 **3段階権限（サブ管理者）**
   - 管理者: 全権限
   - サブ管理者: 配置・進行のみ
   - 一般参加者: スコア入力・自分の休憩のみ
@@ -431,8 +471,8 @@ Gen (@genzwift)
 
 ---
 
-**開発状況**: Firestore 一本化（Phase 1-7 リファクタ完了、ローカルモード廃止）
-**最終更新**: 2026-05-04
+**開発状況**: Firestore 一本化（Phase 1-7 リファクタ完了、ローカルモード廃止、localStorage 最小化済み）
+**最終更新**: 2026-05-11
 
 ## ⚠️ セキュリティと信頼モデル
 
