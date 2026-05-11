@@ -205,50 +205,43 @@ export function SessionSelectPage() {
                   onClick={() => navigate(`/session/${session.id}`)}
                   className="block w-full text-left p-4 transition-all duration-150 active:scale-[0.98]"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      {/* 1行目: 体育館 + 日付 + 練習種別 + 参加者数 + 試合数 */}
-                      <div className="flex items-center gap-x-2 gap-y-1 mb-1.5 flex-wrap">
-                        {session.config.gym && (
-                          <span className="flex items-center gap-1 text-sm font-semibold text-foreground">
-                            <MapPin size={14} className="text-primary flex-shrink-0" />
-                            {session.config.gym}
-                          </span>
-                        )}
-                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Calendar size={14} className="flex-shrink-0" />
-                          {formatSessionDate(session.config.practiceStartTime)}
+                  <div className="min-w-0">
+                    {/* 1行目: 体育館 + 日付 + 練習種別 + 参加者数 + 試合数 */}
+                    <div className="flex items-center gap-x-2 gap-y-1 mb-1.5 flex-wrap">
+                      {session.config.gym && (
+                        <span className="flex items-center gap-1 text-sm font-semibold text-foreground">
+                          <MapPin size={14} className="text-primary flex-shrink-0" />
+                          {session.config.gym}
                         </span>
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-semibold">
-                          {resolvePracticeTypeLabel(session)}
-                        </span>
+                      )}
+                      <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                        <Calendar size={14} className="flex-shrink-0" />
+                        {formatSessionDate(session.config.practiceStartTime)}
+                      </span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-semibold">
+                        {resolvePracticeTypeLabel(session)}
+                      </span>
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Users size={12} />
+                        {session.participants?.length ?? 0}名
+                      </span>
+                      {typeof session.matchCount === 'number' && session.matchCount > 0 && (
                         <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Users size={12} />
-                          {session.participants?.length ?? 0}名
+                          <Trophy size={12} />
+                          {session.matchCount}試合
                         </span>
-                        {typeof session.matchCount === 'number' && session.matchCount > 0 && (
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Trophy size={12} />
-                            {session.matchCount}試合
-                          </span>
-                        )}
-                      </div>
-
-                      {/* 2行目: メモ（周知事項の最初の1行） */}
-                      {session.information?.text?.trim() && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
-                          <StickyNote size={12} className="flex-shrink-0" />
-                          <span className="truncate">
-                            {session.information.text.split('\n')[0]}
-                          </span>
-                        </div>
                       )}
                     </div>
 
-                    {/* セッションID */}
-                    <div className="flex-shrink-0 bg-primary/10 text-primary text-[10px] font-semibold px-1.5 py-0.5 rounded-md">
-                      {session.id}
-                    </div>
+                    {/* 2行目: メモ（周知事項の最初の1行） */}
+                    {session.information?.text?.trim() && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+                        <StickyNote size={12} className="flex-shrink-0" />
+                        <span className="truncate">
+                          {session.information.text.split('\n')[0]}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </button>
 
