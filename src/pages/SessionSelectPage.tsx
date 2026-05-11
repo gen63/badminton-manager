@@ -206,8 +206,11 @@ export function SessionSelectPage() {
                   className="block w-full text-left p-4 transition-all duration-150 active:scale-[0.98]"
                 >
                   <div className="min-w-0">
-                    {/* 1行目: 体育館 + 日付 + 練習種別 + 参加者数 + 試合数 */}
+                    {/* 1行目: 練習種別 + 体育館 + 日付 + 参加者数 + 試合数 */}
                     <div className="flex items-center gap-x-2 gap-y-1 mb-1.5 flex-wrap">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-semibold">
+                        {resolvePracticeTypeLabel(session)}
+                      </span>
                       {session.config.gym && (
                         <span className="flex items-center gap-1 text-sm font-semibold text-foreground">
                           <MapPin size={14} className="text-primary flex-shrink-0" />
@@ -217,9 +220,6 @@ export function SessionSelectPage() {
                       <span className="flex items-center gap-1 text-sm text-muted-foreground">
                         <Calendar size={14} className="flex-shrink-0" />
                         {formatSessionDate(session.config.practiceStartTime)}
-                      </span>
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-semibold">
-                        {resolvePracticeTypeLabel(session)}
                       </span>
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Users size={12} />
