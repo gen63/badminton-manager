@@ -224,7 +224,7 @@ export function SessionSelectPage() {
                         </span>
                         <span className="flex items-center gap-0.5 text-xs text-muted-foreground flex-shrink-0">
                           <Users size={12} />
-                          {session.participants?.length ?? 0}名
+                          {session.paidCount ?? 0}名
                         </span>
                         {typeof session.matchCount === 'number' && session.matchCount > 0 && (
                           <span className="flex items-center gap-0.5 text-xs text-muted-foreground flex-shrink-0">

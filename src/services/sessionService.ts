@@ -61,8 +61,15 @@ function generateFirebaseSessionId(): string {
 /** Firestoreドキュメントからセッションを変換 */
 function docToSession(id: string, data: Record<string, unknown>): Session {
   const gameState = data.gameState as
-    | { matchHistory?: unknown[]; settings?: { practiceType?: '単' | '複' | '楽' } }
+    | {
+        matchHistory?: unknown[];
+        players?: Array<{ operationStatus?: { payment?: boolean } }>;
+        settings?: { practiceType?: '単' | '複' | '楽' };
+      }
     | undefined;
+  const paidCount = Array.isArray(gameState?.players)
+    ? gameState.players.filter((p) => p?.operationStatus?.payment === true).length
+    : 0;
   return {
     id,
     config: data.config as Session['config'],
@@ -82,6 +89,7 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     presence: data.presence as Session['presence'],
     firstMatchStartedAt: (data.firstMatchStartedAt as number | null | undefined) ?? null,
     matchCount: Array.isArray(gameState?.matchHistory) ? gameState.matchHistory.length : 0,
+    paidCount,
     practiceType: gameState?.settings?.practiceType,
   };
 }
