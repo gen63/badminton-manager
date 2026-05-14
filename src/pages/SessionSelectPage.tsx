@@ -201,62 +201,62 @@ export function SessionSelectPage() {
           <div className="space-y-3">
             {sessions.map((session) => (
               <div key={session.id} className="card overflow-hidden">
-                <button
-                  onClick={() => navigate(`/session/${session.id}`)}
-                  className="block w-full text-left p-4 transition-all duration-150 active:scale-[0.98]"
-                >
-                  <div className="min-w-0">
-                    {/* 1行目: 練習種別 + 体育館 + 日付 + 参加者数 + 試合数 */}
-                    <div className="flex items-center gap-x-2 gap-y-1 mb-1.5 flex-wrap">
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-semibold">
-                        {resolvePracticeTypeLabel(session)}
-                      </span>
-                      {session.config.gym && (
-                        <span className="flex items-center gap-1 text-sm font-semibold text-foreground">
-                          <MapPin size={14} className="text-primary flex-shrink-0" />
-                          {session.config.gym}
+                <div className="flex items-stretch">
+                  <button
+                    onClick={() => navigate(`/session/${session.id}`)}
+                    className="flex-1 min-w-0 text-left p-3 transition-all duration-150 active:scale-[0.98]"
+                  >
+                    <div className="min-w-0">
+                      {/* 1行目: 練習種別 + 体育館 + 日付 + 参加者数 + 試合数 */}
+                      <div className="flex items-center gap-x-1.5 mb-1.5 flex-nowrap min-w-0">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-semibold flex-shrink-0">
+                          {resolvePracticeTypeLabel(session)}
                         </span>
-                      )}
-                      <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Calendar size={14} className="flex-shrink-0" />
-                        {formatSessionDate(session.config.practiceStartTime)}
-                      </span>
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Users size={12} />
-                        {session.participants?.length ?? 0}名
-                      </span>
-                      {typeof session.matchCount === 'number' && session.matchCount > 0 && (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Trophy size={12} />
-                          {session.matchCount}試合
+                        {session.config.gym && (
+                          <span className="flex items-center gap-0.5 text-sm font-semibold text-foreground min-w-0">
+                            <MapPin size={12} className="text-primary flex-shrink-0" />
+                            <span className="truncate">{session.config.gym}</span>
+                          </span>
+                        )}
+                        <span className="flex items-center gap-0.5 text-xs text-muted-foreground flex-shrink-0">
+                          <Calendar size={12} className="flex-shrink-0" />
+                          {formatSessionDate(session.config.practiceStartTime)}
                         </span>
+                        <span className="flex items-center gap-0.5 text-xs text-muted-foreground flex-shrink-0">
+                          <Users size={12} />
+                          {session.participants?.length ?? 0}名
+                        </span>
+                        {typeof session.matchCount === 'number' && session.matchCount > 0 && (
+                          <span className="flex items-center gap-0.5 text-xs text-muted-foreground flex-shrink-0">
+                            <Trophy size={12} />
+                            {session.matchCount}試合
+                          </span>
+                        )}
+                      </div>
+
+                      {/* 2行目: メモ（周知事項の最初の1行） */}
+                      {session.information?.text?.trim() && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+                          <StickyNote size={12} className="flex-shrink-0" />
+                          <span className="truncate">
+                            {session.information.text.split('\n')[0]}
+                          </span>
+                        </div>
                       )}
                     </div>
+                  </button>
 
-                    {/* 2行目: メモ（周知事項の最初の1行） */}
-                    {session.information?.text?.trim() && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
-                        <StickyNote size={12} className="flex-shrink-0" />
-                        <span className="truncate">
-                          {session.information.text.split('\n')[0]}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </button>
-
-                {/* セッション情報を編集する導線（開発モード限定） */}
-                {devMode && (
-                  <div className="border-t border-border flex justify-end">
+                  {/* セッション情報を編集する導線（開発モード限定） */}
+                  {devMode && (
                     <button
                       onClick={() => openEdit(session)}
-                      className="text-xs text-primary inline-flex items-center gap-1 px-4 py-3 hover:bg-muted/50 transition-colors"
+                      className="text-primary px-3 hover:bg-muted/50 transition-colors flex-shrink-0 flex items-center"
+                      aria-label="編集"
                     >
-                      <Pencil size={12} />
-                      編集
+                      <Pencil size={16} />
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))}
           </div>
