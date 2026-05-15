@@ -63,13 +63,32 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
   const gameState = data.gameState as
     | {
         matchHistory?: unknown[];
-        players?: Array<{ operationStatus?: { payment?: boolean } }>;
+        players?: Player[];
         settings?: { practiceType?: '単' | '複' | '楽' };
       }
     | undefined;
   const paidCount = Array.isArray(gameState?.players)
     ? gameState.players.filter((p) => p?.operationStatus?.payment === true).length
     : 0;
+  const accounting = data.accounting as Session['accounting'];
+  let incomeTotal: number | undefined;
+  if (accounting) {
+    const players = gameState?.players ?? [];
+    // 運営協力割引（標準会費と実支払額の差額の合計）
+    let discount = 0;
+    for (const p of players) {
+      if (!p.operationStatus?.payment) continue;
+      const actual = p.paymentAmount ?? 0;
+      if (actual === 0) continue;
+      const expectedFee = p.gender === 'F' ? accounting.femaleFee : accounting.maleFee;
+      const diff = expectedFee - actual;
+      if (diff > 0) discount += diff;
+    }
+    const maleTotal = accounting.maleCount * accounting.maleFee;
+    const femaleTotal = accounting.femaleCount * accounting.femaleFee;
+    const otherAmount = accounting.otherAmount ?? 0;
+    incomeTotal = maleTotal + femaleTotal - discount + (otherAmount > 0 ? otherAmount : 0);
+  }
   return {
     id,
     config: data.config as Session['config'],
@@ -90,6 +109,7 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     firstMatchStartedAt: (data.firstMatchStartedAt as number | null | undefined) ?? null,
     matchCount: Array.isArray(gameState?.matchHistory) ? gameState.matchHistory.length : 0,
     paidCount,
+    incomeTotal,
     practiceType: gameState?.settings?.practiceType,
   };
 }

@@ -62,5 +62,6 @@ export interface Session {
   // 一覧表示用の派生フィールド（docToSession で gameState から抽出）
   matchCount?: number;
   paidCount?: number; // 支払い完了済みプレイヤー数（gameState.players から算出）
+  incomeTotal?: number; // 収入合計（運営協力割引・その他収入込み）。accounting 未設定なら undefined
   practiceType?: '単' | '複' | '楽';
 }
