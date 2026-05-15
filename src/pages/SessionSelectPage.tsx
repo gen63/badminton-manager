@@ -8,7 +8,7 @@ import { clearAppBadge } from '../lib/badge';
 import { useDevMode } from '../hooks/useDevMode';
 import { useSessionStore } from '../stores/sessionStore';
 import type { Session } from '../types/session';
-import { Loader2, Plus, Users, MapPin, Calendar, StickyNote, Pencil, X, Info } from 'lucide-react';
+import { Loader2, Plus, Users, MapPin, Calendar, Trophy, StickyNote, Pencil, X, Info } from 'lucide-react';
 
 type PracticeType = '単' | '複' | '楽';
 const PRACTICE_TYPES: readonly PracticeType[] = ['単', '複', '楽'];
@@ -197,17 +197,17 @@ export function SessionSelectPage() {
 
         {/* セッション一覧 */}
         {sessions.length > 0 ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {sessions.map((session) => (
               <div key={session.id} className="card overflow-hidden">
                 <div className="flex items-stretch">
                   <button
                     onClick={() => navigate(`/session/${session.id}`)}
-                    className="flex-1 min-w-0 text-left p-3 transition-all duration-150 active:scale-[0.98]"
+                    className="flex-1 min-w-0 text-left px-3 py-2.5 transition-all duration-150 active:scale-[0.98]"
                   >
                     <div className="min-w-0">
-                      {/* 1行目: 練習種別 + 日付 + 参加者数 + 体育館 (+ 開発モード時 収入合計) */}
-                      <div className="flex items-center gap-x-1.5 mb-1.5 flex-nowrap min-w-0">
+                      {/* 1行目: 練習種別 + 日付 + 参加者数 + 体育館 + 試合数 (+ 開発モード時 収入合計) */}
+                      <div className="flex items-center gap-x-1 flex-nowrap min-w-0">
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-semibold flex-shrink-0">
                           {resolvePracticeTypeLabel(session)}
                         </span>
@@ -225,9 +225,15 @@ export function SessionSelectPage() {
                           <span className="inline-block min-w-[1.75rem]">{session.paidCount ?? 0}名</span>
                         </span>
                         {session.config.gym && (
-                          <span className="flex items-center gap-0.5 text-sm font-semibold text-foreground min-w-0">
+                          <span className="flex items-center gap-0.5 text-sm font-semibold text-foreground min-w-[3.5rem]">
                             <MapPin size={12} className="text-primary flex-shrink-0" />
                             <span className="truncate">{session.config.gym}</span>
+                          </span>
+                        )}
+                        {typeof session.matchCount === 'number' && session.matchCount > 0 && (
+                          <span className="flex items-center gap-0.5 text-xs text-muted-foreground flex-shrink-0 tabular-nums">
+                            <Trophy size={12} />
+                            {session.matchCount}試合
                           </span>
                         )}
                         {devMode && typeof session.incomeTotal === 'number' && (
@@ -238,9 +244,9 @@ export function SessionSelectPage() {
                         )}
                       </div>
 
-                      {/* 2行目: メモ（周知事項の最初の1行） */}
+                      {/* 2行目: メモ（周知事項の最初の1行）— あるときだけ表示し、上に余白を入れる */}
                       {session.information?.text?.trim() && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+                        <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground min-w-0">
                           <StickyNote size={12} className="flex-shrink-0" />
                           <span className="truncate">
                             {session.information.text.split('\n')[0]}
