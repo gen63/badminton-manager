@@ -206,7 +206,7 @@ export function SessionSelectPage() {
                     className="flex-1 min-w-0 text-left p-3 transition-all duration-150 active:scale-[0.98]"
                   >
                     <div className="min-w-0">
-                      {/* 1行目: 練習種別 + 体育館 + 日付 + 参加者数 + 試合数 */}
+                      {/* 1行目: 練習種別 + 日付 + 体育館 + 参加者数 + 試合数 (+ 開発モード時 収入合計) */}
                       <div className="flex items-center gap-x-1.5 mb-1.5 flex-nowrap min-w-0">
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-semibold flex-shrink-0">
                           {resolvePracticeTypeLabel(session)}

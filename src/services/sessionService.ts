@@ -74,18 +74,20 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
   let incomeTotal: number | undefined;
   if (accounting) {
     const players = gameState?.players ?? [];
+    const maleFee = accounting.maleFee ?? 0;
+    const femaleFee = accounting.femaleFee ?? 0;
     // 運営協力割引（標準会費と実支払額の差額の合計）
     let discount = 0;
     for (const p of players) {
-      if (!p.operationStatus?.payment) continue;
+      if (!p?.operationStatus?.payment) continue;
       const actual = p.paymentAmount ?? 0;
       if (actual === 0) continue;
-      const expectedFee = p.gender === 'F' ? accounting.femaleFee : accounting.maleFee;
+      const expectedFee = p.gender === 'F' ? femaleFee : maleFee;
       const diff = expectedFee - actual;
       if (diff > 0) discount += diff;
     }
-    const maleTotal = accounting.maleCount * accounting.maleFee;
-    const femaleTotal = accounting.femaleCount * accounting.femaleFee;
+    const maleTotal = (accounting.maleCount ?? 0) * maleFee;
+    const femaleTotal = (accounting.femaleCount ?? 0) * femaleFee;
     const otherAmount = accounting.otherAmount ?? 0;
     incomeTotal = maleTotal + femaleTotal - discount + (otherAmount > 0 ? otherAmount : 0);
   }
