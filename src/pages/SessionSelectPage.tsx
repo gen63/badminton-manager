@@ -13,14 +13,13 @@ import { Loader2, Plus, Users, MapPin, Calendar, Trophy, StickyNote, Pencil, X, 
 type PracticeType = '単' | '複' | '楽';
 const PRACTICE_TYPES: readonly PracticeType[] = ['単', '複', '楽'];
 
-/** 日付をフォーマット（4/16(水)） */
-function formatSessionDate(practiceStartTime: number): string {
+/** 日付をフォーマット（M/D と曜日に分割。M/D は min-width で 4 文字分相当を確保） */
+function formatSessionDate(practiceStartTime: number): { md: string; weekday: string } {
   const date = new Date(practiceStartTime);
   const month = date.getMonth() + 1;
   const day = date.getDate();
   const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
-  const weekday = weekdays[date.getDay()];
-  return `${month}/${day}(${weekday})`;
+  return { md: `${month}/${day}`, weekday: weekdays[date.getDay()] };
 }
 
 /**
@@ -207,21 +206,27 @@ export function SessionSelectPage() {
                     className="flex-1 min-w-0 text-left p-3 transition-all duration-150 active:scale-[0.98]"
                   >
                     <div className="min-w-0">
-                      {/* 1行目: 練習種別 + 体育館 + 日付 + 参加者数 + 試合数 */}
+                      {/* 1行目: 練習種別 + 日付 + 体育館 + 参加者数 + 試合数 (+ 開発モード時 収入合計) */}
                       <div className="flex items-center gap-x-1.5 mb-1.5 flex-nowrap min-w-0">
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-semibold flex-shrink-0">
                           {resolvePracticeTypeLabel(session)}
                         </span>
+                        {(() => {
+                          const d = formatSessionDate(session.config.practiceStartTime);
+                          return (
+                            <span className="flex items-center gap-0.5 text-xs text-muted-foreground flex-shrink-0 tabular-nums">
+                              <Calendar size={12} className="flex-shrink-0" />
+                              <span className="inline-block min-w-[1.75rem]">{d.md}</span>
+                              <span>({d.weekday})</span>
+                            </span>
+                          );
+                        })()}
                         {session.config.gym && (
                           <span className="flex items-center gap-0.5 text-sm font-semibold text-foreground min-w-0">
                             <MapPin size={12} className="text-primary flex-shrink-0" />
                             <span className="truncate">{session.config.gym}</span>
                           </span>
                         )}
-                        <span className="flex items-center gap-0.5 text-xs text-muted-foreground flex-shrink-0">
-                          <Calendar size={12} className="flex-shrink-0" />
-                          {formatSessionDate(session.config.practiceStartTime)}
-                        </span>
                         <span className="flex items-center gap-0.5 text-xs text-muted-foreground flex-shrink-0">
                           <Users size={12} />
                           {session.paidCount ?? 0}名
@@ -230,6 +235,12 @@ export function SessionSelectPage() {
                           <span className="flex items-center gap-0.5 text-xs text-muted-foreground flex-shrink-0">
                             <Trophy size={12} />
                             {session.matchCount}試合
+                          </span>
+                        )}
+                        {devMode && typeof session.incomeTotal === 'number' && (
+                          <span className="flex items-center gap-0.5 text-xs text-muted-foreground flex-shrink-0 tabular-nums">
+                            <span>💵</span>
+                            {session.incomeTotal.toLocaleString()}
                           </span>
                         )}
                       </div>
