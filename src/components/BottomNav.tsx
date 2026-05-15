@@ -6,6 +6,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { isMatchOfPlayer } from '../lib/matchFilter';
 import { useToast } from '../hooks/useToast';
+import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from './Toast';
 
 type TabId = 'reservation' | 'court' | 'players' | 'accounting' | 'history';
@@ -53,8 +54,9 @@ export function BottomNav({ activeTab }: BottomNavProps) {
   }).length;
 
   // PWA判定
-  const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
+  const isPWA = window.matchMedia('(display-mode: standalone)').matches ||
                 (navigator as Navigator & { standalone?: boolean }).standalone;
+  const isDev = useDevMode();
 
   const allTabs: { id: TabId; label: string; icon: typeof CalendarCheck; path: string }[] = [
     { id: 'court', label: 'メイン', icon: LayoutGrid, path: '/main' },
@@ -69,8 +71,8 @@ export function BottomNav({ activeTab }: BottomNavProps) {
   const handleTabClick = (tab: (typeof tabs)[number]) => {
     if (tab.id === activeTab) return;
 
-    // オンラインセッション + ブラウザの場合、試合予約はPWA専用
-    if (tab.id === 'reservation' && session?.createdBy && !isPWA) {
+    // オンラインセッション + ブラウザの場合、試合予約はPWA専用 (devモードはバイパス)
+    if (tab.id === 'reservation' && session?.createdBy && !isPWA && !isDev) {
       toast.warning('試合予約はPWAアプリ専用機能です', 1000);
       return;
     }
