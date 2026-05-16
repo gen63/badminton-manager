@@ -22,20 +22,14 @@ export function ScoreInputPage() {
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
   
-  // SCORE1 fix: 編集モードでは既存スコアを初期値に。新規記録（scoreA=0,
-  // scoreB=0, winner なし）の場合は空からスタート。
-  const hasExistingScore =
-    !!match && !(match.scoreA === 0 && match.scoreB === 0 && !match.winner);
-  // 履歴と同じく勝者を左に表示する。winner が無い（未入力）場合は teamA を左。
+  // 開いた時は常に空からスタート（履歴からの編集は「訂正」前提のため、
+  // 既存スコアを残すと一部の数字だけ上書きする操作が分かりにくい）。
+  // 視覚的なレイアウト（左右の入れ替え）は履歴と揃えるため、既存の winner
+  // を見て swap だけ初期化する。
   const swap = match?.winner === 'B';
-  const [scoreA, setScoreA] = useState(() => match?.scoreA ?? 0);
-  const [scoreB, setScoreB] = useState(() => match?.scoreB ?? 0);
-  const [inputHistory, setInputHistory] = useState<string[]>(() => {
-    if (!hasExistingScore) return [];
-    const leftStr = String(swap ? match!.scoreB : match!.scoreA);
-    const rightStr = String(swap ? match!.scoreA : match!.scoreB);
-    return [leftStr, rightStr];
-  });
+  const [scoreA, setScoreA] = useState(0);
+  const [scoreB, setScoreB] = useState(0);
+  const [inputHistory, setInputHistory] = useState<string[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<{
     position: number;
   } | null>(null);
