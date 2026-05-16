@@ -366,26 +366,58 @@ export function subscribeToGameState(
   );
 }
 
+/** 最近アクティブなセッション一覧クエリを構築する（list/subscribe で共有） */
+function recentActiveSessionsQuery(count: number) {
+  const _db = requireDb();
+  // NOTE: statusフィルターなし（現状セッション終了機能が未実装のため全セッションがactive）
+  // 単一フィールドorderByのみで複合インデックス不要
+  // 12h自動アーカイブ判定はクライアント側でフィルタ（Firestore OR queryを避けるため）
+  return query(
+    collection(_db, 'sessions'),
+    orderBy('updatedAt', 'desc'),
+    limit(count),
+  );
+}
+
+/** snapshot 配列から表示用セッション配列を作る（filter + practiceStartTime 降順） */
+function mapSnapshotToSessions(
+  docs: { id: string; data: () => Record<string, unknown> }[],
+  includeArchived: boolean,
+): Session[] {
+  const sessions = docs.map((snap) => docToSession(snap.id, snap.data()));
+  const filtered = includeArchived ? sessions : sessions.filter((s) => isSessionVisible(s));
+  return filtered.sort((a, b) => b.config.practiceStartTime - a.config.practiceStartTime);
+}
+
 /** 最近アクティブなセッションを取得（最大count件、updatedAt降順） */
 export async function listRecentActiveSessions(
   count = 50,
   options?: { includeArchived?: boolean },
 ): Promise<Session[]> {
-  const _db = requireDb();
+  const snapshot = await getDocs(recentActiveSessionsQuery(count));
+  return mapSnapshotToSessions(snapshot.docs, options?.includeArchived === true);
+}
 
-  // NOTE: statusフィルターなし（現状セッション終了機能が未実装のため全セッションがactive）
-  // 単一フィールドorderByのみで複合インデックス不要
-  // 12h自動アーカイブ判定はクライアント側でフィルタ（Firestore OR queryを避けるため）
-  const q = query(
-    collection(_db, 'sessions'),
-    orderBy('updatedAt', 'desc'),
-    limit(count),
+/**
+ * 最近アクティブなセッション一覧をリアルタイム購読する。
+ * 一覧画面を開きっぱなしのときに新規セッション作成や情報更新を検知するため使う。
+ */
+export function subscribeToRecentActiveSessions(
+  count: number,
+  options: { includeArchived?: boolean },
+  onData: (sessions: Session[]) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  return onSnapshot(
+    recentActiveSessionsQuery(count),
+    (snap) => {
+      onData(mapSnapshotToSessions(snap.docs, options.includeArchived === true));
+    },
+    (error) => {
+      console.error('Recent sessions subscription error:', error);
+      onError?.(error);
+    },
   );
-
-  const snapshot = await getDocs(q);
-  const sessions = snapshot.docs.map((snap) => docToSession(snap.id, snap.data()));
-  const filtered = options?.includeArchived ? sessions : sessions.filter((s) => isSessionVisible(s));
-  return filtered.sort((a, b) => b.config.practiceStartTime - a.config.practiceStartTime);
 }
 
 /** セッションを削除（Firestoreドキュメントを完全削除） */
