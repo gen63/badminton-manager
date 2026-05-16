@@ -22,15 +22,14 @@ export function ScoreInputPage() {
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
   
-  // SCORE1 fix: 編集モードでは既存スコアを初期値に。新規記録（scoreA=0,
-  // scoreB=0, winner なし）の場合は空からスタート。
-  const hasExistingScore =
-    !!match && !(match.scoreA === 0 && match.scoreB === 0 && !match.winner);
-  const [scoreA, setScoreA] = useState(() => match?.scoreA ?? 0);
-  const [scoreB, setScoreB] = useState(() => match?.scoreB ?? 0);
-  const [inputHistory, setInputHistory] = useState<string[]>(() =>
-    hasExistingScore ? [String(match!.scoreA), String(match!.scoreB)] : [],
-  );
+  // 開いた時は常に空からスタート（履歴からの編集は「訂正」前提のため、
+  // 既存スコアを残すと一部の数字だけ上書きする操作が分かりにくい）。
+  // 視覚的なレイアウト（左右の入れ替え）は履歴と揃えるため、既存の winner
+  // を見て swap だけ初期化する。
+  const swap = match?.winner === 'B';
+  const [scoreA, setScoreA] = useState(0);
+  const [scoreB, setScoreB] = useState(0);
+  const [inputHistory, setInputHistory] = useState<string[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<{
     position: number;
   } | null>(null);
@@ -41,6 +40,8 @@ export function ScoreInputPage() {
   }
 
   const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
+  const leftScore = swap ? scoreB : scoreA;
+  const rightScore = swap ? scoreA : scoreB;
 
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '未設定';
@@ -82,10 +83,12 @@ export function ScoreInputPage() {
 
   const handleNumberClick = (num: number) => {
     if (inputHistory.length === 0) {
-      setScoreA(num);
+      if (swap) setScoreB(num);
+      else setScoreA(num);
       setInputHistory([`${num}`]);
     } else if (inputHistory.length === 1) {
-      setScoreB(num);
+      if (swap) setScoreA(num);
+      else setScoreB(num);
       setInputHistory([...inputHistory, `${num}`]);
     }
   };
@@ -166,88 +169,50 @@ export function ScoreInputPage() {
             </div>
           )}
 
-          {isMatchSingles ? (
-            /* シングルス: A vs B */
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3">
+          {(() => {
+            const renderPlayerButton = (position: number, playerId: string) => (
               <button
-                onClick={() => handlePlayerTap(0)}
+                onClick={() => handlePlayerTap(position)}
                 className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                  selectedPlayer?.position === 0
+                  selectedPlayer?.position === position
                     ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
                     : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
                 }`}
               >
-                {getPlayerName(match.teamA[0])}
+                {getPlayerName(playerId)}
               </button>
+            );
 
-              <span className="text-muted-foreground font-bold text-xs self-center">VS</span>
+            // position 0=teamA[0], 1=teamA[1], 2=teamB[0], 3=teamB[1]
+            // swap が true の時は teamB を左に表示する
+            const leftTop = swap ? 2 : 0;
+            const leftBottom = swap ? 3 : 1;
+            const rightTop = swap ? 0 : 2;
+            const rightBottom = swap ? 1 : 3;
+            const playerIdAt = (pos: number) =>
+              pos === 0 ? match.teamA[0]
+                : pos === 1 ? match.teamA[1]
+                : pos === 2 ? match.teamB[0]
+                : match.teamB[1];
 
-              <button
-                onClick={() => handlePlayerTap(1)}
-                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                  selectedPlayer?.position === 1
-                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
-                }`}
-              >
-                {getPlayerName(match.teamB[0])}
-              </button>
-            </div>
-          ) : (
-            /* ダブルス: A,B vs C,D */
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3 gap-y-1.5">
-              {/* A */}
-              <button
-                onClick={() => handlePlayerTap(0)}
-                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                  selectedPlayer?.position === 0
-                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
-                }`}
-              >
-                {getPlayerName(match.teamA[0])}
-              </button>
-
-              {/* VS */}
-              <span className="text-muted-foreground font-bold text-xs row-span-2 self-center">VS</span>
-
-              {/* C */}
-              <button
-                onClick={() => handlePlayerTap(2)}
-                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                  selectedPlayer?.position === 2
-                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
-                }`}
-              >
-                {getPlayerName(match.teamB[0])}
-              </button>
-
-              {/* B */}
-              <button
-                onClick={() => handlePlayerTap(1)}
-                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                  selectedPlayer?.position === 1
-                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
-                }`}
-              >
-                {getPlayerName(match.teamA[1])}
-              </button>
-
-              {/* D */}
-              <button
-                onClick={() => handlePlayerTap(3)}
-                className={`min-h-[40px] p-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                  selectedPlayer?.position === 3
-                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 scale-105'
-                    : 'bg-card border border-border text-foreground hover:border-gray-300 active:bg-muted active:scale-[0.98]'
-                }`}
-              >
-                {getPlayerName(match.teamB[1])}
-              </button>
-            </div>
-          )}
+            return isMatchSingles ? (
+              /* シングルス: 勝者 vs 敗者 */
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3">
+                {renderPlayerButton(leftTop, playerIdAt(leftTop))}
+                <span className="text-muted-foreground font-bold text-xs self-center">VS</span>
+                {renderPlayerButton(rightTop, playerIdAt(rightTop))}
+              </div>
+            ) : (
+              /* ダブルス: 勝者ペア vs 敗者ペア */
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3 gap-y-1.5">
+                {renderPlayerButton(leftTop, playerIdAt(leftTop))}
+                <span className="text-muted-foreground font-bold text-xs row-span-2 self-center">VS</span>
+                {renderPlayerButton(rightTop, playerIdAt(rightTop))}
+                {renderPlayerButton(leftBottom, playerIdAt(leftBottom))}
+                {renderPlayerButton(rightBottom, playerIdAt(rightBottom))}
+              </div>
+            );
+          })()}
         </div>
 
         {/* スコア表示 */}
@@ -256,11 +221,11 @@ export function ScoreInputPage() {
             <div className="text-2xl font-bold text-foreground">
               {inputHistory.length > 0 ? (
                 <>
-                  <span className="text-indigo-500">{scoreA}</span>
+                  <span className="text-indigo-500">{leftScore}</span>
                   {inputHistory.length === 2 && (
                     <>
                       <span className="text-muted-foreground mx-4">-</span>
-                      <span className="text-indigo-500">{scoreB}</span>
+                      <span className="text-indigo-500">{rightScore}</span>
                     </>
                   )}
                   {inputHistory.length === 1 && (
