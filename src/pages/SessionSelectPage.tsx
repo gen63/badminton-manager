@@ -136,11 +136,11 @@ export function SessionSelectPage() {
   }, []);
 
   // セッション一覧をリアルタイム購読（一覧画面を開いている間に新規作成された
-  // セッションも自動で表示する）
+  // セッションも自動で表示する）。devMode 切替時はローダーに戻さず、新しい
+  // snapshot が届くまでは旧リストをそのまま表示する。
   useEffect(() => {
     if (!isFirebaseConfigured()) return;
 
-    setLoading(true);
     const unsubscribe = subscribeToRecentActiveSessions(
       50,
       { includeArchived: devMode },
