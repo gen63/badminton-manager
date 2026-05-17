@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { deleteField } from 'firebase/firestore';
 import { isFirebaseConfigured } from '../lib/firebase';
-import { listRecentActiveSessions, updateSession } from '../services/sessionService';
+import { subscribeToRecentActiveSessions, updateSession } from '../services/sessionService';
 import { setPracticeType as setPracticeTypeMutation } from '../services/sessionMutations';
 import { clearAppBadge } from '../lib/badge';
 import { useDevMode } from '../hooks/useDevMode';
@@ -135,30 +135,26 @@ export function SessionSelectPage() {
     clearAppBadge();
   }, []);
 
-  // セッション一覧を取得
+  // セッション一覧をリアルタイム購読（一覧画面を開いている間に新規作成された
+  // セッションも自動で表示する）。devMode 切替時はローダーに戻さず、新しい
+  // snapshot が届くまでは旧リストをそのまま表示する。
   useEffect(() => {
     if (!isFirebaseConfigured()) return;
 
-    // SESSION1 fix: devMode 切替中に古い fetch が後から resolve すると
-    // 新リストを上書きしてしまうので cancelled フラグで遮断する。
-    let cancelled = false;
-    listRecentActiveSessions(50, { includeArchived: devMode })
-      .then((data) => {
-        if (cancelled) return;
+    const unsubscribe = subscribeToRecentActiveSessions(
+      50,
+      { includeArchived: devMode },
+      (data) => {
         setSessions(data);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error('[SessionSelect] Failed to fetch sessions:', err);
-        setError('セッション一覧の取得に失敗しました');
-      })
-      .finally(() => {
-        if (cancelled) return;
         setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      },
+      (err) => {
+        console.error('[SessionSelect] Failed to subscribe to sessions:', err);
+        setError('セッション一覧の取得に失敗しました');
+        setLoading(false);
+      },
+    );
+    return unsubscribe;
   }, [devMode]);
 
   // Firebase未設定時はローカルモードにリダイレクト（レンダーで即時、フラッシュなし）

@@ -18,7 +18,6 @@ import {
   query,
   orderBy,
   limit,
-  getDocs,
   FieldPath,
   deleteField,
 } from 'firebase/firestore';
@@ -366,26 +365,39 @@ export function subscribeToGameState(
   );
 }
 
-/** 最近アクティブなセッションを取得（最大count件、updatedAt降順） */
-export async function listRecentActiveSessions(
-  count = 50,
-  options?: { includeArchived?: boolean },
-): Promise<Session[]> {
+/**
+ * 最近アクティブなセッション一覧をリアルタイム購読する（updatedAt 降順、
+ * 最大 count 件）。一覧画面を開きっぱなしのときに新規作成・情報更新を検知する。
+ *
+ * - status フィルターなし（現状セッション終了機能が未実装で全セッションが active）
+ * - 単一フィールド orderBy のみで複合インデックス不要
+ * - 12h 自動アーカイブ判定はクライアント側でフィルタ（Firestore OR query を避ける）
+ */
+export function subscribeToRecentActiveSessions(
+  count: number,
+  options: { includeArchived?: boolean },
+  onData: (sessions: Session[]) => void,
+  onError?: (error: Error) => void,
+): () => void {
   const _db = requireDb();
-
-  // NOTE: statusフィルターなし（現状セッション終了機能が未実装のため全セッションがactive）
-  // 単一フィールドorderByのみで複合インデックス不要
-  // 12h自動アーカイブ判定はクライアント側でフィルタ（Firestore OR queryを避けるため）
   const q = query(
     collection(_db, 'sessions'),
     orderBy('updatedAt', 'desc'),
     limit(count),
   );
-
-  const snapshot = await getDocs(q);
-  const sessions = snapshot.docs.map((snap) => docToSession(snap.id, snap.data()));
-  const filtered = options?.includeArchived ? sessions : sessions.filter((s) => isSessionVisible(s));
-  return filtered.sort((a, b) => b.config.practiceStartTime - a.config.practiceStartTime);
+  const includeArchived = options.includeArchived === true;
+  return onSnapshot(
+    q,
+    (snap) => {
+      const sessions = snap.docs.map((d) => docToSession(d.id, d.data()));
+      const filtered = includeArchived ? sessions : sessions.filter((s) => isSessionVisible(s));
+      onData(filtered.sort((a, b) => b.config.practiceStartTime - a.config.practiceStartTime));
+    },
+    (error) => {
+      console.error('Recent sessions subscription error:', error);
+      onError?.(error);
+    },
+  );
 }
 
 /** セッションを削除（Firestoreドキュメントを完全削除） */
