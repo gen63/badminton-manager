@@ -1,12 +1,12 @@
-# iPhone レイアウト微調整 — SessionSelectPage + 共通 CSS クラス定義
+# iPhone レイアウト微調整 + 未定義 CSS クラスの全削除
 
 ## 背景
 
 iPhone (13:34, 状態バー込み) のスクショレビューで以下の問題を確認:
 
-1. **`bg-app` / `header-gradient` が未定義** — 10+ ページで使われているが
-   `src/index.css` に定義がなく、すべて no-op (背景は `--color-background`
-   フォールバック、ヘッダーに視覚的区切りなし)
+1. **`bg-app` / `header-gradient` / `btn-warning` / `icon-btn` /
+   `player-pill*` / `player-name-court` が未定義** — `src/index.css` に
+   定義がなく、すべて no-op
 2. **`max-w-6xl` と `max-w-md` の不一致** — `SessionSelectPage.tsx:181` の
    ヘッダー内側 `max-w-6xl` (1152px) は本体 `max-w-md` (448px) と不整合
 3. **セーフエリア未対応** — `viewport-fit=cover` 設定済みなのに
@@ -16,29 +16,36 @@ iPhone (13:34, 状態バー込み) のスクショレビューで以下の問題
 
 ## 設計
 
-### `src/index.css` への追加 (`@layer components`)
+### `src/index.css` の変更
+
+未定義クラスは定義せず、`body` に背景色を集約:
 
 ```css
-.bg-app {
+body {
   background-color: var(--color-background);
   min-height: 100dvh;
 }
-
-.header-gradient {
-  background: linear-gradient(180deg, var(--color-card) 0%, var(--color-background) 100%);
-  border-bottom: 1px solid var(--color-border);
-}
 ```
 
-- `bg-app`: DESIGN.md の Level 0 (plain background) に準拠。`min-height: 100dvh`
-  で動的ビューポート (iOS Safari のアドレスバー伸縮) に追従。
-- `header-gradient`: 既存パレットから派生した極めて淡いグラデ +
-  下罫線で、ヘッダーと本体に視覚的区切りを作る。iOS の navbar 感に近い。
-  primary blue ではなく中性色を選んだのは、各ページの主役カラーを邪魔しないため。
+- `min-height: 100dvh` で iOS Safari のアドレスバー伸縮にも追従。
+- `bg-app` を全 .tsx から削除しても、`body` が常に `--color-background` を
+  描画するため見た目は変わらない。
+- `header-gradient` はクラス自体を削除。ヘッダーと本体が同色 (背景) で
+  繋がるが、これは元の no-op 状態と同じ視覚 (ユーザー運用で問題なし)。
 
-**影響範囲**: `bg-app` / `header-gradient` を使う全ページ (Session*, History,
-Reservation, Accounting*, PlayerSelect, Settings 等) で見た目が変わるが、
-いずれも改善方向 (区切りが明確になる、背景が安定する)。
+### 未定義クラスの一括削除
+
+| クラス | 出現箇所 | 対応 |
+|--------|----------|------|
+| `bg-app` | App / ErrorBoundary / Settings / SessionSelect / History / Reservation / SessionJoin / AccountingCalc / SessionCreate / Accounting / PlayerSelect | className から削除 (`body` で代替) |
+| `header-gradient` | Settings / SessionSelect / History / Reservation / AccountingCalc / SessionCreate / Accounting / PlayerSelect | 削除 |
+| `btn-warning` | CourtCard:205 (終了ボタン) | 削除 |
+| `icon-btn` | History:336,344 / Settings:238 | 削除 |
+| `player-pill*` / `player-name-court` | CourtCard:49-57 | 削除 |
+
+副作用として `CourtCard` の `gender` 変数が未使用になるため、
+`getPlayerGender` の destructure 除去 (interface は optional のまま残し
+呼び出し側互換は維持)。
 
 ### `src/pages/SessionSelectPage.tsx` の修正
 

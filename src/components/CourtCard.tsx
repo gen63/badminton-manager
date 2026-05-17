@@ -31,7 +31,7 @@ interface PlayerPillProps {
   onClearSelection: () => void;
 }
 
-function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, getPlayerGamesPlayed, getPlayerGender, onPlayerTap, onClearSelection }: PlayerPillProps) {
+function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, getPlayerGamesPlayed, onPlayerTap, onClearSelection }: PlayerPillProps) {
   if (!playerId) {
     return (
       <div className="h-9 bg-gradient-to-r from-gray-50 to-gray-100 rounded border border-dashed border-border" />
@@ -41,20 +41,14 @@ function PlayerPill({ playerId, position, selectedPlayerId, getPlayerName, getPl
   const isSelected = selectedPlayerId === playerId;
   const name = getPlayerName(playerId);
   const gamesPlayed = getPlayerGamesPlayed(playerId);
-  const gender = getPlayerGender?.(playerId);
 
   return (
     <div
       onClick={() => onPlayerTap(playerId, position)}
-      className={`player-pill h-9 cursor-pointer ${
-        isSelected ? 'player-pill-selected'
-        : gender === 'M' ? 'player-pill-male'
-        : gender === 'F' ? 'player-pill-female'
-        : ''
-      }`}
+      className="h-9 cursor-pointer"
     >
       <span className="text-foreground font-medium flex items-center min-w-0 overflow-hidden flex-1">
-        <span className="player-name-court flex-1 min-w-0">{name}</span>
+        <span className="flex-1 min-w-0">{name}</span>
         <span className="text-[10px] text-muted-foreground ml-1 flex-shrink-0 tabular-nums">
           {gamesPlayed}
         </span>
@@ -202,7 +196,7 @@ export function CourtCard({
         {court.isPlaying && (
           <button
             onClick={onFinishGame}
-            className="btn-warning w-full flex items-center justify-center gap-1 text-xs py-1.5"
+            className="w-full flex items-center justify-center gap-1 text-xs py-1.5"
           >
             <Square size={14} />
             終了

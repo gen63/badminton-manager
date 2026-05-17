@@ -320,9 +320,9 @@ export function HistoryPage() {
   };
 
   return (
-    <div className="bg-app pb-[calc(60px+env(safe-area-inset-bottom)+1rem)]">
+    <div className="pb-[calc(60px+env(safe-area-inset-bottom)+1rem)]">
       {/* ヘッダー */}
-      <div className="header-gradient text-foreground p-3">
+      <div className="text-foreground p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <div className="flex items-center gap-2 flex-1">
             <History size={20} />
@@ -333,7 +333,7 @@ export function HistoryPage() {
               onClick={handleUpload}
               disabled={isUploading || matchHistory.length === 0}
               aria-label="Sheetsにアップロード"
-              className="icon-btn disabled:opacity-50"
+              className="disabled:opacity-50"
             >
               {isUploading ? <Loader2 size={20} className="animate-spin" /> : <Upload size={20} />}
             </button>
@@ -341,7 +341,6 @@ export function HistoryPage() {
           <button
             onClick={handleCopyHistory}
             aria-label="コピー"
-            className="icon-btn"
             disabled={matchHistory.length === 0}
           >
             <Copy size={20} />

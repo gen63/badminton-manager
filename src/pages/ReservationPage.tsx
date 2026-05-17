@@ -53,9 +53,9 @@ export function ReservationPage() {
   }
 
   return (
-    <div className="bg-app pb-20">
+    <div className="pb-20">
       {/* ヘッダー */}
-      <div className="header-gradient text-foreground p-3">
+      <div className="text-foreground p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <div className="flex items-center gap-2">
             <CalendarCheck size={20} />
