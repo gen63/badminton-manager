@@ -24,7 +24,6 @@ function MatchCard({
   getPlayerRating,
   handleEdit,
   handleDelete,
-  recordScores,
   isAdmin,
 }: {
   match: Match;
@@ -33,7 +32,6 @@ function MatchCard({
   getPlayerRating: (id: string) => number;
   handleEdit: (id: string) => void;
   handleDelete: (id: string) => void;
-  recordScores: boolean;
   isAdmin: boolean;
 }) {
   const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
@@ -101,15 +99,13 @@ function MatchCard({
         </div>
 
         <div className="flex flex-col gap-0.5 flex-shrink-0">
-          {recordScores && (
-            <button
-              onClick={() => handleEdit(match.id)}
-              aria-label="編集"
-              className="p-1 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
-            >
-              <Edit3 size={13} />
-            </button>
-          )}
+          <button
+            onClick={() => handleEdit(match.id)}
+            aria-label="編集"
+            className="p-1 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
+          >
+            <Edit3 size={13} />
+          </button>
           {isAdmin && (
             <button
               onClick={() => handleDelete(match.id)}
@@ -132,7 +128,6 @@ function MatchList({
   getPlayerRating,
   handleEdit,
   handleDelete,
-  recordScores,
   isAdmin,
   scoredCollapsed,
   setScoredCollapsed,
@@ -143,7 +138,6 @@ function MatchList({
   getPlayerRating: (id: string) => number;
   handleEdit: (id: string) => void;
   handleDelete: (id: string) => void;
-  recordScores: boolean;
   isAdmin: boolean;
   scoredCollapsed: boolean;
   setScoredCollapsed: (v: boolean) => void;
@@ -160,7 +154,6 @@ function MatchList({
           getPlayerRating={getPlayerRating}
           handleEdit={handleEdit}
           handleDelete={handleDelete}
-          recordScores={recordScores}
           isAdmin={isAdmin}
         />
       ))}
@@ -188,7 +181,6 @@ function MatchList({
               getPlayerRating={getPlayerRating}
               handleEdit={handleEdit}
               handleDelete={handleDelete}
-              recordScores={recordScores}
               isAdmin={isAdmin}
             />
           ))}
@@ -207,7 +199,6 @@ export function HistoryPage() {
   const currentUser = useSessionStore((s) => s.currentUser);
   const isAdmin = isCreator();
   const gasWebAppUrl = useSettingsStore((s) => s.gasWebAppUrl);
-  const recordScores = useSettingsStore((s) => s.recordScores);
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
   const [isUploading, setIsUploading] = useState(false);
@@ -395,7 +386,6 @@ export function HistoryPage() {
                   getPlayerRating={getPlayerRating}
                   handleEdit={handleEdit}
                   handleDelete={handleDelete}
-                  recordScores={recordScores}
                   isAdmin={isAdmin}
                   scoredCollapsed={scoredCollapsed}
                   setScoredCollapsed={setScoredCollapsed}

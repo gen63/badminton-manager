@@ -4,6 +4,7 @@ import { useReservationStore } from '../stores/reservationStore';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import { isMatchOfPlayer } from '../lib/matchFilter';
 import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
@@ -28,15 +29,19 @@ export function BottomNav({ activeTab }: BottomNavProps) {
   // 履歴バッジ: オンラインモードでは権限により表示内容を変える
   const matchHistory = useGameStore((s) => s.matchHistory);
   const players = usePlayerStore((s) => s.players);
-  
+  const recordScores = useSettingsStore((s) => s.recordScores);
+
   const unrecordedMatchesCount = (() => {
+    // 勝敗記録モードオフのときは未入力数を表示しない
+    if (!recordScores) return 0;
+
     const unrecordedMatches = matchHistory.filter((m) => m.winner === undefined);
-    
+
     // ローカルモード or 管理者: 全件表示
     if (!session?.createdBy || isAdmin()) {
       return unrecordedMatches.length;
     }
-    
+
     // オンラインモード & 一般ユーザー: 自分が参加した試合のみ
     if (currentUser) {
       return unrecordedMatches.filter((match) =>
