@@ -1289,14 +1289,14 @@ export function sortWaitingPlayers(
 // シングルスペア評価のソフト重み（優先度: 連続回避 > 総当たり > 試合数均等 > レーティング）
 // W_RECENCY を最強に設定: 直前プレイ者を含むペアは、過去対戦のあるペアよりも避けるべき。
 // minRest=0 時の最大ペナルティ 500 で、実用範囲の RR 差 (~4 試合) と
-// balance 差 (~60) を上回る。5 分以上休めばペナルティ 0 になり、その後は
+// balance 差 (~60) を上回る。3 分以上休めばペナルティ 0 になり、その後は
 // 総当たり (W=100) → 試合数均等 (W=10) → レーティング (W=0.02) の順に効く。
 const SINGLES_WEIGHT_RECENCY = 500;
 const SINGLES_WEIGHT_ROUNDROBIN = 100;
 const SINGLES_WEIGHT_BALANCE = 10;
 const SINGLES_WEIGHT_RATING = 0.02;
 // 直前プレイ判定の閾値（分）。これ未満ならペナルティが線形に最大値へ近づく
-const SINGLES_REST_THRESHOLD_MIN = 5;
+const SINGLES_REST_THRESHOLD_MIN = 3;
 
 /**
  * シングルスペアのコストを計算（小さいほど好ましい）

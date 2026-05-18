@@ -43,7 +43,7 @@ pairCost(a, b) =
 - `recencyPenalty(a, b)`:
   - `minRest = min(now - a.lastPlayedAt, now - b.lastPlayedAt)` (分)
   - `lastPlayedAt === 0`（未プレイ）の側は `Infinity` 扱いで 0 ペナルティ
-  - `minRest < REST_THRESHOLD_MIN (=5)` なら
+  - `minRest < REST_THRESHOLD_MIN (=3)` なら
     `(REST_THRESHOLD_MIN - minRest) / REST_THRESHOLD_MIN` を返し、それ以外は 0
 - 重みは「**連続回避** > 総当たり > 試合数均等 > レーティング」のソフト順序:
   - `W_RECENCY = 500` (最強。minRest=0 時の最大ペナルティ 500 で、
