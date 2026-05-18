@@ -939,6 +939,29 @@ describe('assignCourts (シングルス)', () => {
     })).toThrow();
   });
 
+  it('連続回避 > 試合数均等: 直前プレイのプレイヤーは試合数が少なくても外される', () => {
+    // a: gamesPlayed=1, 1分前にプレイ（直前）
+    // b, c, d: gamesPlayed=3, 60分休息
+    // balance だけ見ると a が最優先だが、recency 重視で b/c/d から 2 人選ばれる
+    const players = [
+      createSinglesPlayer('a', { gamesPlayed: 1, lastPlayedAt: NOW - 1 * 60 * 1000 }),
+      createSinglesPlayer('b', { gamesPlayed: 3, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('c', { gamesPlayed: 3, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('d', { gamesPlayed: 3, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      gameMode: 'singles',
+    });
+
+    const picked = new Set([assignments[0].teamA[0], assignments[0].teamB[0]]);
+    expect(picked.has('a')).toBe(false);
+  });
+
   it('試合数均等化: RR 同点時に gamesPlayed 合計が低いペアが選ばれる', () => {
     // 全員未対戦、 a-b は 1+1=2 試合、c-d は 5+5=10 試合、6人で 1 コート
     // 全員 lastPlayedAt は十分古い（レシピは同じ）
