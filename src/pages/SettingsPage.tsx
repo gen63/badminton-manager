@@ -354,7 +354,7 @@ export function SettingsPage() {
               <p className="text-[10px] text-muted-foreground mt-1">
                 {recordScores
                   ? '終了時に勝敗を記録'
-                  : '勝敗記録なし'}
+                  : '終了時に勝敗を記録しない'}
               </p>
             </div>
 
