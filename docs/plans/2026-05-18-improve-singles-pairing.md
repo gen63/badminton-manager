@@ -45,13 +45,15 @@ pairCost(a, b) =
   - `lastPlayedAt === 0`（未プレイ）の側は `Infinity` 扱いで 0 ペナルティ
   - `minRest < REST_THRESHOLD_MIN (=5)` なら
     `(REST_THRESHOLD_MIN - minRest) / REST_THRESHOLD_MIN` を返し、それ以外は 0
-- 重みは「総当たり > **連続回避** > 試合数均等 > レーティング」のソフト順序:
-  - `W_ROUNDROBIN = 100` (1 試合分の差で 100 のコスト差。最強)
-  - `W_RECENCY = 80` (直前にプレイした最大ペナルティ 80。候補プールで
-    生じうる balance コスト差 (~60) を上回り、かつ RR の 1 試合差 (100)
-    を超えないよう調整)
-  - `W_BALANCE = 10` (1 プレイ加算で 10。recency が落ち着いた後の優先順位を決める)
+- 重みは「**連続回避** > 総当たり > 試合数均等 > レーティング」のソフト順序:
+  - `W_RECENCY = 500` (最強。minRest=0 時の最大ペナルティ 500 で、
+    実用範囲の RR 差 (~4 試合) と balance 差 (~60) を上回る)
+  - `W_ROUNDROBIN = 100` (1 試合分の差で 100 のコスト差。
+    recency が 0 になった後の主軸)
+  - `W_BALANCE = 10` (1 プレイ加算で 10。recency と RR が拮抗した時に効く)
   - `W_RATING = 0.02` (100 pt 差で 2、タイブレーク程度)
+- 5 分以上休めば recency ペナルティ 0 になり、それ以降は RR → balance →
+  rating の順に効くため、休んでいる人達の中では従来通り総当たりが優先される
 
 ### 候補プール
 

@@ -939,6 +939,30 @@ describe('assignCourts (シングルス)', () => {
     })).toThrow();
   });
 
+  it('連続回避 > 総当たり: 直前プレイ者を含む未対戦ペアより、対戦済みでも休息中ペアが選ばれる', () => {
+    // a,b: 過去1回対戦、60分休息 → 過去対戦ペナルティはあるが休んでいる
+    // c,d: 未対戦、1分前にプレイ → 総当たり的には嬉しいが直前にプレイ
+    // 「連続回避が一番強い」なら (a,b) が選ばれる
+    const players = [
+      createSinglesPlayer('a', { gamesPlayed: 2, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('b', { gamesPlayed: 2, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('c', { gamesPlayed: 2, lastPlayedAt: NOW - 1 * 60 * 1000 }),
+      createSinglesPlayer('d', { gamesPlayed: 2, lastPlayedAt: NOW - 1 * 60 * 1000 }),
+    ];
+    const history = [createSinglesMatch('a', 'b', NOW - 40 * 60 * 1000)];
+
+    const assignments = assignCourts(players, 1, history, {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      gameMode: 'singles',
+    });
+
+    const picked = [assignments[0].teamA[0], assignments[0].teamB[0]].sort();
+    expect(picked).toEqual(['a', 'b']);
+  });
+
   it('連続回避 > 試合数均等: 直前プレイのプレイヤーは試合数が少なくても外される', () => {
     // a: gamesPlayed=1, 1分前にプレイ（直前）
     // b, c, d: gamesPlayed=3, 60分休息
