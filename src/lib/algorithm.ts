@@ -1286,11 +1286,116 @@ export function sortWaitingPlayers(
   );
 }
 
+// シングルスペア評価のソフト重み（優先度: 総当たり > 試合数均等 > 連続回避 > レーティング）
+const SINGLES_WEIGHT_ROUNDROBIN = 100;
+const SINGLES_WEIGHT_BALANCE = 10;
+const SINGLES_WEIGHT_RECENCY = 20;
+const SINGLES_WEIGHT_RATING = 0.02;
+// 直前プレイ判定の閾値（分）。これ未満ならペナルティが線形に最大値へ近づく
+const SINGLES_REST_THRESHOLD_MIN = 5;
+
+/**
+ * シングルスペアのコストを計算（小さいほど好ましい）
+ * - 総当たり (matchCount * W_ROUNDROBIN)
+ * - 試合数合計 (gamesPlayed合計 * W_BALANCE)
+ * - 連続回避ペナルティ (直前にプレイした側がいるとペナルティ)
+ * - レーティング差 (タイブレーク)
+ */
+function computeSinglesPairCost(
+  a: Player,
+  b: Player,
+  matchCount: number,
+  now: number,
+): number {
+  const totalGames = a.gamesPlayed + b.gamesPlayed;
+
+  // 未プレイ (lastPlayedAt === 0) はペナルティ無し
+  const restA = a.lastPlayedAt > 0 ? (now - a.lastPlayedAt) / (1000 * 60) : Infinity;
+  const restB = b.lastPlayedAt > 0 ? (now - b.lastPlayedAt) / (1000 * 60) : Infinity;
+  const minRest = Math.min(restA, restB);
+  const recencyPenalty = minRest < SINGLES_REST_THRESHOLD_MIN
+    ? (SINGLES_REST_THRESHOLD_MIN - minRest) / SINGLES_REST_THRESHOLD_MIN
+    : 0;
+
+  // 未設定 (undefined) または 0 は unrated 扱いで 1500 に正規化
+  // （buildInitialOrder の挙動に合わせ、unrated にペナルティが付かないようにする）
+  const ratingA = (a.rating ?? 0) > 0 ? a.rating! : 1500;
+  const ratingB = (b.rating ?? 0) > 0 ? b.rating! : 1500;
+  const ratingDiff = Math.abs(ratingA - ratingB);
+
+  return (
+    SINGLES_WEIGHT_ROUNDROBIN * matchCount +
+    SINGLES_WEIGHT_BALANCE * totalGames +
+    SINGLES_WEIGHT_RECENCY * recencyPenalty +
+    SINGLES_WEIGHT_RATING * ratingDiff
+  );
+}
+
+/**
+ * 候補から N 個の非重複ペアを選び、合計コストが最小の組合せを返す。
+ * 「最小インデックスを使うか/スキップするか」のバックトラッキングで、
+ * 候補の全部分集合（サイズ 2N）× 全ペアリングを 1 回ずつ列挙する。
+ * 候補数 ≤ 10 / N ≤ 3 想定で十分高速。
+ */
+function findBestSinglesPairing(
+  candidates: Player[],
+  pairCount: number,
+  getMatchCount: (id1: string, id2: string) => number,
+  now: number,
+): Player[][] | null {
+  if (pairCount === 0) return [];
+  if (candidates.length < pairCount * 2) return null;
+
+  let bestPairing: Player[][] | null = null;
+  let bestCost = Infinity;
+
+  const recurse = (
+    remaining: Player[],
+    pairsLeft: number,
+    accPairs: Player[][],
+    accCost: number,
+  ): void => {
+    if (accCost >= bestCost) return;
+    if (pairsLeft === 0) {
+      bestCost = accCost;
+      bestPairing = accPairs.map(p => [...p]);
+      return;
+    }
+    if (remaining.length < pairsLeft * 2) return;
+
+    // 同コスト時に優先度の高い (= 候補リスト先頭の) プレイヤーを含むペアを採用するため
+    // 「先頭を使う」分岐を先に探索する。
+    const first = remaining[0];
+    for (let i = 1; i < remaining.length; i++) {
+      const partner = remaining[i];
+      const cost = computeSinglesPairCost(
+        first, partner, getMatchCount(first.id, partner.id), now
+      );
+      const next: Player[] = [];
+      for (let k = 1; k < remaining.length; k++) {
+        if (k !== i) next.push(remaining[k]);
+      }
+      accPairs.push([first, partner]);
+      recurse(next, pairsLeft - 1, accPairs, accCost + cost);
+      accPairs.pop();
+    }
+
+    // 先頭をスキップ（残り候補だけで人数が足りる場合のみ）
+    if (remaining.length - 1 >= pairsLeft * 2) {
+      recurse(remaining.slice(1), pairsLeft, accPairs, accCost);
+    }
+  };
+
+  recurse(candidates, pairCount, [], 0);
+  return bestPairing;
+}
+
 /**
  * シングルス用の配置アルゴリズム
- * - 総当たり優先: まだ対戦していない相手を優先的にマッチング
- * - 試合回数が均等になるよう、試合数の少ないプレイヤーを優先
- * - 予約等で変動した場合は総当たりの制約を緩和
+ * - 総当たり優先: まだ対戦していない（少ない）ペアを最優先
+ * - 試合回数の差を抑制: ペア合算の gamesPlayed が低いほど好まれる
+ * - 連続回避: 直前にプレイしたユーザを含むペアにペナルティ
+ * - レーティング近接: 他条件が拮抗時に近いレーティング同士を好む（タイブレーク）
  */
 function assignCourtsSingles(
   activePlayers: Player[],
@@ -1316,54 +1421,51 @@ function assignCourtsSingles(
     const key = [a, b].sort().join('-');
     matchCountMap.set(key, (matchCountMap.get(key) || 0) + 1);
   }
-
   const getMatchCount = (p1Id: string, p2Id: string): number => {
     const key = [p1Id, p2Id].sort().join('-');
     return matchCountMap.get(key) || 0;
   };
 
-  // 優先度順にソート（試合回数が少ない人を優先）
-  const prioritySorted = [...activePlayers].sort((a, b) =>
+  // 最大偏差プレフィルタ: 平均より3試合以上多い人は除外（候補プールが必要数を割ったら緩和）
+  const avgGames = activePlayers.reduce((sum, p) => sum + p.gamesPlayed, 0) / activePlayers.length;
+  let eligiblePlayers = activePlayers.filter(p => p.gamesPlayed <= avgGames + 3);
+  if (eligiblePlayers.length < requiredPlayers) {
+    eligiblePlayers = activePlayers;
+  }
+
+  // 優先度順にソートして候補プールを切り出し（gamesPlayed=0 の初回保証は -Infinity スコアで担保）
+  const prioritySorted = [...eligiblePlayers].sort((a, b) =>
     calculatePriorityScore(a, practiceStartTime, useStayDuration) -
     calculatePriorityScore(b, practiceStartTime, useStayDuration)
   );
-
-  // 多めに候補を選出（総当たり最適化のため）
-  const candidateCount = Math.min(activePlayers.length, requiredPlayers + 4);
+  const candidateCount = Math.min(eligiblePlayers.length, requiredPlayers + 4);
   const candidates = prioritySorted.slice(0, candidateCount);
 
-  const assignments: CourtAssignment[] = [];
-  const usedPlayers = new Set<string>();
+  // 全列挙でコスト合計最小のペアリングを選択
+  const now = Date.now();
+  const pairing = findBestSinglesPairing(
+    candidates, targetCourtIds.length, getMatchCount, now
+  );
 
-  for (const courtId of targetCourtIds) {
-    const available = candidates.filter(p => !usedPlayers.has(p.id));
-    if (available.length < 2) break;
-
-    // 最優先プレイヤーを選出
-    const first = available[0];
-    usedPlayers.add(first.id);
-
-    // 2人目: まだ対戦していない相手を優先（総当たり）
-    const remaining = available.filter(p => p.id !== first.id);
-    remaining.sort((a, b) => {
-      const countA = getMatchCount(first.id, a.id);
-      const countB = getMatchCount(first.id, b.id);
-      if (countA !== countB) return countA - countB; // 対戦回数が少ない方を優先
-      return calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-        calculatePriorityScore(b, practiceStartTime, useStayDuration);
-    });
-
-    const second = remaining[0];
-    usedPlayers.add(second.id);
-
-    assignments.push({
-      courtId,
-      teamA: [first.id, ''],
-      teamB: [second.id, ''],
-    });
+  if (!pairing) {
+    throw new SessionError('プレイヤーの割り当てに失敗しました', 'assignment-failed');
   }
 
-  return assignments;
+  // 優先度が高いペア（最低スコアが小さい）から若いコート ID に割り当てる
+  const pairsWithPriority = pairing.map(pair => {
+    const minScore = Math.min(
+      calculatePriorityScore(pair[0], practiceStartTime, useStayDuration),
+      calculatePriorityScore(pair[1], practiceStartTime, useStayDuration),
+    );
+    return { pair, minScore };
+  });
+  pairsWithPriority.sort((x, y) => x.minScore - y.minScore);
+
+  return pairsWithPriority.map(({ pair }, idx) => ({
+    courtId: targetCourtIds[idx],
+    teamA: [pair[0].id, ''] as [string, string],
+    teamB: [pair[1].id, ''] as [string, string],
+  }));
 }
 
 /**
