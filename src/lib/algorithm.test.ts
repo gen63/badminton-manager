@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { calculatePlayerStats, getStreaks, buildInitialOrder, applyStreakSwaps, assignCourts, formTeams } from './algorithm';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
@@ -716,5 +716,250 @@ describe('assignCourts - 性別ペナルティ', () => {
     expect(assignedSet.has('m2')).toBe(true);
     expect(assignedSet.has('m3')).toBe(true);
     expect(assignedSet.has('m4')).toBe(true);
+  });
+});
+
+describe('assignCourts (シングルス)', () => {
+  const NOW = 1730000000000; // 固定の現在時刻
+
+  const createSinglesPlayer = (
+    id: string,
+    opts: Partial<Player> = {}
+  ): Player => ({
+    id,
+    name: id.toUpperCase(),
+    rating: 1500,
+    isResting: false,
+    gamesPlayed: 0,
+    lastPlayedAt: 0,
+    activatedAt: NOW - 60 * 60 * 1000, // 1時間前にチェックイン
+    ...opts,
+  });
+
+  const createSinglesMatch = (
+    aId: string,
+    bId: string,
+    finishedAt: number
+  ): Match => ({
+    id: `m-${aId}-${bId}-${finishedAt}`,
+    courtId: 1,
+    teamA: [aId, ''],
+    teamB: [bId, ''],
+    scoreA: 21,
+    scoreB: 15,
+    winner: 'A',
+    startedAt: finishedAt - 10 * 60 * 1000,
+    finishedAt,
+  });
+
+  beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+  });
+
+  it('4人/1コート: 1ペアが配置される', () => {
+    const players = [
+      createSinglesPlayer('a'),
+      createSinglesPlayer('b'),
+      createSinglesPlayer('c'),
+      createSinglesPlayer('d'),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      gameMode: 'singles',
+    });
+
+    expect(assignments).toHaveLength(1);
+    expect(assignments[0].teamA[1]).toBe('');
+    expect(assignments[0].teamB[1]).toBe('');
+    const ids = [assignments[0].teamA[0], assignments[0].teamB[0]];
+    expect(ids.every(id => id !== '')).toBe(true);
+  });
+
+  it('総当たり優先: 未対戦ペアが選ばれる', () => {
+    // a-b が3回対戦、その他は未対戦
+    const players = [
+      createSinglesPlayer('a', { gamesPlayed: 3, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('b', { gamesPlayed: 3, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('c', { gamesPlayed: 0 }),
+      createSinglesPlayer('d', { gamesPlayed: 0 }),
+    ];
+    const history = [
+      createSinglesMatch('a', 'b', NOW - 50 * 60 * 1000),
+      createSinglesMatch('a', 'b', NOW - 40 * 60 * 1000),
+      createSinglesMatch('a', 'b', NOW - 30 * 60 * 1000),
+    ];
+
+    const assignments = assignCourts(players, 1, history, {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      gameMode: 'singles',
+    });
+
+    const pair = [assignments[0].teamA[0], assignments[0].teamB[0]].sort();
+    expect(pair).not.toEqual(['a', 'b']);
+  });
+
+  it('多コート同時: グリーディだと損する組合せでも全体最適が選ばれる', () => {
+    // 過去対戦: a-b, a-c, a-d, b-c (a と c-d が未対戦; b と d が未対戦)
+    // グリーディだと a を最高優先で a-c (or a-d) を取り、b と c-d の片方が同じ
+    // 過去ペアとぶつかる。全体最適なら a-d / b-c (b-c は既出) → a-c / b-d 等
+    //
+    // よりシンプルな例: 4人 a,b,c,d で 2 コート割り当て不可（4人で1コート分のみ）。
+    // 6人で 2 コート: a-b, c-d が過去対戦、a-c が未対戦、b-d が未対戦。
+    // グリーディが a-c, b-d を選ばずに a-b, c-d を選びうるパターンを再現する。
+    const players = [
+      createSinglesPlayer('a', { gamesPlayed: 1, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      createSinglesPlayer('b', { gamesPlayed: 1, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      createSinglesPlayer('c', { gamesPlayed: 1, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      createSinglesPlayer('d', { gamesPlayed: 1, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+    ];
+    const history = [
+      createSinglesMatch('a', 'b', NOW - 40 * 60 * 1000),
+      createSinglesMatch('c', 'd', NOW - 35 * 60 * 1000),
+    ];
+
+    const assignments = assignCourts(players, 2, history, {
+      totalCourtCount: 2,
+      targetCourtIds: [1, 2],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      gameMode: 'singles',
+    });
+
+    expect(assignments).toHaveLength(2);
+    const pairs = assignments.map(a => [a.teamA[0], a.teamB[0]].sort().join('-')).sort();
+    // 過去対戦の a-b と c-d が同時には選ばれない
+    expect(pairs.includes('a-b') && pairs.includes('c-d')).toBe(false);
+  });
+
+  it('連続回避: 直前にプレイしたユーザを含むペアより、休息中ペアが優先される', () => {
+    // a-c, b-d は同じ matchCount=0, 同じ rating
+    // a, b は直前にプレイ (lastPlayedAt = NOW - 1分)。c, d は古い (NOW - 60分)
+    // → 休息ペアが選ばれる... が、4人だと両方含まれてしまう。
+    // 6 人で1コート、a-b が休んでいない最近プレイ、c-d-e-f は休息中なら選ばれるはず
+    const players = [
+      createSinglesPlayer('a', { gamesPlayed: 1, lastPlayedAt: NOW - 1 * 60 * 1000 }),
+      createSinglesPlayer('b', { gamesPlayed: 1, lastPlayedAt: NOW - 1 * 60 * 1000 }),
+      createSinglesPlayer('c', { gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('d', { gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('e', { gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('f', { gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      gameMode: 'singles',
+    });
+
+    const picked = new Set([assignments[0].teamA[0], assignments[0].teamB[0]]);
+    expect(picked.has('a')).toBe(false);
+    expect(picked.has('b')).toBe(false);
+  });
+
+  it('レーティング近接: 他条件が拮抗時に近いレーティングが選ばれる', () => {
+    // 全員 gamesPlayed=1, lastPlayedAt=古い (=ペナルティ無し), 未対戦
+    // 候補プールは a(1400), b(1500), c(1550), d(1700)
+    // 最適は b-c (差50) と a-d (差300) で合計350、あるいは a-b と c-d (差100+150=250)
+    // 期待: a-b, c-d ペアの方が rating diff 合計が小さいので選ばれる
+    const players = [
+      createSinglesPlayer('a', { rating: 1400, gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('b', { rating: 1500, gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('c', { rating: 1550, gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('d', { rating: 1700, gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+    ];
+
+    const assignments = assignCourts(players, 2, [], {
+      totalCourtCount: 2,
+      targetCourtIds: [1, 2],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      gameMode: 'singles',
+    });
+
+    const pairs = assignments.map(a => [a.teamA[0], a.teamB[0]].sort().join('-')).sort();
+    expect(pairs).toEqual(['a-b', 'c-d']);
+  });
+
+  it('gamesPlayed=0 の初回保証: 試合多い人より優先', () => {
+    // a は未プレイ、b-e は3試合
+    const players = [
+      createSinglesPlayer('a', { gamesPlayed: 0 }),
+      createSinglesPlayer('b', { gamesPlayed: 3, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      createSinglesPlayer('c', { gamesPlayed: 3, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      createSinglesPlayer('d', { gamesPlayed: 3, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      createSinglesPlayer('e', { gamesPlayed: 3, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      gameMode: 'singles',
+    });
+
+    const picked = new Set([assignments[0].teamA[0], assignments[0].teamB[0]]);
+    expect(picked.has('a')).toBe(true);
+  });
+
+  it('最大偏差フィルタ: 平均+3超過は除外される', () => {
+    // a: 1試合, b-d: 1試合, e: 10試合 (平均より大きく多い)
+    // 候補プールから e は除外される
+    const players = [
+      createSinglesPlayer('a', { gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('b', { gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('c', { gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('d', { gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('e', { gamesPlayed: 10, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+    ];
+
+    const assignments = assignCourts(players, 2, [], {
+      totalCourtCount: 2,
+      targetCourtIds: [1, 2],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      gameMode: 'singles',
+    });
+
+    const picked = new Set(assignments.flatMap(a => [a.teamA[0], a.teamB[0]]));
+    expect(picked.has('e')).toBe(false);
+  });
+
+  it('プレイヤー不足では insufficient-players エラーを投げる', () => {
+    const players = [createSinglesPlayer('a')];
+    expect(() => assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      gameMode: 'singles',
+    })).toThrow();
+  });
+
+  it('試合数均等化: RR 同点時に gamesPlayed 合計が低いペアが選ばれる', () => {
+    // 全員未対戦、 a-b は 1+1=2 試合、c-d は 5+5=10 試合、6人で 1 コート
+    // 全員 lastPlayedAt は十分古い（レシピは同じ）
+    const players = [
+      createSinglesPlayer('a', { gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('b', { gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('c', { gamesPlayed: 2, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('d', { gamesPlayed: 2, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      // 平均+3 を超えない範囲で他に同 gamesPlayed を増やしすぎないこと
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      gameMode: 'singles',
+    });
+
+    const picked = [assignments[0].teamA[0], assignments[0].teamB[0]].sort();
+    // gamesPlayed 合計が低い a-b ペアが選ばれる
+    expect(picked).toEqual(['a', 'b']);
   });
 });
