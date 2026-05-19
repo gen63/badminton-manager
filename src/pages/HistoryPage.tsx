@@ -280,7 +280,7 @@ export function HistoryPage() {
   };
 
   const handleShortMatchWarning = () => {
-    toast.warning(SHORT_MATCH_WARNING_MESSAGE);
+    toast.warning(SHORT_MATCH_WARNING_MESSAGE, 1000);
   };
 
   // CSV1 fix: RFC 4180 のエスケープ。`,`/`"`/`\n`/`\r` を含むフィールドは
