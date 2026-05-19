@@ -105,15 +105,27 @@ describe('shouldBlockForDiversity', () => {
     ).toBe(false);
   });
 
-  it('shows recommendation even when no empty courts (预告として)', () => {
-    // 空きコート0、待機2人 → 仮に1コート空くと余り-2 <= 2 → 推奨表示
+  it('空きコート0でも待機が少なすぎる場合は推奨', () => {
+    // 空きコート0、待機2人 → コート空き直後プール6→4選抜で強制再投入50% → 推奨表示
     expect(
       shouldBlockForDiversity(true, 2, 0, 2, 8, 2)
     ).toBe(true);
 
-    // 空きコート0、待機10人 → 仮に1コート空くと余り6 > 2 → 推奨なし
+    // 空きコート0、待機10人 → 強制再投入0% → 推奨なし
     expect(
       shouldBlockForDiversity(true, 2, 0, 10, 16, 2)
+    ).toBe(false);
+  });
+
+  it('空きコート0、待機3人以上なら多様性確保可能なので推奨しない', () => {
+    // 空きコート0、待機3人 → コート空き直後プール7→4選抜で強制再投入25% → 推奨なし
+    expect(
+      shouldBlockForDiversity(true, 2, 0, 3, 11, 2)
+    ).toBe(false);
+
+    // 空きコート0、待機4人（スクリーンショットケース） → 強制再投入0% → 推奨なし
+    expect(
+      shouldBlockForDiversity(true, 2, 0, 4, 12, 2)
     ).toBe(false);
   });
 
