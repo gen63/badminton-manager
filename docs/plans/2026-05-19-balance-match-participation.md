@@ -45,21 +45,22 @@ finalScore = baseScore - penalty
 ### 自動オン条件
 
 - `useStayDurationPriority === false` (回数優先モード) かつ
-- `lateBalanceEverActivated === false` (一度も ON になったことがない) かつ
-- `Date.now() - practiceStartTime >= 90 * 60 * 1000` (90 分経過)
+- `Date.now() - practiceStartTime >= 90 * 60 * 1000` (90 分経過) かつ
+- ローカル `autoTriggeredRef.current === false` (このクライアントで未発火)
 
-→ 自動で `lateBalanceMode = true` & `lateBalanceEverActivated = true` を
-   Firestore に書き込む。
+→ `writer.setLateBalanceMode(true)` を呼ぶと同時に `autoTriggeredRef.current = true`。
 
-### 1 セッションにつき 1 回きり
+### 1 クライアントセッションにつき 1 回きり / Firestore に履歴を持たない
 
-`lateBalanceEverActivated` を 「(自動・手動どちらでも) ON になったことがある」
-フラグとして使う。これにより:
+「自動オンしたか」「過去に ON になったことがあるか」などの履歴は Firestore に
+記録しない。発火済みフラグはローカル `useRef` のみ。これにより:
 
-- 練習序盤に管理者が手動 ON → その後 OFF にした場合、90 分経過しても
-  自動オンしない (手動 OFF を尊重)。
-- 一度も ON になっていない場合のみ、90 分経過で自動 ON する。
-- 自動 ON 後に手動 OFF された場合も、再発火はしない。
+- 自動オン直後にユーザーが手動 OFF にしても、このクライアントは
+  再発火しない。
+- ページ再読み込みで ref がリセットされる。再読み込み後に
+  `lateBalanceMode=false` AND 90 分経過なら再度自動オンが走る (新セッション扱い)。
+- 複数の管理者が同時に開いた場合、それぞれが 1 度ずつ
+  `setLateBalanceMode(true)` を書き込むが、boolean 同値書き込みなので競合無し。
 
 ### 手動操作
 
@@ -77,7 +78,7 @@ finalScore = baseScore - penalty
 
 ### 型 / Firestore スキーマ
 
-`src/services/sessionService.ts:35` の `SyncSettings` に追加:
+`src/services/sessionService.ts:35` の `SyncSettings` に 1 フィールドだけ追加:
 
 ```ts
 interface SyncSettings {
@@ -85,9 +86,10 @@ interface SyncSettings {
   continuousMatchMode?: boolean;
   practiceType?: '単' | '複' | '楽';
   lateBalanceMode?: boolean;
-  lateBalanceEverActivated?: boolean;  // 一度でも ON にされたら true (自動オン抑制用)
 }
 ```
+
+自動オンの発火履歴は Firestore に持たない (ローカル useRef で管理)。
 
 ### Algorithm
 
@@ -100,28 +102,28 @@ interface SyncSettings {
 
 ### 状態同期 (Settings store + Firebase Sync)
 
-- `src/stores/settingsStore.ts` に `lateBalanceMode` / `lateBalanceEverActivated`
-  を追加 (UI 操作と Firestore 反映用)。Firestore 同期対象なので persist 対象外
-  (既存 practiceType と同じ扱い)。
-- `src/services/sessionMutations.ts`:
-  - `setLateBalanceMode(sessionId, value)`: value=true のとき
-    `lateBalanceEverActivated=true` も同時に書き込む。
-  - `markLateBalanceAutoTriggered(sessionId)`: idempotent。
-    `lateBalanceEverActivated` が既に true なら no-op。
-- `src/hooks/useFirebaseSync.ts` で両フィールドをローカル store に反映。
-- `src/hooks/useSessionWriter.ts` から両 mutation を公開。
+- `src/stores/settingsStore.ts` に `lateBalanceMode: boolean` を追加 (UI 操作と
+  Firestore 反映用)。Firestore 同期対象なので persist 対象外 (既存 practiceType
+  と同じ扱い)。
+- `src/services/sessionMutations.ts` に `setLateBalanceMode(sessionId, value)`
+  を追加。汎用 `computeSetSetting` を使う単純な書き込み。
+- `src/hooks/useFirebaseSync.ts` で `gameState.settings.lateBalanceMode` を
+  ローカル store に反映。
+- `src/hooks/useSessionWriter.ts` から `setLateBalanceMode` を公開。
 
 ### 自動オン発火
 
 `src/pages/MainPage.tsx`:
+- `useRef<boolean>` (`autoTriggeredRef`) でこのクライアントが既に自動オン
+  を発火したかを記録 (Firestore には書かない)。
 - `useEffect` で `setInterval` (60 秒ごと) チェック。条件成立で
-  `writer.markLateBalanceAutoTriggered()` を呼ぶ。
-- アンマウント時のクリーンアップ必須。
-- 依存配列に `lateBalanceEverActivated` を含めるので、一度でも ON になった
-  瞬間に effect が再評価され interval を解除する。
-- 多重発火防止: `markLateBalanceAutoTriggered` の transaction が
-  `lateBalanceEverActivated` を確認 (idempotent)。複数クライアント同時発火でも
-  正しく 1 回しか反映されない。
+  `writer.setLateBalanceMode(true)` を呼び、ref を true に。
+- 依存配列に `lateBalanceMode` を含めるので、ON になった瞬間に effect が
+  再評価され interval 解除。
+- ref が true の間は、ユーザー手動 OFF で `lateBalanceMode=false` になっても
+  effect 内部の early return で自動オンは走らない。
+- ページ再読み込みで ref がリセットされる (= 再読み込み後に条件を満たせば
+  もう一度自動オンが走る、新セッション扱い)。
 
 ### UI
 
@@ -144,7 +146,7 @@ interface SyncSettings {
 - 性別 3-1 ペナルティが lateBalance ペナルティに負けないことを確認 (定数調整)。
 
 `src/services/sessionMutations.test.ts` (もしあれば) に:
-- `setLateBalanceMode` / `markLateBalanceAutoTriggered` の idempotency。
+- `setLateBalanceMode` の idempotency (boolean 同値書き込み)。
 
 ## 非対応 (今回スコープ外)
 
@@ -158,19 +160,18 @@ interface SyncSettings {
 
 1. `npm run build && npm run lint && npm run test:run` が全て通ること。
 2. 開発サーバーで以下シナリオを確認:
-   - 回数優先モード + 90 分後にトグルが自動でオンになる (一度も ON 経験なし)。
-   - 自動オン後に手動オフしても、自動で再オンはしない。
-   - 練習序盤に管理者が手動 ON → OFF した場合、90 分経過しても自動オンしない。
+   - 回数優先モード + 90 分後にトグルが自動でオンになる。
+   - 自動オン後に手動オフしても、(同じクライアントで) 自動で再オンしない。
    - lateBalanceMode ON 中、明らかに試合数が少ないプレイヤーが次の配置で
      入りやすくなる。
    - 性別 3-1 構成は (回数差が小さければ) 引き続き避けられる。
-3. 複数タブで同時に開いて「自動オン」が二重書き込みにならないこと
-   (transaction が idempotent)。
+3. 複数タブで同時に開いて競合しないこと (`setLateBalanceMode(true)` は
+   boolean 同値書き込みなので安全)。
 
 ## ファイル変更まとめ
 
 - `src/services/sessionService.ts` - SyncSettings 拡張
-- `src/services/sessionMutations.ts` - setLateBalanceMode / markLateBalanceAutoTriggered
+- `src/services/sessionMutations.ts` - setLateBalanceMode
 - `src/hooks/useFirebaseSync.ts` - lateBalanceMode 同期
 - `src/hooks/useSessionWriter.ts` - mutation 公開
 - `src/stores/settingsStore.ts` - lateBalanceMode フィールド

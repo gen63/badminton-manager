@@ -732,35 +732,7 @@ export function setPracticeType(sessionId: string, value: '単' | '複' | '楽')
 }
 
 export function setLateBalanceMode(sessionId: string, value: boolean) {
-  return mutateGameState(sessionId, (s) => ({
-    ...s,
-    settings: {
-      ...(s.settings ?? {}),
-      lateBalanceMode: value,
-      // ON にしたら「一度でも ON にされたことがある」フラグを立てる。
-      // 以降の自動オン (90 分経過時) は発火しない。OFF への変更ではフラグは触らない。
-      ...(value ? { lateBalanceEverActivated: true } : {}),
-    },
-  }));
-}
-
-/**
- * 90 分経過時の自動オン。`lateBalanceEverActivated` が既に true なら no-op。
- * 「一度でも (自動・手動どちらでも) ON になったことがあれば自動オンしない」
- * という仕様で、transaction 内で idempotent にチェック。
- */
-export function markLateBalanceAutoTriggered(sessionId: string) {
-  return mutateGameState(sessionId, (s) => {
-    if (s.settings?.lateBalanceEverActivated) return s;
-    return {
-      ...s,
-      settings: {
-        ...(s.settings ?? {}),
-        lateBalanceMode: true,
-        lateBalanceEverActivated: true,
-      },
-    };
-  });
+  return mutateGameState(sessionId, (s) => computeSetSetting(s, 'lateBalanceMode', value));
 }
 
 // =============================================================================

@@ -17,8 +17,6 @@ interface SettingsState {
   setPracticeType: (value: '単' | '複' | '楽') => void;
   lateBalanceMode: boolean;
   setLateBalanceMode: (value: boolean) => void;
-  lateBalanceEverActivated: boolean;
-  setLateBalanceEverActivated: (value: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -46,8 +44,6 @@ export const useSettingsStore = create<SettingsState>()(
         }),
       lateBalanceMode: false,
       setLateBalanceMode: (value) => set({ lateBalanceMode: value }),
-      lateBalanceEverActivated: false,
-      setLateBalanceEverActivated: (value) => set({ lateBalanceEverActivated: value }),
     }),
     {
       name: 'badminton-settings',

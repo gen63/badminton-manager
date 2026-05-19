@@ -68,7 +68,6 @@ export function MainPage() {
   const prioritizeDiversity = useSettingsStore((s) => s.prioritizeDiversity);
   const practiceType = useSettingsStore((s) => s.practiceType);
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
-  const lateBalanceEverActivated = useSettingsStore((s) => s.lateBalanceEverActivated);
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
   // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
@@ -177,32 +176,35 @@ export function MainPage() {
     updatePaymentBadge(isPaid, amount);
   }, [session, currentUser, players]);
 
-  // 後半均等化の自動オン: 練習開始から 90 分経過 & 回数優先モード &
-  // lateBalanceMode が一度も ON になったことがない (`lateBalanceEverActivated=false`)
-  // のとき自動オンする。1 セッションにつき 1 回きり。
-  // 手動で先に ON にしていた場合 (その後 OFF にしていても) は自動オンしない。
-  // `markLateBalanceAutoTriggered` は transaction 内で idempotent なので、
-  // 複数クライアントが同時に発火しても安全。
+  // 後半均等化の自動オン: 回数優先モードで練習開始から 90 分経過したら
+  // lateBalanceMode を一度だけ ON にする。発火済みかどうかはローカル
+  // (`autoTriggeredRef`) でのみ管理し、Firestore には履歴を残さない。
+  // 自動オン後にユーザーが手動 OFF にしてもこのクライアントは再発火しない。
+  // ページ再読み込みで ref はリセットされる (= 別セッション扱い)。
+  const autoTriggeredRef = useRef(false);
   useEffect(() => {
     if (!session?.id) return;
     if (useStayDurationPriority) return; // 待機時間優先モードでは自動オンしない
-    if (lateBalanceEverActivated) return; // 一度でも ON 経験があれば自動オン不要
+    if (autoTriggeredRef.current) return; // このクライアントで既に発火済み
+    if (lateBalanceMode) return; // 既に ON なら不要
 
     const AUTO_ON_MINUTES = 90;
     const practiceStart = session.config.practiceStartTime;
     if (!practiceStart) return;
 
     const tryTrigger = () => {
+      if (autoTriggeredRef.current) return;
       const elapsedMin = (Date.now() - practiceStart) / (1000 * 60);
       if (elapsedMin >= AUTO_ON_MINUTES) {
-        void writer.markLateBalanceAutoTriggered();
+        autoTriggeredRef.current = true;
+        void writer.setLateBalanceMode(true);
       }
     };
 
     tryTrigger();
     const intervalId = setInterval(tryTrigger, 60 * 1000);
     return () => clearInterval(intervalId);
-  }, [session?.id, session?.config.practiceStartTime, useStayDurationPriority, lateBalanceEverActivated, writer]);
+  }, [session?.id, session?.config.practiceStartTime, useStayDurationPriority, lateBalanceMode, writer]);
 
   const playersInCourts = useMemo(() => new Set(
     courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
