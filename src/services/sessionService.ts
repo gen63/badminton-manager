@@ -36,6 +36,8 @@ export interface SyncSettings {
   recordScores?: boolean;
   continuousMatchMode?: boolean;
   practiceType?: '単' | '複' | '楽';
+  /** 練習後半に試合回数の偏りを均等化するモード。 */
+  lateBalanceMode?: boolean;
 }
 
 /** ゲーム状態の型（Firestore同期用） */

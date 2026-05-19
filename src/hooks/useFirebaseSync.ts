@@ -235,6 +235,11 @@ export function useFirebaseSync() {
           ) {
             s.setContinuousMatchMode(gameState.settings.continuousMatchMode);
           }
+          // lateBalanceMode は未設定なら false 扱い（旧セッション互換）
+          const remoteLateBalance = gameState.settings.lateBalanceMode ?? false;
+          if (remoteLateBalance !== s.lateBalanceMode) {
+            s.setLateBalanceMode(remoteLateBalance);
+          }
         }
         // practiceType 同期: gameState.settings.practiceType が未設定（旧セッション
         // 等）でも、前セッションから持ち越した端末ローカル値（特に '単'）が

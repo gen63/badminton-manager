@@ -41,6 +41,7 @@ export function SettingsPage() {
   const prioritizeDiversity = useSettingsStore((s) => s.prioritizeDiversity);
   const setPrioritizeDiversity = useSettingsStore((s) => s.setPrioritizeDiversity);
   const practiceType = useSettingsStore((s) => s.practiceType);
+  const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
   const writer = useSessionWriterWithToast(toast);
@@ -406,6 +407,35 @@ export function SettingsPage() {
                 </div>
               );
             })()}
+
+            <div>
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">後半均等化</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => void writer.setLateBalanceMode(true)}
+                  className={`flex-1 select-button text-xs px-2 ${
+                    lateBalanceMode ? 'select-button-active' : 'select-button-inactive'
+                  }`}
+                >
+                  {lateBalanceMode && <span className="mr-1">✓</span>}
+                  ON
+                </button>
+                <button
+                  onClick={() => void writer.setLateBalanceMode(false)}
+                  className={`flex-1 select-button text-xs px-2 ${
+                    !lateBalanceMode ? 'select-button-active' : 'select-button-inactive'
+                  }`}
+                >
+                  {!lateBalanceMode && <span className="mr-1">✓</span>}
+                  OFF
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {lateBalanceMode
+                  ? '試合数の少ない人を強く優先します'
+                  : '回数優先モードの場合、練習開始から90分経過で自動的にONになります'}
+              </p>
+            </div>
           </div>
         </div>
 

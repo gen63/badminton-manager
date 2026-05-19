@@ -13,6 +13,21 @@ const COURT_PROBABILITIES_2: Record<'upper' | 'lower', number[]> = {
 };
 
 /**
+ * 練習後半の試合回数均等化 (lateBalanceMode) で使うコンテキスト。
+ * 有効時、`maxGamesPlayed - p.gamesPlayed` の差分ペナルティを優先度スコアから
+ * 減算する（差が大きい=試合数少ない人ほど優先される）。
+ *
+ * 重み 2.0 は selectBestFour の oneGameDelta 単位で、性別 3-1 ペナルティ (3.0) を
+ * 2 試合以上の偏差で上回る程度。詳細は
+ * `docs/plans/2026-05-19-balance-match-participation.md` 参照。
+ */
+type LateBalanceCtx = {
+  enabled: boolean;
+  maxGamesPlayed: number;
+};
+const LATE_BALANCE_WEIGHT = 2.0;
+
+/**
  * 各プレイヤーの連勝/連敗数を算出
  * 正の値=連勝数、負の値=連敗数
  *
@@ -444,7 +459,8 @@ function assign2CourtsHolistic(
   matchHistory: Match[],
   practiceStartTime: number,
   groupingPlayers: Player[],
-  useStayDuration: boolean = true
+  useStayDuration: boolean = true,
+  lateBalance?: LateBalanceCtx,
 ): CourtAssignment[] {
   // 最大偏差制限: 平均より3試合以上多い人は除外
   const allGamesPlayed = activePlayers.map(p => p.gamesPlayed);
@@ -462,7 +478,8 @@ function assign2CourtsHolistic(
   
   // 1. 優先度順にソート
   const prioritySorted = [...eligiblePlayers].sort((a, b) =>
-    calculatePriorityScore(a, practiceStartTime, useStayDuration) - calculatePriorityScore(b, practiceStartTime, useStayDuration)
+    calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance) -
+    calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance)
   );
 
   // 2. 必要人数を選出（コート数 × 4人）
@@ -486,8 +503,8 @@ function assign2CourtsHolistic(
       const excludable = minorities
         .filter(p => p.gamesPlayed > 0)
         .sort((a, b) =>
-          calculatePriorityScore(b, practiceStartTime, useStayDuration) -
-          calculatePriorityScore(a, practiceStartTime, useStayDuration)
+          calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance) -
+          calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance)
         );
       if (excludable.length > 0) {
         const toExclude = excludable[0];
@@ -497,8 +514,8 @@ function assign2CourtsHolistic(
           .find(p => p.gender === majorityGender);
         if (nextMajority) {
           // フェアネスチェック: 除外候補が入替先より2試合分以上待っていたら除外しない
-          const excludePriority = calculatePriorityScore(toExclude, practiceStartTime, useStayDuration);
-          const replacePriority = calculatePriorityScore(nextMajority, practiceStartTime, useStayDuration);
+          const excludePriority = calculatePriorityScore(toExclude, practiceStartTime, useStayDuration, lateBalance);
+          const replacePriority = calculatePriorityScore(nextMajority, practiceStartTime, useStayDuration, lateBalance);
           const oneGameDelta = useStayDuration
             ? 1 / Math.max((Date.now() - practiceStartTime) / (1000 * 60), 5)
             : 1.0;
@@ -599,33 +616,44 @@ function assign2CourtsHolistic(
  * 滞在時間ベースの優先度を計算
  * 優先スコア = 試合回数 / max(滞在時間(分), 5)
  * スコアが低い人を優先
+ *
+ * lateBalance が有効なとき、`(maxGamesPlayed - gamesPlayed) * 重み * oneGameDelta`
+ * を減算して試合数の少ない人を強く優先する。
  */
 function calculatePriorityScore(
   player: Player,
   practiceStartTime: number,
-  useStayDuration: boolean = true
+  useStayDuration: boolean = true,
+  lateBalance?: LateBalanceCtx,
 ): number {
   // まだ1回も試合してない人は最優先（1回保証）
   if (player.gamesPlayed === 0) {
     return -Infinity;
   }
 
+  let baseScore: number;
   if (!useStayDuration) {
-    return player.gamesPlayed * 0.4;
+    baseScore = player.gamesPlayed * 0.4;
+  } else {
+    const now = Date.now();
+    // 滞在開始時刻 = max(練習開始日時, 休憩解除時刻)
+    const stayStart = Math.max(practiceStartTime, player.activatedAt ?? now);
+    // 滞在時間（分）、最低5分
+    const stayMinutes = Math.max((now - stayStart) / (1000 * 60), 5);
+    baseScore = player.gamesPlayed / stayMinutes;
   }
 
-  const now = Date.now();
+  if (lateBalance?.enabled) {
+    const gap = lateBalance.maxGamesPlayed - player.gamesPlayed;
+    if (gap > 0) {
+      const oneGameDelta = useStayDuration
+        ? 1 / Math.max((Date.now() - practiceStartTime) / (1000 * 60), 5)
+        : 1.0;
+      baseScore -= gap * LATE_BALANCE_WEIGHT * oneGameDelta;
+    }
+  }
 
-  // 滞在開始時刻 = max(練習開始日時, 休憩解除時刻)
-  const stayStart = Math.max(
-    practiceStartTime,
-    player.activatedAt ?? now
-  );
-
-  // 滞在時間（分）、最低5分
-  const stayMinutes = Math.max((now - stayStart) / (1000 * 60), 5);
-
-  return player.gamesPlayed / stayMinutes;
+  return baseScore;
 }
 
 /**
@@ -685,7 +713,8 @@ function calculateGroupPriorities(
   players: Player[],
   usedPlayerIds: Set<string>,
   practiceStartTime: number,
-  useStayDuration: boolean
+  useStayDuration: boolean,
+  lateBalance?: LateBalanceCtx,
 ): Map<RatingGroup, number> {
   const priorities = new Map<RatingGroup, number>();
   
@@ -701,7 +730,7 @@ function calculateGroupPriorities(
     
     // グループの平均優先度スコアを計算（低いほど待っている）
     const avgScore = availableMembers.reduce(
-      (sum, p) => sum + calculatePriorityScore(p, practiceStartTime, useStayDuration),
+      (sum, p) => sum + calculatePriorityScore(p, practiceStartTime, useStayDuration, lateBalance),
       0
     ) / availableMembers.length;
     
@@ -720,10 +749,11 @@ function selectMostUrgentGroup(
   players: Player[],
   usedPlayerIds: Set<string>,
   practiceStartTime: number,
-  useStayDuration: boolean
+  useStayDuration: boolean,
+  lateBalance?: LateBalanceCtx,
 ): RatingGroup | null {
   const priorities = calculateGroupPriorities(
-    groups, players, usedPlayerIds, practiceStartTime, useStayDuration
+    groups, players, usedPlayerIds, practiceStartTime, useStayDuration, lateBalance
   );
   
   // 全員のgamesPlayedから平均を計算
@@ -770,6 +800,7 @@ function selectBestFour(
   practiceStartTime: number,
   useStayDuration: boolean,
   allowUnbalanced?: boolean,
+  lateBalance?: LateBalanceCtx,
 ): Player[] {
   if (candidates.length <= 4) return candidates;
 
@@ -782,7 +813,7 @@ function selectBestFour(
   };
 
   const playerScore = (p: Player): number => {
-    const base = calculatePriorityScore(p, practiceStartTime, useStayDuration);
+    const base = calculatePriorityScore(p, practiceStartTime, useStayDuration, lateBalance);
     if (base === -Infinity) return -1e9; // 有限値にして複数の未プレイ者を含む組の比較を可能にする
     return base;
   };
@@ -843,6 +874,7 @@ export function assignCourts(
     useStayDurationPriority?: boolean;
     reservations?: Reservation[];
     gameMode?: 'singles' | 'doubles'; // シングルス/ダブルス（デフォルト: doubles）
+    lateBalanceMode?: boolean; // 後半均等化モード（試合数の少ない人を強く優先）
   }
 ): CourtAssignment[] {
   const activePlayers = players.filter((p) => !p.isResting);
@@ -853,6 +885,16 @@ export function assignCourts(
   const useStayDuration = options?.useStayDurationPriority ?? true;
   const pendingReservations = (options?.reservations ?? []).filter(r => r.status === 'pending');
   const gameMode = options?.gameMode ?? 'doubles';
+
+  // 後半均等化モード: maxGamesPlayed は全アクティブプレイヤー（他コート中含む）から
+  // 算出することで、待機者一覧の変動に左右されず一貫した「最大値」を得る。
+  const lateBalance = ((): LateBalanceCtx | undefined => {
+    if (!options?.lateBalanceMode) return undefined;
+    const pool = options.allPlayers ?? activePlayers;
+    if (pool.length === 0) return undefined;
+    const maxGames = pool.reduce((max, p) => Math.max(max, p.gamesPlayed), 0);
+    return { enabled: true, maxGamesPlayed: maxGames };
+  })();
 
   // シングルスモードの場合
   if (gameMode === 'singles') {
@@ -893,8 +935,8 @@ export function assignCourts(
         );
         if (nonReserved.length === 0) continue;
         nonReserved.sort((a, b) =>
-          calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-          calculatePriorityScore(b, practiceStartTime, useStayDuration)
+          calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance) -
+          calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance)
         );
         const courtId = singlesRemainingCourtIds.shift()!;
         singlesReservationAssignments.push({
@@ -936,7 +978,7 @@ export function assignCourts(
     }
 
     const singlesAssignments = assignCourtsSingles(
-      singlesNormalCandidates, singlesRemainingCourtIds, matchHistory, practiceStartTime, useStayDuration
+      singlesNormalCandidates, singlesRemainingCourtIds, matchHistory, practiceStartTime, useStayDuration, lateBalance
     );
     return [...singlesReservationAssignments, ...singlesAssignments];
   }
@@ -984,8 +1026,8 @@ export function assignCourts(
         continue;
       }
       nonReserved.sort((a, b) =>
-        calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-        calculatePriorityScore(b, practiceStartTime, useStayDuration)
+        calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance) -
+        calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance)
       );
       const sorted = sortByGenderPreference(rsvPlayerIds, nonReserved, activePlayers);
       const fourth = sorted[0];
@@ -1006,8 +1048,8 @@ export function assignCourts(
         continue;
       }
       nonReserved.sort((a, b) =>
-        calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-        calculatePriorityScore(b, practiceStartTime, useStayDuration)
+        calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance) -
+        calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance)
       );
       const sorted = sortByGenderPreference(rsvPlayerIds, nonReserved, activePlayers);
       reservationAssignments.push({
@@ -1028,8 +1070,8 @@ export function assignCourts(
         continue;
       }
       nonReserved.sort((a, b) =>
-        calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-        calculatePriorityScore(b, practiceStartTime, useStayDuration)
+        calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance) -
+        calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance)
       );
       const groupingPlayers = options?.allPlayers ?? activePlayers;
       const playerOrder = applyStreakSwaps(buildInitialOrder(groupingPlayers), matchHistory, totalCourtCount >= 3 ? 3 : 2);
@@ -1083,7 +1125,7 @@ export function assignCourts(
 
   // 2コート同時配置の場合はホリスティック・アプローチを使用
   if (totalCourtCount === 2 && normalCourtCount === 2) {
-    const holistic = assign2CourtsHolistic(normalCandidates, remainingCourtIds, matchHistory, practiceStartTime, groupingPlayers, useStayDuration);
+    const holistic = assign2CourtsHolistic(normalCandidates, remainingCourtIds, matchHistory, practiceStartTime, groupingPlayers, useStayDuration, lateBalance);
     return [...reservationAssignments, ...holistic];
   }
 
@@ -1107,7 +1149,7 @@ export function assignCourts(
 
       // 最も待っているグループを選択
       const targetGroup = selectMostUrgentGroup(
-        groups3, normalCandidates, usedPlayers, practiceStartTime, useStayDuration
+        groups3, normalCandidates, usedPlayers, practiceStartTime, useStayDuration, lateBalance
       );
 
       if (!targetGroup) {
@@ -1117,13 +1159,13 @@ export function assignCourts(
         if (remaining.length < 4) break;
 
         remaining.sort((a, b) =>
-          calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-          calculatePriorityScore(b, practiceStartTime, useStayDuration)
+          calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance) -
+          calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance)
         );
 
         const selected = selectBestFour(
           remaining, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, allowUnbalanced
+          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance
         );
 
         selected.forEach(p => usedPlayers.add(p.id));
@@ -1174,13 +1216,13 @@ export function assignCourts(
         if (candidates.length < 4) continue;
 
         candidates.sort((a, b) =>
-          calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-          calculatePriorityScore(b, practiceStartTime, useStayDuration)
+          calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance) -
+          calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance)
         );
 
         const result = selectBestFour(
           candidates, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, allowUnbalanced
+          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance
         );
 
         const resultIds = result.map(p => p.id);
@@ -1201,12 +1243,12 @@ export function assignCourts(
       if (!selected) {
         const allAvailable = normalCandidates.filter(p => !usedPlayers.has(p.id));
         allAvailable.sort((a, b) =>
-          calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-          calculatePriorityScore(b, practiceStartTime, useStayDuration)
+          calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance) -
+          calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance)
         );
         selected = selectBestFour(
           allAvailable, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, allowUnbalanced
+          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance
         );
       }
 
@@ -1239,14 +1281,14 @@ export function assignCourts(
 
     // 優先度順にソート
     candidatePool.sort((a, b) =>
-      calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-      calculatePriorityScore(b, practiceStartTime, useStayDuration)
+      calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance) -
+      calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance)
     );
 
     // 制約を満たす4人を選択
     const selected = selectBestFour(
       candidatePool, matchHistory, groups3, totalCourtCount,
-      practiceStartTime, useStayDuration, allowUnbalanced
+      practiceStartTime, useStayDuration, allowUnbalanced, lateBalance
     );
 
     if (selected.length < 4) {
@@ -1275,14 +1317,25 @@ export function sortWaitingPlayers(
     allActivePlayers: Player[];
     practiceStartTime: number;
     useStayDuration: boolean;
+    lateBalanceMode?: boolean;
   }
 ): Player[] {
-  const { practiceStartTime, useStayDuration } = options;
+  const { practiceStartTime, useStayDuration, lateBalanceMode } = options;
+
+  const lateBalance: LateBalanceCtx | undefined = lateBalanceMode && options.allActivePlayers.length > 0
+    ? {
+        enabled: true,
+        maxGamesPlayed: options.allActivePlayers.reduce(
+          (max, p) => Math.max(max, p.gamesPlayed),
+          0,
+        ),
+      }
+    : undefined;
 
   // 優先度スコア順にソート（低いほど優先）
   return [...waitingPlayers].sort((a, b) =>
-    calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-    calculatePriorityScore(b, practiceStartTime, useStayDuration)
+    calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance) -
+    calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance)
   );
 }
 
@@ -1402,12 +1455,17 @@ function findBestSinglesPairing(
  * - 連続回避: 直前にプレイしたユーザを含むペアにペナルティ
  * - レーティング近接: 他条件が拮抗時に近いレーティング同士を好む（タイブレーク）
  */
+// Singles ペアリングのコスト関数 (computeSinglesPairCost) は SINGLES_WEIGHT_BALANCE
+// で gamesPlayed 合計を直接ペナルティ化しており、独立した均等化メカニズムを持つ。
+// そのため lateBalance はここでは prioritySorted (候補プール切り出し) と最終的な
+// pair → court 割当順 (minScore) にだけ影響し、効果はダブルスより限定的。
 function assignCourtsSingles(
   activePlayers: Player[],
   targetCourtIds: number[],
   matchHistory: Match[],
   practiceStartTime: number,
-  useStayDuration: boolean
+  useStayDuration: boolean,
+  lateBalance?: LateBalanceCtx,
 ): CourtAssignment[] {
   const requiredPlayers = targetCourtIds.length * 2;
   if (activePlayers.length < requiredPlayers) {
@@ -1440,8 +1498,8 @@ function assignCourtsSingles(
 
   // 優先度順にソートして候補プールを切り出し（gamesPlayed=0 の初回保証は -Infinity スコアで担保）
   const prioritySorted = [...eligiblePlayers].sort((a, b) =>
-    calculatePriorityScore(a, practiceStartTime, useStayDuration) -
-    calculatePriorityScore(b, practiceStartTime, useStayDuration)
+    calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance) -
+    calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance)
   );
   const candidateCount = Math.min(eligiblePlayers.length, requiredPlayers + 4);
   const candidates = prioritySorted.slice(0, candidateCount);
@@ -1459,8 +1517,8 @@ function assignCourtsSingles(
   // 優先度が高いペア（最低スコアが小さい）から若いコート ID に割り当てる
   const pairsWithPriority = pairing.map(pair => {
     const minScore = Math.min(
-      calculatePriorityScore(pair[0], practiceStartTime, useStayDuration),
-      calculatePriorityScore(pair[1], practiceStartTime, useStayDuration),
+      calculatePriorityScore(pair[0], practiceStartTime, useStayDuration, lateBalance),
+      calculatePriorityScore(pair[1], practiceStartTime, useStayDuration, lateBalance),
     );
     return { pair, minScore };
   });

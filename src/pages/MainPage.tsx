@@ -67,6 +67,7 @@ export function MainPage() {
   const continuousMatchMode = useSettingsStore((s) => s.continuousMatchMode);
   const prioritizeDiversity = useSettingsStore((s) => s.prioritizeDiversity);
   const practiceType = useSettingsStore((s) => s.practiceType);
+  const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
   // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
@@ -175,6 +176,36 @@ export function MainPage() {
     updatePaymentBadge(isPaid, amount);
   }, [session, currentUser, players]);
 
+  // 後半均等化の自動オン: 回数優先モードで練習開始から 90 分経過したら
+  // lateBalanceMode を一度だけ ON にする。発火済みかどうかはローカル
+  // (`autoTriggeredRef`) でのみ管理し、Firestore には履歴を残さない。
+  // 自動オン後にユーザーが手動 OFF にしてもこのクライアントは再発火しない。
+  // ページ再読み込みで ref はリセットされる (= 別セッション扱い)。
+  const autoTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (!session?.id) return;
+    if (useStayDurationPriority) return; // 待機時間優先モードでは自動オンしない
+    if (autoTriggeredRef.current) return; // このクライアントで既に発火済み
+    if (lateBalanceMode) return; // 既に ON なら不要
+
+    const AUTO_ON_MINUTES = 90;
+    const practiceStart = session.config.practiceStartTime;
+    if (!practiceStart) return;
+
+    const tryTrigger = () => {
+      if (autoTriggeredRef.current) return;
+      const elapsedMin = (Date.now() - practiceStart) / (1000 * 60);
+      if (elapsedMin >= AUTO_ON_MINUTES) {
+        autoTriggeredRef.current = true;
+        void writer.setLateBalanceMode(true);
+      }
+    };
+
+    tryTrigger();
+    const intervalId = setInterval(tryTrigger, 60 * 1000);
+    return () => clearInterval(intervalId);
+  }, [session?.id, session?.config.practiceStartTime, useStayDurationPriority, lateBalanceMode, writer]);
+
   const playersInCourts = useMemo(() => new Set(
     courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
   ), [courts]);
@@ -188,6 +219,7 @@ export function MainPage() {
       allActivePlayers: players.filter(p => !p.isResting),
       practiceStartTime: session?.config.practiceStartTime ?? 0,
       useStayDuration: useStayDurationPriority,
+      lateBalanceMode,
     });
     return {
       sortedWaitingPlayers: sorted,
@@ -195,7 +227,7 @@ export function MainPage() {
       emptyCourts: courts.filter(c => !c.teamA[0] || c.teamA[0] === ''),
       occupiedCourts: courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== '')),
     };
-  }, [players, courts, matchHistory, playersInCourts, session?.config.practiceStartTime, useStayDurationPriority]);
+  }, [players, courts, matchHistory, playersInCourts, session?.config.practiceStartTime, useStayDurationPriority, lateBalanceMode]);
 
   const restingAndPlaceholderPlayers = useMemo(() => players.filter(
     p => p.isResting || recentlyRestoredIds.has(p.id)
@@ -298,6 +330,7 @@ export function MainPage() {
           useStayDurationPriority,
           reservations,
           gameMode,
+          lateBalanceMode,
         }
       );
 

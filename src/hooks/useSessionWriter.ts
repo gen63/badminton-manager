@@ -230,6 +230,11 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  const setLateBalanceMode = useCallback(
+    (value: boolean) => handle('setLateBalanceMode', (sid) => sm.setLateBalanceMode(sid, value)),
+    [handle],
+  );
+
   return useMemo(
     () => ({
       sessionId,
@@ -268,6 +273,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setRecordScores,
       setContinuousMatchMode,
       setPracticeType,
+      setLateBalanceMode,
     }),
     [
       sessionId,
@@ -301,6 +307,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setRecordScores,
       setContinuousMatchMode,
       setPracticeType,
+      setLateBalanceMode,
     ],
   );
 }
