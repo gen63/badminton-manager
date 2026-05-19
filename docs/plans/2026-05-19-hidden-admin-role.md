@@ -70,14 +70,24 @@ SessionJoinPage に追加するだけで、ほぼ全ての要件が満たせる�
   4. `useSyncStatusStore.setGameStateLoaded(false)` → poll → `/main`
      遷移（既存 `handleJoin` 末尾のロジックと同じ）。
 
-### 2. 動作確認用に既存実装を変えるか
+### 2. `src/pages/SettingsPage.tsx`
 
-基本的に追加実装のみで完結する。ただし以下は念のため見直す。
+`if (!currentUser)` で読み込み中画面を返すガードがあるが、これは
+「参加直後の僅かな期間」を意図したもので、裏管理（currentUser=null
+が恒久的）の場合、このページに永久にロックされる。
 
-- `sessionStore.isAdmin()` / `isCreator()` の `if (!currentUser) return false;`
-  ガードを `if (!currentUser) return isDevMode();` 風に書き換える必要は
-  **無い**（既に `if (isDevMode()) return true;` が前段にある）。
-- `MainPage` の `currentUser` null 互換コードはすでに揃っている:
+`userIsAdmin` を組み合わせて、dev モード（=裏管理）の場合はガードを
+スキップする:
+
+```ts
+if (!currentUser && !userIsAdmin) {
+  // 読み込み中…
+}
+```
+
+### 3. その他のページの currentUser null 互換確認
+
+- `MainPage`:
   - `usePresence(session?.id ?? null, currentUser)`: hook 側で no-op。
   - `updatePaymentBadge` の effect: `if (!session || !currentUser)` で early return。
   - 周知事項未読バッジ: `currentUser` ガード済。
@@ -85,6 +95,22 @@ SessionJoinPage に追加するだけで、ほぼ全ての要件が満たせる�
   - PresenceIndicator: 自分を除外する条件 `name === currentUser`
     だけが影響を受けるが、そもそも自分のエントリが presence に
     書かれないため問題なし。
+- `HistoryPage`: `canFilterByMe = !!session?.createdBy && !!currentUser`
+  により「自分の試合のみ」フィルタが裏管理時は無効化される（仕様通り）。
+- `AccountingPage` / `PlayerSelect`: currentUser に依存しないため OK。
+  PlayerSelect の自己編集判定（`player.name === currentUser`）は常に
+  false だが、`isAdmin` が true のため `canEdit` は true。
+- `ReservationPage`: `addReservation(playerIds, currentUser || undefined)`
+  で予約の `createdBy` が undefined になり「追加: <名前>」が出ない。
+- `UnrecordedMatchPrompt`: `canShow` に `!!currentUser` 条件があり
+  裏管理には表示されない（自分のプレイヤー記録が存在しないため正しい挙動）。
+- `BottomNav`: 履歴バッジが `isAdmin()` 経由で全件カウントになる
+  （ローカルモード/管理者と同じ扱い）。
+- `bugReport.ts`: `currentUser ?? '(未ログイン)'` で「(未ログイン)」と
+  表示される。匿名で報告される。
+- `sessionStore.isAdmin()` / `isCreator()` の `if (!currentUser) return false;`
+  ガードを書き換える必要は無い（既に `if (isDevMode()) return true;`
+  が前段にある）。
 
 ## 影響範囲・リスク
 
@@ -117,9 +143,10 @@ SessionJoinPage に追加するだけで、ほぼ全ての要件が満たせる�
    - PresenceIndicator に自分が出ないこと（別タブから観察）。
    - 連続モードトグル・周知事項編集・config 編集等の管理者操作が
      `isAdmin()` 経由で許可されること。
-3. 観覧専用入室中に周知事項を編集 → 別ユーザー側で `更新: <名前>` が
+3. 観覧専用入室中に SettingsPage を開ける（永久ローディングしない）こと。
+4. 観覧専用入室中に周知事項を編集 → 別ユーザー側で `更新: <名前>` が
    表示されないこと（`updatedBy` が空のため）。
-4. 観覧専用入室後にリロード → SessionSelectPage に戻り、再度入室画面に
+5. 観覧専用入室後にリロード → SessionSelectPage に戻り、再度入室画面に
    進んだとき名前が自動選択されないこと。
 
 ## 非対応 (Out of Scope)

@@ -49,8 +49,10 @@ export function SettingsPage() {
     return <Navigate to="/" replace />;
   }
 
-  // currentUser が未設定の場合はローディング（参加直後の僅かな期間）
-  if (!currentUser) {
+  // currentUser が未設定の場合はローディング（参加直後の僅かな期間）。
+  // ただし裏管理（dev モードで観覧専用入室したユーザー）は currentUser=null
+  // が意図的なので、isAdmin() で抜ける（dev モード時は常に true）。
+  if (!currentUser && !userIsAdmin) {
     return (
       <div className="h-screen flex items-center justify-center">
         <div className="text-center">
