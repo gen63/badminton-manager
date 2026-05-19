@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { deleteField } from 'firebase/firestore';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { subscribeToRecentActiveSessions, updateSession } from '../services/sessionService';
 import { setPracticeType as setPracticeTypeMutation } from '../services/sessionMutations';
+import { isSessionVisible } from '../lib/sessionArchive';
 import { clearAppBadge } from '../lib/badge';
 import { useDevMode } from '../hooks/useDevMode';
 import { useSessionStore } from '../stores/sessionStore';
@@ -135,15 +136,16 @@ export function SessionSelectPage() {
     clearAppBadge();
   }, []);
 
-  // セッション一覧をリアルタイム購読（一覧画面を開いている間に新規作成された
-  // セッションも自動で表示する）。devMode 切替時はローダーに戻さず、新しい
-  // snapshot が届くまでは旧リストをそのまま表示する。
+  // セッション一覧をリアルタイム購読。フィルタはレンダー時に now ベースで
+  // 行うため、ここでは常に全件 (includeArchived: true) を取得する。これにより
+  // 90 分前ルールに引っ掛かったセッションも client にキープされ、tick で
+  // 自動的に表示に切り替わる。
   useEffect(() => {
     if (!isFirebaseConfigured()) return;
 
     const unsubscribe = subscribeToRecentActiveSessions(
       50,
-      { includeArchived: devMode },
+      { includeArchived: true },
       (data) => {
         setSessions(data);
         setLoading(false);
@@ -155,7 +157,21 @@ export function SessionSelectPage() {
       },
     );
     return unsubscribe;
-  }, [devMode]);
+  }, []);
+
+  // 60 秒毎の now tick。これに依存して isSessionVisible を再評価することで、
+  // 「開始 90 分前」を画面開きっぱなしで迎えたときも自動でセッションが出現する。
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // dev モードは全件、それ以外は isSessionVisible で 90分前 / 12h アーカイブ判定。
+  const visibleSessions = useMemo(
+    () => (devMode ? sessions : sessions.filter((s) => isSessionVisible(s, now))),
+    [sessions, devMode, now],
+  );
 
   // Firebase未設定時はローカルモードにリダイレクト（レンダーで即時、フラッシュなし）
   if (!isFirebaseConfigured()) {
@@ -192,9 +208,9 @@ export function SessionSelectPage() {
         )}
 
         {/* セッション一覧 */}
-        {sessions.length > 0 ? (
+        {visibleSessions.length > 0 ? (
           <div className="space-y-2">
-            {sessions.map((session) => (
+            {visibleSessions.map((session) => (
               <div key={session.id} className="card overflow-hidden">
                 <div className="flex items-stretch">
                   <button

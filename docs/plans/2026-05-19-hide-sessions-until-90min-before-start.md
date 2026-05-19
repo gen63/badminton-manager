@@ -37,11 +37,16 @@
 `/session/:id` の読み込みでは判定していない。よって URL を知っている
 ユーザーは引き続きセッションに直接アクセスできる（要望通り）。
 
-### 自動更新（非対応）
+### 自動更新（60秒tick）
 
-`onSnapshot` ベースの購読のため、開始 90 分前ちょうどに一覧が
-ライブ更新されるわけではない。リロードか次の Firestore 変更で反映される。
-要件「一覧に出ない」だけ満たせばよいので、ティッカーは入れない。
+`onSnapshot` のコールバックだけに依存すると、画面を開きっぱなしで
+90 分前を迎えたときに一覧が更新されない。対策として `SessionSelectPage`
+側で `now` を 60 秒毎に更新する `useState` + `setInterval` を持ち、
+`isSessionVisible(session, now)` をレンダー時に再評価する。
+
+そのために `subscribeToRecentActiveSessions` は **常に `includeArchived: true`** で
+呼び、time フィルタは page 側で行う。dev モード判定もここで行う
+（dev モード時はフィルタ無し = 全件表示）。
 
 ## 変更内容
 
@@ -55,6 +60,13 @@
 
 - 「90分前ちょうど」「90分1秒前」「89分59秒前」「開始時刻」「開始後」
   などの境界テストを追加
+
+### `src/pages/SessionSelectPage.tsx`
+
+- 購読時は `includeArchived: true` で全件取得。
+- 60 秒毎に更新する `now` state を追加し、レンダー時に
+  `isSessionVisible(session, now)` で再フィルタ（`useMemo`）。
+- dev モードは全件、非 dev はフィルタ後の `visibleSessions` を描画。
 
 ## 影響範囲
 
