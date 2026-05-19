@@ -155,6 +155,10 @@ export function computeFinishAndContinue(
       const assignments = assignCourts(waitingPlayers, 1, updatedMatchHistory, {
         targetCourtIds: [courtId],
         totalCourtCount: updatedCourts.length,
+        // 全アクティブプレイヤー (他コートでプレイ中の高 gamesPlayed 含む) を渡す。
+        // lateBalance の maxGamesPlayed 算出に必要。これが無いと待機者だけから
+        // max を取ってしまい、後半均等化ペナルティが過小評価される。
+        allPlayers: updatedPlayers.filter((p) => !p.isResting),
         useStayDurationPriority: options.useStayDurationPriority,
         reservations: state.reservations,
         gameMode: options.gameMode,

@@ -1455,6 +1455,10 @@ function findBestSinglesPairing(
  * - 連続回避: 直前にプレイしたユーザを含むペアにペナルティ
  * - レーティング近接: 他条件が拮抗時に近いレーティング同士を好む（タイブレーク）
  */
+// Singles ペアリングのコスト関数 (computeSinglesPairCost) は SINGLES_WEIGHT_BALANCE
+// で gamesPlayed 合計を直接ペナルティ化しており、独立した均等化メカニズムを持つ。
+// そのため lateBalance はここでは prioritySorted (候補プール切り出し) と最終的な
+// pair → court 割当順 (minScore) にだけ影響し、効果はダブルスより限定的。
 function assignCourtsSingles(
   activePlayers: Player[],
   targetCourtIds: number[],
