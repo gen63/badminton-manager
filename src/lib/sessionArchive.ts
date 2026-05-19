@@ -2,6 +2,9 @@ import type { Match } from '../types/match';
 
 export const ARCHIVE_THRESHOLD_MS = 12 * 60 * 60 * 1000;
 
+/** 試合未開始セッションを一覧に出し始めるリードタイム（開始時刻からの遡り） */
+export const VISIBLE_BEFORE_START_MS = 10 * 60 * 1000;
+
 export function computeFirstMatchStartedAt(matches: Match[]): number | null {
   if (matches.length === 0) return null;
   return Math.min(...matches.map((m) => m.startedAt));
@@ -28,5 +31,7 @@ export function isSessionVisible(
   }
   const startTime = session.config?.practiceStartTime;
   if (!startTime) return false;
+  // 開始時刻の手前は VISIBLE_BEFORE_START_MS 以内でないと非表示
+  if (now < startTime - VISIBLE_BEFORE_START_MS) return false;
   return formatLocalDate(startTime) >= formatLocalDate(now);
 }
