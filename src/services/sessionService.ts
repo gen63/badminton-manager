@@ -38,8 +38,6 @@ export interface SyncSettings {
   practiceType?: '単' | '複' | '楽';
   /** 練習後半に試合回数の偏りを均等化するモード。 */
   lateBalanceMode?: boolean;
-  /** 自動オン済みを示すタイムスタンプ（再発火防止用）。 */
-  lateBalanceAutoTriggeredAt?: number;
 }
 
 /** ゲーム状態の型（Firestore同期用） */

@@ -48,13 +48,13 @@ finalScore = baseScore - penalty
 - `useStayDurationPriority === false` (回数優先モード) かつ
 - `Date.now() - practiceStartTime >= 90 * 60 * 1000` (90 分経過)
 
-→ 自動で `lateBalanceMode = true` を Firestore に書き込み、
-   `lateBalanceAutoTriggeredAt = Date.now()` も同時に記録する。
+→ 自動で `lateBalanceMode = true` を Firestore に書き込む。
 
-### 自動オンの再発火防止
+### 90 分経過後は常に ON を維持
 
-`lateBalanceAutoTriggeredAt` が既に設定されていれば自動オンは走らない。
-ユーザーが手動でオフに戻しても、自動で再オンにはならない (= 一度きりの自動有効化)。
+「1 度きり」ではなく、手動 OFF された場合も次の interval (60 秒以内) で
+再度 ON に揃え直す。回数優先モードで 90 分過ぎたら ON が正しい状態とみなす。
+OFF を維持したい場合は待機時間優先モードに切り替える運用。
 
 ### 手動操作
 
@@ -80,7 +80,6 @@ interface SyncSettings {
   continuousMatchMode?: boolean;
   practiceType?: '単' | '複' | '楽';
   lateBalanceMode?: boolean;
-  lateBalanceAutoTriggeredAt?: number;  // 自動オン済みのフラグ兼タイムスタンプ
 }
 ```
 
@@ -99,7 +98,7 @@ interface SyncSettings {
   Firestore 反映用)。Firestore 同期対象なので persist 対象外 (既存 practiceType
   と同じ扱い)。
 - `src/services/sessionMutations.ts` に `setLateBalanceMode(sessionId, value)`
-  と `markLateBalanceAutoTriggered(sessionId, ts)` 追加。
+  を追加。自動オン側も同じ writer を使うので transaction は単純化。
 - `src/hooks/useFirebaseSync.ts` で `gameState.settings.lateBalanceMode` を
   ローカル store に反映。
 - `src/hooks/useSessionWriter.ts` から `setLateBalanceMode` を公開。
@@ -107,13 +106,14 @@ interface SyncSettings {
 ### 自動オン発火
 
 `src/pages/MainPage.tsx`:
-- `useEffect` で `setInterval` (60 秒ごと) チェック、または既存の useEffect 内で
-  チェック。条件成立で `markLateBalanceAutoTriggered` を呼ぶ。
+- `useEffect` で `setInterval` (60 秒ごと) チェック。条件成立で
+  `writer.setLateBalanceMode(true)` を呼ぶ。
 - アンマウント時のクリーンアップ必須。
-- 多重発火防止: 直前に `gameState.settings.lateBalanceAutoTriggeredAt` を確認、
-  かつ書き込み中はローカルロック (`useRef`)。
-- 同時に複数クライアントが同じ条件を満たす可能性 → Firestore トランザクション
-  内で既に triggeredAt が set されていれば no-op にする (idempotent)。
+- 依存配列に `lateBalanceMode` を含めるので、ON に切り替わり次第 effect が
+  再評価されて interval を解除。手動 OFF されたら再度 interval を貼り直し、
+  すぐに ON に戻す (= 90 分経過後は ON を維持する仕様)。
+- 複数クライアントが同時に書き込んでも `true` で揃うため安全 (boolean 同値
+  書き込みなので競合なし)。
 
 ### UI
 
@@ -136,7 +136,7 @@ interface SyncSettings {
 - 性別 3-1 ペナルティが lateBalance ペナルティに負けないことを確認 (定数調整)。
 
 `src/services/sessionMutations.test.ts` (もしあれば) に:
-- `setLateBalanceMode` / `markLateBalanceAutoTriggered` の idempotency。
+- `setLateBalanceMode` の idempotency。
 
 ## 非対応 (今回スコープ外)
 
@@ -151,17 +151,17 @@ interface SyncSettings {
 1. `npm run build && npm run lint && npm run test:run` が全て通ること。
 2. 開発サーバーで以下シナリオを確認:
    - 回数優先モード + 練習開始から 90 分後にトグルが自動でオンになる。
-   - 自動オン後に手動オフして再度 90 分待っても自動再オンしない。
+   - 自動オン後に手動オフしても、60 秒以内に再度自動オンになる。
    - lateBalanceMode ON 中、明らかに試合数が少ないプレイヤーが次の配置で
      入りやすくなる。
-   - 性別 3-1 構成は引き続き避けられる。
-3. 複数タブで同時に開いて「自動オン」が二重書き込みにならないこと
-   (transaction が idempotent)。
+   - 性別 3-1 構成は (回数差が小さければ) 引き続き避けられる。
+3. 複数タブで同時に開いて「自動オン」が競合しないこと
+   (`setLateBalanceMode(true)` は同値書き込みなので安全)。
 
 ## ファイル変更まとめ
 
 - `src/services/sessionService.ts` - SyncSettings 拡張
-- `src/services/sessionMutations.ts` - setLateBalanceMode / markLateBalanceAutoTriggered
+- `src/services/sessionMutations.ts` - setLateBalanceMode
 - `src/hooks/useFirebaseSync.ts` - lateBalanceMode 同期
 - `src/hooks/useSessionWriter.ts` - mutation 公開
 - `src/stores/settingsStore.ts` - lateBalanceMode フィールド

@@ -176,11 +176,10 @@ export function MainPage() {
     updatePaymentBadge(isPaid, amount);
   }, [session, currentUser, players]);
 
-  // 後半均等化の自動オン: 練習開始から 90 分経過 & 回数優先モード & 未トリガー
-  // のとき lateBalanceMode を自動で true にする。1 セッションにつき 1 度きり
-  // (lateBalanceAutoTriggeredAt が記録されたら再発火しない)。
-  // markLateBalanceAutoTriggered は transaction 内で idempotent なので、
-  // 複数クライアントが同時に発火しても安全。
+  // 後半均等化の自動オン: 練習開始から 90 分経過 & 回数優先モード & OFF
+  // のとき lateBalanceMode を true に揃える。1 度きりではなく、手動で OFF に
+  // 戻されても次の interval で再度 ON にする (= 90 分経過後は強制的に ON
+  // を維持)。OFF を維持したい場合は待機時間優先モードに切り替える。
   useEffect(() => {
     if (!session?.id) return;
     if (useStayDurationPriority) return; // 待機時間優先モードでは自動オンしない
@@ -193,7 +192,7 @@ export function MainPage() {
     const tryTrigger = () => {
       const elapsedMin = (Date.now() - practiceStart) / (1000 * 60);
       if (elapsedMin >= AUTO_ON_MINUTES) {
-        void writer.markLateBalanceAutoTriggered();
+        void writer.setLateBalanceMode(true);
       }
     };
 
