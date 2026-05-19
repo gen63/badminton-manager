@@ -731,6 +731,30 @@ export function setPracticeType(sessionId: string, value: '単' | '複' | '楽')
   return mutateGameState(sessionId, (s) => computeSetSetting(s, 'practiceType', value));
 }
 
+export function setLateBalanceMode(sessionId: string, value: boolean) {
+  return mutateGameState(sessionId, (s) => computeSetSetting(s, 'lateBalanceMode', value));
+}
+
+/**
+ * 後半均等化の自動オンを 1 度だけ実行するための idempotent な書き込み。
+ * 既に `lateBalanceAutoTriggeredAt` が設定されているか、`lateBalanceMode` が
+ * 既に true なら no-op。複数クライアントが同時に発火しても安全。
+ */
+export function markLateBalanceAutoTriggered(sessionId: string, now: number = Date.now()) {
+  return mutateGameState(sessionId, (s) => {
+    if (s.settings?.lateBalanceAutoTriggeredAt) return s;
+    if (s.settings?.lateBalanceMode === true) return s;
+    return {
+      ...s,
+      settings: {
+        ...(s.settings ?? {}),
+        lateBalanceMode: true,
+        lateBalanceAutoTriggeredAt: now,
+      },
+    };
+  });
+}
+
 // =============================================================================
 // Match: 汎用 update（B2/B4 修正で追加）
 // =============================================================================
@@ -1016,6 +1040,7 @@ export async function finishMatchAndContinue(
         prioritizeDiversity: options.prioritizeDiversity,
         gameMode,
         matchId: options.matchId,
+        lateBalanceMode: remoteSettings?.lateBalanceMode ?? false,
       });
 
       transaction.update(ref, buildGameStatePayload(computed.newState));

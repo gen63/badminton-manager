@@ -15,6 +15,8 @@ interface SettingsState {
   setPrioritizeDiversity: (value: boolean) => void;
   practiceType: '単' | '複' | '楽';
   setPracticeType: (value: '単' | '複' | '楽') => void;
+  lateBalanceMode: boolean;
+  setLateBalanceMode: (value: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -40,6 +42,8 @@ export const useSettingsStore = create<SettingsState>()(
           if (value === '楽') return { practiceType: value, prioritizeDiversity: true };
           return { practiceType: value };
         }),
+      lateBalanceMode: false,
+      setLateBalanceMode: (value) => set({ lateBalanceMode: value }),
     }),
     {
       name: 'badminton-settings',

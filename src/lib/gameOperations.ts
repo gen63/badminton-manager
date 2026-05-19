@@ -77,6 +77,7 @@ export function computeFinishAndContinue(
     prioritizeDiversity: boolean;
     gameMode: 'singles' | 'doubles';
     matchId?: string;
+    lateBalanceMode?: boolean;
   }
 ): FinishGameResult {
   const court = state.courts.find(c => c.id === courtId);
@@ -157,6 +158,7 @@ export function computeFinishAndContinue(
         useStayDurationPriority: options.useStayDurationPriority,
         reservations: state.reservations,
         gameMode: options.gameMode,
+        lateBalanceMode: options.lateBalanceMode,
       });
 
       if (assignments[0]) {

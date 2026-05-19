@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { calculatePlayerStats, getStreaks, buildInitialOrder, applyStreakSwaps, assignCourts, formTeams } from './algorithm';
+import { calculatePlayerStats, getStreaks, buildInitialOrder, applyStreakSwaps, assignCourts, formTeams, sortWaitingPlayers } from './algorithm';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
 
@@ -1008,5 +1008,113 @@ describe('assignCourts (シングルス)', () => {
     const picked = [assignments[0].teamA[0], assignments[0].teamB[0]].sort();
     // gamesPlayed 合計が低い a-b ペアが選ばれる
     expect(picked).toEqual(['a', 'b']);
+  });
+});
+
+describe('assignCourts - 後半均等化モード (lateBalanceMode)', () => {
+  const NOW = Date.now();
+
+  const createGenderedPlayer = (
+    id: string,
+    gender: 'M' | 'F',
+    gamesPlayed: number,
+  ): Player => ({
+    id,
+    name: id.toUpperCase(),
+    gender,
+    rating: 1500,
+    gamesPlayed,
+    isResting: false,
+    lastPlayedAt: 0,
+    activatedAt: NOW - 60 * 60 * 1000,
+  });
+
+  it('lateBalanceMode=true で試合数の少ない異性が 3-1 ペナルティを上回って配置される (gap=2)', () => {
+    // p1-p4: 男性、gp=10 (全員 4-0 構成にすればペナルティ無し)
+    // p5: 女性、gp=8 (gap=2)。lateBalance ペナルティ -4.0 が gender 3-1 ペナルティ +3.0 を上回り
+    //     {p1,p2,p3,p5} が選ばれるはず
+    const players: Player[] = [
+      createGenderedPlayer('p1', 'M', 10),
+      createGenderedPlayer('p2', 'M', 10),
+      createGenderedPlayer('p3', 'M', 10),
+      createGenderedPlayer('p4', 'M', 10),
+      createGenderedPlayer('p5', 'F', 8),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      lateBalanceMode: true,
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('p5')).toBe(true);
+    expect(picked.size).toBe(4);
+  });
+
+  it('lateBalanceMode=false (既定) では同シナリオで gender 3-1 が回避され男性 4人が選ばれる', () => {
+    const players: Player[] = [
+      createGenderedPlayer('p1', 'M', 10),
+      createGenderedPlayer('p2', 'M', 10),
+      createGenderedPlayer('p3', 'M', 10),
+      createGenderedPlayer('p4', 'M', 10),
+      createGenderedPlayer('p5', 'F', 8),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      // lateBalanceMode: false (default)
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    // 4-0 (同性) が 3-1 より優先されるので p5 (F) は選ばれない
+    expect(picked.has('p5')).toBe(false);
+  });
+
+  it('lateBalanceMode=true でも gap=1 のときは gender 3-1 が依然回避される', () => {
+    // gap=1 → lateBalance ペナルティ -2.0 が gender 3-1 ペナルティ +3.0 に劣る
+    const players: Player[] = [
+      createGenderedPlayer('p1', 'M', 10),
+      createGenderedPlayer('p2', 'M', 10),
+      createGenderedPlayer('p3', 'M', 10),
+      createGenderedPlayer('p4', 'M', 10),
+      createGenderedPlayer('p5', 'F', 9),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      lateBalanceMode: true,
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('p5')).toBe(false);
+  });
+
+  it('sortWaitingPlayers: lateBalanceMode=true で試合数が少ない人が前に来る', () => {
+    const players: Player[] = [
+      createGenderedPlayer('p1', 'M', 10),
+      createGenderedPlayer('p2', 'M', 5),
+      createGenderedPlayer('p3', 'M', 10),
+    ];
+
+    const sorted = sortWaitingPlayers(players, {
+      emptyCourtIds: [],
+      totalCourtCount: 1,
+      matchHistory: [],
+      allActivePlayers: players,
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      useStayDuration: false,
+      lateBalanceMode: true,
+    });
+
+    expect(sorted[0].id).toBe('p2');
   });
 });
