@@ -36,8 +36,8 @@ function MatchCard({
 }) {
   const durationMs = match.finishedAt - match.startedAt;
   const duration = Math.round(durationMs / 60000);
-  // 180 秒未満の試合は試合終了ボタンの誤タップ等、操作ミスの可能性が高い
-  const isSuspiciouslyShort = durationMs < 180_000;
+  // 150 秒以下の試合は試合終了ボタンの誤タップ等、操作ミスの可能性が高い
+  const isSuspiciouslyShort = durationMs <= 150_000;
   const isNoScore = match.scoreA === 0 && match.scoreB === 0 && !match.winner;
 
   const isTeamAWinner = match.winner === 'A';
@@ -68,9 +68,20 @@ function MatchCard({
       className={`rounded-lg p-2 border ${isNoScore ? 'bg-orange-50 border-orange-300' : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-100'}`}
     >
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
-          {matchNumber}
-        </span>
+        <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+          {isSuspiciouslyShort && (
+            <span
+              title="試合時間が短すぎます（操作ミスの可能性）"
+              aria-label="試合時間が短すぎます（操作ミスの可能性）"
+              className="flex items-center text-amber-600 cursor-help"
+            >
+              <AlertTriangle size={12} />
+            </span>
+          )}
+          <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 w-5 h-5 rounded-full flex items-center justify-center">
+            {matchNumber}
+          </span>
+        </div>
 
         <div className="flex-1 min-w-0 space-y-0.5">
           <div className="flex items-center text-sm gap-1.5 leading-tight">
@@ -89,15 +100,6 @@ function MatchCard({
               {formatTime(match.finishedAt)}
             </span>
             <span className="whitespace-nowrap">({duration}分)</span>
-            {isSuspiciouslyShort && (
-              <span
-                title="試合時間が短すぎます（操作ミスの可能性）"
-                aria-label="試合時間が短すぎます（操作ミスの可能性）"
-                className="flex items-center text-amber-600 cursor-help"
-              >
-                <AlertTriangle size={12} />
-              </span>
-            )}
             {isNoScore ? (
               <span className="text-xs font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full whitespace-nowrap">
                 未入力
