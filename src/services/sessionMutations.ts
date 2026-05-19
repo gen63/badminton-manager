@@ -18,7 +18,6 @@ import {
 } from 'firebase/firestore';
 import { SessionError } from '../lib/errorHandler';
 import { requireDb, sanitize } from '../lib/firestoreUtils';
-import { computeFirstMatchStartedAt } from '../lib/sessionArchive';
 import { computeFinishAndContinue, gameModeFromPracticeType } from '../lib/gameOperations';
 import { sanitizePlayerName } from '../lib/inputValidation';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
@@ -33,7 +32,6 @@ function buildGameStatePayload(next: GameState): Record<string, unknown> {
     gameState: sanitize(next),
     updatedAt: serverTimestamp(),
     registeredPlayers: next.players.map((p) => p.name),
-    firstMatchStartedAt: computeFirstMatchStartedAt(next.matchHistory),
   };
 }
 
@@ -41,7 +39,7 @@ function buildGameStatePayload(next: GameState): Record<string, unknown> {
  * `runTransaction(read → apply → write)` の汎用ラッパー。
  *
  * `apply(remoteState)` が次の `GameState` を返すと、それを `gameState` フィールドに
- * 書き込み、`updatedAt` / `registeredPlayers` / `firstMatchStartedAt` も同時更新する。
+ * 書き込み、`updatedAt` / `registeredPlayers` も同時更新する。
  *
  * エラー変換:
  *   - セッション未存在: `SessionError('not-found')`

@@ -617,7 +617,6 @@ describe('sessionMutations - transactional wrapper (via applyPayment)', () => {
     const updateArgs = mockTransactionUpdate.mock.calls[0][1];
     expect(updateArgs.updatedAt).toBe('__serverTimestamp__');
     expect(updateArgs.registeredPlayers).toEqual(['Alice', 'Bob']);
-    expect(updateArgs.firstMatchStartedAt).toBe(1000);
     expect(updateArgs.gameState.players).toHaveLength(2);
   });
 

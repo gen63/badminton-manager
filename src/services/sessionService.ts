@@ -29,7 +29,7 @@ import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import { SessionError } from '../lib/errorHandler';
 import { requireDb, sanitize } from '../lib/firestoreUtils';
-import { computeFirstMatchStartedAt, isSessionVisible } from '../lib/sessionArchive';
+import { computeLastMatchStartedAt, isSessionVisible } from '../lib/sessionArchive';
 
 /** セッションレベルの設定（Firebase同期対象） */
 export interface SyncSettings {
@@ -61,11 +61,12 @@ function generateFirebaseSessionId(): string {
 function docToSession(id: string, data: Record<string, unknown>): Session {
   const gameState = data.gameState as
     | {
-        matchHistory?: unknown[];
+        matchHistory?: Match[];
         players?: Player[];
         settings?: { practiceType?: '単' | '複' | '楽' };
       }
     | undefined;
+  const matchHistory = Array.isArray(gameState?.matchHistory) ? gameState.matchHistory : [];
   const paidCount = Array.isArray(gameState?.players)
     ? gameState.players.filter((p) => p?.operationStatus?.payment === true).length
     : 0;
@@ -107,8 +108,9 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     information: data.information as Session['information'],
     accounting: data.accounting as Session['accounting'],
     presence: data.presence as Session['presence'],
-    firstMatchStartedAt: (data.firstMatchStartedAt as number | null | undefined) ?? null,
-    matchCount: Array.isArray(gameState?.matchHistory) ? gameState.matchHistory.length : 0,
+    // matchHistory から都度算出（Firestore に保存しない派生値）
+    lastMatchStartedAt: computeLastMatchStartedAt(matchHistory),
+    matchCount: matchHistory.length,
     paidCount,
     incomeTotal,
     practiceType: gameState?.settings?.practiceType,
@@ -156,7 +158,6 @@ export async function createSession(
       if (gameState) {
         payload.gameState = sanitize(gameState);
         payload.registeredPlayers = gameState.players.map((p) => p.name);
-        payload.firstMatchStartedAt = computeFirstMatchStartedAt(gameState.matchHistory);
       }
       await setDoc(docRef, payload);
 
@@ -338,7 +339,6 @@ export async function syncGameState(
   await updateDoc(docRef, {
     gameState: sanitize(gameState),
     registeredPlayers,
-    firstMatchStartedAt: computeFirstMatchStartedAt(gameState.matchHistory),
     updatedAt: serverTimestamp(), // Firestoreサーバー時刻（同期の基準時刻）
   });
 }

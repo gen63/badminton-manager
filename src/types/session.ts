@@ -58,7 +58,7 @@ export interface Session {
   accounting?: AccountingInput; // 会計ページの入力状態（管理者が共有編集）
   presence?: { [username: string]: PresenceEntry }; // 画面を開いている/操作中のユーザー
   etomoEventId?: string; // E-tomoイベントID（自動作成時の重複防止用）
-  firstMatchStartedAt?: number | null; // 最初の試合開始時刻。null/未設定 = 試合未開始（12h自動アーカイブ判定用）
+  lastMatchStartedAt?: number | null; // 最後の試合開始時刻。null/未設定 = 試合未開始。一覧の自動アーカイブ判定に使用
   // 一覧表示用の派生フィールド（docToSession で gameState から抽出）
   matchCount?: number;
   paidCount?: number; // 支払い完了済みプレイヤー数（gameState.players から算出）
