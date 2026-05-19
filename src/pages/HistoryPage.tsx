@@ -89,6 +89,15 @@ function MatchCard({
               {formatTime(match.finishedAt)}
             </span>
             <span className="whitespace-nowrap">({duration}分)</span>
+            {isSuspiciouslyShort && (
+              <span
+                title="試合時間が短すぎます（操作ミスの可能性）"
+                aria-label="試合時間が短すぎます（操作ミスの可能性）"
+                className="flex items-center text-amber-600"
+              >
+                <AlertTriangle size={12} />
+              </span>
+            )}
             {isNoScore ? (
               <span className="text-xs font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full whitespace-nowrap">
                 未入力
@@ -99,12 +108,6 @@ function MatchCard({
               </span>
             )}
           </div>
-          {isSuspiciouslyShort && (
-            <div className="flex items-center gap-1 text-[11px] text-amber-700 leading-tight">
-              <AlertTriangle size={11} className="flex-shrink-0" />
-              <span>試合時間が短すぎます（操作ミスの可能性）</span>
-            </div>
-          )}
         </div>
 
         <div className="flex flex-col gap-0.5 flex-shrink-0">
