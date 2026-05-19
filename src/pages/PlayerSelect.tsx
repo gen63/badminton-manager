@@ -155,8 +155,8 @@ export function PlayerSelect() {
         key={player.id}
         className="bg-card border border-border rounded-xl px-3 py-2 flex items-center gap-2 shadow-sm"
       >
-        {/* 名前 (40%) */}
-        <div className="flex-[2] flex items-center gap-2">
+        {/* 名前 + 編集/削除 */}
+        <div className="flex-1 min-w-0 flex items-center gap-2">
           <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
           {canEdit && (
             <button
@@ -178,10 +178,15 @@ export function PlayerSelect() {
           )}
         </div>
 
-        {/* チェックボックス (各20%) */}
+        {/* 試合数 */}
+        <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 tabular-nums">
+          {player.gamesPlayed}
+        </span>
+
+        {/* 支払 / 名簿 ボタン */}
         <button
           onClick={() => handlePaymentClick(player.id)}
-          className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1"
+          className="w-14 flex-shrink-0 text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1"
           style={{
             backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
             color: status.payment ? '#ffffff' : '#6b7280',
@@ -192,7 +197,7 @@ export function PlayerSelect() {
         <button
           onClick={() => void rosterToggle.run(player.id)}
           disabled={rosterToggle.isPending}
-          className="flex-1 text-xs py-1 px-2 rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
+          className="w-14 flex-shrink-0 text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
           style={{
             backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
             color: status.roster ? '#ffffff' : '#6b7280',
