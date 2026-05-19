@@ -222,6 +222,35 @@ describe('sessionStore - Information機能', () => {
       const session = useSessionStore.getState().session;
       expect(session?.information?.text).toBe('エラーテスト');
     });
+
+    it('currentUser=null (裏管理) の場合、updatedBy は undefined ではなく省略される', async () => {
+      // Firestore は `ignoreUndefinedProperties` 未設定のため、
+      // `updatedBy: undefined` を含んだ payload を送ると write 自体が
+      // 例外で失敗する。裏管理（観覧専用入室）で currentUser=null の場合、
+      // updatedBy はオブジェクトに含めない（プロパティ自体を省略する）。
+      useSessionStore.setState({
+        session: {
+          id: 'test-session',
+          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          createdBy: 'Admin',
+        },
+        currentUser: null,
+      });
+
+      const { updateInformation } = useSessionStore.getState();
+      await updateInformation('裏管理が書き込み');
+
+      const session = useSessionStore.getState().session;
+      expect(session?.information?.text).toBe('裏管理が書き込み');
+      expect(session?.information).not.toHaveProperty('updatedBy');
+      expect(session?.information?.readBy).toEqual([]);
+
+      const call = mockUpdateSession.mock.calls.find((c) => c[0] === 'test-session');
+      const information = call?.[1]?.information;
+      expect(information).not.toHaveProperty('updatedBy');
+    });
   });
 
   describe('markInformationAsRead', () => {

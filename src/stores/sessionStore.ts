@@ -122,11 +122,15 @@ export const useSessionStore = create<SessionState>()(
           return;
         }
 
-        const newInformation = {
+        // SessionSelectPage と揃える: `updatedBy: undefined` を含めると Firestore
+        // (`ignoreUndefinedProperties` 未設定) が write 時に例外を投げてしまう。
+        // 裏管理 (currentUser=null) の場合に発生していた。
+        // currentUser がある時だけプロパティを差し込む。
+        const newInformation: NonNullable<Session['information']> = {
           text: text.trim(),
           updatedAt: Date.now(), // ローカルクライアント時刻
-          updatedBy: currentUser || undefined,
           readBy: currentUser ? [currentUser] : [], // 編集者は既読扱い
+          ...(currentUser ? { updatedBy: currentUser } : {}),
         };
 
         // ローカル更新
