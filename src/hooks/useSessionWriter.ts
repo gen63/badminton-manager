@@ -235,6 +235,11 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  const markLateBalanceAutoTriggered = useCallback(
+    () => handle('markLateBalanceAutoTriggered', (sid) => sm.markLateBalanceAutoTriggered(sid)),
+    [handle],
+  );
+
   return useMemo(
     () => ({
       sessionId,
@@ -274,6 +279,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setContinuousMatchMode,
       setPracticeType,
       setLateBalanceMode,
+      markLateBalanceAutoTriggered,
     }),
     [
       sessionId,
@@ -308,6 +314,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setContinuousMatchMode,
       setPracticeType,
       setLateBalanceMode,
+      markLateBalanceAutoTriggered,
     ],
   );
 }

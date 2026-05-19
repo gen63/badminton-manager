@@ -68,6 +68,7 @@ export function MainPage() {
   const prioritizeDiversity = useSettingsStore((s) => s.prioritizeDiversity);
   const practiceType = useSettingsStore((s) => s.practiceType);
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
+  const lateBalanceEverActivated = useSettingsStore((s) => s.lateBalanceEverActivated);
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
   // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
@@ -176,14 +177,16 @@ export function MainPage() {
     updatePaymentBadge(isPaid, amount);
   }, [session, currentUser, players]);
 
-  // 後半均等化の自動オン: 練習開始から 90 分経過 & 回数優先モード & OFF
-  // のとき lateBalanceMode を true に揃える。1 度きりではなく、手動で OFF に
-  // 戻されても次の interval で再度 ON にする (= 90 分経過後は強制的に ON
-  // を維持)。OFF を維持したい場合は待機時間優先モードに切り替える。
+  // 後半均等化の自動オン: 練習開始から 90 分経過 & 回数優先モード &
+  // lateBalanceMode が一度も ON になったことがない (`lateBalanceEverActivated=false`)
+  // のとき自動オンする。1 セッションにつき 1 回きり。
+  // 手動で先に ON にしていた場合 (その後 OFF にしていても) は自動オンしない。
+  // `markLateBalanceAutoTriggered` は transaction 内で idempotent なので、
+  // 複数クライアントが同時に発火しても安全。
   useEffect(() => {
     if (!session?.id) return;
     if (useStayDurationPriority) return; // 待機時間優先モードでは自動オンしない
-    if (lateBalanceMode) return; // 既に ON なら不要
+    if (lateBalanceEverActivated) return; // 一度でも ON 経験があれば自動オン不要
 
     const AUTO_ON_MINUTES = 90;
     const practiceStart = session.config.practiceStartTime;
@@ -192,14 +195,14 @@ export function MainPage() {
     const tryTrigger = () => {
       const elapsedMin = (Date.now() - practiceStart) / (1000 * 60);
       if (elapsedMin >= AUTO_ON_MINUTES) {
-        void writer.setLateBalanceMode(true);
+        void writer.markLateBalanceAutoTriggered();
       }
     };
 
     tryTrigger();
     const intervalId = setInterval(tryTrigger, 60 * 1000);
     return () => clearInterval(intervalId);
-  }, [session?.id, session?.config.practiceStartTime, useStayDurationPriority, lateBalanceMode, writer]);
+  }, [session?.id, session?.config.practiceStartTime, useStayDurationPriority, lateBalanceEverActivated, writer]);
 
   const playersInCourts = useMemo(() => new Set(
     courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
