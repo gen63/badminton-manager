@@ -128,29 +128,34 @@ export function getRecommendedCourtCount(playerCount: number, maxCourts: number 
  * @param occupiedCourts 目前でプレー中またはプレイヤーが入っているコート数
  * @param emptyCourts 空いているコート数
  * @param waitingCount 待機中のプレイヤー人数（コート内に入っていないアクティブプレイヤー）
- * @param totalActiveCount アクティブ（休憩中でない）プレイヤーの総数
+ * @param _totalActiveCount アクティブ（休憩中でない）プレイヤーの総数（現状未使用）
  * @param baseThreshold ブロックするための基本待機人数閾値（通常は2）
  *
  * 推奨メッセージを表示する条件:
  *   1. 多様性優先モードが有効
  *   2. エッジケース除外：3コート以上全空きの場合は推奨なし（1コートずつ配置OK）
- *   3. 空きコートを埋めた後（または仮に1コート空いた場合）の待機人数が baseThreshold 以下
- *   ※ 空きコートがない場合も、次に空いたときの予告として表示
+ *   3. 空きコートを埋めた後の待機人数が baseThreshold 以下
  *
- * 多様性優先モードの意図: 組み合わせの多様性を高めるため複数コート一括配置を促す
+ * 【設計根拠：多様性確率】
+ * 1コート空き時、待機 w 人 + 直前対戦の 4 人 = w+4 人プールから 4 人選抜する。
+ * 最適選抜（待機優先）での強制再投入数 = max(0, 4 - w):
+ *   w=0: 4人(100%) / w=1: 3人(75%) / w=2: 2人(50%) /
+ *   w=3: 1人(25%) / w=4以上: 0人(0%)
+ * → baseThreshold=2 のとき「強制再投入 ≥ 50%」の境界でブロック。
  *
- * 【実際の動作範囲】
- * baseThreshold=2 の場合：
- *   2コート（全空き or 1使用中+1空き）:
- *     - ブロック発動: 8-10人（全空き時）、4-6人待機（1コート使用中）
- *     - ブロック解除: 11人以上（全空き時）、7人以上待機（1コート使用中）
- *   3コート（全空き or 2使用中+1空き）:
- *     - ブロック発動: 12-14人（全空き時）、4-6人待機（2コート使用中）
- *     - ブロック解除: 15人以上（全空き時）、7人以上待機（2コート使用中）
+ * 【実際の動作範囲】 baseThreshold=2 の場合：
+ *   空きコート 0:
+ *     - ブロック: waiting ≤ 2
+ *     - 解除: waiting ≥ 3（次にコート空けば 7+ 人プールから 4 人選抜可）
+ *   2コート（1使用中+1空き）:
+ *     - ブロック: 4-6人待機（プール 4-6 から 4 選抜、残り 0-2）
+ *     - 解除: 7人以上待機
+ *   3コート（2使用中+1空き）:
+ *     - ブロック: 4-6人待機
+ *     - 解除: 7人以上待機
  *
  * 一般式:
- *   ブロック発動: waitingCount ≤ emptyCourts × 4 + baseThreshold
- *   ブロック解除: waitingCount > emptyCourts × 4 + baseThreshold
+ *   ブロック: waitingCount - emptyCourts × playersPerCourt ≤ baseThreshold
  */
 export function shouldBlockForDiversity(
   prioritizeDiversity: boolean,
@@ -169,13 +174,6 @@ export function shouldBlockForDiversity(
     return false;
   }
 
-  // 空きコートがない場合は、仮に1コート空くとして計算
-  const effectiveEmptyCourts = Math.max(emptyCourts, 1);
-
-  const remainingAfterAssignment = Math.max(0, waitingCount - (effectiveEmptyCourts * playersPerCourt));
-  if (remainingAfterAssignment <= baseThreshold) {
-    return true;
-  }
-
-  return false;
+  const remainingAfterAssignment = Math.max(0, waitingCount - (emptyCourts * playersPerCourt));
+  return remainingAfterAssignment <= baseThreshold;
 }
