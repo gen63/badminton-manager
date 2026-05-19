@@ -180,7 +180,7 @@ export function PlayerSelect() {
 
         {/* 試合数 */}
         <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 tabular-nums">
-          {player.gamesPlayed}試合
+          {player.gamesPlayed}
         </span>
 
         {/* 支払 / 名簿 ボタン */}
