@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Match } from '../types/match';
 import {
   ARCHIVE_THRESHOLD_MS,
+  VISIBLE_BEFORE_START_MS,
   computeFirstMatchStartedAt,
   isSessionVisible,
 } from './sessionArchive';
@@ -92,16 +93,16 @@ describe('isSessionVisible', () => {
       expect(isSessionVisible({ config: {} }, now)).toBe(false);
     });
 
-    it('practiceStartTime が今日なら表示', () => {
+    it('practiceStartTime が今(=now)なら表示', () => {
       expect(
         isSessionVisible({ config: { practiceStartTime: makeStartTime(now, 0) } }, now),
       ).toBe(true);
     });
 
-    it('practiceStartTime が明日なら表示', () => {
+    it('practiceStartTime が明日なら非表示（90分以上先のため）', () => {
       expect(
         isSessionVisible({ config: { practiceStartTime: makeStartTime(now, 1) } }, now),
-      ).toBe(true);
+      ).toBe(false);
     });
 
     it('practiceStartTime が昨日なら非表示', () => {
@@ -114,6 +115,32 @@ describe('isSessionVisible', () => {
       expect(
         isSessionVisible({ config: { practiceStartTime: makeStartTime(now, -30) } }, now),
       ).toBe(false);
+    });
+  });
+
+  describe('開始90分前ルール（試合未開始）', () => {
+    it('ちょうど90分前は表示', () => {
+      const startTime = now + VISIBLE_BEFORE_START_MS;
+      expect(isSessionVisible({ config: { practiceStartTime: startTime } }, now)).toBe(true);
+    });
+
+    it('90分1秒前は非表示', () => {
+      const startTime = now + VISIBLE_BEFORE_START_MS + 1000;
+      expect(isSessionVisible({ config: { practiceStartTime: startTime } }, now)).toBe(false);
+    });
+
+    it('89分59秒前は表示', () => {
+      const startTime = now + VISIBLE_BEFORE_START_MS - 1000;
+      expect(isSessionVisible({ config: { practiceStartTime: startTime } }, now)).toBe(true);
+    });
+
+    it('開始時刻ちょうどは表示', () => {
+      expect(isSessionVisible({ config: { practiceStartTime: now } }, now)).toBe(true);
+    });
+
+    it('開始から1時間後（同日）は表示', () => {
+      const startTime = now - 60 * 60 * 1000;
+      expect(isSessionVisible({ config: { practiceStartTime: startTime } }, now)).toBe(true);
     });
   });
 });
