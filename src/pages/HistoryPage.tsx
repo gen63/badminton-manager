@@ -9,7 +9,7 @@ import { formatTime, copyToClipboard } from '../lib/utils';
 import { formatLocalDate } from '../lib/sessionArchive';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
 import { isMatchOfPlayer } from '../lib/matchFilter';
-import { Copy, Trash2, Edit3, Clock, Upload, Loader2, History, ChevronDown, ChevronUp, User } from 'lucide-react';
+import { Copy, Trash2, Edit3, Clock, Upload, Loader2, History, ChevronDown, ChevronUp, User, AlertTriangle } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
@@ -34,7 +34,10 @@ function MatchCard({
   handleDelete: (id: string) => void;
   isAdmin: boolean;
 }) {
-  const duration = Math.round((match.finishedAt - match.startedAt) / 60000);
+  const durationMs = match.finishedAt - match.startedAt;
+  const duration = Math.round(durationMs / 60000);
+  // 180 秒未満の試合は試合終了ボタンの誤タップ等、操作ミスの可能性が高い
+  const isSuspiciouslyShort = durationMs > 0 && durationMs < 180_000;
   const isNoScore = match.scoreA === 0 && match.scoreB === 0 && !match.winner;
 
   const isTeamAWinner = match.winner === 'A';
@@ -96,6 +99,12 @@ function MatchCard({
               </span>
             )}
           </div>
+          {isSuspiciouslyShort && (
+            <div className="flex items-center gap-1 text-[11px] text-amber-700 leading-tight">
+              <AlertTriangle size={11} className="flex-shrink-0" />
+              <span>試合時間が短すぎます（操作ミスの可能性）</span>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-0.5 flex-shrink-0">
