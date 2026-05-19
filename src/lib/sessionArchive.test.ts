@@ -99,7 +99,7 @@ describe('isSessionVisible', () => {
       ).toBe(true);
     });
 
-    it('practiceStartTime が明日なら非表示（10分以上先のため）', () => {
+    it('practiceStartTime が明日なら非表示（90分以上先のため）', () => {
       expect(
         isSessionVisible({ config: { practiceStartTime: makeStartTime(now, 1) } }, now),
       ).toBe(false);
@@ -118,18 +118,18 @@ describe('isSessionVisible', () => {
     });
   });
 
-  describe('開始10分前ルール（試合未開始）', () => {
-    it('ちょうど10分前は表示', () => {
+  describe('開始90分前ルール（試合未開始）', () => {
+    it('ちょうど90分前は表示', () => {
       const startTime = now + VISIBLE_BEFORE_START_MS;
       expect(isSessionVisible({ config: { practiceStartTime: startTime } }, now)).toBe(true);
     });
 
-    it('10分1秒前は非表示', () => {
+    it('90分1秒前は非表示', () => {
       const startTime = now + VISIBLE_BEFORE_START_MS + 1000;
       expect(isSessionVisible({ config: { practiceStartTime: startTime } }, now)).toBe(false);
     });
 
-    it('9分59秒前は表示', () => {
+    it('89分59秒前は表示', () => {
       const startTime = now + VISIBLE_BEFORE_START_MS - 1000;
       expect(isSessionVisible({ config: { practiceStartTime: startTime } }, now)).toBe(true);
     });
