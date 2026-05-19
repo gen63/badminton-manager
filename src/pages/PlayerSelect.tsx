@@ -4,7 +4,6 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { useGuardedAction } from '../hooks/useGuardedAction';
-import { buildInitialOrder, applyStreakSwaps } from '../lib/algorithm';
 import { parsePlayerInput } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
@@ -48,15 +47,8 @@ export function PlayerSelect() {
     matchHistory.flatMap((match) => [...match.teamA, ...match.teamB])
   );
 
-  // 動的序列でソート（弱い順 = 序列の逆順）
-  const dynamicOrder = applyStreakSwaps(buildInitialOrder(players), matchHistory, 3);
-  const sortedPlayers = [...players].sort((a, b) => {
-    const aIdx = dynamicOrder.indexOf(a.id);
-    const bIdx = dynamicOrder.indexOf(b.id);
-    const aPos = aIdx === -1 ? Infinity : aIdx;
-    const bPos = bIdx === -1 ? Infinity : bIdx;
-    return bPos - aPos;
-  });
+  // 参加回数の多い順でソート
+  const sortedPlayers = [...players].sort((a, b) => b.gamesPlayed - a.gamesPlayed);
 
   const handleAddPlayers = async () => {
     if (newPlayerNames.trim()) {
