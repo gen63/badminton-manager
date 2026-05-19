@@ -37,7 +37,7 @@ function MatchCard({
   const durationMs = match.finishedAt - match.startedAt;
   const duration = Math.round(durationMs / 60000);
   // 180 秒未満の試合は試合終了ボタンの誤タップ等、操作ミスの可能性が高い
-  const isSuspiciouslyShort = durationMs > 0 && durationMs < 180_000;
+  const isSuspiciouslyShort = durationMs < 180_000;
   const isNoScore = match.scoreA === 0 && match.scoreB === 0 && !match.winner;
 
   const isTeamAWinner = match.winner === 'A';
@@ -93,7 +93,7 @@ function MatchCard({
               <span
                 title="試合時間が短すぎます（操作ミスの可能性）"
                 aria-label="試合時間が短すぎます（操作ミスの可能性）"
-                className="flex items-center text-amber-600"
+                className="flex items-center text-amber-600 cursor-help"
               >
                 <AlertTriangle size={12} />
               </span>
