@@ -14,11 +14,13 @@ import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
-import { Loader2, Plus, ChevronDown } from 'lucide-react';
+import { useDevMode } from '../hooks/useDevMode';
+import { Loader2, Plus, ChevronDown, EyeOff } from 'lucide-react';
 
 export function SessionJoinPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const devMode = useDevMode();
 
   const [session, setSession] = useState<Session | null>(null);
   const [selectedName, setSelectedName] = useState('');
@@ -185,6 +187,82 @@ export function SessionJoinPage() {
     }
   };
 
+  /**
+   * 裏管理として入室（dev モード限定）
+   *
+   * - joinSession を呼ばない → participants / registeredPlayers /
+   *   gameState.players のいずれにも名前が追加されない。
+   * - currentUser を null のままにする → usePresence が no-op、
+   *   updateInformation 等の updatedBy も付かない。
+   * - 既存の isAdmin()/isCreator() は dev モード時に true を返すため、
+   *   作成者と同等の権限で管理操作ができる。
+   *
+   * docs/plans/2026-05-19-hidden-admin-role.md
+   */
+  const handleEnterAsHiddenAdmin = async () => {
+    if (!sessionId || !session) return;
+
+    setJoining(true);
+    setError('');
+
+    // 別の共有セッションに居る場合は前セッションから離脱（handleJoin と同じ判定）
+    const previousSession = useSessionStore.getState().session;
+    const previousUser = useSessionStore.getState().currentUser;
+    const isSameOnlineSession =
+      !!previousSession?.id &&
+      !!previousSession.createdBy &&
+      previousSession.id === sessionId;
+    if (
+      previousSession?.id &&
+      previousSession.id !== sessionId &&
+      previousSession.createdBy
+    ) {
+      if (previousUser) {
+        void Promise.allSettled([
+          leaveSession(previousSession.id, previousUser),
+          clearPresence(previousSession.id, previousUser),
+        ]);
+      }
+    }
+
+    try {
+      // 別オンラインセッションへの切替時のみローカルストアをクリア（handleJoin と同じ理由）
+      if (!isSameOnlineSession) {
+        usePlayerStore.getState().clearPlayers();
+        useGameStore.getState().clearHistory();
+        useReservationStore.getState().clearReservations();
+        useAccountingStore.getState().clearRecords();
+        useUndoStore.getState().clearAll();
+      }
+
+      initializeSession({
+        id: sessionId,
+        config: session.config,
+        createdAt: session.createdAt,
+        updatedAt: Date.now(),
+        createdBy: session.createdBy,
+        participants: session.participants,
+        registeredPlayers: session.registeredPlayers,
+        status: session.status,
+      });
+      // initialize は currentUser を session.createdBy で上書きするため null に戻す
+      setCurrentUser(null);
+
+      useSyncStatusStore.getState().setGameStateLoaded(false);
+      const startedAt = Date.now();
+      const TIMEOUT_MS = 5000;
+      const POLL_MS = 50;
+      while (!useSyncStatusStore.getState().isGameStateLoaded) {
+        if (Date.now() - startedAt > TIMEOUT_MS) break;
+        await new Promise((r) => setTimeout(r, POLL_MS));
+      }
+      navigate('/main');
+    } catch (err) {
+      setError(getErrorMessage(err));
+      setJoining(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -334,6 +412,19 @@ export function SessionJoinPage() {
             {joining && <Loader2 size={16} className="animate-spin" />}
             {joining ? '入室中...' : '入室する'}
           </button>
+
+          {/* dev モード限定: 観覧専用入室（裏管理）
+              docs/plans/2026-05-19-hidden-admin-role.md */}
+          {devMode && (
+            <button
+              onClick={() => void handleEnterAsHiddenAdmin()}
+              disabled={joining}
+              className="mt-2 w-full flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors py-2 disabled:opacity-50"
+            >
+              <EyeOff size={14} />
+              裏管理として入室（観覧専用）
+            </button>
+          )}
         </div>
       </div>
     </div>

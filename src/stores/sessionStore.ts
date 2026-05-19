@@ -19,7 +19,7 @@ interface SessionState {
   updateConfig: (config: Partial<SessionConfig>) => Promise<void>;
   clearSession: () => void;
   // オンラインモード用
-  setCurrentUser: (name: string) => void;
+  setCurrentUser: (name: string | null) => void;
   initialize: (session: Session) => void;
   isCreator: () => boolean;
   isAdmin: () => boolean;
