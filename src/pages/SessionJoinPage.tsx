@@ -187,7 +187,7 @@ export function SessionJoinPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-app flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <Loader2 size={32} className="animate-spin text-muted-foreground mx-auto mb-3" />
           <p className="text-muted-foreground text-sm">セッション読み込み中...</p>
@@ -198,7 +198,7 @@ export function SessionJoinPage() {
 
   if (error && !session) {
     return (
-      <div className="min-h-screen bg-app flex items-center justify-center p-4">
+      <div className="min-h-screen flex items-center justify-center p-4">
         <div className="card p-6 max-w-md w-full text-center">
           <h2 className="text-lg font-bold text-foreground mb-2">エラー</h2>
           <p className="text-muted-foreground text-sm mb-4">{error}</p>
@@ -227,7 +227,7 @@ export function SessionJoinPage() {
   const isJoinedExpanded = showJoinedMembers || (!!selectedName && joinedNames.has(selectedName));
 
   return (
-    <div className="min-h-screen bg-app p-4">
+    <div className="min-h-screen p-4">
       <div className="max-w-md mx-auto space-y-4">
         {/* ヘッダー */}
         <div className="text-center">

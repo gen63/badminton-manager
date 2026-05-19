@@ -52,7 +52,7 @@ export function SettingsPage() {
   // currentUser が未設定の場合はローディング（参加直後の僅かな期間）
   if (!currentUser) {
     return (
-      <div className="bg-app h-screen flex items-center justify-center">
+      <div className="h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-muted-foreground">読み込み中...</p>
         </div>
@@ -228,14 +228,13 @@ export function SettingsPage() {
   );
 
   return (
-    <div className="bg-app pb-6">
+    <div className="pb-6">
       {/* ヘッダー */}
-      <div className="header-gradient text-foreground p-3">
+      <div className="text-foreground p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <button
             onClick={() => navigate('/main')}
             aria-label="戻る"
-            className="icon-btn"
           >
             <ArrowLeft size={20} />
           </button>

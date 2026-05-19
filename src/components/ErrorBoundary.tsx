@@ -46,7 +46,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   render() {
     if (this.state.error) {
       return (
-        <div className="min-h-screen bg-app flex items-center justify-center p-4">
+        <div className="min-h-screen flex items-center justify-center p-4">
           <div className="max-w-md w-full card p-6 space-y-4">
             <h1 className="text-lg font-bold text-destructive">予期しないエラーが発生しました</h1>
             <p className="text-sm text-muted-foreground">

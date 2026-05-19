@@ -46,7 +46,7 @@ const SessionJoinPage = lazy(() =>
 
 function PageFallback() {
   return (
-    <div className="min-h-screen bg-app flex items-center justify-center">
+    <div className="min-h-screen flex items-center justify-center">
       <Loader2 size={28} className="animate-spin text-muted-foreground" />
     </div>
   );

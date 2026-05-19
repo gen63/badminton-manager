@@ -149,9 +149,9 @@ export function AccountingCalcPage() {
   };
 
   return (
-    <div className="bg-app min-h-screen pb-8">
+    <div className="min-h-screen pb-8">
       {/* ヘッダー */}
-      <div className="header-gradient text-foreground p-3">
+      <div className="text-foreground p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <button
             onClick={() => navigate('/')}

@@ -232,7 +232,7 @@ export function SessionCreate() {
     };
 
     return (
-      <div className="bg-app overflow-x-hidden min-h-screen flex items-center justify-center p-4">
+      <div className="overflow-x-hidden min-h-screen flex items-center justify-center p-4">
         <div className="max-w-md w-full space-y-4">
           <div className="card p-6">
             <div className="text-center mb-4">
@@ -294,9 +294,9 @@ export function SessionCreate() {
   }
 
   return (
-    <div className="bg-app overflow-x-hidden">
+    <div className="overflow-x-hidden">
       {/* ヘッダー */}
-      <div className="header-gradient text-foreground p-3">
+      <div className="text-foreground p-3">
         <div className="max-w-6xl mx-auto flex items-center gap-3">
           <div className="flex items-center gap-2">
             <Play size={20} />

@@ -181,7 +181,7 @@ export function SessionSelectPage() {
   // ローディング
   if (loading) {
     return (
-      <div className="min-h-screen bg-app flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <Loader2 size={32} className="animate-spin text-muted-foreground mx-auto mb-3" />
           <p className="text-muted-foreground text-sm">セッションを読み込み中...</p>
@@ -191,15 +191,18 @@ export function SessionSelectPage() {
   }
 
   return (
-    <div className="min-h-screen bg-app">
+    <div className="min-h-screen flex flex-col">
       {/* ヘッダー */}
-      <div className="header-gradient text-foreground p-3">
-        <div className="max-w-6xl mx-auto flex items-center gap-2">
+      <div
+        className="text-foreground px-3 pb-3"
+        style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+      >
+        <div className="max-w-md mx-auto flex items-center gap-2">
           <h1 className="text-lg font-bold">セッション選択</h1>
         </div>
       </div>
 
-      <div className="max-w-md mx-auto w-full p-4 space-y-4">
+      <div className="max-w-md mx-auto w-full p-4 space-y-4 flex flex-col flex-1">
         {/* エラー表示 */}
         {error && (
           <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-xl text-sm">
@@ -305,8 +308,11 @@ export function SessionSelectPage() {
           </div>
         )}
 
-        {/* バージョン表示 */}
-        <p className="text-center text-xs text-muted-foreground pt-2">
+        {/* バージョン表示 — 画面下端に固定 */}
+        <p
+          className="text-center text-xs text-muted-foreground mt-auto pt-2"
+          style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+        >
           v{__APP_VERSION__}
         </p>
       </div>
