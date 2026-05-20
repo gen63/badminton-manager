@@ -91,6 +91,18 @@ describe('parseEventTitle', () => {
       note: '単',
     });
   });
+
+  it('「楽基礎」など `楽` で始まる細分類は `楽` に正規化する', () => {
+    const result = parseEventTitle('6/8(月)18:30～21:30@富士見台.楽基礎');
+    expect(result).toEqual({
+      month: 6,
+      day: 8,
+      startTime: '18:30',
+      endTime: '21:30',
+      venue: '富士見台',
+      note: '楽',
+    });
+  });
 });
 
 describe('parseEventList', () => {
@@ -383,7 +395,7 @@ describe('formatEventSummary', () => {
     expect(summary).toContain('単（シングルス）');
   });
 
-  it('楽ミントのラベルが正しい', () => {
+  it('楽はラベル無しで `楽` のみ表示する', () => {
     const event = {
       eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
       startTime: '18:30', endTime: '21:30', venue: 'ぴいす', note: '楽',
@@ -391,7 +403,7 @@ describe('formatEventSummary', () => {
       location: '', participants: [], genders: {},
     };
     const summary = formatEventSummary(event, new Date(2026, 3, 9));
-    expect(summary).toContain('楽（楽ミント）');
+    expect(summary).toContain('\n楽\n');
   });
 });
 

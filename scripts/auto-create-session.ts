@@ -104,13 +104,17 @@ function parseEventTitle(title: string) {
   const venueNote = match[5].replace(/\(\d{1,2}\/\d{1,2}\)$/, '');
   const dotIndex = venueNote.lastIndexOf('.');
 
+  const rawNote = dotIndex >= 0 ? venueNote.substring(dotIndex + 1) : '';
+  // 「楽基礎」「楽初心」など `楽` で始まる細分類は `楽` として扱う
+  const note = rawNote.startsWith('楽') ? '楽' : rawNote;
+
   return {
     month: parseInt(match[1]),
     day: parseInt(match[2]),
     startTime: match[3],
     endTime: match[4],
     venue: dotIndex >= 0 ? venueNote.substring(0, dotIndex) : venueNote,
-    note: dotIndex >= 0 ? venueNote.substring(dotIndex + 1) : '',
+    note,
   };
 }
 
@@ -542,11 +546,14 @@ const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
 function formatEventSummary(event: EtomoEventDetail, targetDate: Date): string {
   const dayName = DAY_NAMES[targetDate.getDay()];
-  const noteLabel = event.note === '単' ? 'シングルス' : event.note === '複' ? 'ダブルス' : '楽ミント';
+  const noteLine =
+    event.note === '単' ? '単（シングルス）'
+    : event.note === '複' ? '複（ダブルス）'
+    : event.note;
   return [
     `${targetDate.getMonth() + 1}/${targetDate.getDate()}(${dayName}) ${event.startTime}〜${event.endTime}`,
     `${event.venue}`,
-    `${event.note}（${noteLabel}）`,
+    noteLine,
     `参加者: ${event.participants.length}名`,
   ].join('\n');
 }
