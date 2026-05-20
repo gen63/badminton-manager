@@ -48,7 +48,6 @@ export interface Session {
   config: SessionConfig;
   createdAt: number;
   updatedAt: number;
-  // オンラインモード用フィールド
   createdBy?: string;
   admins?: string[]; // 追加管理者のリスト
   participants?: string[];

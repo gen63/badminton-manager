@@ -5,5 +5,5 @@ export interface Reservation {
   status: 'pending' | 'fulfilled';
   createdAt: number;            // 作成時刻（Unix timestamp）
   fulfilledAt: number;          // 完了時刻（Unix timestamp、未完了時は0）
-  createdBy?: string;           // 追加者の名前（オンラインモード時）
+  createdBy?: string;           // 追加者の名前
 }
