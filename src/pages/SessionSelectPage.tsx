@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { deleteField } from 'firebase/firestore';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { subscribeToRecentActiveSessions, updateSession } from '../services/sessionService';
@@ -38,15 +38,28 @@ function resolvePracticeTypeLabel(session: Session): string {
 
 export function SessionSelectPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const devMode = useDevMode();
   const currentUser = useSessionStore((s) => s.currentUser);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState<{ type: 'error' | 'warning'; message: string } | null>(null);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [editingText, setEditingText] = useState('');
   const [editingPracticeType, setEditingPracticeType] = useState<PracticeType | ''>('');
   const [saving, setSaving] = useState(false);
+
+  // useFirebaseSync からセッション削除/TTL 切れで遷移してきた場合、
+  // location.state.notice を読み取って一度だけバナー表示する。
+  // 表示後は history state をクリアしてブラウザバックで再表示されないようにする。
+  useEffect(() => {
+    const stateNotice = (location.state as { notice?: { type: 'error' | 'warning'; message: string } } | null)?.notice;
+    if (stateNotice) {
+      setNotice(stateNotice);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.state, location.pathname, navigate]);
 
   const openEdit = (session: Session) => {
     setEditingSession(session);
@@ -203,6 +216,26 @@ export function SessionSelectPage() {
       </div>
 
       <div className="max-w-md mx-auto w-full p-4 space-y-4 flex flex-col flex-1">
+        {/* セッション切断/TTL 切れ等の通知（useFirebaseSync から navigate state で渡される） */}
+        {notice && (
+          <div
+            className={
+              notice.type === 'error'
+                ? 'bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-xl text-sm flex items-start justify-between gap-3'
+                : 'bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl text-sm flex items-start justify-between gap-3'
+            }
+          >
+            <span>{notice.message}</span>
+            <button
+              onClick={() => setNotice(null)}
+              aria-label="通知を閉じる"
+              className="flex-shrink-0 opacity-70 hover:opacity-100"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         {/* エラー表示 */}
         {error && (
           <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-xl text-sm">

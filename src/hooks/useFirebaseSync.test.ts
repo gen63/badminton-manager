@@ -401,7 +401,7 @@ describe('useFirebaseSync - 再購読 (reconnect)', () => {
 });
 
 describe('useFirebaseSync - 削除 / TTL', () => {
-  it('snap.exists()=false でセッションをクリアし root へ navigate', () => {
+  it('snap.exists()=false でセッションをクリアし即時 root へ navigate（notice 付き）', () => {
     setSharedSession();
     renderHook(() => useFirebaseSync());
 
@@ -410,13 +410,13 @@ describe('useFirebaseSync - 削除 / TTL', () => {
     });
 
     expect(useSessionStore.getState().session).toBeNull();
-    act(() => {
-      vi.advanceTimersByTime(1500);
+    // setTimeout 無しで即時 navigate される
+    expect(mockNavigate).toHaveBeenCalledWith('/', {
+      state: { notice: { type: 'error', message: 'セッションが削除されました' } },
     });
-    expect(mockNavigate).toHaveBeenCalledWith('/');
   });
 
-  it('updatedAt が 30 日以上前なら有効期限切れ通知 → navigate', () => {
+  it('updatedAt が 30 日以上前なら即時 navigate（warning notice 付き）', () => {
     setSharedSession();
     renderHook(() => useFirebaseSync());
 
@@ -430,9 +430,13 @@ describe('useFirebaseSync - 削除 / TTL', () => {
     });
 
     expect(useSessionStore.getState().session).toBeNull();
-    act(() => {
-      vi.advanceTimersByTime(2500);
+    expect(mockNavigate).toHaveBeenCalledWith('/', {
+      state: {
+        notice: {
+          type: 'warning',
+          message: 'セッションの有効期限（最終アクセスから1か月）が切れました',
+        },
+      },
     });
-    expect(mockNavigate).toHaveBeenCalledWith('/');
   });
 });

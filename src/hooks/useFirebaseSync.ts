@@ -24,7 +24,6 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { usePresenceStore } from '../stores/presenceStore';
 import { notifyMatchStart } from '../lib/notifications';
-import { useToast } from './useToast';
 import type { Court } from '../types/court';
 import type { GameState } from '../services/sessionService';
 import type { Session } from '../types/session';
@@ -57,16 +56,13 @@ const HIDDEN_DURATION_FOR_RESUBSCRIBE_MS = 60_000;
 export function useFirebaseSync() {
   const sessionId = useSessionStore((s) => s.session?.id);
   const reconnectNonce = useSyncStatusStore((s) => s.reconnectNonce);
-  const toast = useToast();
   const navigate = useNavigate();
 
   // 依存配列の安定化
-  const toastRef = useRef(toast);
   const navigateRef = useRef(navigate);
   useEffect(() => {
-    toastRef.current = toast;
     navigateRef.current = navigate;
-  }, [toast, navigate]);
+  }, [navigate]);
 
   const sessionDeletedNotified = useRef(false);
   const lastResubscribeAtRef = useRef(0);
@@ -126,9 +122,13 @@ export function useFirebaseSync() {
         if (!snap.exists()) {
           if (!sessionDeletedNotified.current) {
             sessionDeletedNotified.current = true;
-            toastRef.current.error('セッションが削除されました');
             useSessionStore.getState().clearSession();
-            setTimeout(() => navigateRef.current('/'), 1000);
+            // 即時 navigate（旧実装の setTimeout 待ちで /players 等が一瞬残ると、
+            // session ガード無しページでフラッシュが起きるため）。
+            // 切断理由は遷移先 SessionSelectPage が location.state.notice を見て表示する。
+            navigateRef.current('/', {
+              state: { notice: { type: 'error', message: 'セッションが削除されました' } },
+            });
           }
           return;
         }
@@ -159,7 +159,6 @@ export function useFirebaseSync() {
 
         // TTL（最終更新から 30 日経過）チェック
         if (updatedAtMs > 0 && Date.now() - updatedAtMs > TTL_MS) {
-          toastRef.current.warning('セッションの有効期限（最終アクセスから1か月）が切れました');
           const currentSession = useSessionStore.getState().session;
           const currentUser = useSessionStore.getState().currentUser;
           const isCreator = currentSession?.createdBy === currentUser;
@@ -171,7 +170,14 @@ export function useFirebaseSync() {
             });
           }
           useSessionStore.getState().clearSession();
-          setTimeout(() => navigateRef.current('/'), 2000);
+          navigateRef.current('/', {
+            state: {
+              notice: {
+                type: 'warning',
+                message: 'セッションの有効期限（最終アクセスから1か月）が切れました',
+              },
+            },
+          });
           return;
         }
 
