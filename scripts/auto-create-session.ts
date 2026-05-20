@@ -546,11 +546,14 @@ const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
 function formatEventSummary(event: EtomoEventDetail, targetDate: Date): string {
   const dayName = DAY_NAMES[targetDate.getDay()];
-  const noteLabel = event.note === '単' ? 'シングルス' : event.note === '複' ? 'ダブルス' : '楽ミント';
+  const noteLine =
+    event.note === '単' ? '単（シングルス）'
+    : event.note === '複' ? '複（ダブルス）'
+    : event.note;
   return [
     `${targetDate.getMonth() + 1}/${targetDate.getDate()}(${dayName}) ${event.startTime}〜${event.endTime}`,
     `${event.venue}`,
-    `${event.note}（${noteLabel}）`,
+    noteLine,
     `参加者: ${event.participants.length}名`,
   ].join('\n');
 }
