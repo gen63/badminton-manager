@@ -62,6 +62,7 @@ import {
   resizeCourtsWithConfig,
   swapPlayer,
   swapPositions,
+  markLateBalanceAutoFired,
 } from './sessionMutations';
 import type { GameState } from './sessionService';
 import type { Player } from '../types/player';
@@ -577,6 +578,90 @@ describe('sessionMutations - settings', () => {
     const state = baseState();
     const next = computeSetSetting(state, 'recordScores', false);
     expect(next.settings).toEqual({ recordScores: false });
+  });
+});
+
+describe('sessionMutations - markLateBalanceAutoFired', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('未発火 (autoFired=false) のときは mode=true と autoFired=true を書き込む', async () => {
+    const state = baseState({ settings: { lateBalanceMode: false } });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await markLateBalanceAutoFired('session-1');
+
+    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    expect(updateArgs.gameState.settings).toMatchObject({
+      lateBalanceMode: true,
+      lateBalanceAutoFired: true,
+    });
+  });
+
+  it('既に発火済み (autoFired=true) のときは no-op', async () => {
+    const state = baseState({
+      settings: { lateBalanceMode: false, lateBalanceAutoFired: true },
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await markLateBalanceAutoFired('session-1');
+
+    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    // autoFired は既に true、mode は false のまま (no-op)
+    expect(updateArgs.gameState.settings).toMatchObject({
+      lateBalanceMode: false,
+      lateBalanceAutoFired: true,
+    });
+  });
+
+  it('settings 未定義でも初期化して書き込む', async () => {
+    const state = baseState();
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await markLateBalanceAutoFired('session-1');
+
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    expect(updateArgs.gameState.settings).toEqual({
+      lateBalanceMode: true,
+      lateBalanceAutoFired: true,
+    });
+  });
+
+  it('既存の他の settings (practiceType 等) を保持しつつ書き込む', async () => {
+    const state = baseState({
+      settings: { practiceType: '複', recordScores: true, lateBalanceMode: false },
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await markLateBalanceAutoFired('session-1');
+
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    expect(updateArgs.gameState.settings).toMatchObject({
+      practiceType: '複',
+      recordScores: true,
+      lateBalanceMode: true,
+      lateBalanceAutoFired: true,
+    });
   });
 });
 
