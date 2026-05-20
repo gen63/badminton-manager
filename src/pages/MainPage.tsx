@@ -68,6 +68,7 @@ export function MainPage() {
   const prioritizeDiversity = useSettingsStore((s) => s.prioritizeDiversity);
   const practiceType = useSettingsStore((s) => s.practiceType);
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
+  const lateBalanceAutoFired = useSettingsStore((s) => s.lateBalanceAutoFired);
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
   // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
@@ -177,27 +178,36 @@ export function MainPage() {
   }, [session, currentUser, players]);
 
   // 後半均等化の自動オン: 回数優先モードで「練習開始 + 90 分の節目を跨ぐ瞬間」に
-  // setTimeout 経由で 1 度だけ ON にする。マウント時点で既に 90 分経過していたら
-  // 何もしない (= ユーザーが既に手動で OFF にした可能性を尊重し、再オンしない)。
-  // これにより画面遷移やマウント／再マウントの繰り返しで OFF が打ち消されない。
-  // Firestore に「発火済み」フラグは置かない (mode 自体の状態だけで判定する)。
+  // 1 度だけ ON にする。発火済みかどうかは Firestore の `lateBalanceAutoFired`
+  // フラグで判定し、画面遷移 / 再マウント / PWA 再起動を跨いでも 1 セッション
+  // 1 度きりを保証する。
+  //
+  // - 90 分到達前: setTimeout で残り時間後に発火
+  // - 90 分到達済み & 未発火: マウント直後に即発火 (PWA 再起動などで setTimeout が
+  //   消失した状態からの復帰に対応)
+  // - 既に発火済み: 何もしない。ユーザーが手動 OFF にした後の意図を尊重する
   useEffect(() => {
     if (!session?.id) return;
     if (useStayDurationPriority) return; // 待機時間優先モードでは自動オンしない
-    if (lateBalanceMode) return; // 既に ON なら不要
+    if (lateBalanceAutoFired) return; // 既に発火済み (手動 OFF 後の再オン抑止も兼ねる)
 
     const practiceStart = session.config.practiceStartTime;
     if (!practiceStart) return;
 
     const AUTO_ON_MS = 90 * 60 * 1000;
     const delay = practiceStart + AUTO_ON_MS - Date.now();
-    if (delay < 0) return; // 90 分の節目は既に過去 → 自動オンしない
+
+    if (delay <= 0) {
+      // 90 分は既に過ぎているが未発火 (PWA 再起動・遅参加など)。今発火する。
+      void writer.markLateBalanceAutoFired();
+      return;
+    }
 
     const timeoutId = setTimeout(() => {
-      void writer.setLateBalanceMode(true);
+      void writer.markLateBalanceAutoFired();
     }, delay);
     return () => clearTimeout(timeoutId);
-  }, [session?.id, session?.config.practiceStartTime, useStayDurationPriority, lateBalanceMode, writer]);
+  }, [session?.id, session?.config.practiceStartTime, useStayDurationPriority, lateBalanceAutoFired, writer]);
 
   const playersInCourts = useMemo(() => new Set(
     courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())

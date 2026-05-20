@@ -38,6 +38,12 @@ export interface SyncSettings {
   practiceType?: '単' | '複' | '楽';
   /** 練習後半に試合回数の偏りを均等化するモード。 */
   lateBalanceMode?: boolean;
+  /**
+   * 90 分自動オンが既に走ったかを示すフラグ。1 セッションにつき 1 度だけ
+   * `markLateBalanceAutoFired` mutation で true になる。PWA 再起動などで
+   * setTimeout が消失していても、未発火なら復帰時にすぐ発火させるための判定に使う。
+   */
+  lateBalanceAutoFired?: boolean;
 }
 
 /** ゲーム状態の型（Firestore同期用） */

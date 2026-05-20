@@ -735,6 +735,28 @@ export function setLateBalanceMode(sessionId: string, value: boolean) {
   return mutateGameState(sessionId, (s) => computeSetSetting(s, 'lateBalanceMode', value));
 }
 
+/**
+ * 90 分自動オンの実行をマークする。`lateBalanceAutoFired` が既に true なら no-op。
+ * 未発火時は `lateBalanceMode=true` と `lateBalanceAutoFired=true` を 1 transaction
+ * で書き込む。idempotent なので複数クライアントが同時に発火しても安全。
+ *
+ * 手動で `setLateBalanceMode` を呼んでも `lateBalanceAutoFired` は変えない。
+ * 「自動オンが動いたか」は手動操作とは独立した一回限りのイベント。
+ */
+export function markLateBalanceAutoFired(sessionId: string) {
+  return mutateGameState(sessionId, (s) => {
+    if (s.settings?.lateBalanceAutoFired) return s;
+    return {
+      ...s,
+      settings: {
+        ...(s.settings ?? {}),
+        lateBalanceMode: true,
+        lateBalanceAutoFired: true,
+      },
+    };
+  });
+}
+
 // =============================================================================
 // Match: 汎用 update（B2/B4 修正で追加）
 // =============================================================================
