@@ -45,22 +45,23 @@ finalScore = baseScore - penalty
 ### 自動オン条件
 
 - `useStayDurationPriority === false` (回数優先モード) かつ
-- `Date.now() - practiceStartTime >= 90 * 60 * 1000` (90 分経過) かつ
-- ローカル `autoTriggeredRef.current === false` (このクライアントで未発火)
+- `lateBalanceMode === false` (現在 OFF) かつ
+- マウント時点で `practiceStartTime + 90min > now` (90 分の節目がまだ未来)
 
-→ `writer.setLateBalanceMode(true)` を呼ぶと同時に `autoTriggeredRef.current = true`。
+→ `setTimeout` を `delay = (practiceStartTime + 90min) - now` で仕掛け、
+   経過時点で `writer.setLateBalanceMode(true)` を呼ぶ。
 
-### 1 クライアントセッションにつき 1 回きり / Firestore に履歴を持たない
+### 「90 分の節目を跨ぐ瞬間にだけ発火」する設計
 
-「自動オンしたか」「過去に ON になったことがあるか」などの履歴は Firestore に
-記録しない。発火済みフラグはローカル `useRef` のみ。これにより:
-
-- 自動オン直後にユーザーが手動 OFF にしても、このクライアントは
-  再発火しない。
-- ページ再読み込みで ref がリセットされる。再読み込み後に
-  `lateBalanceMode=false` AND 90 分経過なら再度自動オンが走る (新セッション扱い)。
-- 複数の管理者が同時に開いた場合、それぞれが 1 度ずつ
-  `setLateBalanceMode(true)` を書き込むが、boolean 同値書き込みなので競合無し。
+- マウント時に既に 90 分経過していたら何もしない (`delay < 0` で early return)。
+  「ユーザーが既に手動 OFF にした可能性がある」とみなし、自動オンしない。
+- これにより、自動オン後にユーザーが OFF → 画面遷移 → MainPage 再マウントの
+  ループが発生しても、再マウント時点では 90 分の節目を過ぎているので
+  setTimeout は仕掛けられず、OFF が維持される。
+- Firestore に「発火済み」フラグを置かない設計。mode 自体の状態と
+  `practiceStartTime` から導出。
+- トレードオフ: 練習開始から 90 分以上経ってから初めて MainPage を開いた場合
+  (例: 管理者が遅れて参加)、自動オンは走らない。必要なら設定画面で手動 ON。
 
 ### 手動操作
 
@@ -89,7 +90,8 @@ interface SyncSettings {
 }
 ```
 
-自動オンの発火履歴は Firestore に持たない (ローカル useRef で管理)。
+自動オンの発火履歴は Firestore に持たない (setTimeout のスケジュールと mode 自体の
+状態から判定)。
 
 ### Algorithm
 
@@ -114,16 +116,15 @@ interface SyncSettings {
 ### 自動オン発火
 
 `src/pages/MainPage.tsx`:
-- `useRef<boolean>` (`autoTriggeredRef`) でこのクライアントが既に自動オン
-  を発火したかを記録 (Firestore には書かない)。
-- `useEffect` で `setInterval` (60 秒ごと) チェック。条件成立で
-  `writer.setLateBalanceMode(true)` を呼び、ref を true に。
+- `useEffect` で `setTimeout` を仕掛けて 90 分の節目で 1 度だけ発火する。
+- マウント時点で 90 分過ぎていたら早期 return (auto-on しない)。これにより
+  画面遷移 → 再マウント時に「OFF を上書きして ON にする」副作用を防ぐ。
+- cleanup で `clearTimeout`。
 - 依存配列に `lateBalanceMode` を含めるので、ON になった瞬間に effect が
-  再評価され interval 解除。
-- ref が true の間は、ユーザー手動 OFF で `lateBalanceMode=false` になっても
-  effect 内部の early return で自動オンは走らない。
-- ページ再読み込みで ref がリセットされる (= 再読み込み後に条件を満たせば
-  もう一度自動オンが走る、新セッション扱い)。
+  再評価されて timeout を解除 (二重発火防止)。
+- 複数タブで開いていても、最初の write で mode=true になり、他タブの
+  onSnapshot 同期 → useEffect 再評価 → timeout クリア、で 1 度しか
+  書き込まれない。同時発火でも boolean 同値書き込みなので競合無し。
 
 ### UI
 
@@ -160,10 +161,12 @@ interface SyncSettings {
 
 1. `npm run build && npm run lint && npm run test:run` が全て通ること。
 2. 開発サーバーで以下シナリオを確認:
-   - 回数優先モード + 90 分後にトグルが自動でオンになる。
-   - 自動オン後に手動オフしても、(同じクライアントで) 自動で再オンしない。
-   - lateBalanceMode ON 中、明らかに試合数が少ないプレイヤーが次の配置で
-     入りやすくなる。
+   - 回数優先モード + 90 分後にトグルが自動でオンになる (90 分到達前から開いている)。
+   - **自動オン後に手動 OFF にして、画面遷移しても OFF が維持される** (再マウント
+     時点で 90 分経過済みなので setTimeout は仕掛けられない)。
+   - ページ再読み込みでも OFF が維持される。
+   - 90 分経過後に初めて MainPage を開いた場合は自動オンしない (仕様)。
+   - lateBalanceMode ON 中、試合数が少ないプレイヤーが次の配置で入りやすくなる。
    - 性別 3-1 構成は (回数差が小さければ) 引き続き避けられる。
 3. 複数タブで同時に開いて競合しないこと (`setLateBalanceMode(true)` は
    boolean 同値書き込みなので安全)。

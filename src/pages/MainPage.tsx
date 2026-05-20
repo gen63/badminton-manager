@@ -176,34 +176,27 @@ export function MainPage() {
     updatePaymentBadge(isPaid, amount);
   }, [session, currentUser, players]);
 
-  // 後半均等化の自動オン: 回数優先モードで練習開始から 90 分経過したら
-  // lateBalanceMode を一度だけ ON にする。発火済みかどうかはローカル
-  // (`autoTriggeredRef`) でのみ管理し、Firestore には履歴を残さない。
-  // 自動オン後にユーザーが手動 OFF にしてもこのクライアントは再発火しない。
-  // ページ再読み込みで ref はリセットされる (= 別セッション扱い)。
-  const autoTriggeredRef = useRef(false);
+  // 後半均等化の自動オン: 回数優先モードで「練習開始 + 90 分の節目を跨ぐ瞬間」に
+  // setTimeout 経由で 1 度だけ ON にする。マウント時点で既に 90 分経過していたら
+  // 何もしない (= ユーザーが既に手動で OFF にした可能性を尊重し、再オンしない)。
+  // これにより画面遷移やマウント／再マウントの繰り返しで OFF が打ち消されない。
+  // Firestore に「発火済み」フラグは置かない (mode 自体の状態だけで判定する)。
   useEffect(() => {
     if (!session?.id) return;
     if (useStayDurationPriority) return; // 待機時間優先モードでは自動オンしない
-    if (autoTriggeredRef.current) return; // このクライアントで既に発火済み
     if (lateBalanceMode) return; // 既に ON なら不要
 
-    const AUTO_ON_MINUTES = 90;
     const practiceStart = session.config.practiceStartTime;
     if (!practiceStart) return;
 
-    const tryTrigger = () => {
-      if (autoTriggeredRef.current) return;
-      const elapsedMin = (Date.now() - practiceStart) / (1000 * 60);
-      if (elapsedMin >= AUTO_ON_MINUTES) {
-        autoTriggeredRef.current = true;
-        void writer.setLateBalanceMode(true);
-      }
-    };
+    const AUTO_ON_MS = 90 * 60 * 1000;
+    const delay = practiceStart + AUTO_ON_MS - Date.now();
+    if (delay < 0) return; // 90 分の節目は既に過去 → 自動オンしない
 
-    tryTrigger();
-    const intervalId = setInterval(tryTrigger, 60 * 1000);
-    return () => clearInterval(intervalId);
+    const timeoutId = setTimeout(() => {
+      void writer.setLateBalanceMode(true);
+    }, delay);
+    return () => clearTimeout(timeoutId);
   }, [session?.id, session?.config.practiceStartTime, useStayDurationPriority, lateBalanceMode, writer]);
 
   const playersInCourts = useMemo(() => new Set(
