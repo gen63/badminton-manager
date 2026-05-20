@@ -404,7 +404,6 @@ describe('formatEventSummary', () => {
     };
     const summary = formatEventSummary(event, new Date(2026, 3, 9));
     expect(summary).toContain('\n楽\n');
-    expect(summary).not.toContain('楽ミント');
   });
 });
 

@@ -13,7 +13,7 @@ E-tomo のイベントタイトルから抽出される `note`（`@<venue>.<note
 - `formatEventSummary` の `noteLabel`（scripts/auto-create-session.ts:545）
 
 このため、たとえば `6/8(月)18:30～21:30@富士見台.楽基礎` のように `楽` の後ろに
-細分類を付けたタイトルが流れてくると、`note='楽基礎'` となり、楽ミントとして
+細分類を付けたタイトルが流れてくると、`note='楽基礎'` となり `楽` として
 認識されない。`isPracticeEvent` は `周知`/`協議会` のみ除外するため「直近予定」
 には含まれるが、`practiceType` が `'楽基礎'`（型不正な文字列）となり、`gameMode`
 は `doubles` にフォールバックする。
