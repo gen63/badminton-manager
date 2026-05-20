@@ -18,7 +18,6 @@ interface SessionState {
   setSession: (session: Session) => void;
   updateConfig: (config: Partial<SessionConfig>) => Promise<void>;
   clearSession: () => void;
-  // オンラインモード用
   setCurrentUser: (name: string | null) => void;
   initialize: (session: Session) => void;
   isCreator: () => boolean;
@@ -47,9 +46,9 @@ export const useSessionStore = create<SessionState>()(
             : null,
         }));
         
-        // オンラインモード: Firestoreにも反映
+        // Firestore にも反映（セッションあれば必ず）
         const { session } = get();
-        if (session?.id && session?.createdBy) {
+        if (session?.id) {
           const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
           try {
             const mergedConfig = { ...session.config, ...config };
@@ -63,7 +62,6 @@ export const useSessionStore = create<SessionState>()(
         useUnrecordedDismissStore.getState().clear();
         set({ session: null, currentUser: null });
       },
-      // オンラインモード
       setCurrentUser: (name) => set({ currentUser: name }),
       initialize: (session) =>
         set({
@@ -72,22 +70,16 @@ export const useSessionStore = create<SessionState>()(
         }),
       isCreator: () => {
         const { session, currentUser } = get();
-        // ローカルモード: 全員管理者
-        if (!session?.createdBy) return true;
         // 開発モード: 作成者扱い
         if (isDevMode()) return true;
-        // オンラインモード: currentUser が必要
-        if (!currentUser) return false;
+        if (!session || !currentUser) return false;
         return currentUser === session.createdBy;
       },
       isAdmin: () => {
         const { session, currentUser } = get();
-        // ローカルモード: 全員管理者
-        if (!session?.createdBy) return true;
         // 開発モード: 管理者扱い
         if (isDevMode()) return true;
-        // オンラインモード: currentUser が必要
-        if (!currentUser) return false;
+        if (!session || !currentUser) return false;
         return currentUser === session.createdBy || session.admins?.includes(currentUser) || false;
       },
       updateSession: (updates) =>
@@ -109,8 +101,8 @@ export const useSessionStore = create<SessionState>()(
               : null,
           }));
 
-          // オンラインモード: Firebaseにも反映（deleteField()でフィールドを削除）
-          if (session.id && session.createdBy) {
+          // Firestore からも削除（deleteField で field 自体を消す）
+          if (session.id) {
             const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
             const { deleteField } = await import('firebase/firestore');
             try {
@@ -140,8 +132,8 @@ export const useSessionStore = create<SessionState>()(
             : null,
         }));
 
-        // オンラインモード: Firebaseにも反映
-        if (session.id && session.createdBy) {
+        // Firestore にも反映
+        if (session.id) {
           const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
           try {
             await updateFirebaseSession(session.id, { information: newInformation });
@@ -170,8 +162,8 @@ export const useSessionStore = create<SessionState>()(
             : null,
         }));
 
-        // オンラインモード: arrayUnionでアトミックに既読追加（競合を防止）
-        if (session.id && session.createdBy) {
+        // arrayUnion でアトミックに既読追加（競合を防止）
+        if (session.id) {
           try {
             const { updateDoc, doc, arrayUnion } = await import('firebase/firestore');
             const { db } = await import('../lib/firebase');
@@ -212,8 +204,8 @@ export const useSessionStore = create<SessionState>()(
             : null,
         }));
 
-        // オンラインモード: Firestoreにも反映
-        if (session.id && session.createdBy) {
+        // Firestore にも反映
+        if (session.id) {
           const { updateSession: updateFirebaseSession } = await import('../services/sessionService');
           try {
             await updateFirebaseSession(session.id, { accounting: merged });

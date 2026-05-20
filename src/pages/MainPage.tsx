@@ -146,17 +146,17 @@ export function MainPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
 
-  // config.courtCount と courts.length を同期（オンラインモード時）
+  // config.courtCount と courts.length を同期。
   // 初回 onSnapshot 受信前に走ると空配列を「正規」と誤認して Firestore を上書きするので
   // isGameStateLoaded をガードに使う。
   useEffect(() => {
-    if (!session?.createdBy) return; // ローカルモードでは不要
+    if (!session) return;
     if (!isGameStateLoaded) return;
     const configCourtCount = session.config.courtCount || 1;
     if (courts.length !== configCourtCount) {
       void writer.resizeCourts(configCourtCount);
     }
-  }, [session?.config.courtCount, courts.length, session?.createdBy, writer, isGameStateLoaded]);
+  }, [session, session?.config.courtCount, courts.length, writer, isGameStateLoaded]);
 
   // PWAバッジ更新：支払い予定額を表示
   useEffect(() => {
@@ -605,8 +605,8 @@ export function MainPage() {
               <Users size={16} />
               <span>一括</span>
             </button>
-            {/* インフォメーションアイコン（オンラインモードのみ） */}
-            {session?.createdBy && (
+            {/* インフォメーションアイコン */}
+            {session && (
               <button
                 onClick={() => {
                   // 管理者は周知事項がなくても編集モーダルを開ける

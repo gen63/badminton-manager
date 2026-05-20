@@ -45,6 +45,9 @@ limit: 5
 | `/session/create` | SessionCreate（既存） |
 | `/local` | SessionCreate（既存、ローカルモード） |
 
+> **注記 (2026-05-20)**: `/local` ルートは Phase 4 クリーンアップで削除された。
+> 詳細は `docs/plans/2026-05-20-phase4-cleanup.md` を参照。
+
 ## テスト計画
 - Firebase未設定時にSessionCreateへリダイレクトされること
 - セッション0件時に適切な空状態UIが表示されること

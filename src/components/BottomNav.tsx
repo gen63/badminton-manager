@@ -26,7 +26,7 @@ export function BottomNav({ activeTab }: BottomNavProps) {
     (s) => s.reservations.filter((r) => r.status === 'pending').length
   );
   
-  // 履歴バッジ: オンラインモードでは権限により表示内容を変える
+  // 履歴バッジ: 権限により表示内容を変える（管理者は全件、一般ユーザーは自分の試合のみ）
   const matchHistory = useGameStore((s) => s.matchHistory);
   const players = usePlayerStore((s) => s.players);
   const recordScores = useSettingsStore((s) => s.recordScores);
@@ -37,12 +37,12 @@ export function BottomNav({ activeTab }: BottomNavProps) {
 
     const unrecordedMatches = matchHistory.filter((m) => m.winner === undefined);
 
-    // ローカルモード or 管理者: 全件表示
-    if (!session?.createdBy || isAdmin()) {
+    // 管理者: 全件表示
+    if (isAdmin()) {
       return unrecordedMatches.length;
     }
 
-    // オンラインモード & 一般ユーザー: 自分が参加した試合のみ
+    // 一般ユーザー: 自分が参加した試合のみ
     if (currentUser) {
       return unrecordedMatches.filter((match) =>
         isMatchOfPlayer(match, currentUser, players)
@@ -76,8 +76,8 @@ export function BottomNav({ activeTab }: BottomNavProps) {
   const handleTabClick = (tab: (typeof tabs)[number]) => {
     if (tab.id === activeTab) return;
 
-    // オンラインセッション + ブラウザの場合、試合予約はPWA専用 (devモードはバイパス)
-    if (tab.id === 'reservation' && session?.createdBy && !isPWA && !isDev) {
+    // ブラウザの場合、試合予約はPWA専用 (devモードはバイパス)
+    if (tab.id === 'reservation' && session && !isPWA && !isDev) {
       toast.warning('試合予約はPWAアプリ専用機能です', 1000);
       return;
     }

@@ -205,7 +205,7 @@ export function SessionCreate() {
     }
   };
 
-  // オンラインモード: 作成者名選択画面（セッション作成前）
+  // 作成者名選択画面（セッション作成前）
   if (showCreatorSelect) {
     const playerInputs = playerNames
       .split('\n')

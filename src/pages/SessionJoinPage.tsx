@@ -139,12 +139,12 @@ export function SessionJoinPage() {
 
       requestNotificationPermission();
 
-      // 同一オンラインセッションへの再入室時はローカル状態を保持する。
+      // 同一セッションへの再入室時はローカル状態を保持する。
       // クリアすると useFirebaseSync の subscriber が schedulePush を発火し、
       // subscribeToGameState による復元より先に push が動くと
       // mergeMatchHistory(base=[matches], local=[], remote=[matches]) が
       // 「local が削除した」と解釈して Firestore の matchHistory をワイプしてしまう。
-      // 別セッションへの切替・新規入室・ローカルモードからの遷移時は従来通りクリアする。
+      // 別セッションへの切替・新規入室時は従来通りクリアする。
       if (!isSameOnlineSession) {
         usePlayerStore.getState().clearPlayers();
         useGameStore.getState().clearHistory();

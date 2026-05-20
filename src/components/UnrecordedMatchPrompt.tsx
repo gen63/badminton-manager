@@ -26,7 +26,7 @@ const TICK_INTERVAL_MS = 30 * 1000;
  *
  * 「不明」/×で閉じた試合は 10 分間スヌーズされ、その後また再表示される。
  *
- * 動作前提: 試合記録モード (recordScores=true) かつオンラインモード。
+ * 動作前提: 試合記録モード (recordScores=true)。
  */
 export function UnrecordedMatchPrompt() {
   const session = useSessionStore((s) => s.session);
@@ -48,9 +48,8 @@ export function UnrecordedMatchPrompt() {
     return () => clearInterval(id);
   }, []);
 
-  const isOnlineMode = !!session?.createdBy;
   const canShow =
-    recordScores && isOnlineMode && !!currentUser && isGameStateLoaded;
+    recordScores && !!session && !!currentUser && isGameStateLoaded;
 
   const target = useMemo(() => {
     if (!canShow) return null;

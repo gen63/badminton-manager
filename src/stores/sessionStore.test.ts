@@ -529,15 +529,8 @@ describe('sessionStore - Information機能', () => {
       expect(session?.accounting?.otherDescription).toBe('ツムラ');
     });
 
-    it('ローカルモード（createdBy なし）では Firestore に送信しない', async () => {
-      useSessionStore.setState({
-        session: {
-          id: 'local-session',
-          config: { courtCount: 1, targetScore: 21, practiceStartTime: Date.now() },
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        },
-      });
+    it('session が null の状態では Firestore に送信しない', async () => {
+      useSessionStore.setState({ session: null });
 
       const { updateAccounting } = useSessionStore.getState();
       await updateAccounting(baseSnapshot);
