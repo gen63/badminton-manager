@@ -62,7 +62,6 @@ function App() {
           <Suspense fallback={<PageFallback />}>
             <Routes>
               <Route path="/" element={<SessionSelectPage />} />
-              <Route path="/local" element={<SessionCreate />} />
               <Route path="/session/create" element={<SessionCreate />} />
               <Route path="/session/:sessionId" element={<SessionJoinPage />} />
               <Route path="/players" element={<PlayerSelect />} />

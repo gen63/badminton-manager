@@ -228,8 +228,8 @@ export function HistoryPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [myMatchesOnly, setMyMatchesOnly] = useState(false);
 
-  // 自分の試合フィルタが使えるのはオンラインモード & currentUser がある時のみ
-  const canFilterByMe = !!session?.createdBy && !!currentUser;
+  // 自分の試合フィルタは currentUser がある時のみ
+  const canFilterByMe = !!session && !!currentUser;
   const filterActive = canFilterByMe && myMatchesOnly;
 
   // 全試合に通し番号を振った後でフィルタを適用（番号は全体基準で安定）

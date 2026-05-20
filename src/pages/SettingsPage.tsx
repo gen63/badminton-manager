@@ -439,7 +439,7 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* オンラインモード表示（Phase 4 でローカルモード廃止） */}
+        {/* 同期ステータス表示 */}
         <div className="card p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-500">

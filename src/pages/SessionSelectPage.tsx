@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, Navigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { deleteField } from 'firebase/firestore';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { subscribeToRecentActiveSessions, updateSession } from '../services/sessionService';
@@ -154,7 +154,12 @@ export function SessionSelectPage() {
   // 90 分前ルールに引っ掛かったセッションも client にキープされ、tick で
   // 自動的に表示に切り替わる。
   useEffect(() => {
-    if (!isFirebaseConfigured()) return;
+    // Firebase 未設定時はサブスクライブできないので空一覧でローディング解除する。
+    // 未設定の通知は App level の FirebaseConfigBanner が担当する。
+    if (!isFirebaseConfigured()) {
+      setLoading(false);
+      return;
+    }
 
     const unsubscribe = subscribeToRecentActiveSessions(
       50,
@@ -185,11 +190,6 @@ export function SessionSelectPage() {
     () => (devMode ? sessions : sessions.filter((s) => isSessionVisible(s, now))),
     [sessions, devMode, now],
   );
-
-  // Firebase未設定時はローカルモードにリダイレクト（レンダーで即時、フラッシュなし）
-  if (!isFirebaseConfigured()) {
-    return <Navigate to="/local" replace />;
-  }
 
   // ローディング
   if (loading) {
