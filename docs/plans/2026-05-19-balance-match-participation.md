@@ -45,22 +45,29 @@ finalScore = baseScore - penalty
 ### 自動オン条件
 
 - `useStayDurationPriority === false` (回数優先モード) かつ
-- `Date.now() - practiceStartTime >= 90 * 60 * 1000` (90 分経過) かつ
-- ローカル `autoTriggeredRef.current === false` (このクライアントで未発火)
+- `lateBalanceAutoFired === false` (まだ自動オンが走っていない)
 
-→ `writer.setLateBalanceMode(true)` を呼ぶと同時に `autoTriggeredRef.current = true`。
+→ 残り時間に応じて分岐:
+  - `practiceStartTime + 90min > now`: `setTimeout` で残り時間後に発火
+  - `practiceStartTime + 90min <= now`: マウント直後に即発火
+- 発火時は `markLateBalanceAutoFired` mutation を呼び、
+  `lateBalanceMode=true` & `lateBalanceAutoFired=true` を 1 transaction で書く。
 
-### 1 クライアントセッションにつき 1 回きり / Firestore に履歴を持たない
+### 1 セッションにつき 1 度きり (Firestore で保証)
 
-「自動オンしたか」「過去に ON になったことがあるか」などの履歴は Firestore に
-記録しない。発火済みフラグはローカル `useRef` のみ。これにより:
+`lateBalanceAutoFired` フラグを Firestore に持つことで、画面遷移 / 再マウント /
+ページ再読み込み / **PWA の完全終了からの再起動** を跨いでも 1 度きりの発火を保証する。
 
-- 自動オン直後にユーザーが手動 OFF にしても、このクライアントは
-  再発火しない。
-- ページ再読み込みで ref がリセットされる。再読み込み後に
-  `lateBalanceMode=false` AND 90 分経過なら再度自動オンが走る (新セッション扱い)。
-- 複数の管理者が同時に開いた場合、それぞれが 1 度ずつ
-  `setLateBalanceMode(true)` を書き込むが、boolean 同値書き込みなので競合無し。
+挙動:
+- 自動オン後にユーザーが手動 OFF → `autoFired=true` のため再発火しない (OFF 維持)
+- 90 分経過後に初めて MainPage を開いた / PWA を再起動 → 未発火なら即発火 (新規参加・再起動の救済)
+- 既に発火済み(=管理者が後に OFF にした)状態で別デバイスから接続 → 何もしない
+
+`markLateBalanceAutoFired` は transaction 内で idempotent (`autoFired` が既に
+true なら no-op)。複数クライアント同時発火でも 1 度しか書き込まれない。
+
+手動 `setLateBalanceMode(true)` は `lateBalanceAutoFired` を変えない (自動オン
+イベントと手動 ON/OFF は独立)。
 
 ### 手動操作
 
@@ -78,18 +85,17 @@ finalScore = baseScore - penalty
 
 ### 型 / Firestore スキーマ
 
-`src/services/sessionService.ts:35` の `SyncSettings` に 1 フィールドだけ追加:
+`src/services/sessionService.ts:35` の `SyncSettings` に 2 フィールド追加:
 
 ```ts
 interface SyncSettings {
   recordScores?: boolean;
   continuousMatchMode?: boolean;
   practiceType?: '単' | '複' | '楽';
-  lateBalanceMode?: boolean;
+  lateBalanceMode?: boolean;        // 現在の ON/OFF 状態
+  lateBalanceAutoFired?: boolean;   // 90 分自動オンが走ったか (1 セッション 1 度きりの保証用)
 }
 ```
-
-自動オンの発火履歴は Firestore に持たない (ローカル useRef で管理)。
 
 ### Algorithm
 
@@ -102,28 +108,29 @@ interface SyncSettings {
 
 ### 状態同期 (Settings store + Firebase Sync)
 
-- `src/stores/settingsStore.ts` に `lateBalanceMode: boolean` を追加 (UI 操作と
-  Firestore 反映用)。Firestore 同期対象なので persist 対象外 (既存 practiceType
-  と同じ扱い)。
-- `src/services/sessionMutations.ts` に `setLateBalanceMode(sessionId, value)`
-  を追加。汎用 `computeSetSetting` を使う単純な書き込み。
-- `src/hooks/useFirebaseSync.ts` で `gameState.settings.lateBalanceMode` を
-  ローカル store に反映。
-- `src/hooks/useSessionWriter.ts` から `setLateBalanceMode` を公開。
+- `src/stores/settingsStore.ts` に `lateBalanceMode` / `lateBalanceAutoFired` を
+  追加 (UI 操作と Firestore 反映用)。Firestore 同期対象なので persist 対象外。
+- `src/services/sessionMutations.ts`:
+  - `setLateBalanceMode(sessionId, value)`: 手動トグル用。`lateBalanceAutoFired`
+    は触らない。
+  - `markLateBalanceAutoFired(sessionId)`: 自動オン用。idempotent。`autoFired` が
+    既に true なら no-op、未発火なら `mode=true` & `autoFired=true` を 1
+    transaction で書く。
+- `src/hooks/useFirebaseSync.ts` で両フィールドをローカル store に反映。
+- `src/hooks/useSessionWriter.ts` から両 mutation を公開。
 
 ### 自動オン発火
 
 `src/pages/MainPage.tsx`:
-- `useRef<boolean>` (`autoTriggeredRef`) でこのクライアントが既に自動オン
-  を発火したかを記録 (Firestore には書かない)。
-- `useEffect` で `setInterval` (60 秒ごと) チェック。条件成立で
-  `writer.setLateBalanceMode(true)` を呼び、ref を true に。
-- 依存配列に `lateBalanceMode` を含めるので、ON になった瞬間に effect が
-  再評価され interval 解除。
-- ref が true の間は、ユーザー手動 OFF で `lateBalanceMode=false` になっても
-  effect 内部の early return で自動オンは走らない。
-- ページ再読み込みで ref がリセットされる (= 再読み込み後に条件を満たせば
-  もう一度自動オンが走る、新セッション扱い)。
+- `useEffect` の判定軸を `lateBalanceAutoFired` に変更。
+- 90 分到達前は `setTimeout` で残り時間後に発火。到達済み&未発火ならマウント
+  直後に即発火 (PWA 再起動・遅参加の救済)。
+- 発火は `writer.markLateBalanceAutoFired()` 経由。transaction 内で idempotent。
+- cleanup で `clearTimeout`。
+- 依存配列に `lateBalanceAutoFired` を含めるので、autoFired が true になった
+  瞬間に effect が再評価され早期 return → timeout クリア。
+- 複数タブ / 複数クライアントで開いていても、最初の write で `autoFired=true` に
+  なり、他クライアントの onSnapshot 同期 → useEffect 再評価で発火が抑止される。
 
 ### UI
 
@@ -146,7 +153,7 @@ interface SyncSettings {
 - 性別 3-1 ペナルティが lateBalance ペナルティに負けないことを確認 (定数調整)。
 
 `src/services/sessionMutations.test.ts` (もしあれば) に:
-- `setLateBalanceMode` の idempotency (boolean 同値書き込み)。
+- `setLateBalanceMode` / `markLateBalanceAutoFired` の idempotency。
 
 ## 非対応 (今回スコープ外)
 
@@ -160,18 +167,21 @@ interface SyncSettings {
 
 1. `npm run build && npm run lint && npm run test:run` が全て通ること。
 2. 開発サーバーで以下シナリオを確認:
-   - 回数優先モード + 90 分後にトグルが自動でオンになる。
-   - 自動オン後に手動オフしても、(同じクライアントで) 自動で再オンしない。
-   - lateBalanceMode ON 中、明らかに試合数が少ないプレイヤーが次の配置で
-     入りやすくなる。
+   - 回数優先モード + 90 分到達でトグルが自動でオンになる (アプリ open 中)。
+   - **自動オン後に手動 OFF にして画面遷移しても OFF が維持される** (`autoFired=true`
+     のため再発火しない)。
+   - ページ再読み込みでも OFF が維持される。
+   - PWA を完全終了 → 90 分経過後に再起動: 未発火なら即自動オン。発火済みなら
+     現在の mode (OFF にしていたなら OFF) が維持される。
+   - lateBalanceMode ON 中、試合数が少ないプレイヤーが次の配置で入りやすくなる。
    - 性別 3-1 構成は (回数差が小さければ) 引き続き避けられる。
-3. 複数タブで同時に開いて競合しないこと (`setLateBalanceMode(true)` は
-   boolean 同値書き込みなので安全)。
+3. 複数タブ / 複数クライアントで同時に開いて競合しないこと (transaction が
+   idempotent)。
 
 ## ファイル変更まとめ
 
 - `src/services/sessionService.ts` - SyncSettings 拡張
-- `src/services/sessionMutations.ts` - setLateBalanceMode
+- `src/services/sessionMutations.ts` - setLateBalanceMode / markLateBalanceAutoFired
 - `src/hooks/useFirebaseSync.ts` - lateBalanceMode 同期
 - `src/hooks/useSessionWriter.ts` - mutation 公開
 - `src/stores/settingsStore.ts` - lateBalanceMode フィールド

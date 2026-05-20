@@ -240,6 +240,10 @@ export function useFirebaseSync() {
           if (remoteLateBalance !== s.lateBalanceMode) {
             s.setLateBalanceMode(remoteLateBalance);
           }
+          const remoteAutoFired = gameState.settings.lateBalanceAutoFired ?? false;
+          if (remoteAutoFired !== s.lateBalanceAutoFired) {
+            s.setLateBalanceAutoFired(remoteAutoFired);
+          }
         }
         // practiceType 同期: gameState.settings.practiceType が未設定（旧セッション
         // 等）でも、前セッションから持ち越した端末ローカル値（特に '単'）が
