@@ -91,6 +91,18 @@ describe('parseEventTitle', () => {
       note: '単',
     });
   });
+
+  it('「楽基礎」など `楽` で始まる細分類は `楽` に正規化する', () => {
+    const result = parseEventTitle('6/8(月)18:30～21:30@富士見台.楽基礎');
+    expect(result).toEqual({
+      month: 6,
+      day: 8,
+      startTime: '18:30',
+      endTime: '21:30',
+      venue: '富士見台',
+      note: '楽',
+    });
+  });
 });
 
 describe('parseEventList', () => {

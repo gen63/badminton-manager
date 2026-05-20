@@ -104,13 +104,17 @@ function parseEventTitle(title: string) {
   const venueNote = match[5].replace(/\(\d{1,2}\/\d{1,2}\)$/, '');
   const dotIndex = venueNote.lastIndexOf('.');
 
+  const rawNote = dotIndex >= 0 ? venueNote.substring(dotIndex + 1) : '';
+  // 「楽基礎」「楽初心」など `楽` で始まる細分類は `楽` として扱う
+  const note = rawNote.startsWith('楽') ? '楽' : rawNote;
+
   return {
     month: parseInt(match[1]),
     day: parseInt(match[2]),
     startTime: match[3],
     endTime: match[4],
     venue: dotIndex >= 0 ? venueNote.substring(0, dotIndex) : venueNote,
-    note: dotIndex >= 0 ? venueNote.substring(dotIndex + 1) : '',
+    note,
   };
 }
 
