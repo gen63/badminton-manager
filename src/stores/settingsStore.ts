@@ -26,7 +26,7 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       gasWebAppUrl: 'https://script.google.com/macros/s/AKfycbz4sCGJS-6aXtkzTYrrtpNBQRGJBwE2DmONwOBGhFLy4XZjOWMySjDi768yscdF0n6IWA/exec',
       setGasWebAppUrl: (url) => set({ gasWebAppUrl: url }),
-      accountingWebAppUrl: 'https://script.google.com/macros/s/AKfycby_6Njs79BeLbZ16Vz6jyFyb3MFKoAnPYHzaZPwS8cvah5FNcjXxjXO3PcOz_k9IG0a/exec',
+      accountingWebAppUrl: 'https://script.google.com/macros/s/AKfycbxNDglh8HEedqjDcYV0lsJQmPh-VZv5IQUA-VrvQlhC-DqoJnwLmMYnRm4YukP4Ir_0/exec',
       useStayDurationPriority: true,
       setUseStayDurationPriority: (value) => set({ useStayDurationPriority: value }),
       continuousMatchMode: true,
@@ -57,18 +57,25 @@ export const useSettingsStore = create<SettingsState>()(
       // 不具合 (例: 単→ダブルス意図のセッションでも singles フローが走る) を
       // 原理的に消す。`useFirebaseSync` 側のフォールバックは旧セッション保険
       // として残す。
-      version: 1,
+      version: 2,
       migrate: (persisted, version) => {
-        if (version < 1 && persisted && typeof persisted === 'object') {
+        let state = persisted;
+        if (version < 1 && state && typeof state === 'object') {
           // 旧 version で localStorage に書かれていた同期対象を剥がす
           const { practiceType: _pt, continuousMatchMode: _cm, recordScores: _rs, ...rest } =
-            persisted as Record<string, unknown>;
+            state as Record<string, unknown>;
           void _pt;
           void _cm;
           void _rs;
-          return rest;
+          state = rest;
         }
-        return persisted;
+        if (version < 2 && state && typeof state === 'object') {
+          // 旧 accountingWebAppUrl を剥がし、新しいデフォルトを適用する
+          const { accountingWebAppUrl: _acc, ...rest } = state as Record<string, unknown>;
+          void _acc;
+          state = rest;
+        }
+        return state;
       },
       partialize: (state) => ({
         gasWebAppUrl: state.gasWebAppUrl,
