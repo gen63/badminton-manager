@@ -8,7 +8,7 @@ import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, StopCircle, Trash2, ChevronDown, Minus, Settings, Info, MessageSquare } from 'lucide-react';
+import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, StopCircle, Trash2, ChevronDown, Minus, Settings, Info, MessageSquare, CalendarCheck } from 'lucide-react';
 import { sendBugReportToDiscord } from '../lib/bugReport';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
@@ -304,6 +304,8 @@ export function MainPage() {
   };
 
   const pendingReservations = reservations.filter(r => r.status === 'pending');
+  // 予約に入っている（＝予約待ちで休憩中の）プレイヤー。休憩表示の区別に使う。
+  const reservedPlayerIds = new Set(pendingReservations.flatMap(r => r.playerIds));
 
   const handleAutoAssign = async (courtId?: number) => {
     try {
@@ -1100,11 +1102,21 @@ export function MainPage() {
                     <button
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
-                      className="relative bg-muted/50 border border-border rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors h-[58px]"
+                      className={`relative border rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm transition-colors h-[58px] ${
+                        reservedPlayerIds.has(player.id)
+                          ? 'bg-amber-50 border-amber-200 hover:bg-amber-100/60'
+                          : 'bg-muted/50 border-border hover:border-green-200 hover:bg-green-50/20'
+                      }`}
                     >
                       <div className="w-full text-center">
                         <div className="text-sm font-semibold truncate text-muted-foreground leading-tight">{player.name}</div>
-                        <div className="text-xs text-muted-foreground leading-tight">{player.gamesPlayed}試合</div>
+                        {reservedPlayerIds.has(player.id) ? (
+                          <div className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-600 leading-tight">
+                            <CalendarCheck size={9} />予約待ち
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground leading-tight">{player.gamesPlayed}試合</div>
+                        )}
                       </div>
                     </button>
                   );
