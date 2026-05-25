@@ -39,6 +39,11 @@ export interface SyncSettings {
   /** 練習後半に試合回数の偏りを均等化するモード。 */
   lateBalanceMode?: boolean;
   /**
+   * 予約メンバーの試合数が「中央値 + この値」以上のとき、その予約全体を保留する閾値。
+   * 試合数の多い人が予約で順番を飛ばし続けるのを防ぐフェアネス制限。未設定時は 2。
+   */
+  reservationBlockThreshold?: number;
+  /**
    * 90 分自動オンが既に走ったかを示すフラグ。1 セッションにつき 1 度だけ
    * `markLateBalanceAutoFired` mutation で true になる。PWA 再起動などで
    * setTimeout が消失していても、未発火なら復帰時にすぐ発火させるための判定に使う。

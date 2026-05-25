@@ -28,6 +28,12 @@ type LateBalanceCtx = {
 const LATE_BALANCE_WEIGHT = 2.0;
 
 /**
+ * 予約メンバーの試合数が「中央値 + この値」以上のとき予約全体を保留する。
+ * 設定（SyncSettings.reservationBlockThreshold）未設定時のデフォルト。
+ */
+export const DEFAULT_RESERVATION_BLOCK_THRESHOLD = 2;
+
+/**
  * 各プレイヤーの連勝/連敗数を算出
  * 正の値=連勝数、負の値=連敗数
  *
@@ -875,6 +881,7 @@ export function assignCourts(
     reservations?: Reservation[];
     gameMode?: 'singles' | 'doubles'; // シングルス/ダブルス（デフォルト: doubles）
     lateBalanceMode?: boolean; // 後半均等化モード（試合数の少ない人を強く優先）
+    reservationBlockThreshold?: number; // 予約保留の閾値（中央値+この値以上のメンバーを含む予約を保留）
   }
 ): CourtAssignment[] {
   const activePlayers = players.filter((p) => !p.isResting);
@@ -883,7 +890,9 @@ export function assignCourts(
     Array.from({ length: courtCount }, (_, i) => i + 1);
   const practiceStartTime = options?.practiceStartTime ?? Date.now();
   const useStayDuration = options?.useStayDurationPriority ?? true;
-  const pendingReservations = (options?.reservations ?? []).filter(r => r.status === 'pending');
+  const pendingReservations = (options?.reservations ?? [])
+    .filter(r => r.status === 'pending')
+    .sort((a, b) => (a.orderNumber ?? 0) - (b.orderNumber ?? 0));
   const gameMode = options?.gameMode ?? 'doubles';
 
   // 後半均等化モード: maxGamesPlayed は全アクティブプレイヤー（他コート中含む）から
@@ -895,6 +904,26 @@ export function assignCourts(
     const maxGames = pool.reduce((max, p) => Math.max(max, p.gamesPlayed), 0);
     return { enabled: true, maxGamesPlayed: maxGames };
   })();
+
+  // 予約保留判定: 予約メンバーの試合数が「中央値 + 閾値」以上なら、その予約全体を
+  // 保留する。試合数の多い人が予約で順番を飛ばし続けるのを防ぐ。
+  // 母集団は lateBalance と同じく allPlayers（他コートでプレイ中も含む）で安定させる。
+  const reservationBlockThreshold =
+    options?.reservationBlockThreshold ?? DEFAULT_RESERVATION_BLOCK_THRESHOLD;
+  const medianGamesPlayed = ((): number => {
+    const pool = options?.allPlayers ?? activePlayers;
+    if (pool.length === 0) return 0;
+    const sorted = pool.map(p => p.gamesPlayed).sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
+  })();
+  const isReservationBlocked = (playerIds: string[]): boolean =>
+    playerIds.some(id => {
+      const p = activePlayers.find(pl => pl.id === id);
+      return p !== undefined && p.gamesPlayed - medianGamesPlayed >= reservationBlockThreshold;
+    });
 
   // シングルスモードの場合
   if (gameMode === 'singles') {
@@ -914,6 +943,8 @@ export function assignCourts(
 
       if (reservedPlayers.length !== reservation.playerIds.length) continue;
       if (reservation.playerIds.some(id => singlesUsedPlayers.has(id))) continue;
+      // 試合数が中央値+閾値以上のメンバーを含む予約は保留（pending のまま）
+      if (isReservationBlocked(reservation.playerIds)) continue;
 
       const rsvPlayerIds = reservation.playerIds;
 
@@ -999,6 +1030,8 @@ export function assignCourts(
 
     if (reservedPlayers.length !== reservation.playerIds.length) continue;
     if (reservation.playerIds.some(id => reservationUsedPlayers.has(id))) continue;
+    // 試合数が中央値+閾値以上のメンバーを含む予約は保留（pending のまま）
+    if (isReservationBlocked(reservation.playerIds)) continue;
 
     const rsvPlayerIds = reservation.playerIds;
     // ダブルスでは 1〜4 人予約のみサポート。範囲外（旧データ等）は court を消費せず

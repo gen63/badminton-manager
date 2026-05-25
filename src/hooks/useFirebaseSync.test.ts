@@ -174,6 +174,42 @@ describe('useFirebaseSync - settings 反映の副作用', () => {
     expect(useSettingsStore.getState().prioritizeDiversity).toBe(true);
   });
 
+  it('reservationBlockThreshold をリモートからストアにミラーする', () => {
+    setSharedSession();
+    useSettingsStore.setState({ reservationBlockThreshold: 2 });
+    renderHook(() => useFirebaseSync());
+
+    act(() => {
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          players: [], courts: [], matchHistory: [], reservations: [],
+          settings: { practiceType: '複', reservationBlockThreshold: 3 },
+        },
+      });
+    });
+
+    expect(useSettingsStore.getState().reservationBlockThreshold).toBe(3);
+  });
+
+  it('reservationBlockThreshold 未設定の受信ではデフォルト(2)に矯正される', () => {
+    setSharedSession();
+    useSettingsStore.setState({ reservationBlockThreshold: 3 });
+    renderHook(() => useFirebaseSync());
+
+    act(() => {
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          players: [], courts: [], matchHistory: [], reservations: [],
+          settings: { practiceType: '複' },
+        },
+      });
+    });
+
+    expect(useSettingsStore.getState().reservationBlockThreshold).toBe(2);
+  });
+
   it("practiceType '単' 受信で prioritizeDiversity=false に矯正される", () => {
     setSharedSession();
     useSettingsStore.setState({ practiceType: '複', prioritizeDiversity: true });

@@ -69,6 +69,7 @@ export function MainPage() {
   const practiceType = useSettingsStore((s) => s.practiceType);
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
   const lateBalanceAutoFired = useSettingsStore((s) => s.lateBalanceAutoFired);
+  const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
   // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
@@ -334,6 +335,7 @@ export function MainPage() {
           reservations,
           gameMode,
           lateBalanceMode,
+          reservationBlockThreshold,
         }
       );
 

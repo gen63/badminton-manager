@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { DEFAULT_RESERVATION_BLOCK_THRESHOLD } from '../lib/algorithm';
 
 interface SettingsState {
   gasWebAppUrl: string;
@@ -19,6 +20,9 @@ interface SettingsState {
   setLateBalanceMode: (value: boolean) => void;
   lateBalanceAutoFired: boolean;
   setLateBalanceAutoFired: (value: boolean) => void;
+  /** 予約保留の閾値（中央値+この値以上の試合数のメンバーを含む予約を保留）。Firestore 同期。 */
+  reservationBlockThreshold: number;
+  setReservationBlockThreshold: (value: number) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -48,6 +52,8 @@ export const useSettingsStore = create<SettingsState>()(
       setLateBalanceMode: (value) => set({ lateBalanceMode: value }),
       lateBalanceAutoFired: false,
       setLateBalanceAutoFired: (value) => set({ lateBalanceAutoFired: value }),
+      reservationBlockThreshold: DEFAULT_RESERVATION_BLOCK_THRESHOLD,
+      setReservationBlockThreshold: (value) => set({ reservationBlockThreshold: value }),
     }),
     {
       name: 'badminton-settings',

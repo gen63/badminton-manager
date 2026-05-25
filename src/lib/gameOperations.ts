@@ -78,6 +78,7 @@ export function computeFinishAndContinue(
     gameMode: 'singles' | 'doubles';
     matchId?: string;
     lateBalanceMode?: boolean;
+    reservationBlockThreshold?: number;
   }
 ): FinishGameResult {
   const court = state.courts.find(c => c.id === courtId);
@@ -163,6 +164,7 @@ export function computeFinishAndContinue(
         reservations: state.reservations,
         gameMode: options.gameMode,
         lateBalanceMode: options.lateBalanceMode,
+        reservationBlockThreshold: options.reservationBlockThreshold,
       });
 
       if (assignments[0]) {

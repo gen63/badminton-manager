@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { calculatePlayerStats, getStreaks, buildInitialOrder, applyStreakSwaps, assignCourts, formTeams, sortWaitingPlayers } from './algorithm';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
+import type { Reservation } from '../types/reservation';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -1116,5 +1117,137 @@ describe('assignCourts - 後半均等化モード (lateBalanceMode)', () => {
     });
 
     expect(sorted[0].id).toBe('p2');
+  });
+});
+
+describe('assignCourts - 予約の試合数による保留 (reservationBlockThreshold)', () => {
+  const NOW = Date.now();
+
+  const makePlayer = (id: string, gamesPlayed: number): Player => ({
+    id,
+    name: id.toUpperCase(),
+    rating: 1500,
+    gamesPlayed,
+    isResting: false,
+    lastPlayedAt: 0,
+    activatedAt: NOW - 60 * 60 * 1000,
+  });
+
+  const makeReservation = (playerIds: string[]): Reservation => ({
+    id: `rsv-${playerIds.join('-')}`,
+    orderNumber: 1,
+    playerIds,
+    status: 'pending',
+    createdAt: NOW,
+    fulfilledAt: 0,
+  });
+
+  // p1 のみ試合数が突出。残りは 0。中央値 = 0。
+  const makePlayers = () => [
+    makePlayer('p1', 10),
+    makePlayer('p2', 0),
+    makePlayer('p3', 0),
+    makePlayer('p4', 0),
+    makePlayer('p5', 0),
+    makePlayer('p6', 0),
+    makePlayer('p7', 0),
+    makePlayer('p8', 0),
+  ];
+
+  const baseOptions = {
+    totalCourtCount: 1,
+    targetCourtIds: [1],
+    practiceStartTime: NOW - 60 * 60 * 1000,
+    useStayDurationPriority: false,
+  };
+
+  it('予約メンバーの試合数が中央値+閾値以上だと予約全体が保留される', () => {
+    const players = makePlayers();
+    const assignments = assignCourts(players, 1, [], {
+      ...baseOptions,
+      allPlayers: players,
+      reservations: [makeReservation(['p1', 'p2', 'p3', 'p4'])],
+      reservationBlockThreshold: 2, // p1 の gap=10 >= 2 → 保留
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    // 予約全体が保留され、p1-p4 は誰も配置されない（通常配置からも除外）
+    expect(picked.has('p1')).toBe(false);
+    expect(picked.has('p2')).toBe(false);
+    expect(picked.has('p3')).toBe(false);
+    expect(picked.has('p4')).toBe(false);
+  });
+
+  it('閾値を上げて gap を下回らせると、その予約は通常どおり配置される', () => {
+    const players = makePlayers();
+    const assignments = assignCourts(players, 1, [], {
+      ...baseOptions,
+      allPlayers: players,
+      reservations: [makeReservation(['p1', 'p2', 'p3', 'p4'])],
+      reservationBlockThreshold: 11, // p1 の gap=10 < 11 → 保留しない
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('p1')).toBe(true);
+    expect(picked.size).toBe(4);
+  });
+
+  it('gap が閾値ちょうどでも保留される（>= 判定）', () => {
+    // p1=2, 他=0 → 中央値 0、gap=2、閾値 2 → 保留
+    const players = [
+      makePlayer('p1', 2),
+      makePlayer('p2', 0),
+      makePlayer('p3', 0),
+      makePlayer('p4', 0),
+      makePlayer('p5', 0),
+      makePlayer('p6', 0),
+      makePlayer('p7', 0),
+      makePlayer('p8', 0),
+    ];
+    const assignments = assignCourts(players, 1, [], {
+      ...baseOptions,
+      allPlayers: players,
+      reservations: [makeReservation(['p1', 'p2', 'p3', 'p4'])],
+      reservationBlockThreshold: 2,
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('p1')).toBe(false);
+  });
+
+  it('gap が閾値未満なら保留されない', () => {
+    // p1=1, 他=0 → 中央値 0、gap=1 < 2 → 配置される
+    const players = [
+      makePlayer('p1', 1),
+      makePlayer('p2', 0),
+      makePlayer('p3', 0),
+      makePlayer('p4', 0),
+      makePlayer('p5', 0),
+      makePlayer('p6', 0),
+      makePlayer('p7', 0),
+      makePlayer('p8', 0),
+    ];
+    const assignments = assignCourts(players, 1, [], {
+      ...baseOptions,
+      allPlayers: players,
+      reservations: [makeReservation(['p1', 'p2', 'p3', 'p4'])],
+      reservationBlockThreshold: 2,
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('p1')).toBe(true);
+  });
+
+  it('未指定時はデフォルト閾値(2)が適用される', () => {
+    const players = makePlayers();
+    const assignments = assignCourts(players, 1, [], {
+      ...baseOptions,
+      allPlayers: players,
+      reservations: [makeReservation(['p1', 'p2', 'p3', 'p4'])],
+      // reservationBlockThreshold 未指定 → デフォルト 2
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('p1')).toBe(false);
   });
 });
