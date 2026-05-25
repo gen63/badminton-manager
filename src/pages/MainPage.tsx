@@ -426,7 +426,24 @@ export function MainPage() {
     getMinWaitingCount(gameMode),
     playersPerCourt
   );
-  const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= playersPerCourt;
+  // 配置可能な予約があるか（メンバーが全員在席=コートにおらず、休憩中でも可。
+  // 部分予約は不足分を待機者で補える場合のみ）。予約メンバーは休憩になるため、
+  // 待機人数だけで判定すると予約だけで埋まるケースを取りこぼす。
+  const hasPlaceableReservation = pendingReservations.some((r) => {
+    const membersAvailable = r.playerIds.every(
+      (id) => players.some((p) => p.id === id) && !playersInCourts.has(id),
+    );
+    if (!membersAvailable) return false;
+    const fillersNeeded = playersPerCourt - r.playerIds.length;
+    if (fillersNeeded <= 0) return true;
+    const fillerCount = sortedWaitingPlayers.filter(
+      (p) => !r.playerIds.includes(p.id),
+    ).length;
+    return fillerCount >= fillersNeeded;
+  });
+  const canAutoAssign =
+    emptyCourts.length > 0 &&
+    (sortedWaitingPlayers.length >= playersPerCourt || hasPlaceableReservation);
   const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * playersPerCourt;
 
   const handleSwapPlayer = async (courtId: number, position: number, newPlayerId: string) => {
