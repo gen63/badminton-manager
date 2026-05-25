@@ -472,9 +472,11 @@ export function MainPage() {
     if (!player.isResting && isAdmin()) {
       const activeCount = players.filter(p => !p.isResting && p.id !== playerId).length;
       const recommended = getRecommendedCourtCount(activeCount, courts.length, playersPerCourt);
-      if (recommended < courts.length) {
-        await writer.resizeCourts(recommended);
-        updateConfig({ courtCount: recommended });
+      // 試合中のコートは縮小対象にしない（空きコートのみ削減）
+      const target = Math.max(recommended, occupiedCourts.length);
+      if (target < courts.length) {
+        await writer.resizeCourts(target);
+        updateConfig({ courtCount: target });
       }
 
       const waitingAfterRest = players.filter(p => !p.isResting && p.id !== playerId && !playersInCourts.has(p.id)).length;
