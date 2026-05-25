@@ -21,6 +21,7 @@ import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { DEFAULT_RESERVATION_BLOCK_THRESHOLD } from '../lib/algorithm';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { usePresenceStore } from '../stores/presenceStore';
 import { notifyMatchStart } from '../lib/notifications';
@@ -249,6 +250,12 @@ export function useFirebaseSync() {
           const remoteAutoFired = gameState.settings.lateBalanceAutoFired ?? false;
           if (remoteAutoFired !== s.lateBalanceAutoFired) {
             s.setLateBalanceAutoFired(remoteAutoFired);
+          }
+          // reservationBlockThreshold は未設定ならデフォルト扱い（旧セッション互換）
+          const remoteRsvThreshold =
+            gameState.settings.reservationBlockThreshold ?? DEFAULT_RESERVATION_BLOCK_THRESHOLD;
+          if (remoteRsvThreshold !== s.reservationBlockThreshold) {
+            s.setReservationBlockThreshold(remoteRsvThreshold);
           }
         }
         // practiceType 同期: gameState.settings.practiceType が未設定（旧セッション

@@ -28,14 +28,18 @@ export function getCategoryShortLabel(category: DoublesCategory): string | null 
   }
 }
 
-/** プレイヤーがコートに入っておらず、休憩中でもないか判定 */
+/**
+ * 予約を成立させられる状態か判定する。
+ * 予約メンバーは予約に入れた時点で休憩になる運用のため、休憩中でも「準備完了」とみなす。
+ * コートで試合中の場合のみ準備未完了（試合が終われば呼び出せる）。
+ */
 export function isPlayerReady(
   playerId: string,
   players: Player[],
   playersInCourts: Set<string>,
 ): boolean {
   const player = players.find(p => p.id === playerId);
-  return !!player && !player.isResting && !playersInCourts.has(playerId);
+  return !!player && !playersInCourts.has(playerId);
 }
 
 /** 予約の全プレイヤーが準備完了かを判定 */

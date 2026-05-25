@@ -171,14 +171,12 @@ describe('sessionMutations - players', () => {
         makeCourt(1, {
           teamA: ['a', 'b'],
           teamB: ['c', 'd'],
-          restingPlayerIds: ['a'],
         }),
       ],
     });
     const next = computeRemovePlayer(state, 'a');
     expect(next.courts[0].teamA).toEqual(['', 'b']);
     expect(next.courts[0].teamB).toEqual(['c', 'd']);
-    expect(next.courts[0].restingPlayerIds).toEqual([]);
   });
 
   it('computeRemovePlayer: 予約から削除し、空になった予約は破棄 (DATA1)', () => {
@@ -410,7 +408,6 @@ describe('sessionMutations - courts', () => {
           teamB: ['p3', 'p4'],
           isPlaying: true,
           startedAt: 1000,
-          restingPlayerIds: ['r1'],
         }),
       ],
     });
@@ -420,11 +417,10 @@ describe('sessionMutations - courts', () => {
       teamB: ['', ''],
       isPlaying: false,
       startedAt: 0,
-      restingPlayerIds: [],
     });
   });
 
-  it('computeResetAllCourts: 全コートを空状態にし restingPlayerIds も空にする', () => {
+  it('computeResetAllCourts: 全コートを空状態にする', () => {
     const state = baseState({
       courts: [
         makeCourt(1, {
@@ -432,7 +428,6 @@ describe('sessionMutations - courts', () => {
           teamB: ['p3', 'p4'],
           isPlaying: true,
           startedAt: 1000,
-          restingPlayerIds: ['r1'],
         }),
         makeCourt(2, { teamA: ['p5', 'p6'] }),
       ],
@@ -440,7 +435,6 @@ describe('sessionMutations - courts', () => {
     const next = computeResetAllCourts(state);
     expect(next.courts).toHaveLength(2);
     expect(next.courts.every((c) => !c.isPlaying && c.teamA[0] === '' && c.teamB[0] === '')).toBe(true);
-    expect(next.courts.every((c) => (c.restingPlayerIds ?? []).length === 0)).toBe(true);
     // ID は維持
     expect(next.courts.map((c) => c.id)).toEqual([1, 2]);
   });
@@ -534,6 +528,38 @@ describe('sessionMutations - reservations', () => {
     const state = baseState({ players: [makePlayer('p1')] });
     const next = computeAddReservation(state, ['ghost', ''], 'r1', 1000);
     expect(next).toBe(state);
+  });
+
+  it('computeAddReservation: 待機メンバーを休憩にする（プレイ中は据え置き）', () => {
+    const state = baseState({
+      players: [makePlayer('p1'), makePlayer('p2'), makePlayer('p3')],
+      courts: [makeCourt(1, { teamA: ['p3', ''], isPlaying: true })],
+    });
+    const next = computeAddReservation(state, ['p1', 'p2', 'p3'], 'r1', 1000);
+    expect(next.players.find((p) => p.id === 'p1')?.isResting).toBe(true);
+    expect(next.players.find((p) => p.id === 'p2')?.isResting).toBe(true);
+    // プレイ中の p3 は休憩にしない（試合後に finish 側で休憩へ）
+    expect(next.players.find((p) => p.id === 'p3')?.isResting).toBe(false);
+  });
+
+  it('computeRemoveReservation: 自動休憩したメンバーを待機へ戻す（他予約に無ければ）', () => {
+    const state = baseState({
+      players: [
+        makePlayer('p1', { isResting: true, activatedAt: 0 }),
+        makePlayer('p2', { isResting: true }),
+      ],
+      reservations: [
+        { id: 'r1', orderNumber: 1, playerIds: ['p1', 'p2'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+        { id: 'r2', orderNumber: 2, playerIds: ['p2'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+      ],
+    });
+    const next = computeRemoveReservation(state, 'r1', 5000);
+    expect(next.reservations.map((r) => r.id)).toEqual(['r2']);
+    // p1 は他予約に無い → 待機へ。activatedAt が 0 なら now で埋める
+    expect(next.players.find((p) => p.id === 'p1')?.isResting).toBe(false);
+    expect(next.players.find((p) => p.id === 'p1')?.activatedAt).toBe(5000);
+    // p2 はまだ r2 に居る → 休憩のまま
+    expect(next.players.find((p) => p.id === 'p2')?.isResting).toBe(true);
   });
 
   it('computeRemoveReservation', () => {
@@ -1116,12 +1142,11 @@ describe('sessionMutations - swapPlayer (CON2 fix)', () => {
     expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
     const next = mockTransactionUpdate.mock.calls[0][1].gameState;
     expect(next.courts[0].teamA[0]).toBe('rest');
-    expect(next.courts[0].restingPlayerIds).toContain('rest');
-    // 休憩中プレイヤーは isResting=false に切り替わる
+    // 休憩中プレイヤーは isResting=false に切り替わる（試合後の復帰は finish の統一ルール）
     expect(next.players.find((p: { id: string }) => p.id === 'rest').isResting).toBe(false);
   });
 
-  it('既に待機中のプレイヤーを swap しても restingPlayerIds に追加せず isResting も触らない', async () => {
+  it('既に待機中のプレイヤーを swap しても isResting を触らない', async () => {
     const state = baseState({
       players: [
         makePlayer('p1', { isResting: false }),
@@ -1139,7 +1164,6 @@ describe('sessionMutations - swapPlayer (CON2 fix)', () => {
 
     const next = mockTransactionUpdate.mock.calls[0][1].gameState;
     expect(next.courts[0].teamA).toEqual(['p1', 'p2']);
-    expect(next.courts[0].restingPlayerIds ?? []).not.toContain('p2');
     expect(next.players.find((p: { id: string }) => p.id === 'p2').isResting).toBe(false);
   });
 });

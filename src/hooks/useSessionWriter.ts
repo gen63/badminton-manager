@@ -240,6 +240,12 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  const setReservationBlockThreshold = useCallback(
+    (value: number) =>
+      handle('setReservationBlockThreshold', (sid) => sm.setReservationBlockThreshold(sid, value)),
+    [handle],
+  );
+
   return useMemo(
     () => ({
       sessionId,
@@ -280,6 +286,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setPracticeType,
       setLateBalanceMode,
       markLateBalanceAutoFired,
+      setReservationBlockThreshold,
     }),
     [
       sessionId,
@@ -315,6 +322,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setPracticeType,
       setLateBalanceMode,
       markLateBalanceAutoFired,
+      setReservationBlockThreshold,
     ],
   );
 }

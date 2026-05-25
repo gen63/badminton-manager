@@ -28,6 +28,12 @@ type LateBalanceCtx = {
 const LATE_BALANCE_WEIGHT = 2.0;
 
 /**
+ * 予約メンバーの試合数が「中央値 + この値」以上のとき予約全体を保留する。
+ * 設定（SyncSettings.reservationBlockThreshold）未設定時のデフォルト。
+ */
+export const DEFAULT_RESERVATION_BLOCK_THRESHOLD = 2;
+
+/**
  * 各プレイヤーの連勝/連敗数を算出
  * 正の値=連勝数、負の値=連敗数
  *
@@ -315,20 +321,6 @@ function shouldAllowUnbalancedGender(
 function isMixedPair(p1: Player, p2: Player): boolean {
   if (!p1.gender || !p2.gender) return false;
   return p1.gender !== p2.gender;
-}
-
-/**
- * プレイヤーが未消化の予約に含まれているかチェック
- * excludeIds: チェック対象から除外する予約ID（すでに消化済みとみなす）
- */
-function isPlayerInPendingReservation(
-  playerId: string,
-  reservations: Reservation[],
-  excludeIds: string[]
-): boolean {
-  return reservations.some(
-    r => r.status === 'pending' && !excludeIds.includes(r.id) && r.playerIds.includes(playerId)
-  );
 }
 
 /**
@@ -875,15 +867,23 @@ export function assignCourts(
     reservations?: Reservation[];
     gameMode?: 'singles' | 'doubles'; // シングルス/ダブルス（デフォルト: doubles）
     lateBalanceMode?: boolean; // 後半均等化モード（試合数の少ない人を強く優先）
+    reservationBlockThreshold?: number; // 予約保留の閾値（中央値+この値以上のメンバーを含む予約を保留）
+    restingPlayers?: Player[]; // 休憩中で予約により呼び出せるメンバー（通常配置の対象外）
   }
 ): CourtAssignment[] {
   const activePlayers = players.filter((p) => !p.isResting);
+  // 予約は休憩中メンバーも対象に探す（通常配置は activePlayers のみ）
+  const restingPlayers = options?.restingPlayers ?? [];
+  const reservationPool = [...activePlayers, ...restingPlayers];
+  const restingIdSet = new Set(restingPlayers.map(p => p.id));
   const totalCourtCount = options?.totalCourtCount ?? courtCount;
   const targetCourtIds = options?.targetCourtIds ??
     Array.from({ length: courtCount }, (_, i) => i + 1);
   const practiceStartTime = options?.practiceStartTime ?? Date.now();
   const useStayDuration = options?.useStayDurationPriority ?? true;
-  const pendingReservations = (options?.reservations ?? []).filter(r => r.status === 'pending');
+  const pendingReservations = (options?.reservations ?? [])
+    .filter(r => r.status === 'pending')
+    .sort((a, b) => (a.orderNumber ?? 0) - (b.orderNumber ?? 0));
   const gameMode = options?.gameMode ?? 'doubles';
 
   // 後半均等化モード: maxGamesPlayed は全アクティブプレイヤー（他コート中含む）から
@@ -896,6 +896,26 @@ export function assignCourts(
     return { enabled: true, maxGamesPlayed: maxGames };
   })();
 
+  // 予約保留判定: 予約メンバーの試合数が「中央値 + 閾値」以上なら、その予約全体を
+  // 保留する。試合数の多い人が予約で順番を飛ばし続けるのを防ぐ。
+  // 母集団は休憩者も含む全在席プレイヤーで算出（全員休憩でも中央値が0に潰れないように）。
+  const reservationBlockThreshold =
+    options?.reservationBlockThreshold ?? DEFAULT_RESERVATION_BLOCK_THRESHOLD;
+  const medianGamesPlayed = ((): number => {
+    const pool = [...(options?.allPlayers ?? activePlayers), ...restingPlayers];
+    if (pool.length === 0) return 0;
+    const sorted = pool.map(p => p.gamesPlayed).sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
+  })();
+  const isReservationBlocked = (playerIds: string[]): boolean =>
+    playerIds.some(id => {
+      const p = reservationPool.find(pl => pl.id === id);
+      return p !== undefined && p.gamesPlayed - medianGamesPlayed >= reservationBlockThreshold;
+    });
+
   // シングルスモードの場合
   if (gameMode === 'singles') {
     // 予約配置を先に処理
@@ -907,13 +927,15 @@ export function assignCourts(
     for (const reservation of pendingReservations) {
       if (singlesRemainingCourtIds.length === 0) break;
 
-      // 予約メンバー全員が待機中か確認
+      // 予約メンバー全員が在席（待機 or 休憩）か確認
       const reservedPlayers = reservation.playerIds
-        .map(id => activePlayers.find(p => p.id === id))
+        .map(id => reservationPool.find(p => p.id === id))
         .filter((p): p is Player => p !== undefined);
 
       if (reservedPlayers.length !== reservation.playerIds.length) continue;
       if (reservation.playerIds.some(id => singlesUsedPlayers.has(id))) continue;
+      // 試合数が中央値+閾値以上のメンバーを含む予約は保留（pending のまま）
+      if (isReservationBlocked(reservation.playerIds)) continue;
 
       const rsvPlayerIds = reservation.playerIds;
 
@@ -924,14 +946,14 @@ export function assignCourts(
           courtId,
           teamA: [rsvPlayerIds[0], ''],
           teamB: [rsvPlayerIds[1], ''],
+          activatedFromRestIds: rsvPlayerIds.filter(id => restingIdSet.has(id)),
         });
         rsvPlayerIds.forEach(id => singlesUsedPlayers.add(id));
         singlesFulfilledIds.push(reservation.id);
       } else if (rsvPlayerIds.length === 1) {
-        // 1人: 相手を通常ロジックで選出
+        // 1人: 相手を通常ロジックで選出（相手は待機者のみ）
         const nonReserved = activePlayers.filter(
           p => !singlesUsedPlayers.has(p.id) && !rsvPlayerIds.includes(p.id)
-            && !isPlayerInPendingReservation(p.id, pendingReservations, [...singlesFulfilledIds, reservation.id])
         );
         if (nonReserved.length === 0) continue;
         nonReserved.sort((a, b) =>
@@ -943,6 +965,7 @@ export function assignCourts(
           courtId,
           teamA: [rsvPlayerIds[0], ''],
           teamB: [nonReserved[0].id, ''],
+          activatedFromRestIds: rsvPlayerIds.filter(id => restingIdSet.has(id)),
         });
         singlesUsedPlayers.add(nonReserved[0].id);
         rsvPlayerIds.forEach(id => singlesUsedPlayers.add(id));
@@ -956,15 +979,10 @@ export function assignCourts(
       return singlesReservationAssignments;
     }
 
-    // 未消化予約のプレイヤーを除外
-    const singlesReservedIds = new Set<string>();
-    for (const reservation of pendingReservations) {
-      if (singlesFulfilledIds.includes(reservation.id)) continue;
-      reservation.playerIds.forEach(id => singlesReservedIds.add(id));
-    }
-
+    // 通常配置の候補は待機者（activePlayers）のうち予約配置で未使用の者。
+    // 予約メンバーは休憩中なので activePlayers に含まれず自然に除外される。
     const singlesNormalCandidates = activePlayers.filter(
-      p => !singlesUsedPlayers.has(p.id) && !singlesReservedIds.has(p.id)
+      p => !singlesUsedPlayers.has(p.id)
     );
 
     if (singlesNormalCandidates.length < singlesRemainingCourtIds.length * 2) {
@@ -992,19 +1010,23 @@ export function assignCourts(
   for (const reservation of pendingReservations) {
     if (remainingCourtIds.length === 0) break;
 
-    // 予約メンバー全員が待機中（activePlayers に含まれ、まだ使われていない）か確認
+    // 予約メンバー全員が在席（待機 or 休憩）か確認
     const reservedPlayers = reservation.playerIds
-      .map(id => activePlayers.find(p => p.id === id))
+      .map(id => reservationPool.find(p => p.id === id))
       .filter((p): p is Player => p !== undefined);
 
     if (reservedPlayers.length !== reservation.playerIds.length) continue;
     if (reservation.playerIds.some(id => reservationUsedPlayers.has(id))) continue;
+    // 試合数が中央値+閾値以上のメンバーを含む予約は保留（pending のまま）
+    if (isReservationBlocked(reservation.playerIds)) continue;
 
     const rsvPlayerIds = reservation.playerIds;
     // ダブルスでは 1〜4 人予約のみサポート。範囲外（旧データ等）は court を消費せず
     // スキップして reservationAssignments も fulfill にもしない（court が "失われる"
     // 不整合を防ぐ defensive guard）。
     if (rsvPlayerIds.length < 1 || rsvPlayerIds.length > 4) continue;
+    // 予約メンバーのうち休憩中だった者（出場時に isResting=false にする）
+    const activatedFromRestIds = rsvPlayerIds.filter(id => restingIdSet.has(id));
 
     const courtId = remainingCourtIds.shift()!;
 
@@ -1014,12 +1036,12 @@ export function assignCourts(
         courtId,
         teamA: [rsvPlayerIds[0], rsvPlayerIds[1]] as [string, string],
         teamB: [rsvPlayerIds[2], rsvPlayerIds[3]] as [string, string],
+        activatedFromRestIds,
       });
     } else if (rsvPlayerIds.length === 3) {
-      // 3人: 最初の2人がペア + 3人目と通常ロジックで1人選出（同性優先）
+      // 3人: 最初の2人がペア + 3人目と通常ロジックで1人選出（同性優先。相手は待機者のみ）
       const nonReserved = activePlayers.filter(
         p => !reservationUsedPlayers.has(p.id) && !rsvPlayerIds.includes(p.id)
-          && !isPlayerInPendingReservation(p.id, pendingReservations, [...fulfilledReservationIds, reservation.id])
       );
       if (nonReserved.length === 0) {
         remainingCourtIds.unshift(courtId);
@@ -1029,19 +1051,19 @@ export function assignCourts(
         calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance) -
         calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance)
       );
-      const sorted = sortByGenderPreference(rsvPlayerIds, nonReserved, activePlayers);
+      const sorted = sortByGenderPreference(rsvPlayerIds, nonReserved, reservationPool);
       const fourth = sorted[0];
       reservationAssignments.push({
         courtId,
         teamA: [rsvPlayerIds[0], rsvPlayerIds[1]] as [string, string],
         teamB: [rsvPlayerIds[2], fourth.id] as [string, string],
+        activatedFromRestIds,
       });
       reservationUsedPlayers.add(fourth.id);
     } else if (rsvPlayerIds.length === 2) {
-      // 2人: 同じチームとして配置 + 残り2人を通常ロジックで選出（同性優先）
+      // 2人: 同じチームとして配置 + 残り2人を通常ロジックで選出（同性優先。相手は待機者のみ）
       const nonReserved = activePlayers.filter(
         p => !reservationUsedPlayers.has(p.id) && !rsvPlayerIds.includes(p.id)
-          && !isPlayerInPendingReservation(p.id, pendingReservations, [...fulfilledReservationIds, reservation.id])
       );
       if (nonReserved.length < 2) {
         remainingCourtIds.unshift(courtId);
@@ -1051,19 +1073,19 @@ export function assignCourts(
         calculatePriorityScore(a, practiceStartTime, useStayDuration, lateBalance) -
         calculatePriorityScore(b, practiceStartTime, useStayDuration, lateBalance)
       );
-      const sorted = sortByGenderPreference(rsvPlayerIds, nonReserved, activePlayers);
+      const sorted = sortByGenderPreference(rsvPlayerIds, nonReserved, reservationPool);
       reservationAssignments.push({
         courtId,
         teamA: [rsvPlayerIds[0], rsvPlayerIds[1]] as [string, string],
         teamB: [sorted[0].id, sorted[1].id] as [string, string],
+        activatedFromRestIds,
       });
       reservationUsedPlayers.add(sorted[0].id);
       reservationUsedPlayers.add(sorted[1].id);
     } else if (rsvPlayerIds.length === 1) {
-      // 1人: 最優先候補として通常ロジックで残り3人を選出
+      // 1人: 最優先候補として通常ロジックで残り3人を選出（相手は待機者のみ）
       const nonReserved = activePlayers.filter(
         p => !reservationUsedPlayers.has(p.id) && !rsvPlayerIds.includes(p.id)
-          && !isPlayerInPendingReservation(p.id, pendingReservations, [...fulfilledReservationIds, reservation.id])
       );
       if (nonReserved.length < 3) {
         remainingCourtIds.unshift(courtId);
@@ -1076,11 +1098,11 @@ export function assignCourts(
       const groupingPlayers = options?.allPlayers ?? activePlayers;
       const playerOrder = applyStreakSwaps(buildInitialOrder(groupingPlayers), matchHistory, totalCourtCount >= 3 ? 3 : 2);
       const fourPlayers = [
-        activePlayers.find(p => p.id === rsvPlayerIds[0])!,
+        reservationPool.find(p => p.id === rsvPlayerIds[0])!,
         nonReserved[0], nonReserved[1], nonReserved[2],
       ];
       const teams = formTeams(fourPlayers, playerOrder);
-      reservationAssignments.push({ courtId, teamA: teams.teamA, teamB: teams.teamB });
+      reservationAssignments.push({ courtId, teamA: teams.teamA, teamB: teams.teamB, activatedFromRestIds });
       reservationUsedPlayers.add(nonReserved[0].id);
       reservationUsedPlayers.add(nonReserved[1].id);
       reservationUsedPlayers.add(nonReserved[2].id);
@@ -1090,18 +1112,13 @@ export function assignCourts(
     fulfilledReservationIds.push(reservation.id);
   }
 
-  // 予約で配置されなかった残りのコートを通常ロジックで埋める
+  // 予約で配置されなかった残りのコートを通常ロジックで埋める。
+  // 予約メンバーは休憩中なので activePlayers に含まれず自然に除外される
+  // （旧来の「未消化予約メンバーを通常配置から除外」ロジックは休憩で代替）。
   const normalCourtCount = remainingCourtIds.length;
 
-  // 予約専用待機プレイヤー（未消化の予約に含まれるが、まだ配置されていない）を除外
-  const reservedPlayerIds = new Set<string>();
-  for (const reservation of pendingReservations) {
-    if (fulfilledReservationIds.includes(reservation.id)) continue;
-    reservation.playerIds.forEach(id => reservedPlayerIds.add(id));
-  }
-
   const normalCandidates = activePlayers.filter(
-    p => !reservationUsedPlayers.has(p.id) && !reservedPlayerIds.has(p.id)
+    p => !reservationUsedPlayers.has(p.id)
   );
 
   if (normalCourtCount === 0) {

@@ -69,6 +69,7 @@ export function MainPage() {
   const practiceType = useSettingsStore((s) => s.practiceType);
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
   const lateBalanceAutoFired = useSettingsStore((s) => s.lateBalanceAutoFired);
+  const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
   // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
@@ -320,6 +321,10 @@ export function MainPage() {
       );
 
       const allActivePlayers = players.filter(p => !p.isResting);
+      // 予約は休憩中メンバーも呼び出せる（プレイ中でない休憩者）
+      const restingPlayers = players.filter(
+        (p) => p.isResting && !playersInCourts.has(p.id)
+      );
 
       const assignments = assignCourts(
         waitingPlayers,
@@ -334,6 +339,8 @@ export function MainPage() {
           reservations,
           gameMode,
           lateBalanceMode,
+          reservationBlockThreshold,
+          restingPlayers,
         }
       );
 
@@ -357,6 +364,7 @@ export function MainPage() {
           teamB: a.teamB,
           isPlaying: isBulk,
           startedAt,
+          activatePlayerIds: a.activatedFromRestIds,
         })),
         fulfilledIds,
       );
