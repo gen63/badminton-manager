@@ -1161,7 +1161,7 @@ describe('assignCourts - 予約の試合数による保留 (reservationBlockThre
     useStayDurationPriority: false,
   };
 
-  it('予約メンバーの試合数が中央値+閾値以上だと予約全体が保留される', () => {
+  it('予約メンバーの試合数が中央値+閾値以上だと予約が保留され、超過メンバーは割り込めない', () => {
     const players = makePlayers();
     const assignments = assignCourts(players, 1, [], {
       ...baseOptions,
@@ -1171,11 +1171,10 @@ describe('assignCourts - 予約の試合数による保留 (reservationBlockThre
     });
 
     const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
-    // 予約全体が保留され、p1-p4 は誰も配置されない（通常配置からも除外）
+    // 予約は保留され、試合数が突出した p1 は予約で割り込めない（通常配置でも低優先で選ばれない）。
+    // 共メンバー（p2-p4, 0試合）は除外されず通常配置で試合に入れる（飢餓を防ぐ）。
     expect(picked.has('p1')).toBe(false);
-    expect(picked.has('p2')).toBe(false);
-    expect(picked.has('p3')).toBe(false);
-    expect(picked.has('p4')).toBe(false);
+    expect(picked.size).toBe(4);
   });
 
   it('閾値を上げて gap を下回らせると、その予約は通常どおり配置される', () => {
@@ -1249,5 +1248,70 @@ describe('assignCourts - 予約の試合数による保留 (reservationBlockThre
 
     const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
     expect(picked.has('p1')).toBe(false);
+  });
+});
+
+describe('assignCourts - 休憩中メンバーの予約配置 (restingPlayers)', () => {
+  const NOW = Date.now();
+  const makePlayer = (id: string, gamesPlayed: number, isResting: boolean): Player => ({
+    id,
+    name: id.toUpperCase(),
+    rating: 1500,
+    gamesPlayed,
+    isResting,
+    lastPlayedAt: 0,
+    activatedAt: NOW - 60 * 60 * 1000,
+  });
+  const makeReservation = (playerIds: string[]): Reservation => ({
+    id: `rsv-${playerIds.join('-')}`,
+    orderNumber: 1,
+    playerIds,
+    status: 'pending',
+    createdAt: NOW,
+    fulfilledAt: 0,
+  });
+
+  it('休憩中の4人予約を配置し、全員を activatedFromRestIds に含める', () => {
+    // 予約4人は休憩中、待機にも別途4人いる
+    const reserved = ['r1', 'r2', 'r3', 'r4'].map(id => makePlayer(id, 1, true));
+    const waiting = ['w1', 'w2', 'w3', 'w4'].map(id => makePlayer(id, 1, false));
+
+    const assignments = assignCourts(waiting, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      allPlayers: waiting,
+      restingPlayers: reserved,
+      reservations: [makeReservation(['r1', 'r2', 'r3', 'r4'])],
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked).toEqual(new Set(['r1', 'r2', 'r3', 'r4']));
+    expect(new Set(assignments[0].activatedFromRestIds)).toEqual(
+      new Set(['r1', 'r2', 'r3', 'r4'])
+    );
+  });
+
+  it('2人予約（休憩中）は待機者で補充し、補充側は activatedFromRestIds に含めない', () => {
+    const reserved = ['r1', 'r2'].map(id => makePlayer(id, 1, true));
+    const waiting = ['w1', 'w2', 'w3', 'w4'].map(id => makePlayer(id, 1, false));
+
+    const assignments = assignCourts(waiting, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      allPlayers: waiting,
+      restingPlayers: reserved,
+      reservations: [makeReservation(['r1', 'r2'])],
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('r1')).toBe(true);
+    expect(picked.has('r2')).toBe(true);
+    expect(picked.size).toBe(4);
+    // 休憩から出場するのは予約メンバーのみ。補充の待機者は含めない。
+    expect(new Set(assignments[0].activatedFromRestIds)).toEqual(new Set(['r1', 'r2']));
   });
 });

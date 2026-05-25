@@ -100,29 +100,32 @@ export function computeFinishAndContinue(
     finishedAt: now,
   };
 
-  // 2. プレイヤーの統計を更新
+  // 2. プレイヤーの統計を更新 + 試合後の休憩判定
+  // 試合を終えたメンバーのうち、未成立の予約を持つ者は休憩に戻す（次の予約待ち）。
+  // それ以外は待機に戻る。これにより予約で呼び出された休憩者は、他に予約が無ければ
+  // 待機に復帰し、予約があれば休憩のまま次の予約を待つ。
   const activePlayerIds = [...court.teamA, ...court.teamB].filter(id => id);
+  const pendingReservedIds = new Set(
+    state.reservations
+      .filter(r => r.status === 'pending')
+      .flatMap(r => r.playerIds)
+  );
   let updatedPlayers = state.players.map(p => {
     if (activePlayerIds.includes(p.id)) {
-      return { ...p, gamesPlayed: p.gamesPlayed + 1, lastPlayedAt: now };
+      return {
+        ...p,
+        gamesPlayed: p.gamesPlayed + 1,
+        lastPlayedAt: now,
+        isResting: pendingReservedIds.has(p.id),
+      };
     }
     return p;
   });
 
-  // 3. 休憩中プレイヤーの復元（試合前に休憩していたプレイヤーを休憩状態に戻す）
-  if (court.restingPlayerIds && court.restingPlayerIds.length > 0) {
-    updatedPlayers = updatedPlayers.map(p => {
-      if (court.restingPlayerIds!.includes(p.id)) {
-        return { ...p, isResting: true };
-      }
-      return p;
-    });
-  }
-
-  // 4. コートをクリア
+  // 3. コートをクリア
   let updatedCourts = state.courts.map(c =>
     c.id === courtId
-      ? { ...c, ...EMPTY_COURT_STATE, restingPlayerIds: [] }
+      ? { ...c, ...EMPTY_COURT_STATE }
       : c
   );
 
@@ -165,6 +168,8 @@ export function computeFinishAndContinue(
         gameMode: options.gameMode,
         lateBalanceMode: options.lateBalanceMode,
         reservationBlockThreshold: options.reservationBlockThreshold,
+        // 予約は休憩中メンバーも呼び出せる（プレイ中でない休憩者）
+        restingPlayers: updatedPlayers.filter((p) => p.isResting && !playersInCourts.has(p.id)),
       });
 
       if (assignments[0]) {
@@ -184,6 +189,13 @@ export function computeFinishAndContinue(
               }
             : c
         );
+        // 予約で休憩から呼び出したメンバーは出場のため isResting=false にする
+        if (assignment.activatedFromRestIds && assignment.activatedFromRestIds.length > 0) {
+          const activateSet = new Set(assignment.activatedFromRestIds);
+          updatedPlayers = updatedPlayers.map(p =>
+            activateSet.has(p.id) ? { ...p, isResting: false } : p
+          );
+        }
         continuousNextApplied = true;
       } else {
         continuousError = 'assignment_failed';

@@ -180,7 +180,6 @@ export function computeAddPlayers(
 export function computeRemovePlayer(state: GameState, playerId: string): GameState {
   // DATA1 fix: プレイヤーを消すときに court / reservation の参照も整合的に更新する。
   // - court.teamA / teamB の該当 slot を空文字に
-  // - court.restingPlayerIds から除外
   // - reservation.playerIds から除外し、空になった予約は削除
   // matchHistory はそのまま（履歴上の名前は表示時に「未設定」フォールバック）。
   const blankTeam = (team: [string, string]): [string, string] => [
@@ -194,7 +193,6 @@ export function computeRemovePlayer(state: GameState, playerId: string): GameSta
       ...c,
       teamA: blankTeam(c.teamA),
       teamB: blankTeam(c.teamB),
-      restingPlayerIds: c.restingPlayerIds?.filter((id) => id !== playerId),
     })),
     reservations: state.reservations
       .map((r) => ({ ...r, playerIds: r.playerIds.filter((id) => id !== playerId) }))
@@ -394,7 +392,7 @@ export function computeClearCourt(state: GameState, courtId: number): GameState 
   return {
     ...state,
     courts: state.courts.map((c) =>
-      c.id === courtId ? { ...c, ...EMPTY_COURT_STATE, restingPlayerIds: [] } : c,
+      c.id === courtId ? { ...c, ...EMPTY_COURT_STATE } : c,
     ),
   };
 }
@@ -402,7 +400,7 @@ export function computeClearCourt(state: GameState, courtId: number): GameState 
 export function computeResetAllCourts(state: GameState): GameState {
   return {
     ...state,
-    courts: state.courts.map((c) => ({ ...c, ...EMPTY_COURT_STATE, restingPlayerIds: [] })),
+    courts: state.courts.map((c) => ({ ...c, ...EMPTY_COURT_STATE })),
   };
 }
 
@@ -479,14 +477,48 @@ export function computeAddReservation(
     fulfilledAt: 0,
     createdBy,
   };
-  return { ...state, reservations: [...state.reservations, reservation] };
+
+  // 予約に入れたメンバーは休憩にする（自動配置の対象外にし、予約成立時のみ呼び出す）。
+  // 現在プレイ中のメンバーはそのまま（試合後に computeFinishAndContinue が休憩へ）。
+  const playingIds = new Set(
+    state.courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((pid) => pid),
+  );
+  const reservedSet = new Set(dedup);
+  const players = state.players.map((p) =>
+    reservedSet.has(p.id) && !playingIds.has(p.id) && !p.isResting
+      ? { ...p, isResting: true }
+      : p,
+  );
+
+  return { ...state, players, reservations: [...state.reservations, reservation] };
 }
 
-export function computeRemoveReservation(state: GameState, reservationId: string): GameState {
-  return {
-    ...state,
-    reservations: state.reservations.filter((r) => r.id !== reservationId),
-  };
+export function computeRemoveReservation(
+  state: GameState,
+  reservationId: string,
+  now: number = Date.now(),
+): GameState {
+  const removed = state.reservations.find((r) => r.id === reservationId);
+  const reservations = state.reservations.filter((r) => r.id !== reservationId);
+
+  if (!removed) return { ...state, reservations };
+
+  // 削除した予約のメンバーで、他の未成立予約に含まれず・プレイ中でなく・現在休憩中の者を
+  // 待機に戻す（予約に入れたとき自動で休憩にした分を解除する）。
+  const stillReserved = new Set(
+    reservations.filter((r) => r.status === 'pending').flatMap((r) => r.playerIds),
+  );
+  const playingIds = new Set(
+    state.courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((pid) => pid),
+  );
+  const removedSet = new Set(removed.playerIds);
+  const players = state.players.map((p) => {
+    if (!removedSet.has(p.id) || !p.isResting) return p;
+    if (stillReserved.has(p.id) || playingIds.has(p.id)) return p;
+    return { ...p, isResting: false, activatedAt: p.activatedAt === 0 ? now : p.activatedAt };
+  });
+
+  return { ...state, players, reservations };
 }
 
 export function computeFulfillReservation(
@@ -800,6 +832,8 @@ export interface AutoAssignSpec {
   teamB: [string, string];
   isPlaying: boolean;
   startedAt: number;
+  /** 休憩中から予約で呼び出したメンバー。出場のため isResting=false にする。 */
+  activatePlayerIds?: string[];
 }
 
 export function autoAssignAndFulfill(
@@ -823,18 +857,19 @@ export function autoAssignAndFulfill(
         startedAt: a.startedAt,
         finishedAt: 0,
       });
+      for (const pid of a.activatePlayerIds ?? []) {
+        next = computeUpdatePlayer(next, pid, { isResting: false });
+      }
     }
     return next;
   });
 }
 
 /**
- * コート上のプレイヤーを入れ替えながら、休憩中だったプレイヤーを待機状態に
- * 戻す処理を **1 transaction** にまとめる（CON2）。
- *
- * 旧実装は updateCourt + updatePlayer の 2 transaction で、間に
- * 「コートに置かれているのに isResting=true」という不整合状態が一瞬観測
- * できる窓があった。
+ * コート上のプレイヤーを入れ替える処理を **1 transaction** にまとめる（CON2）。
+ * 休憩中プレイヤーを入れた場合は isResting=false にする（コート上で休憩状態の
+ * 不整合を防ぐ）。試合後の復帰は computeFinishAndContinue の統一ルール
+ * （未成立予約があれば休憩、無ければ待機）に委ねる。
  */
 export function swapPlayer(
   sessionId: string,
@@ -856,15 +891,10 @@ export function swapPlayer(
     }
 
     const newPlayer = state.players.find((p) => p.id === newPlayerId);
-    const restingPlayerIds = [...(court.restingPlayerIds ?? [])];
-    if (newPlayer?.isResting && !restingPlayerIds.includes(newPlayerId)) {
-      restingPlayerIds.push(newPlayerId);
-    }
 
     let next: GameState = computeUpdateCourt(state, courtId, {
       teamA: newTeamA,
       teamB: newTeamB,
-      restingPlayerIds,
     });
     if (newPlayer?.isResting) {
       next = computeUpdatePlayer(next, newPlayerId, { isResting: false });

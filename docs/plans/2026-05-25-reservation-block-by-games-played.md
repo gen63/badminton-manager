@@ -1,49 +1,57 @@
-# 予約メンバーの試合数による予約保留
+# 予約と休憩の連動・試合数による予約制限
 
-2026-05-25
+2026-05-25（改訂: rest 連動方式へ方針転換）
 
-## 背景 / 課題
+## 背景 / 経緯
 
-現状、予約（reservation）に入れたメンバーは `assignCourts` の処理順で**通常配置より完全に優先**され、優先度スコア（待ち時間・試合回数）を一切無視して試合に入る（`src/lib/algorithm.ts` の予約配置フロー）。
+当初「予約メンバーが完全優先で割り込む」挙動を見直すため、`assignCourts` で
+「予約メンバーの試合数が中央値+閾値以上なら予約を保留」するカウント制限を入れた
+（コミット 75a68d7）。しかし議論の中で以下が判明:
 
-これは意図と異なる。試合数の多い人が予約を使って順番を飛ばし続けられてしまうため、「すでに十分試合をしている予約メンバーは、しばらく試合に入れないようにする」フェアネス制限を入れたい。
+- 旧来「予約中の人は通常配置から除外（待機）」ロジック（algorithm.ts:1129-1138）
+  と組み合わさると、保留時に共メンバーまで idle になり、最悪デッドロックする。
+- 本質的な用途は「ペア練習したい人が指定の組み合わせで試合する」こと。
 
-あわせて、`pendingReservations` が `orderNumber` で明示ソートされていなかった件（Firestore 同期で配列順が前後し得る）も修正する。→ **対応済み**（`algorithm.ts:886` で `orderNumber` 昇順ソート）。
+→ 方針転換: **予約に入れたら休憩(rest)にする**。休憩は元々自動配置の対象外なので、
+旧来の除外ロジックを休憩に一本化できる。予約が成立したら休憩中でも呼び出す。
 
-## 決定事項（ユーザー合意済み）
+## 確定仕様（ユーザー合意済み）
 
-- **基準値: 中央値（median）** — 外れ値に強く少人数でも安定。
-- **閾値は設定画面で変更可能（+1 / +2 / +3）** — デフォルト **+2**。
-- **予約メンバーの誰か1人でも `gamesPlayed >= median + 閾値` なら、その予約全体を保留**（今回はスキップ。pending のまま残り、他の人が追いついて median が上がれば成立）。
-- 当初案の「+1 ハードブロック」は強すぎると判断（自然なばらつきで上位半数近くが対象になる／既存 `assign2CourtsHolistic` の `avg+3` 除外と不整合）。設定可能にして緩和。
-
-## 同期スコープ
-
-`lateBalanceMode` と同じ **Firestore 同期設定（`SyncSettings`）** にする。理由: 予約は全員が共有する概念で、配置を起動する端末によって挙動が変わるのは混乱を招くため、セッション共通であるべき。
-
-## 中央値の母集団
-
-`options.allPlayers ?? activePlayers`（= 休憩除く全アクティブプレイヤー、他コートでプレイ中も含む）。`lateBalance` の `maxGamesPlayed` と母集団を揃え、待機者一覧の変動に影響されない安定値にする。
+1. **予約にメンバー追加 → そのメンバーを休憩化**（自動）。プレイ中の人は試合後に休憩へ。
+2. **予約削除 → 自動休憩したメンバーを待機へ戻す**（他に未成立予約が無い場合のみ）。
+3. **予約配置は休憩中メンバーも探索対象**。成立時に `isResting=false` で出場。
+4. **試合後は待機(active)に戻す**。ただし他に未成立予約があれば休憩のまま。
+   - 既存の `court.restingPlayerIds`→休憩復帰は **手動 swap 用に温存**。予約経由の出場は
+     この `restingPlayerIds` に積まず、新ルール（下記 finish step2）で処理する。
+5. **旧「予約者を通常配置から除外」ロジック（algorithm.ts:1129-1138）は削除**（休憩が代替）。
+6. **カウント制限（中央値+閾値）は維持**。試合数が多い人は予約が成立せず（休憩のまま待つ）。
+   中央値は**休憩者を含む全員**で算出（全員休憩でも中央値が0に潰れないように）。
 
 ## 変更ファイル
 
-1. `src/services/sessionService.ts` — `SyncSettings` に `reservationBlockThreshold?: number` 追加。
-2. `src/stores/settingsStore.ts` — フィールド + setter 追加。デフォルト 2。**persist しない**（Firestore 同期、`lateBalanceMode` と同じ扱い）。
-3. `src/services/sessionMutations.ts` — `setReservationBlockThreshold`（`computeSetSetting` 利用）。
-4. `src/hooks/useSessionWriter.ts` — `setReservationBlockThreshold` writer。
-5. `src/hooks/useFirebaseSync.ts` — remote → store ミラー（`lateBalanceMode` と同パターン）。
-6. `src/lib/algorithm.ts` —
-   - `assignCourts` options に `reservationBlockThreshold?: number`。
-   - 中央値計算 + `isReservationBlocked(playerIds)` ヘルパー。
-   - ダブルス / シングルス両方の予約ループで、全員待機チェックの直後に `if (isReservationBlocked(...)) continue;`。
-7. `src/lib/gameOperations.ts` — `computeFinishAndContinue` options に追加し `assignCourts` へ伝播。
-8. `src/services/sessionMutations.ts`（`finishMatchAndContinue`）— `remoteSettings.reservationBlockThreshold` を読んで渡す。
-9. `src/pages/MainPage.tsx` — store の値を `assignCourts` へ渡す。
-10. `src/pages/SettingsPage.tsx` — +1 / +2 / +3 の選択 UI。
-11. テスト — ブロック判定（中央値+閾値）、`computeSetSetting`、sync ミラー。
+- `src/types/court.ts`: `CourtAssignment` に `activatedFromRestIds?: string[]`（休憩から
+  呼び出して出場させるメンバー。呼び出し側が `isResting=false` にする）。
+- `src/lib/algorithm.ts`:
+  - options に `restingPlayers?: Player[]`。
+  - `reservationPool = [...activePlayers, ...restingPlayers]` で予約メンバーを探索。
+  - 中央値の母集団 = `[...(allPlayers ?? activePlayers), ...restingPlayers]`。
+  - 予約成立時、出場メンバーのうち休憩だった者を `assignment.activatedFromRestIds` に。
+  - 旧 `reservedPlayerIds` 除外ロジックを削除。
+- `src/lib/gameOperations.ts` `computeFinishAndContinue`:
+  - finish step2: 試合を終えたプレイヤーのうち **未成立予約を持つ者は休憩**、それ以外は
+    待機（既存の restingPlayerIds 復帰は手動 swap 用に残す）。
+  - 連続配置で `restingPlayers` を渡し、`activatedFromRestIds` の isResting を false に。
+- `src/services/sessionMutations.ts`:
+  - `computeAddReservation`: メンバー（プレイ中でない者）を `isResting=true`。
+  - `computeRemoveReservation`: 削除予約のメンバーで、他の未成立予約に無く・プレイ中でなく・
+    現在休憩中の者を `isResting=false`（待機へ）。
+  - `AutoAssignSpec` に `activatePlayerIds?: string[]`、`autoAssignAndFulfill` で isResting=false。
+- `src/pages/MainPage.tsx` `handleAutoAssign`: `restingPlayers` を渡し、戻りの
+  `activatedFromRestIds` を `activatePlayerIds` として writer へ。
+- カウント制限の設定/同期（reservationBlockThreshold, SettingsPage 等）はコミット 75a68d7 のまま維持。
 
-## 挙動メモ
+## 既知の制限（今回スコープ外）
 
-- 保留された予約のメンバーは未消化 pending に含まれるため、`normalCandidates` からも除外される（`algorithm.ts:1096-1105`）。よって超過メンバーは予約・通常どちらでも今回は配置されない＝「全然入れない」。共メンバーも一緒に待つ（= 予約全体を保留）。
-- 全員 `gamesPlayed=0`（序盤）は median=0, gap=0 < 閾値 でブロックされない。
-- 旧セッション等で `reservationBlockThreshold` 未設定なら デフォルト 2 を適用。
+- 連続モードの最小待機人数ゲート（doubles=7）は変更しない。予約メンバーが休憩に回ると
+  待機人数が減り、連続自動配置が発火しにくくなる。予約は手動「配置」ボタンで確実に成立する。
+  自動発火まで必要なら別 plan で対応。

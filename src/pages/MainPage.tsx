@@ -321,6 +321,10 @@ export function MainPage() {
       );
 
       const allActivePlayers = players.filter(p => !p.isResting);
+      // 予約は休憩中メンバーも呼び出せる（プレイ中でない休憩者）
+      const restingPlayers = players.filter(
+        (p) => p.isResting && !playersInCourts.has(p.id)
+      );
 
       const assignments = assignCourts(
         waitingPlayers,
@@ -336,6 +340,7 @@ export function MainPage() {
           gameMode,
           lateBalanceMode,
           reservationBlockThreshold,
+          restingPlayers,
         }
       );
 
@@ -359,6 +364,7 @@ export function MainPage() {
           teamB: a.teamB,
           isPlaying: isBulk,
           startedAt,
+          activatePlayerIds: a.activatedFromRestIds,
         })),
         fulfilledIds,
       );

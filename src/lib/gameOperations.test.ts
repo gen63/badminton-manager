@@ -124,17 +124,24 @@ describe('computeFinishAndContinue', () => {
     });
   });
 
-  describe('restingPlayerIds の復元', () => {
-    it('休憩プレイヤーが休憩状態に戻る', () => {
+  describe('試合後の休憩判定（統一ルール）', () => {
+    it('未成立予約を持つメンバーは試合後に休憩へ戻る', () => {
       const state = makeBaseState();
-      // p5を休憩中にしてコートに配置（restingPlayerIdsに記録）
-      state.players = state.players.map(p =>
-        p.id === 'p5' ? { ...p, isResting: false } : p
-      );
-      state.courts[0].restingPlayerIds = ['p5'];
-
+      // p1 は別の未成立予約を持つ（試合後は休憩で次の予約待ち）
+      state.reservations = [
+        { id: 'r1', orderNumber: 1, playerIds: ['p1', 'p9'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+      ];
       const result = computeFinishAndContinue(state, 1, defaultOptions);
-      expect(result.newState.players.find(p => p.id === 'p5')?.isResting).toBe(true);
+      expect(result.newState.players.find(p => p.id === 'p1')?.isResting).toBe(true);
+    });
+
+    it('予約を持たないメンバーは試合後に待機（active）に戻る', () => {
+      const state = makeBaseState();
+      const result = computeFinishAndContinue(state, 1, defaultOptions);
+      // p1-p4 はコート上で試合 → 終了後は待機
+      for (const id of ['p1', 'p2', 'p3', 'p4']) {
+        expect(result.newState.players.find(p => p.id === id)?.isResting).toBe(false);
+      }
     });
   });
 
