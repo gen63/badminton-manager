@@ -475,8 +475,13 @@ export function MainPage() {
       // 試合中のコートは縮小対象にしない（空きコートのみ削減）
       const target = Math.max(recommended, occupiedCourts.length);
       if (target < courts.length) {
-        await writer.resizeCourts(target);
-        updateConfig({ courtCount: target });
+        const confirmed = window.confirm(
+          `待機人数が減るため、コート数を ${courts.length} → ${target} に減らします。よろしいですか？`
+        );
+        if (confirmed) {
+          await writer.resizeCourts(target);
+          updateConfig({ courtCount: target });
+        }
       }
 
       const waitingAfterRest = players.filter(p => !p.isResting && p.id !== playerId && !playersInCourts.has(p.id)).length;
