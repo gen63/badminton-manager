@@ -479,8 +479,8 @@ export function MainPage() {
           `待機人数が減るため、コート数を ${courts.length} → ${target} に減らします。よろしいですか？`
         );
         if (confirmed) {
-          await writer.resizeCourts(target);
-          updateConfig({ courtCount: target });
+          // gameState.courts と session.config.courtCount を 1 transaction でアトミックに（H6）
+          await writer.resizeCourtsWithConfig(target);
         }
       }
 
