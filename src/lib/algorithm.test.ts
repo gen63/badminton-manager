@@ -1010,6 +1010,30 @@ describe('assignCourts (シングルス)', () => {
     // gamesPlayed 合計が低い a-b ペアが選ばれる
     expect(picked).toEqual(['a', 'b']);
   });
+
+  it('試合数均等 > 総当たり: 対戦済みでも試合数の少ないペアが、未対戦の試合数多いペアより優先される', () => {
+    // a,b: 1試合ずつ、過去に1回対戦済み（総当たり的には不利）
+    // c,d: 4試合ずつ、未対戦（総当たり的には有利だが試合数が多い）
+    // 全員休息中。回数均等を総当たりより優先するなら a-b が選ばれる
+    const players = [
+      createSinglesPlayer('a', { gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('b', { gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('c', { gamesPlayed: 4, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+      createSinglesPlayer('d', { gamesPlayed: 4, lastPlayedAt: NOW - 60 * 60 * 1000 }),
+    ];
+    const history = [createSinglesMatch('a', 'b', NOW - 40 * 60 * 1000)];
+
+    const assignments = assignCourts(players, 1, history, {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      gameMode: 'singles',
+    });
+
+    const picked = [assignments[0].teamA[0], assignments[0].teamB[0]].sort();
+    expect(picked).toEqual(['a', 'b']);
+  });
 });
 
 describe('assignCourts - 後半均等化モード (lateBalanceMode)', () => {
