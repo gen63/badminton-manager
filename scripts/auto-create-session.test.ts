@@ -24,6 +24,7 @@ describe('parseEventTitle', () => {
       endTime: '21:30',
       venue: '千川館',
       note: '複',
+      isBasic: false,
     });
   });
 
@@ -36,6 +37,7 @@ describe('parseEventTitle', () => {
       endTime: '12:00',
       venue: '体育館',
       note: '',
+      isBasic: false,
     });
   });
 
@@ -48,6 +50,7 @@ describe('parseEventTitle', () => {
       endTime: '13:00',
       venue: 'ぴいす',
       note: '楽',
+      isBasic: false,
     });
   });
 
@@ -60,6 +63,7 @@ describe('parseEventTitle', () => {
       endTime: '19:00',
       venue: '高松',
       note: '複',
+      isBasic: false,
     });
   });
 
@@ -72,6 +76,7 @@ describe('parseEventTitle', () => {
       endTime: '19:00',
       venue: '高松',
       note: '複',
+      isBasic: false,
     });
   });
 
@@ -89,10 +94,11 @@ describe('parseEventTitle', () => {
       endTime: '21:00',
       venue: 'A.B',
       note: '単',
+      isBasic: false,
     });
   });
 
-  it('「楽基礎」など `楽` で始まる細分類は `楽` に正規化する', () => {
+  it('「楽基礎」など `楽` で始まる細分類は `楽` に正規化し、isBasic を立てる', () => {
     const result = parseEventTitle('6/8(月)18:30～21:30@富士見台.楽基礎');
     expect(result).toEqual({
       month: 6,
@@ -101,7 +107,13 @@ describe('parseEventTitle', () => {
       endTime: '21:30',
       venue: '富士見台',
       note: '楽',
+      isBasic: true,
     });
+  });
+
+  it('「基礎」を含む練習は isBasic を立てる', () => {
+    expect(parseEventTitle('6/8(月)18:30～21:30@富士見台.基礎')?.isBasic).toBe(true);
+    expect(parseEventTitle('6/8(月)18:30～21:30@富士見台.複')?.isBasic).toBe(false);
   });
 });
 
@@ -130,6 +142,7 @@ describe('parseEventList', () => {
       endTime: '21:30',
       venue: '千川館',
       note: '複',
+      isBasic: false,
       participantCount: 8,
       capacity: 12,
       waitlistCount: 2,

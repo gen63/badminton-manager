@@ -42,6 +42,7 @@ interface EtomoEvent {
   endTime: string;
   venue: string;
   note: string;
+  isBasic?: boolean;
   participantCount: number;
   capacity: number | null;
   waitlistCount: number;
@@ -107,6 +108,8 @@ function parseEventTitle(title: string) {
   const rawNote = dotIndex >= 0 ? venueNote.substring(dotIndex + 1) : '';
   // 「楽基礎」「楽初心」など `楽` で始まる細分類は `楽` として扱う
   const note = rawNote.startsWith('楽') ? '楽' : rawNote;
+  // 「基礎」と名のつく練習はレート（序列）未設定でも作成を進める
+  const isBasic = rawNote.includes('基礎');
 
   return {
     month: parseInt(match[1]),
@@ -115,6 +118,7 @@ function parseEventTitle(title: string) {
     endTime: match[4],
     venue: dotIndex >= 0 ? venueNote.substring(0, dotIndex) : venueNote,
     note,
+    isBasic,
   };
 }
 
@@ -147,6 +151,7 @@ function parseEventList(html: string): EtomoEvent[] {
       endTime: parsed.endTime,
       venue: parsed.venue,
       note: parsed.note,
+      isBasic: parsed.isBasic,
       participantCount: countMatch ? parseInt(countMatch[1]) : 0,
       capacity: countMatch ? parseInt(countMatch[2]) : null,
       waitlistCount: waitlistMatch ? parseInt(waitlistMatch[1]) : 0,
@@ -678,12 +683,13 @@ async function processEvents(
           console.log(`     ${issue.name}: ${issue.reason}`);
         }
 
-        if (!forceCreate) {
+        if (!forceCreate && !event.isBasic) {
           console.log(`  -> Pending: ${issues.length} issue(s)`);
           await notifySessionPending(event, issues, targetDate, tmpSheetName);
           continue;
         }
-        console.log(`  -> Force creating with ${issues.length} issue(s)`);
+        const reason = event.isBasic ? '基礎練習のため' : 'Force';
+        console.log(`  -> ${reason} creating with ${issues.length} issue(s)`);
       }
 
       const sessionId = await createFirestoreSession(db, event, memberMap, targetDate);
