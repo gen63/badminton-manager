@@ -24,15 +24,20 @@
 `isBasic` フラグとして `EtomoEvent` まで伝播させる。`processEvents` で
 `event.isBasic` が真なら、`FORCE_CREATE` 同様に issue があっても作成を続行する。
 
-- 判定は `rawNote.includes('基礎')`。`楽基礎` も `基礎` 単体もカバーする。
-- `practiceType` の正規化（`楽`）はそのまま。`isBasic` は独立フラグ。
+- 判定は `rawNote.includes('基礎')`。`楽基礎` も単独 `基礎` もカバーする。
+- **単独「基礎」の practiceType も `楽` に正規化する**（ユーザー確認済み 2026-05-28）。
+  `楽基礎` は従来から `楽` だったが、単独 `基礎` は正規化対象外で型外の値
+  （`'単'|'複'|'楽'` 以外）になっていた。`楽` 始まり OR `基礎` を含む note は
+  `楽` に正規化することで、並び順（多様性優先）・表示を `楽基礎` と統一する。
 - `isBasic` は `EtomoEvent` のオプショナル項目とし、`parseEventList` が常に設定。
   既存のテスト用 fixture（手書き literal）は省略可。
 
 ### 実装
 
 1. `EtomoEvent` に `isBasic?: boolean` を追加。
-2. `parseEventTitle` の戻り値に `isBasic: rawNote.includes('基礎')` を追加。
+2. `parseEventTitle` で `isBasic = rawNote.includes('基礎')` を算出し、戻り値に追加。
+   さらに `note` の正規化を `rawNote.startsWith('楽') || isBasic ? '楽' : rawNote`
+   に拡張（単独「基礎」も `楽` 扱い）。
 3. `parseEventList` の push に `isBasic: parsed.isBasic` を追加。
    （`fetchEventDetails` は `...event` で `EtomoEventDetail` に伝播するため変更不要）
 4. `processEvents` の保留判定を
@@ -44,5 +49,6 @@
 `scripts/auto-create-session.test.ts`:
 
 - `parseEventTitle` の `toEqual` 期待値に `isBasic` を追加（既存ケースは `false`）。
-- `@富士見台.楽基礎` のケースで `isBasic: true` を確認。
+- `@富士見台.楽基礎` → `note: '楽'`, `isBasic: true` を確認。
+- `@富士見台.基礎`（単独）→ `note: '楽'`, `isBasic: true` を確認。
 - `parseEventList` の `toEqual` 期待値に `isBasic: false` を追加。

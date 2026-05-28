@@ -111,8 +111,13 @@ describe('parseEventTitle', () => {
     });
   });
 
-  it('「基礎」を含む練習は isBasic を立てる', () => {
-    expect(parseEventTitle('6/8(月)18:30～21:30@富士見台.基礎')?.isBasic).toBe(true);
+  it('単独「基礎」も `楽` に正規化し、isBasic を立てる', () => {
+    const result = parseEventTitle('6/8(月)18:30～21:30@富士見台.基礎');
+    expect(result?.note).toBe('楽');
+    expect(result?.isBasic).toBe(true);
+  });
+
+  it('「基礎」を含まない練習は isBasic を立てない', () => {
     expect(parseEventTitle('6/8(月)18:30～21:30@富士見台.複')?.isBasic).toBe(false);
   });
 });

@@ -106,10 +106,10 @@ function parseEventTitle(title: string) {
   const dotIndex = venueNote.lastIndexOf('.');
 
   const rawNote = dotIndex >= 0 ? venueNote.substring(dotIndex + 1) : '';
-  // 「楽基礎」「楽初心」など `楽` で始まる細分類は `楽` として扱う
-  const note = rawNote.startsWith('楽') ? '楽' : rawNote;
   // 「基礎」と名のつく練習はレート（序列）未設定でも作成を進める
   const isBasic = rawNote.includes('基礎');
+  // 「楽基礎」「楽初心」など `楽` で始まる細分類、および「基礎」練習は `楽` として扱う
+  const note = rawNote.startsWith('楽') || isBasic ? '楽' : rawNote;
 
   return {
     month: parseInt(match[1]),
