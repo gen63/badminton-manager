@@ -1095,12 +1095,20 @@ export function MainPage() {
                   if (recentlyRestoredIds.has(player.id)) {
                     return <div key={player.id} className="relative bg-muted/50 border border-border rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm h-[58px]" style={{ visibility: 'hidden' }} />;
                   }
+                  const isReserved = pendingReservations.some(r => r.playerIds.includes(player.id));
                   return (
                     <button
                       key={player.id}
                       onClick={() => handlePlayerTap(player.id)}
-                      className="relative bg-muted/50 border border-border rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors h-[58px]"
+                      className={`relative bg-muted/50 border rounded-xl px-2 py-[3px] flex flex-col items-center justify-center gap-0 shadow-sm hover:border-green-200 hover:bg-green-50/20 transition-colors h-[58px] ${
+                        isReserved ? 'border-orange-300 bg-orange-50/50' : 'border-border'
+                      }`}
                     >
+                      {isReserved && (
+                        <div className="absolute -top-1 left-0.5">
+                          <span className="px-1 py-0.5 bg-orange-500 text-white text-[8px] font-bold rounded">予約</span>
+                        </div>
+                      )}
                       <div className="w-full text-center">
                         <div className="text-sm font-semibold truncate text-muted-foreground leading-tight">{player.name}</div>
                         <div className="text-xs text-muted-foreground leading-tight">{player.gamesPlayed}試合</div>
