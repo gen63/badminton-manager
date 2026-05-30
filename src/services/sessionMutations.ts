@@ -412,9 +412,33 @@ export function computeAddMatch(state: GameState, match: Match): GameState {
   return { ...state, matchHistory: [...state.matchHistory, match] };
 }
 
+/**
+ * 削除する試合に出場していたプレイヤーの gamesPlayed を、出場回数分だけ減算する。
+ * 試合終了時に +1 した分（computeIncrementGamesPlayed / gameOperations）の打ち消し。
+ * 0 未満にはしない。
+ */
+function decrementGamesPlayedForMatches(
+  players: GameState['players'],
+  matches: Match[],
+): GameState['players'] {
+  const counts = new Map<string, number>();
+  for (const m of matches) {
+    for (const id of [...m.teamA, ...m.teamB]) {
+      if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+  }
+  if (counts.size === 0) return players;
+  return players.map((p) => {
+    const dec = counts.get(p.id);
+    return dec ? { ...p, gamesPlayed: Math.max(0, p.gamesPlayed - dec) } : p;
+  });
+}
+
 export function computeRemoveMatch(state: GameState, matchId: string): GameState {
+  const removed = state.matchHistory.filter((m) => m.id === matchId);
   return {
     ...state,
+    players: decrementGamesPlayedForMatches(state.players, removed),
     matchHistory: state.matchHistory.filter((m) => m.id !== matchId),
   };
 }
@@ -439,7 +463,11 @@ export function computeUpdateMatchScore(
 }
 
 export function computeClearHistory(state: GameState): GameState {
-  return { ...state, matchHistory: [] };
+  return {
+    ...state,
+    players: decrementGamesPlayedForMatches(state.players, state.matchHistory),
+    matchHistory: [],
+  };
 }
 
 // =============================================================================

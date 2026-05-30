@@ -464,6 +464,45 @@ describe('sessionMutations - match history', () => {
     expect(next.matchHistory.map((m) => m.id)).toEqual(['m2']);
   });
 
+  it('computeRemoveMatch: 出場プレイヤーの gamesPlayed を減算する', () => {
+    const state = baseState({
+      players: [
+        makePlayer('a', { gamesPlayed: 3 }),
+        makePlayer('b', { gamesPlayed: 2 }),
+        makePlayer('c', { gamesPlayed: 1 }),
+        makePlayer('d', { gamesPlayed: 1 }),
+        makePlayer('e', { gamesPlayed: 5 }),
+      ],
+      matchHistory: [makeMatch('m1', { teamA: ['a', 'b'], teamB: ['c', 'd'] })],
+    });
+    const next = computeRemoveMatch(state, 'm1');
+    expect(next.players.find((p) => p.id === 'a')?.gamesPlayed).toBe(2);
+    expect(next.players.find((p) => p.id === 'b')?.gamesPlayed).toBe(1);
+    expect(next.players.find((p) => p.id === 'c')?.gamesPlayed).toBe(0);
+    expect(next.players.find((p) => p.id === 'd')?.gamesPlayed).toBe(0);
+    // 出場していないプレイヤーは変化しない
+    expect(next.players.find((p) => p.id === 'e')?.gamesPlayed).toBe(5);
+  });
+
+  it('computeRemoveMatch: gamesPlayed は 0 未満にならない', () => {
+    const state = baseState({
+      players: [makePlayer('a', { gamesPlayed: 0 })],
+      matchHistory: [makeMatch('m1', { teamA: ['a', 'b'], teamB: ['c', 'd'] })],
+    });
+    const next = computeRemoveMatch(state, 'm1');
+    expect(next.players.find((p) => p.id === 'a')?.gamesPlayed).toBe(0);
+  });
+
+  it('computeRemoveMatch: 存在しない ID なら gamesPlayed を変えない', () => {
+    const state = baseState({
+      players: [makePlayer('a', { gamesPlayed: 3 })],
+      matchHistory: [makeMatch('m1', { teamA: ['a', 'b'], teamB: ['c', 'd'] })],
+    });
+    const next = computeRemoveMatch(state, 'nope');
+    expect(next.players.find((p) => p.id === 'a')?.gamesPlayed).toBe(3);
+    expect(next.matchHistory.map((m) => m.id)).toEqual(['m1']);
+  });
+
   it('computeUpdateMatchScore: スコアと winner を更新', () => {
     const state = baseState({ matchHistory: [makeMatch('m1', { scoreA: 0, scoreB: 0 })] });
     const next = computeUpdateMatchScore(state, 'm1', 21, 19, 'A');
@@ -486,6 +525,27 @@ describe('sessionMutations - match history', () => {
     const next = computeClearHistory(state);
     expect(next.matchHistory).toEqual([]);
     expect(next.players).toHaveLength(1);
+  });
+
+  it('computeClearHistory: 全試合分の gamesPlayed を減算する', () => {
+    const state = baseState({
+      matchHistory: [
+        makeMatch('m1', { teamA: ['a', 'b'], teamB: ['c', 'd'] }),
+        makeMatch('m2', { teamA: ['a', 'c'], teamB: ['e', 'f'] }),
+      ],
+      players: [
+        makePlayer('a', { gamesPlayed: 2 }),
+        makePlayer('b', { gamesPlayed: 1 }),
+        makePlayer('c', { gamesPlayed: 2 }),
+      ],
+    });
+    const next = computeClearHistory(state);
+    // a は m1, m2 の 2 試合 → 0
+    expect(next.players.find((p) => p.id === 'a')?.gamesPlayed).toBe(0);
+    // b は m1 のみ → 0
+    expect(next.players.find((p) => p.id === 'b')?.gamesPlayed).toBe(0);
+    // c は m1, m2 の 2 試合 → 0
+    expect(next.players.find((p) => p.id === 'c')?.gamesPlayed).toBe(0);
   });
 });
 
