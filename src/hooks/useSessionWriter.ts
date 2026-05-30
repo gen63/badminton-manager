@@ -159,6 +159,11 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  const resetMatchState = useCallback(
+    () => handle('resetMatchState', (sid) => sm.resetMatchState(sid)),
+    [handle],
+  );
+
   // ===== Match history =====
   const clearHistory = useCallback(
     () => handle('clearHistory', (sid) => sm.clearHistory(sid)),
@@ -267,6 +272,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       updateCourt,
       startGame,
       resetAllCourts,
+      resetMatchState,
       autoAssignAndFulfill,
       swapPlayer,
       swapPositions,
@@ -306,6 +312,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       updateCourt,
       startGame,
       resetAllCourts,
+      resetMatchState,
       autoAssignAndFulfill,
       swapPlayer,
       swapPositions,

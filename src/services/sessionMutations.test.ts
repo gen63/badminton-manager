@@ -464,6 +464,41 @@ describe('sessionMutations - match history', () => {
     expect(next.matchHistory.map((m) => m.id)).toEqual(['m2']);
   });
 
+  it('computeRemoveMatch: 残った履歴から gamesPlayed / lastPlayedAt を再計算する', () => {
+    // 整合した初期状態: m1(t=1000) a,b vs c,d / m2(t=2000) a,b vs c,e
+    const state = baseState({
+      players: [
+        makePlayer('a', { gamesPlayed: 2, lastPlayedAt: 2000 }),
+        makePlayer('b', { gamesPlayed: 2, lastPlayedAt: 2000 }),
+        makePlayer('c', { gamesPlayed: 2, lastPlayedAt: 2000 }),
+        makePlayer('d', { gamesPlayed: 1, lastPlayedAt: 1000 }),
+        makePlayer('e', { gamesPlayed: 1, lastPlayedAt: 2000 }),
+      ],
+      matchHistory: [
+        makeMatch('m1', { teamA: ['a', 'b'], teamB: ['c', 'd'], finishedAt: 1000 }),
+        makeMatch('m2', { teamA: ['a', 'b'], teamB: ['c', 'e'], finishedAt: 2000 }),
+      ],
+    });
+    const next = computeRemoveMatch(state, 'm2');
+    // m1 のみ残る → a,b,c,d は 1 試合 (lastPlayedAt=1000)、e は 0 試合
+    expect(next.players.find((p) => p.id === 'a')).toMatchObject({ gamesPlayed: 1, lastPlayedAt: 1000 });
+    expect(next.players.find((p) => p.id === 'b')).toMatchObject({ gamesPlayed: 1, lastPlayedAt: 1000 });
+    expect(next.players.find((p) => p.id === 'c')).toMatchObject({ gamesPlayed: 1, lastPlayedAt: 1000 });
+    expect(next.players.find((p) => p.id === 'd')).toMatchObject({ gamesPlayed: 1, lastPlayedAt: 1000 });
+    // e は唯一の試合 m2 を消されたので lastPlayedAt も 0 に戻る
+    expect(next.players.find((p) => p.id === 'e')).toMatchObject({ gamesPlayed: 0, lastPlayedAt: 0 });
+  });
+
+  it('computeRemoveMatch: 存在しない ID なら統計を変えない', () => {
+    const state = baseState({
+      players: [makePlayer('a', { gamesPlayed: 1, lastPlayedAt: 2000 })],
+      matchHistory: [makeMatch('m1', { teamA: ['a', 'b'], teamB: ['c', 'd'], finishedAt: 2000 })],
+    });
+    const next = computeRemoveMatch(state, 'nope');
+    expect(next.players.find((p) => p.id === 'a')).toMatchObject({ gamesPlayed: 1, lastPlayedAt: 2000 });
+    expect(next.matchHistory.map((m) => m.id)).toEqual(['m1']);
+  });
+
   it('computeUpdateMatchScore: スコアと winner を更新', () => {
     const state = baseState({ matchHistory: [makeMatch('m1', { scoreA: 0, scoreB: 0 })] });
     const next = computeUpdateMatchScore(state, 'm1', 21, 19, 'A');
@@ -481,11 +516,33 @@ describe('sessionMutations - match history', () => {
   it('computeClearHistory: matchHistory を空にし、他フィールドは保持', () => {
     const state = baseState({
       matchHistory: [makeMatch('m1'), makeMatch('m2')],
-      players: [makePlayer('a')],
+      // 統計再計算が isResting 等の他フィールドを壊さないことを確認
+      // （resetMatchState の合成で setAllPlayersResting と併用するため重要）
+      players: [makePlayer('a', { isResting: true })],
     });
     const next = computeClearHistory(state);
     expect(next.matchHistory).toEqual([]);
     expect(next.players).toHaveLength(1);
+    expect(next.players[0].isResting).toBe(true);
+  });
+
+  it('computeClearHistory: 全プレイヤーの gamesPlayed / lastPlayedAt を 0 に戻す', () => {
+    const state = baseState({
+      matchHistory: [
+        makeMatch('m1', { teamA: ['a', 'b'], teamB: ['c', 'd'], finishedAt: 1000 }),
+        makeMatch('m2', { teamA: ['a', 'c'], teamB: ['e', 'f'], finishedAt: 2000 }),
+      ],
+      players: [
+        makePlayer('a', { gamesPlayed: 2, lastPlayedAt: 2000 }),
+        makePlayer('b', { gamesPlayed: 1, lastPlayedAt: 1000 }),
+        makePlayer('c', { gamesPlayed: 2, lastPlayedAt: 2000 }),
+      ],
+    });
+    const next = computeClearHistory(state);
+    // 履歴が空 → 全員 0 / 0
+    expect(next.players.find((p) => p.id === 'a')).toMatchObject({ gamesPlayed: 0, lastPlayedAt: 0 });
+    expect(next.players.find((p) => p.id === 'b')).toMatchObject({ gamesPlayed: 0, lastPlayedAt: 0 });
+    expect(next.players.find((p) => p.id === 'c')).toMatchObject({ gamesPlayed: 0, lastPlayedAt: 0 });
   });
 });
 

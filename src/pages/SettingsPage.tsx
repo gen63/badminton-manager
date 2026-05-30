@@ -96,11 +96,10 @@ export function SettingsPage() {
 
     if (!confirmed) return;
 
-    // 共有ゲーム状態（コート / プレイヤー休憩 / 履歴 / 予約）を順次更新
-    await writer.resetAllCourts();
-    await writer.setAllPlayersResting();
-    await writer.clearHistory();
-    await writer.clearReservations();
+    // 共有ゲーム状態（コート / プレイヤー休憩 / 履歴 / 予約）を 1 transaction で
+    // アトミックに更新。途中失敗でコートだけ消えて履歴が残る、といった中途半端な
+    // 状態にならないようにする。
+    await writer.resetMatchState();
 
     // ローカル専用ストアもクリア
     clearRecords();
