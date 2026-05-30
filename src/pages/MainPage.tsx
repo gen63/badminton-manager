@@ -857,10 +857,10 @@ export function MainPage() {
 
                             const matchStartedAt = currentCourt.startedAt;
 
-                            // 1分以内の終了は誤タップの可能性が高いので確認する
-                            if (matchStartedAt && Date.now() - matchStartedAt < 60_000) {
+                            // 90秒以内の終了は誤タップの可能性が高いので確認する
+                            if (matchStartedAt && Date.now() - matchStartedAt < 90_000) {
                               const confirmed = window.confirm(
-                                '試合開始から1分以内です。誤タップではありませんか？\n本当にこの試合を終了しますか？'
+                                '試合開始から90秒以内です。誤タップではありませんか？\n本当にこの試合を終了しますか？'
                               );
                               if (!confirmed) return;
                             }
