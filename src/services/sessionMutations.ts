@@ -413,33 +413,42 @@ export function computeAddMatch(state: GameState, match: Match): GameState {
 }
 
 /**
- * 削除する試合に出場していたプレイヤーの gamesPlayed を、出場回数分だけ減算する。
- * 試合終了時に +1 した分（computeIncrementGamesPlayed / gameOperations）の打ち消し。
- * 0 未満にはしない。
+ * 与えられた matchHistory からプレイヤーの試合統計を再計算する。
+ * - gamesPlayed = 履歴での出場試合数
+ * - lastPlayedAt = 最後に出場した試合の finishedAt（未出場は 0）
+ *
+ * 試合終了時 (gameOperations.computeFinishAndContinue) は出場者の gamesPlayed を
+ * +1 し lastPlayedAt を finishedAt にするのと同時に同じ試合を履歴へ追加する。
+ * よって両値は常に matchHistory から導出可能であり、履歴削除・全消去の後に
+ * この関数で再計算すれば、gamesPlayed / lastPlayedAt を履歴と整合させられる。
  */
-function decrementGamesPlayedForMatches(
+function recomputePlayerMatchStats(
   players: GameState['players'],
-  matches: Match[],
+  matchHistory: Match[],
 ): GameState['players'] {
-  const counts = new Map<string, number>();
-  for (const m of matches) {
+  const games = new Map<string, number>();
+  const last = new Map<string, number>();
+  for (const m of matchHistory) {
     for (const id of [...m.teamA, ...m.teamB]) {
-      if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+      if (!id) continue;
+      games.set(id, (games.get(id) ?? 0) + 1);
+      if (m.finishedAt > (last.get(id) ?? 0)) last.set(id, m.finishedAt);
     }
   }
-  if (counts.size === 0) return players;
   return players.map((p) => {
-    const dec = counts.get(p.id);
-    return dec ? { ...p, gamesPlayed: Math.max(0, p.gamesPlayed - dec) } : p;
+    const gamesPlayed = games.get(p.id) ?? 0;
+    const lastPlayedAt = last.get(p.id) ?? 0;
+    if (gamesPlayed === p.gamesPlayed && lastPlayedAt === p.lastPlayedAt) return p;
+    return { ...p, gamesPlayed, lastPlayedAt };
   });
 }
 
 export function computeRemoveMatch(state: GameState, matchId: string): GameState {
-  const removed = state.matchHistory.filter((m) => m.id === matchId);
+  const matchHistory = state.matchHistory.filter((m) => m.id !== matchId);
   return {
     ...state,
-    players: decrementGamesPlayedForMatches(state.players, removed),
-    matchHistory: state.matchHistory.filter((m) => m.id !== matchId),
+    players: recomputePlayerMatchStats(state.players, matchHistory),
+    matchHistory,
   };
 }
 
@@ -465,7 +474,7 @@ export function computeUpdateMatchScore(
 export function computeClearHistory(state: GameState): GameState {
   return {
     ...state,
-    players: decrementGamesPlayedForMatches(state.players, state.matchHistory),
+    players: recomputePlayerMatchStats(state.players, []),
     matchHistory: [],
   };
 }
@@ -777,6 +786,19 @@ export function fulfillReservation(sessionId: string, reservationId: string) {
 
 export function clearReservations(sessionId: string) {
   return mutateGameState(sessionId, computeClearReservations);
+}
+
+/**
+ * 試合状態をまとめてリセットする（SettingsPage「試合をリセット」）。
+ * コートクリア / 全員休憩 / 履歴消去 / 予約消去 を **1 transaction** で実行し、
+ * 途中で失敗してもコートだけ消えて履歴が残るような中途半端な状態にならないようにする。
+ */
+export function resetMatchState(sessionId: string) {
+  return mutateGameState(sessionId, (s) =>
+    computeClearReservations(
+      computeClearHistory(computeSetAllPlayersResting(computeResetAllCourts(s))),
+    ),
+  );
 }
 
 export function setRecordScores(sessionId: string, value: boolean) {
