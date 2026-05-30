@@ -856,6 +856,15 @@ export function MainPage() {
                             if (!currentCourt) return;
 
                             const matchStartedAt = currentCourt.startedAt;
+
+                            // 90秒以内の終了は誤タップの可能性が高いので確認する
+                            if (matchStartedAt && Date.now() - matchStartedAt < 90_000) {
+                              const confirmed = window.confirm(
+                                '試合開始から90秒以内です。誤タップではありませんか？\n本当にこの試合を終了しますか？'
+                              );
+                              if (!confirmed) return;
+                            }
+
                             const matchId = crypto.randomUUID();
 
                             // Undo 用に試合終了前の状態を保存
