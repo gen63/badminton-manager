@@ -8,7 +8,7 @@ import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
 import { getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, StopCircle, Trash2, ChevronDown, Minus, Settings, Info, MessageSquare } from 'lucide-react';
+import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, Trash2, ChevronDown, Minus, Settings, Info, MessageSquare } from 'lucide-react';
 import { sendBugReportToDiscord } from '../lib/bugReport';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
@@ -22,6 +22,7 @@ import { useGuardedAction } from '../hooks/useGuardedAction';
 import * as sm from '../services/sessionMutations';
 import { PaymentModal } from '../components/PaymentModal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { FinishGameButton } from '../components/FinishGameButton';
 import { UnrecordedMatchPrompt } from '../components/UnrecordedMatchPrompt';
 import { CourtTimer } from '../components/CourtTimer';
 import { updatePaymentBadge } from '../lib/badge';
@@ -908,13 +909,11 @@ export function MainPage() {
                       </div>
                       
                       {court.isPlaying ? (
-                        <button
-                          onClick={() => handleFinishGameClick(court.id)}
-                          className="w-full min-h-[44px] bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
-                        >
-                          <StopCircle size={14} />
-                          終了
-                        </button>
+                        <FinishGameButton
+                          key={court.startedAt}
+                          startedAt={court.startedAt}
+                          onFinish={() => handleFinishGameClick(court.id)}
+                        />
                       ) : (
                         <div className="flex gap-1.5">
                           <button
