@@ -10,7 +10,7 @@
  *   GAS_WEB_APP_URL    - メンバーデータGAS Web App URL
  *   DISCORD_WEBHOOK_URL - Discord Webhook URL
  *   FORCE_CREATE       - 'true'なら不明点があっても強制作成
- *   MODE               - 'test'なら直近練習日を対象にセッション作成（デフォルト: 'production'）
+ *   MODE               - 'nearest'なら直近練習日を対象にセッション作成（デフォルト: 'tomorrow'）
  *   VITE_FIREBASE_*    - Firebase設定
  *   TZ                 - Asia/Tokyo
  */
@@ -698,10 +698,10 @@ async function processEvents(
 async function main() {
   const etomoUrl = requireEnv('ETOMO_URL');
   const forceCreate = process.env.FORCE_CREATE === 'true';
-  const isTestMode = process.env.MODE === 'test';
+  const isNearestMode = process.env.MODE === 'nearest';
 
   console.log(`=== Auto Create Session ===`);
-  console.log(`Mode: ${isTestMode ? 'test' : 'production'}`);
+  console.log(`Mode: ${isNearestMode ? 'nearest' : 'tomorrow'}`);
   console.log(`Force create: ${forceCreate}`);
   console.log(`Timezone: ${process.env.TZ || 'not set'}`);
 
@@ -715,9 +715,9 @@ async function main() {
   const allEvents = parseEventList(listHtml);
   console.log(`Total events found: ${allEvents.length}`);
 
-  // 対象日を決定: 本番は翌日、テストは直近練習日
+  // 対象日を決定: tomorrow は翌日、nearest は直近練習日
   let targetDate: Date;
-  if (isTestMode) {
+  if (isNearestMode) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const nextDate = findNextPracticeDate(allEvents, today);
@@ -726,7 +726,7 @@ async function main() {
       return;
     }
     targetDate = nextDate;
-    console.log(`[TEST] Target: ${formatPracticeDate(targetDate)} (直近練習日)`);
+    console.log(`[NEAREST] Target: ${formatPracticeDate(targetDate)} (直近練習日)`);
   } else {
     targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + 1);
@@ -737,7 +737,7 @@ async function main() {
   console.log(`Target date events: ${targetEvents.length}`);
 
   if (targetEvents.length === 0) {
-    if (!isTestMode) {
+    if (!isNearestMode) {
       console.log('No practice scheduled for tomorrow.');
     }
     return;

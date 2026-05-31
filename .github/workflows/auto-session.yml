@@ -10,9 +10,9 @@ on:
         description: '実行モード'
         type: choice
         options:
-          - production
-          - test
-        default: production
+          - tomorrow
+          - nearest
+        default: tomorrow
       force:
         description: '不明点があっても強制的にセッションを作成する'
         type: boolean
@@ -40,7 +40,7 @@ jobs:
           ETOMO_URL: ${{ secrets.ETOMO_URL }}
           GAS_WEB_APP_URL: ${{ secrets.GAS_WEB_APP_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          MODE: ${{ inputs.mode || 'production' }}
+          MODE: ${{ inputs.mode || 'tomorrow' }}
           FORCE_CREATE: ${{ inputs.force || 'false' }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
