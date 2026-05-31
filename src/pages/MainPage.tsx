@@ -21,6 +21,7 @@ import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { useGuardedAction } from '../hooks/useGuardedAction';
 import * as sm from '../services/sessionMutations';
 import { PaymentModal } from '../components/PaymentModal';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UnrecordedMatchPrompt } from '../components/UnrecordedMatchPrompt';
 import { CourtTimer } from '../components/CourtTimer';
 import { updatePaymentBadge } from '../lib/badge';
@@ -97,6 +98,8 @@ export function MainPage() {
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
+  // 90秒以内の試合終了で確認ダイアログを出す対象コート（null = 非表示）
+  const [pendingFinishCourtId, setPendingFinishCourtId] = useState<number | null>(null);
   const [showInformationModal, setShowInformationModal] = useState(false);
   const [informationText, setInformationText] = useState('');
   const [showBugReportModal, setShowBugReportModal] = useState(false);
@@ -379,6 +382,62 @@ export function MainPage() {
 
   const handleStartGame = async (courtId: number) => {
     await writer.startGame(courtId);
+  };
+
+  // 90秒以内の終了は誤タップの可能性が高いので確認ダイアログを挟む。
+  // 確認 OK 後 or 90秒以上経過時は executeFinishGame で実際の終了処理を行う。
+  const executeFinishGame = async (courtId: number) => {
+    if (!session?.id) return;
+    const currentCourt = courts.find((c) => c.id === courtId);
+    if (!currentCourt) return;
+
+    const matchStartedAt = currentCourt.startedAt;
+    const matchId = crypto.randomUUID();
+
+    // Undo 用に試合終了前の状態を保存
+    pushUndo();
+
+    try {
+      const res = await sm.finishMatchAndContinue(
+        session.id,
+        courtId,
+        matchStartedAt,
+        {
+          matchId,
+          useStayDurationPriority,
+          prioritizeDiversity,
+        },
+      );
+      if (res.result === 'already_finished') {
+        toast.info('他のユーザーが既に終了しました');
+        return;
+      }
+      // GAMEOPS4: 連続モードがブロックされた理由をユーザーに伝える
+      if (continuousMatchMode && !res.continuousNextApplied) {
+        if (res.continuousError === 'diversity_block') {
+          toast.warning('待機人数が少ないため連続モードを停止しました');
+        } else if (res.continuousError === 'not_enough_players') {
+          toast.info('待機中のプレイヤーが足りないため次の試合は配置されません');
+        } else if (res.continuousError === 'assignment_failed') {
+          toast.error('連続配置に失敗しました');
+        }
+      }
+    } catch (err) {
+      console.error('[FinishGame] Transaction failed:', err);
+      toast.error('試合終了の同期に失敗しました');
+    }
+  };
+
+  const handleFinishGameClick = (courtId: number) => {
+    const currentCourt = courts.find((c) => c.id === courtId);
+    if (!currentCourt) return;
+    const matchStartedAt = currentCourt.startedAt;
+    // 90秒以内ならカスタム確認ダイアログを表示、それ以外は即終了
+    if (matchStartedAt && Date.now() - matchStartedAt < 90_000) {
+      setPendingFinishCourtId(courtId);
+      return;
+    }
+    void executeFinishGame(courtId);
   };
 
   const handlePaymentClick = (playerId: string) => {
@@ -850,57 +909,7 @@ export function MainPage() {
                       
                       {court.isPlaying ? (
                         <button
-                          onClick={async () => {
-                            if (!session?.id) return;
-                            const currentCourt = courts.find((c) => c.id === court.id);
-                            if (!currentCourt) return;
-
-                            const matchStartedAt = currentCourt.startedAt;
-
-                            // 90秒以内の終了は誤タップの可能性が高いので確認する
-                            if (matchStartedAt && Date.now() - matchStartedAt < 90_000) {
-                              const confirmed = window.confirm(
-                                '試合開始から90秒以内です。誤タップではありませんか？\n本当にこの試合を終了しますか？'
-                              );
-                              if (!confirmed) return;
-                            }
-
-                            const matchId = crypto.randomUUID();
-
-                            // Undo 用に試合終了前の状態を保存
-                            pushUndo();
-
-                            try {
-                              const res = await sm.finishMatchAndContinue(
-                                session.id,
-                                court.id,
-                                matchStartedAt,
-                                {
-                                  matchId,
-                                  useStayDurationPriority,
-                                  prioritizeDiversity,
-                                },
-                              );
-                              if (res.result === 'already_finished') {
-                                toast.info('他のユーザーが既に終了しました');
-                                return;
-                              }
-                              // GAMEOPS4: 連続モードがブロックされた理由をユーザーに伝える
-                              if (continuousMatchMode && !res.continuousNextApplied) {
-                                if (res.continuousError === 'diversity_block') {
-                                  toast.warning('待機人数が少ないため連続モードを停止しました');
-                                } else if (res.continuousError === 'not_enough_players') {
-                                  toast.info('待機中のプレイヤーが足りないため次の試合は配置されません');
-                                } else if (res.continuousError === 'assignment_failed') {
-                                  toast.error('連続配置に失敗しました');
-                                }
-                              }
-                            } catch (err) {
-                              console.error('[FinishGame] Transaction failed:', err);
-                              toast.error('試合終了の同期に失敗しました');
-                              return;
-                            }
-                          }}
+                          onClick={() => handleFinishGameClick(court.id)}
                           className="w-full min-h-[44px] bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
                         >
                           <StopCircle size={14} />
@@ -1142,6 +1151,23 @@ export function MainPage() {
           defaultAmount={paymentModalPlayer.defaultAmount}
           onConfirm={handlePaymentConfirm}
           onCancel={() => setPaymentModalPlayer(null)}
+        />
+      )}
+
+      {/* 90秒以内の試合終了の確認ダイアログ（誤タップ防止） */}
+      {pendingFinishCourtId !== null && (
+        <ConfirmDialog
+          title="試合を終了しますか？"
+          message={'試合開始から90秒以内です。\n誤タップではありませんか？'}
+          confirmLabel="終了"
+          cancelLabel="キャンセル"
+          destructive
+          onConfirm={() => {
+            const courtId = pendingFinishCourtId;
+            setPendingFinishCourtId(null);
+            void executeFinishGame(courtId);
+          }}
+          onCancel={() => setPendingFinishCourtId(null)}
         />
       )}
 

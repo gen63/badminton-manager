@@ -16,10 +16,16 @@
 - `src/pages/MainPage.tsx` の試合終了ハンドラ（コートカードの「終了」ボタン
   `onClick`）で、`finishMatchAndContinue` を呼ぶ前に経過時間をチェックする。
 - 条件: `matchStartedAt && Date.now() - matchStartedAt < 90_000`
-- 既存の確認ダイアログ（コート縮小 `window.confirm`）と同様に
-  `window.confirm` を使う。キャンセル時は何もせず return。
-- 確認文言: 「試合開始から90秒以内です。誤タップではありませんか？
-  本当にこの試合を終了しますか？」
+- `window.confirm`（OK/キャンセル固定）ではなく、ボタンラベルを
+  「終了」「キャンセル」に変えたいので汎用の `ConfirmDialog` コンポーネントを
+  新設して使う（スタイルは `WinnerSelectModal` 等に合わせる）。
+  - 「終了」ボタンは破壊的アクション色（destructive）。
+  - キャンセル時は何もしない。
+- 終了処理は `executeFinishGame(courtId)` に抽出し、90秒未満なら
+  `pendingFinishCourtId` state にセットしてダイアログ表示 → OK で実行、
+  90秒以上なら確認なしで直接実行する。
+- 確認文言: タイトル「試合を終了しますか？」/
+  本文「試合開始から90秒以内です。誤タップではありませんか？」
 
 ## 影響範囲
 
