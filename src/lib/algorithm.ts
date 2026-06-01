@@ -1358,22 +1358,22 @@ export function sortWaitingPlayers(
 
 // シングルスペア評価のソフト重み（優先度: 連続回避 > 総当たり > 試合数均等 > レーティング）
 // W_RECENCY を最強に設定: 直前プレイ者を含むペアは、過去対戦のあるペアよりも避けるべき。
-// minRest=0 時の最大ペナルティ 500 で、実用範囲の RR 差 (~4 試合) と
-// balance 差 (~60) を上回る。3 分以上休めばペナルティ 0 になり、その後は
-// 総当たり (W=100) → 試合数均等 (W=10) → レーティング (W=0.02) の順に効く。
+// minRest=0 時の最大ペナルティ 500 で、実用範囲の balance 差 (~6 試合 → 300) と
+// RR 差 (~4 対戦 → 40) を上回る。2 分以上休めばペナルティ 0 になり、その後は
+// 試合数均等 (1 試合=50) → 総当たり (1 対戦=10) → レーティング (W=0.02) の順に効く。
 const SINGLES_WEIGHT_RECENCY = 500;
-const SINGLES_WEIGHT_ROUNDROBIN = 100;
-const SINGLES_WEIGHT_BALANCE = 10;
+const SINGLES_WEIGHT_BALANCE = 50;
+const SINGLES_WEIGHT_ROUNDROBIN = 10;
 const SINGLES_WEIGHT_RATING = 0.02;
 // 直前プレイ判定の閾値（分）。これ未満ならペナルティが線形に最大値へ近づく
-const SINGLES_REST_THRESHOLD_MIN = 3;
+const SINGLES_REST_THRESHOLD_MIN = 2;
 
 /**
  * シングルスペアのコストを計算（小さいほど好ましい）
  * 強度順:
  * - 連続回避ペナルティ (W_RECENCY=500、直前プレイ側がいるペアに最大ペナルティ)
- * - 総当たり (matchCount * W_ROUNDROBIN)
  * - 試合数合計 (gamesPlayed合計 * W_BALANCE)
+ * - 総当たり (matchCount * W_ROUNDROBIN)
  * - レーティング差 (タイブレーク)
  */
 function computeSinglesPairCost(
@@ -1399,9 +1399,9 @@ function computeSinglesPairCost(
   const ratingDiff = Math.abs(ratingA - ratingB);
 
   return (
-    SINGLES_WEIGHT_ROUNDROBIN * matchCount +
-    SINGLES_WEIGHT_BALANCE * totalGames +
     SINGLES_WEIGHT_RECENCY * recencyPenalty +
+    SINGLES_WEIGHT_BALANCE * totalGames +
+    SINGLES_WEIGHT_ROUNDROBIN * matchCount +
     SINGLES_WEIGHT_RATING * ratingDiff
   );
 }
@@ -1466,10 +1466,10 @@ function findBestSinglesPairing(
 }
 
 /**
- * シングルス用の配置アルゴリズム
- * - 総当たり優先: まだ対戦していない（少ない）ペアを最優先
+ * シングルス用の配置アルゴリズム（強度順）
+ * - 連続回避: 直前にプレイしたユーザを含むペアにペナルティ（最優先）
  * - 試合回数の差を抑制: ペア合算の gamesPlayed が低いほど好まれる
- * - 連続回避: 直前にプレイしたユーザを含むペアにペナルティ
+ * - 総当たり優先: まだ対戦していない（少ない）ペアを優先
  * - レーティング近接: 他条件が拮抗時に近いレーティング同士を好む（タイブレーク）
  */
 // Singles ペアリングのコスト関数 (computeSinglesPairCost) は SINGLES_WEIGHT_BALANCE
