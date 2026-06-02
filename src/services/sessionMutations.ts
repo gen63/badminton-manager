@@ -1066,6 +1066,11 @@ export interface FinishGameOptions {
   matchId: string;
   useStayDurationPriority: boolean;
   prioritizeDiversity: boolean;
+  /**
+   * true のとき、連続モードが ON でも次の試合を自動配置しない
+   * （15 分超過の自動終了用）。
+   */
+  skipContinuous?: boolean;
 }
 
 /**
@@ -1128,6 +1133,7 @@ export async function finishMatchAndContinue(
         matchId: options.matchId,
         lateBalanceMode: remoteSettings?.lateBalanceMode ?? false,
         reservationBlockThreshold: remoteSettings?.reservationBlockThreshold,
+        skipContinuous: options.skipContinuous,
       });
 
       transaction.update(ref, buildGameStatePayload(computed.newState));

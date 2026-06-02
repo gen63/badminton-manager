@@ -12,6 +12,9 @@ import type { Reservation } from '../types/reservation';
 import type { SyncSettings } from '../services/sessionService';
 import { assignCourts } from './algorithm';
 
+/** 試合の自動終了までの経過時間（ms）。これを超えた試合は自動で終了する。 */
+export const MATCH_AUTO_END_MS = 15 * 60 * 1000;
+
 /** ゲームモードに応じた1コートあたりの人数 */
 export function getPlayersPerCourt(gameMode: 'singles' | 'doubles'): number {
   return gameMode === 'singles' ? 2 : 4;
@@ -79,6 +82,11 @@ export function computeFinishAndContinue(
     matchId?: string;
     lateBalanceMode?: boolean;
     reservationBlockThreshold?: number;
+    /**
+     * true のとき、連続モードが ON でもこの 1 回の自動配置を抑止する
+     * （15 分超過の自動終了用）。`continuousMatchMode` 設定自体は変えない。
+     */
+    skipContinuous?: boolean;
   }
 ): FinishGameResult {
   const court = state.courts.find(c => c.id === courtId);
@@ -135,7 +143,7 @@ export function computeFinishAndContinue(
   let continuousNextApplied = false;
   let continuousError: string | undefined;
 
-  if (options.continuousMatchMode) {
+  if (options.continuousMatchMode && !options.skipContinuous) {
     const playersInCourts = new Set(
       updatedCourts.flatMap(c => [...c.teamA, ...c.teamB]).filter(id => id?.trim())
     );
