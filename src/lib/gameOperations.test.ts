@@ -162,6 +162,25 @@ describe('computeFinishAndContinue', () => {
       // 元のプレイヤーは含まれない（gamesPlayed+1で優先度が下がる）
     });
 
+    it('skipContinuous=true なら連続モードでも次の配置をしない（自動終了用）', () => {
+      const state = makeBaseState();
+      const result = computeFinishAndContinue(state, 1, {
+        ...continuousOptions,
+        skipContinuous: true,
+      });
+
+      // 次の試合は配置されず、コートはクリアされたまま
+      expect(result.continuousNextApplied).toBe(false);
+      expect(result.continuousError).toBeUndefined();
+      const court = result.newState.courts[0];
+      expect(court.isPlaying).toBe(false);
+      expect(court.teamA[0]).toBe('');
+      // 試合は終了記録される
+      expect(result.newState.matchHistory.length).toBe(state.matchHistory.length + 1);
+      // 連続モード設定自体は変更しない
+      expect(result.newState.settings).toBe(state.settings);
+    });
+
     it('待機プレイヤーが不足の場合、配置されない', () => {
       const state = makeBaseState();
       // 待機プレイヤーを6人に減らす（最低7人必要）

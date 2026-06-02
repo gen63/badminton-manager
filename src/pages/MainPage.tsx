@@ -27,7 +27,7 @@ import { UnrecordedMatchPrompt } from '../components/UnrecordedMatchPrompt';
 import { CourtTimer } from '../components/CourtTimer';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
-import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType } from '../lib/gameOperations';
+import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH_AUTO_END_MS } from '../lib/gameOperations';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 
 import { BottomNav } from '../components/BottomNav';
@@ -213,6 +213,54 @@ export function MainPage() {
     }, delay);
     return () => clearTimeout(timeoutId);
   }, [session?.id, session?.config.practiceStartTime, useStayDurationPriority, lateBalanceAutoFired, writer]);
+
+  // 15 分を超えた試合を自動終了する。連続モードが ON でも、自動終了したコートには
+  // 次の試合を自動配置しない（skipContinuous=true）。終了は startedAt をべき等キーと
+  // するため、複数端末が同時に発火しても 1 度だけ成功する（他端末は already_finished）。
+  const autoEndMatch = useCallback(async (courtId: number, matchStartedAt: number) => {
+    if (!session?.id) return;
+    try {
+      const res = await sm.finishMatchAndContinue(session.id, courtId, matchStartedAt, {
+        matchId: crypto.randomUUID(),
+        useStayDurationPriority,
+        prioritizeDiversity,
+        skipContinuous: true,
+      });
+      if (res.result === 'success') {
+        const label = ['①', '②', '③'][courtId - 1] || `コート${courtId}`;
+        toast.info(`${label} の試合が 15 分を超えたため自動終了しました`);
+      }
+    } catch (err) {
+      console.error('[AutoEndMatch] Transaction failed:', err);
+    }
+  }, [session?.id, useStayDurationPriority, prioritizeDiversity, toast]);
+
+  // プレイ中コートごとに「開始 + 15 分」の節目で autoEndMatch を発火させる setTimeout を
+  // 仕掛ける。スコア更新などでの不要な再スケジュールを避けるため、依存はプレイ中コートの
+  // (id, startedAt) シグネチャに絞る。既に 15 分を過ぎていれば即発火（PWA 再起動・遅参加対応）。
+  const playingCourtsSignature = useMemo(
+    () => courts
+      .filter((c) => c.isPlaying && c.startedAt > 0)
+      .map((c) => `${c.id}:${c.startedAt}`)
+      .join(','),
+    [courts]
+  );
+
+  useEffect(() => {
+    if (!session?.id) return;
+    const playing = courts.filter((c) => c.isPlaying && c.startedAt > 0);
+    if (playing.length === 0) return;
+
+    const timers = playing.map((court) => {
+      const delay = Math.max(0, court.startedAt + MATCH_AUTO_END_MS - Date.now());
+      return setTimeout(() => {
+        void autoEndMatch(court.id, court.startedAt);
+      }, delay);
+    });
+    return () => timers.forEach(clearTimeout);
+    // playingCourtsSignature がプレイ中コートの (id, startedAt) を表すため courts 自体は依存に含めない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id, playingCourtsSignature, autoEndMatch]);
 
   const playersInCourts = useMemo(() => new Set(
     courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())
