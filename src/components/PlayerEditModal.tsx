@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { parsePlayerInput } from '../lib/utils';
 
 interface PlayerEditModalProps {
   playerName: string;
   playerGender?: 'M' | 'F';
   existingNames: string[];
-  onSave: (name: string, gender?: 'M' | 'F') => void;
+  onSave: (name: string, gender?: 'M' | 'F', rating?: number) => void;
   onCancel: () => void;
 }
 
@@ -15,16 +16,17 @@ export function PlayerEditModal({ playerName, playerGender, existingNames, onSav
   const [error, setError] = useState('');
 
   const handleSave = () => {
-    const trimmed = name.trim();
-    if (!trimmed) {
+    const parsed = parsePlayerInput(name);
+    if (!parsed) {
       setError('名前を入力してください');
       return;
     }
-    if (trimmed !== playerName && existingNames.includes(trimmed)) {
+    const { name: parsedName, rating, gender: parsedGender } = parsed;
+    if (parsedName !== playerName && existingNames.includes(parsedName)) {
       setError('同じ名前の参加者が既に存在します');
       return;
     }
-    onSave(trimmed, gender);
+    onSave(parsedName, parsedGender ?? gender, rating);
   };
 
   return (

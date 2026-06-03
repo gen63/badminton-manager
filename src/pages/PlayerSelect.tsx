@@ -58,10 +58,12 @@ export function PlayerSelect() {
     setEditModalPlayer({ id: player.id, name: player.name, gender: player.gender });
   };
 
-  const handleEditSave = async (name: string, gender?: 'M' | 'F') => {
+  const handleEditSave = async (name: string, gender?: 'M' | 'F', rating?: number) => {
     if (!editModalPlayer) return;
     const oldName = editModalPlayer.name;
-    const result = await writer.updatePlayer(editModalPlayer.id, { name, gender });
+    const updates: { name: string; gender?: 'M' | 'F'; rating?: number } = { name, gender };
+    if (rating !== undefined) updates.rating = rating;
+    const result = await writer.updatePlayer(editModalPlayer.id, updates);
     // 自己 rename の場合は localStorage の currentUser を新名へ追従させる。
     // sessionMutations.updatePlayer は createdBy / admins / participants を新名に
     // 書き換えるため、currentUser だけ旧名のまま残ると isCreator/isAdmin /
