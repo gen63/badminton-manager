@@ -672,13 +672,15 @@ async function processEvents(
       }
 
       const issues = checkPlayerIssues(event.participants, memberMap);
+      // 楽・単はレーティング不要なので未設定でも作成を保留しない
+      const ratingRequired = event.note !== '楽' && event.note !== '単';
 
       if (issues.length > 0) {
         for (const issue of issues) {
           console.log(`     ${issue.name}: ${issue.reason}`);
         }
 
-        if (!forceCreate) {
+        if (!forceCreate && ratingRequired) {
           console.log(`  -> Pending: ${issues.length} issue(s)`);
           await notifySessionPending(event, issues, targetDate, tmpSheetName);
           continue;
