@@ -20,11 +20,12 @@ export function WinnerSelectModal({
   onConfirm,
   onCancel,
 }: WinnerSelectModalProps) {
-  const allPlayers = [...teamA, ...teamB].filter(id => id);
+  const teamAPlayers = teamA.filter(Boolean);
+  const teamBPlayers = teamB.filter(Boolean);
   const isSingles = teamA[1] === '' && teamB[1] === '';
   const maxSelect = isSingles ? 1 : 2;
-  const teamASet = new Set(teamA.filter(Boolean));
-  const teamBSet = new Set(teamB.filter(Boolean));
+  const teamASet = new Set(teamAPlayers);
+  const teamBSet = new Set(teamBPlayers);
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
 
   // WINNER1 fix: 既に「片方のチーム」を選んでいる時、もう一方のチームを
@@ -70,10 +71,10 @@ export function WinnerSelectModal({
     const bgColor = isSelected
       ? 'bg-green-100 border-green-500'
       : 'bg-card border-border';
-    const textColor = playerGender === 'M' 
-      ? 'text-blue-600' 
-      : playerGender === 'F' 
-      ? 'text-pink-600' 
+    const textColor = playerGender === 'M'
+      ? 'text-blue-600'
+      : playerGender === 'F'
+      ? 'text-pink-600'
       : 'text-foreground';
 
     return (
@@ -114,9 +115,32 @@ export function WinnerSelectModal({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 flex flex-col gap-3">
-          {allPlayers.map((playerId) => renderPlayerCard(playerId))}
+        {/* Content: チームごとにグループ表示 */}
+        <div className="p-6 flex flex-col gap-4">
+          {/* チームA */}
+          <div className="flex flex-col gap-2">
+            {!isSingles && (
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">チームA</p>
+            )}
+            {teamAPlayers.map((playerId) => renderPlayerCard(playerId))}
+          </div>
+
+          {/* 区切り */}
+          {!isSingles && (
+            <div className="flex items-center gap-2">
+              <div className="flex-1 border-t border-border" />
+              <span className="text-xs text-muted-foreground">VS</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+          )}
+
+          {/* チームB */}
+          <div className="flex flex-col gap-2">
+            {!isSingles && (
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">チームB</p>
+            )}
+            {teamBPlayers.map((playerId) => renderPlayerCard(playerId))}
+          </div>
         </div>
 
         {/* Footer */}
