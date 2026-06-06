@@ -20,35 +20,17 @@ export function WinnerSelectModal({
   onConfirm,
   onCancel,
 }: WinnerSelectModalProps) {
-  const allPlayers = [...teamA, ...teamB].filter(id => id);
+  const teamAPlayers = teamA.filter(Boolean);
+  const teamBPlayers = teamB.filter(Boolean);
   const isSingles = teamA[1] === '' && teamB[1] === '';
   const maxSelect = isSingles ? 1 : 2;
-  const teamASet = new Set(teamA.filter(Boolean));
-  const teamBSet = new Set(teamB.filter(Boolean));
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
 
-  // WINNER1 fix: 既に「片方のチーム」を選んでいる時、もう一方のチームを
-  // 触れても無視ではなく「選び直し」として 1 人にリセットする。
-  // 旧仕様: 異チーム選択を確定すると `allInA && allInB` がどちらも false
-  //        になり呼び出し側が無言で modal を閉じてスコア未記録になっていた。
   const handlePlayerToggle = (playerId: string) => {
     const newSelected = new Set(selectedPlayerIds);
     if (newSelected.has(playerId)) {
       newSelected.delete(playerId);
-      setSelectedPlayerIds(newSelected);
-      return;
-    }
-    const targetTeam = teamASet.has(playerId) ? 'A' : teamBSet.has(playerId) ? 'B' : null;
-    if (targetTeam) {
-      const hasOtherTeamSelected = Array.from(newSelected).some((id) =>
-        targetTeam === 'A' ? teamBSet.has(id) : teamASet.has(id),
-      );
-      if (hasOtherTeamSelected) {
-        setSelectedPlayerIds(new Set([playerId]));
-        return;
-      }
-    }
-    if (newSelected.size < maxSelect) {
+    } else if (newSelected.size < maxSelect) {
       newSelected.add(playerId);
     }
     setSelectedPlayerIds(newSelected);
@@ -70,10 +52,10 @@ export function WinnerSelectModal({
     const bgColor = isSelected
       ? 'bg-green-100 border-green-500'
       : 'bg-card border-border';
-    const textColor = playerGender === 'M' 
-      ? 'text-blue-600' 
-      : playerGender === 'F' 
-      ? 'text-pink-600' 
+    const textColor = playerGender === 'M'
+      ? 'text-blue-600'
+      : playerGender === 'F'
+      ? 'text-pink-600'
       : 'text-foreground';
 
     return (
@@ -114,9 +96,32 @@ export function WinnerSelectModal({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 flex flex-col gap-3">
-          {allPlayers.map((playerId) => renderPlayerCard(playerId))}
+        {/* Content: チームごとにグループ表示 */}
+        <div className="p-6 flex flex-col gap-4">
+          {/* チームA */}
+          <div className="flex flex-col gap-2">
+            {!isSingles && (
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">チームA</p>
+            )}
+            {teamAPlayers.map((playerId) => renderPlayerCard(playerId))}
+          </div>
+
+          {/* 区切り */}
+          {!isSingles && (
+            <div className="flex items-center gap-2">
+              <div className="flex-1 border-t border-border" />
+              <span className="text-xs text-muted-foreground">VS</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+          )}
+
+          {/* チームB */}
+          <div className="flex flex-col gap-2">
+            {!isSingles && (
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">チームB</p>
+            )}
+            {teamBPlayers.map((playerId) => renderPlayerCard(playerId))}
+          </div>
         </div>
 
         {/* Footer */}

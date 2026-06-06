@@ -83,15 +83,22 @@ export function UnrecordedMatchPrompt() {
         const teamBSet = new Set(target.teamB.filter(Boolean));
         const allInA = winnerIds.every((id) => teamASet.has(id));
         const allInB = winnerIds.every((id) => teamBSet.has(id));
-        if (!allInA && !allInB) {
-          toast.error('勝者が同じチームではありません。スコアは記録されませんでした');
-          dismissMatch(target.id);
-          return;
+        if (allInA) {
+          await writer.updateMatchScore(target.id, 100, 99, 'A');
+        } else if (allInB) {
+          await writer.updateMatchScore(target.id, 99, 100, 'B');
+        } else {
+          // クロスチームペアが勝者: teamA=勝者ペア, teamB=敗者ペアに組み直し
+          const allPlayers = [...target.teamA, ...target.teamB].filter(Boolean);
+          const loserIds = allPlayers.filter((id) => !winnerIds.includes(id));
+          await writer.updateMatch(target.id, {
+            teamA: [winnerIds[0], winnerIds[1]] as [string, string],
+            teamB: [loserIds[0], loserIds[1]] as [string, string],
+            winner: 'A',
+            scoreA: 100,
+            scoreB: 99,
+          });
         }
-        const winner: 'A' | 'B' = allInA ? 'A' : 'B';
-        const scoreA = winner === 'A' ? 100 : 99;
-        const scoreB = winner === 'B' ? 100 : 99;
-        await writer.updateMatchScore(target.id, scoreA, scoreB, winner);
       }}
       onCancel={() => dismissMatch(target.id)}
     />
