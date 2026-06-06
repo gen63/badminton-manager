@@ -24,32 +24,13 @@ export function WinnerSelectModal({
   const teamBPlayers = teamB.filter(Boolean);
   const isSingles = teamA[1] === '' && teamB[1] === '';
   const maxSelect = isSingles ? 1 : 2;
-  const teamASet = new Set(teamAPlayers);
-  const teamBSet = new Set(teamBPlayers);
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
 
-  // WINNER1 fix: 既に「片方のチーム」を選んでいる時、もう一方のチームを
-  // 触れても無視ではなく「選び直し」として 1 人にリセットする。
-  // 旧仕様: 異チーム選択を確定すると `allInA && allInB` がどちらも false
-  //        になり呼び出し側が無言で modal を閉じてスコア未記録になっていた。
   const handlePlayerToggle = (playerId: string) => {
     const newSelected = new Set(selectedPlayerIds);
     if (newSelected.has(playerId)) {
       newSelected.delete(playerId);
-      setSelectedPlayerIds(newSelected);
-      return;
-    }
-    const targetTeam = teamASet.has(playerId) ? 'A' : teamBSet.has(playerId) ? 'B' : null;
-    if (targetTeam) {
-      const hasOtherTeamSelected = Array.from(newSelected).some((id) =>
-        targetTeam === 'A' ? teamBSet.has(id) : teamASet.has(id),
-      );
-      if (hasOtherTeamSelected) {
-        setSelectedPlayerIds(new Set([playerId]));
-        return;
-      }
-    }
-    if (newSelected.size < maxSelect) {
+    } else if (newSelected.size < maxSelect) {
       newSelected.add(playerId);
     }
     setSelectedPlayerIds(newSelected);
