@@ -227,7 +227,7 @@ describe('computeFinishAndContinue', () => {
       expect(result.continuousError).toBe('diversity_block');
     });
 
-    it('diversity block 発動時は settings.continuousMatchMode を OFF にする', () => {
+    it('diversity block 発動時も settings.continuousMatchMode は OFF にしない（その回の自動配置のみ見送る）', () => {
       const state: GameState = {
         ...makeBaseState(),
         settings: {
@@ -250,8 +250,8 @@ describe('computeFinishAndContinue', () => {
       });
 
       expect(result.continuousError).toBe('diversity_block');
-      expect(result.newState.settings?.continuousMatchMode).toBe(false);
-      // 他の settings は保持
+      // 連続モード自体は維持し、待機人数が回復したら自動再開できるようにする
+      expect(result.newState.settings?.continuousMatchMode).toBe(true);
       expect(result.newState.settings?.recordScores).toBe(true);
       expect(result.newState.settings?.practiceType).toBe('楽');
     });

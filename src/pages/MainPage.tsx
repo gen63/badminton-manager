@@ -464,7 +464,7 @@ export function MainPage() {
       // GAMEOPS4: 連続モードがブロックされた理由をユーザーに伝える
       if (continuousMatchMode && !res.continuousNextApplied) {
         if (res.continuousError === 'diversity_block') {
-          toast.warning('待機人数が少ないため連続モードを停止しました');
+          toast.info('待機人数が少ないため、この試合の自動配置を見送りました');
         } else if (res.continuousError === 'not_enough_players') {
           toast.info('待機中のプレイヤーが足りないため次の試合は配置されません');
         } else if (res.continuousError === 'assignment_failed') {
@@ -523,15 +523,6 @@ export function MainPage() {
     waitingCount,
     totalActiveCount,
     2,
-    playersPerCourt
-  );
-  const shouldBlockContinuous = shouldBlockForDiversity(
-    prioritizeDiversity,
-    occupiedCourts.length,
-    emptyCourts.length,
-    waitingCount,
-    totalActiveCount,
-    getMinWaitingCount(gameMode),
     playersPerCourt
   );
   const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= playersPerCourt;
@@ -704,7 +695,7 @@ export function MainPage() {
             {isAdmin() && (
               <button
                 onClick={() => void continuousModeToggle.run(!continuousMatchMode)}
-                disabled={(!continuousMatchMode && shouldBlockContinuous) || continuousModeToggle.isPending}
+                disabled={continuousModeToggle.isPending}
                 className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
                   continuousMatchMode
                     ? 'bg-green-50 text-green-700 border border-green-200'
