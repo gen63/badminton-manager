@@ -37,7 +37,3 @@ export function getErrorMessage(error: unknown): string {
 
   return '予期しないエラーが発生しました';
 }
-
-export function isOffline(): boolean {
-  return !navigator.onLine;
-}

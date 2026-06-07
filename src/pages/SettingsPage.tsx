@@ -11,7 +11,6 @@ import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { deleteSession, updateSession as updateFirebaseSession, updateCreator } from '../services/sessionService';
 import { clearAppBadge } from '../lib/badge';
 import { copyToClipboard } from '../lib/utils';
-import { isOffline } from '../lib/errorHandler';
 import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
@@ -175,13 +174,6 @@ export function SettingsPage() {
   // ADMIN1 fix: 失敗時に選択内容を維持できるよう成否を返す
   const updateAdmins = async (updatedAdmins: string[]): Promise<boolean> => {
     if (!session.id) return false;
-    // オフライン時 updateDoc は成功も失敗もせず待機し続ける（CLAUDE.md「オフライン
-    // 書き込みはブロック」）。ボタンを押しても何も起きないように見えるため、
-    // 事前に検知してエラー表示する。
-    if (isOffline()) {
-      toast.error('オフラインのため変更できません。接続を確認してください');
-      return false;
-    }
     try {
       await updateFirebaseSession(session.id, { admins: updatedAdmins });
       useSessionStore.getState().updateSession({ admins: updatedAdmins });
@@ -220,12 +212,6 @@ export function SettingsPage() {
 
   const handleChangeCreator = async () => {
     if (!session.id || !selectedNewCreator || selectedNewCreator === session.createdBy || isChangingCreator) return;
-    // オフライン時 updateDoc は待機し続け、ボタンが反応しないように見える
-    // （CLAUDE.md「オフライン書き込みはブロック」）。確認ダイアログの前に検知する。
-    if (isOffline()) {
-      toast.error('オフラインのため変更できません。接続を確認してください');
-      return;
-    }
     const confirmed = window.confirm(
       `作成者を ${session.createdBy} から ${selectedNewCreator} に変更しますか？\n\n` +
       'この操作は Firestore のセッションドキュメントを書き換えます。'
