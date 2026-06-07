@@ -11,10 +11,11 @@ import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { deleteSession, updateSession as updateFirebaseSession, updateCreator } from '../services/sessionService';
 import { clearAppBadge } from '../lib/badge';
 import { copyToClipboard } from '../lib/utils';
+import { isOffline } from '../lib/errorHandler';
 import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, Copy, Check, Loader2 } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -27,8 +28,10 @@ export function SettingsPage() {
   const [sessionIdCopied, setSessionIdCopied] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
   const [selectedAdmins, setSelectedAdmins] = useState<string[]>([]);
+  const [isAddingAdmins, setIsAddingAdmins] = useState(false);
   const [showChangeCreatorModal, setShowChangeCreatorModal] = useState(false);
   const [selectedNewCreator, setSelectedNewCreator] = useState<string | null>(null);
+  const [isChangingCreator, setIsChangingCreator] = useState(false);
   const toast = useToast();
   const devMode = useDevMode();
 
@@ -172,6 +175,13 @@ export function SettingsPage() {
   // ADMIN1 fix: 失敗時に選択内容を維持できるよう成否を返す
   const updateAdmins = async (updatedAdmins: string[]): Promise<boolean> => {
     if (!session.id) return false;
+    // オフライン時 updateDoc は成功も失敗もせず待機し続ける（CLAUDE.md「オフライン
+    // 書き込みはブロック」）。ボタンを押しても何も起きないように見えるため、
+    // 事前に検知してエラー表示する。
+    if (isOffline()) {
+      toast.error('オフラインのため変更できません。接続を確認してください');
+      return false;
+    }
     try {
       await updateFirebaseSession(session.id, { admins: updatedAdmins });
       useSessionStore.getState().updateSession({ admins: updatedAdmins });
@@ -184,11 +194,16 @@ export function SettingsPage() {
   };
 
   const handleAddAdmins = async () => {
-    if (selectedAdmins.length === 0) return;
-    const ok = await updateAdmins([...(session.admins || []), ...selectedAdmins]);
-    if (!ok) return; // 失敗時はモーダルと選択を維持してリトライできるようにする
-    setSelectedAdmins([]);
-    setShowAddAdminModal(false);
+    if (selectedAdmins.length === 0 || isAddingAdmins) return;
+    setIsAddingAdmins(true);
+    try {
+      const ok = await updateAdmins([...(session.admins || []), ...selectedAdmins]);
+      if (!ok) return; // 失敗時はモーダルと選択を維持してリトライできるようにする
+      setSelectedAdmins([]);
+      setShowAddAdminModal(false);
+    } finally {
+      setIsAddingAdmins(false);
+    }
   };
 
   const handleToggleAdmin = (name: string) => {
@@ -204,12 +219,19 @@ export function SettingsPage() {
   };
 
   const handleChangeCreator = async () => {
-    if (!session.id || !selectedNewCreator || selectedNewCreator === session.createdBy) return;
+    if (!session.id || !selectedNewCreator || selectedNewCreator === session.createdBy || isChangingCreator) return;
+    // オフライン時 updateDoc は待機し続け、ボタンが反応しないように見える
+    // （CLAUDE.md「オフライン書き込みはブロック」）。確認ダイアログの前に検知する。
+    if (isOffline()) {
+      toast.error('オフラインのため変更できません。接続を確認してください');
+      return;
+    }
     const confirmed = window.confirm(
       `作成者を ${session.createdBy} から ${selectedNewCreator} に変更しますか？\n\n` +
       'この操作は Firestore のセッションドキュメントを書き換えます。'
     );
     if (!confirmed) return;
+    setIsChangingCreator(true);
     try {
       await updateCreator(session.id, selectedNewCreator);
       useSessionStore.getState().updateSession({ createdBy: selectedNewCreator });
@@ -219,6 +241,8 @@ export function SettingsPage() {
     } catch (error) {
       console.error('Failed to update creator:', error);
       toast.error('作成者の変更に失敗しました');
+    } finally {
+      setIsChangingCreator(false);
     }
   };
 
@@ -694,16 +718,24 @@ export function SettingsPage() {
                   setSelectedAdmins([]);
                   setShowAddAdminModal(false);
                 }}
-                className="flex-1 btn-secondary"
+                disabled={isAddingAdmins}
+                className="flex-1 btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 キャンセル
               </button>
               <button
                 onClick={handleAddAdmins}
-                disabled={selectedAdmins.length === 0}
-                className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={selectedAdmins.length === 0 || isAddingAdmins}
+                className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                追加 {selectedAdmins.length > 0 && `(${selectedAdmins.length})`}
+                {isAddingAdmins ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    追加中...
+                  </>
+                ) : (
+                  <>追加 {selectedAdmins.length > 0 && `(${selectedAdmins.length})`}</>
+                )}
               </button>
             </div>
           </div>
@@ -753,16 +785,24 @@ export function SettingsPage() {
                   setSelectedNewCreator(null);
                   setShowChangeCreatorModal(false);
                 }}
-                className="flex-1 btn-secondary"
+                disabled={isChangingCreator}
+                className="flex-1 btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 キャンセル
               </button>
               <button
                 onClick={handleChangeCreator}
-                disabled={!selectedNewCreator}
-                className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!selectedNewCreator || isChangingCreator}
+                className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                変更
+                {isChangingCreator ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    変更中...
+                  </>
+                ) : (
+                  '変更'
+                )}
               </button>
             </div>
           </div>
