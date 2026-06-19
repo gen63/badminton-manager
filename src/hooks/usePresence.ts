@@ -10,6 +10,8 @@ const HEARTBEAT_SKIP_MS = 15_000;
 const TAP_THROTTLE_MS = 3_000;
 /** 漂流エントリと見なす閾値 (ms): 5分以上更新なし */
 const STALE_PRESENCE_MS = 5 * 60 * 1000;
+/** 非表示から復帰時に lastTapAt を引き継ぐ最大経過時間 (PresenceIndicator の ACTING_WINDOW_MS と同値) */
+const ACTING_RESTORE_WINDOW_MS = 10_000;
 
 /**
  * 画面レベルのプレゼンス情報を Firestore に送出するフック
@@ -67,13 +69,24 @@ export function usePresence(sessionId: string | null, currentUser: string | null
         // 可視に戻ったら listener / interval を確実にアタッチ
         // （非可視タブでマウントされた場合の救済を兼ねる）
         start();
+        // 非表示中に clearPresence したので、復帰時は即座に書き込む。
+        // ACTING_RESTORE_WINDOW_MS 以内ならば lastTapAt も引き継ぐ。
+        const now = Date.now();
+        const restoredTapAt =
+          lastTapWriteAtRef.current > 0 && now - lastTapWriteAtRef.current <= ACTING_RESTORE_WINDOW_MS
+            ? lastTapWriteAtRef.current
+            : undefined;
+        const presenceData: { lastSeenAt: number; lastTapAt?: number } = restoredTapAt
+          ? { lastSeenAt: now, lastTapAt: restoredTapAt }
+          : { lastSeenAt: now };
+        lastWriteAtRef.current = now;
+        lastTapWriteAtRef.current = 0; // スロットルをリセット
+        void writePresence(sessionId, currentUser, presenceData);
       } else {
-        // 裏に回してもエントリは残す。ハートビートが止まるので 45秒後に
-        // 他ユーザー側の表示から自然に消える。これにより一瞬の
-        // アプリ切替で lastTapAt が消えて「操作中」が落ちる問題を回避。
-        // （タブを閉じた場合は beforeunload / unmount の clearPresence で削除）
+        // 裏に回った瞬間に Firestore から削除し、他ユーザーの「閲覧中」表示を即時消す。
+        // lastTapWriteAtRef は復帰時の lastTapAt 引き継ぎのために保持。
+        void clearPresence(sessionId, currentUser);
         lastWriteAtRef.current = 0;
-        lastTapWriteAtRef.current = 0;
       }
     };
 
