@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { calculatePlayerStats, getStreaks, buildInitialOrder, applyStreakSwaps, assignCourts, formTeams, sortWaitingPlayers } from './algorithm';
+import { calculatePlayerStats, getStreaks, buildInitialOrder, applyStreakSwaps, assignCourts, formTeams, sortWaitingPlayers, getCallableReservationRestingIds } from './algorithm';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
@@ -1342,5 +1342,218 @@ describe('assignCourts - 休憩中メンバーの予約配置 (restingPlayers)',
     expect(picked.size).toBe(4);
     // 休憩から出場するのは予約メンバーのみ。補充の待機者は含めない。
     expect(new Set(assignments[0].activatedFromRestIds)).toEqual(new Set(['r1', 'r2']));
+  });
+});
+
+describe('assignCourts - 人数不足時の部分配置', () => {
+  const NOW = Date.now();
+  const makePlayer = (id: string, gamesPlayed = 1, isResting = false): Player => ({
+    id,
+    name: id.toUpperCase(),
+    rating: 1500,
+    gamesPlayed,
+    isResting,
+    lastPlayedAt: 0,
+    activatedAt: NOW - 60 * 60 * 1000,
+  });
+  const makeReservation = (playerIds: string[]): Reservation => ({
+    id: `rsv-${playerIds.join('-')}`,
+    orderNumber: 1,
+    playerIds,
+    status: 'pending',
+    createdAt: NOW,
+    fulfilledAt: 0,
+  });
+  const baseOptions = {
+    totalCourtCount: 2,
+    targetCourtIds: [1, 2],
+    practiceStartTime: NOW - 60 * 60 * 1000,
+    useStayDurationPriority: false,
+  };
+
+  it('2コート要求で待機6人なら1コートだけ配置する（従来はエラー）', () => {
+    const waiting = ['w1', 'w2', 'w3', 'w4', 'w5', 'w6'].map(id => makePlayer(id));
+    const assignments = assignCourts(waiting, 2, [], {
+      ...baseOptions,
+      allPlayers: waiting,
+    });
+
+    expect(assignments.length).toBe(1);
+    expect(assignments[0].courtId).toBe(1);
+    const picked = [...assignments[0].teamA, ...assignments[0].teamB];
+    expect(new Set(picked).size).toBe(4);
+  });
+
+  it('2コート10人+4人予約が保留のとき、待機6人で1コートだけ配置する', () => {
+    // 予約メンバーは試合数が突出 → 中央値+閾値で保留。従来は insufficient-players
+    // で 1 コートも配置されなかった。
+    const reserved = ['r1', 'r2', 'r3', 'r4'].map(id => makePlayer(id, 10, true));
+    const waiting = ['w1', 'w2', 'w3', 'w4', 'w5', 'w6'].map(id => makePlayer(id, 0));
+
+    const assignments = assignCourts(waiting, 2, [], {
+      ...baseOptions,
+      allPlayers: waiting,
+      restingPlayers: reserved,
+      reservations: [makeReservation(['r1', 'r2', 'r3', 'r4'])],
+      reservationBlockThreshold: 2,
+    });
+
+    expect(assignments.length).toBe(1);
+    const picked = [...assignments[0].teamA, ...assignments[0].teamB];
+    // 保留された予約メンバーは入らない
+    expect(picked.some(id => id.startsWith('r'))).toBe(false);
+  });
+
+  it('2コート10人+4人予約が成立可能なとき、予約コート+通常コートの2面が配置される', () => {
+    const reserved = ['r1', 'r2', 'r3', 'r4'].map(id => makePlayer(id, 1, true));
+    const waiting = ['w1', 'w2', 'w3', 'w4', 'w5', 'w6'].map(id => makePlayer(id, 1));
+
+    const assignments = assignCourts(waiting, 2, [], {
+      ...baseOptions,
+      allPlayers: waiting,
+      restingPlayers: reserved,
+      reservations: [makeReservation(['r1', 'r2', 'r3', 'r4'])],
+    });
+
+    expect(assignments.length).toBe(2);
+    const reservedCourt = assignments.find(a => a.teamA.includes('r1'))!;
+    expect(new Set([...reservedCourt.teamA, ...reservedCourt.teamB]))
+      .toEqual(new Set(['r1', 'r2', 'r3', 'r4']));
+  });
+
+  it('1コートも埋められない場合は従来どおりエラー', () => {
+    const waiting = ['w1', 'w2', 'w3'].map(id => makePlayer(id));
+    expect(() => assignCourts(waiting, 2, [], {
+      ...baseOptions,
+      allPlayers: waiting,
+    })).toThrow();
+  });
+
+  it('シングルス: 3コート要求で待機4人なら2コートだけ配置する', () => {
+    const waiting = ['w1', 'w2', 'w3', 'w4'].map(id => makePlayer(id));
+    const assignments = assignCourts(waiting, 3, [], {
+      totalCourtCount: 3,
+      targetCourtIds: [1, 2, 3],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      allPlayers: waiting,
+      gameMode: 'singles',
+    });
+
+    expect(assignments.length).toBe(2);
+  });
+});
+
+describe('getCallableReservationRestingIds', () => {
+  const NOW = Date.now();
+  const makePlayer = (id: string, gamesPlayed = 0, isResting = false): Player => ({
+    id,
+    name: id.toUpperCase(),
+    rating: 1500,
+    gamesPlayed,
+    isResting,
+    lastPlayedAt: 0,
+    activatedAt: NOW - 60 * 60 * 1000,
+  });
+  const makeReservation = (playerIds: string[], status: 'pending' | 'fulfilled' = 'pending'): Reservation => ({
+    id: `rsv-${playerIds.join('-')}`,
+    orderNumber: 1,
+    playerIds,
+    status,
+    createdAt: NOW,
+    fulfilledAt: 0,
+  });
+
+  it('成立可能な4人予約の休憩メンバー全員を返す', () => {
+    const players = [
+      ...['r1', 'r2', 'r3', 'r4'].map(id => makePlayer(id, 0, true)),
+      ...['w1', 'w2'].map(id => makePlayer(id)),
+    ];
+    const result = getCallableReservationRestingIds(
+      players, [makeReservation(['r1', 'r2', 'r3', 'r4'])], new Set()
+    );
+    expect(result).toEqual(new Set(['r1', 'r2', 'r3', 'r4']));
+  });
+
+  it('予約メンバーがコートで試合中なら数えない', () => {
+    const players = [
+      ...['r1', 'r2', 'r3'].map(id => makePlayer(id, 0, true)),
+      makePlayer('r4'),
+      ...['w1', 'w2'].map(id => makePlayer(id)),
+    ];
+    const result = getCallableReservationRestingIds(
+      players, [makeReservation(['r1', 'r2', 'r3', 'r4'])], new Set(['r4'])
+    );
+    expect(result.size).toBe(0);
+  });
+
+  it('試合数が中央値+閾値以上のメンバーを含む予約（保留対象）は数えない', () => {
+    const players = [
+      makePlayer('r1', 10, true),
+      ...['r2', 'r3', 'r4'].map(id => makePlayer(id, 0, true)),
+      ...['w1', 'w2', 'w3', 'w4', 'w5', 'w6'].map(id => makePlayer(id, 0)),
+    ];
+    const result = getCallableReservationRestingIds(
+      players, [makeReservation(['r1', 'r2', 'r3', 'r4'])], new Set(),
+      { reservationBlockThreshold: 2 }
+    );
+    expect(result.size).toBe(0);
+  });
+
+  it('待機者で残り枠を補充できない予約は数えない（2人予約+待機1人）', () => {
+    const players = [
+      ...['r1', 'r2'].map(id => makePlayer(id, 0, true)),
+      makePlayer('w1'),
+    ];
+    const result = getCallableReservationRestingIds(
+      players, [makeReservation(['r1', 'r2'])], new Set()
+    );
+    expect(result.size).toBe(0);
+  });
+
+  it('2人予約+待機2人なら数える', () => {
+    const players = [
+      ...['r1', 'r2'].map(id => makePlayer(id, 0, true)),
+      ...['w1', 'w2'].map(id => makePlayer(id)),
+    ];
+    const result = getCallableReservationRestingIds(
+      players, [makeReservation(['r1', 'r2'])], new Set()
+    );
+    expect(result).toEqual(new Set(['r1', 'r2']));
+  });
+
+  it('fulfilled 予約は数えない', () => {
+    const players = [
+      ...['r1', 'r2', 'r3', 'r4'].map(id => makePlayer(id, 0, true)),
+    ];
+    const result = getCallableReservationRestingIds(
+      players, [makeReservation(['r1', 'r2', 'r3', 'r4'], 'fulfilled')], new Set()
+    );
+    expect(result.size).toBe(0);
+  });
+
+  it('シングルスでは3人以上の予約を数えない', () => {
+    const players = [
+      ...['r1', 'r2', 'r3'].map(id => makePlayer(id, 0, true)),
+      makePlayer('w1'),
+    ];
+    const result = getCallableReservationRestingIds(
+      players, [makeReservation(['r1', 'r2', 'r3'])], new Set(),
+      { gameMode: 'singles' }
+    );
+    expect(result.size).toBe(0);
+  });
+
+  it('複数予約にまたがるメンバーは重複なく数える', () => {
+    const players = [
+      ...['r1', 'r2', 'r3', 'r4'].map(id => makePlayer(id, 0, true)),
+      ...['w1', 'w2', 'w3', 'w4'].map(id => makePlayer(id)),
+    ];
+    const result = getCallableReservationRestingIds(
+      players,
+      [makeReservation(['r1', 'r2']), makeReservation(['r1', 'r3', 'r4'])],
+      new Set()
+    );
+    expect(result).toEqual(new Set(['r1', 'r2', 'r3', 'r4']));
   });
 });

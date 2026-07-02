@@ -256,6 +256,81 @@ describe('computeFinishAndContinue', () => {
       expect(result.newState.settings?.practiceType).toBe('楽');
     });
 
+    it('2コート10人+成立可能な4人予約: 待機6人でも予約でゲートを通過し、終了コートに予約を配置する', () => {
+      // 2コート10人。r1-r4 は4人予約で休憩中、w1-w4 がコート1で試合中、
+      // w5, w6 が待機。コート1終了後は待機6人（w1-w6）+ 呼び出し可能4人 = 10 >= 7。
+      // 従来は待機6人 < 7 で not_enough_players となり配置されなかった。
+      const state: GameState = {
+        players: [
+          makePlayer('w1'), makePlayer('w2'), makePlayer('w3'), makePlayer('w4'),
+          makePlayer('w5'), makePlayer('w6'),
+          makePlayer('r1', { isResting: true }), makePlayer('r2', { isResting: true }),
+          makePlayer('r3', { isResting: true }), makePlayer('r4', { isResting: true }),
+        ],
+        courts: [
+          makeCourt(1, {
+            teamA: ['w1', 'w2'],
+            teamB: ['w3', 'w4'],
+            isPlaying: true,
+            startedAt: 1710500000000,
+          }),
+          makeCourt(2),
+        ],
+        matchHistory: [],
+        reservations: [
+          { id: 'rsv1', orderNumber: 1, playerIds: ['r1', 'r2', 'r3', 'r4'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+        ],
+      };
+
+      const result = computeFinishAndContinue(state, 1, continuousOptions);
+
+      expect(result.continuousError).toBeUndefined();
+      expect(result.continuousNextApplied).toBe(true);
+      const court = result.newState.courts[0];
+      expect(new Set([...court.teamA, ...court.teamB]))
+        .toEqual(new Set(['r1', 'r2', 'r3', 'r4']));
+      // 予約メンバーは休憩解除され、予約は消化される
+      for (const id of ['r1', 'r2', 'r3', 'r4']) {
+        expect(result.newState.players.find(p => p.id === id)?.isResting).toBe(false);
+      }
+      expect(result.newState.reservations[0].status).toBe('fulfilled');
+    });
+
+    it('予約メンバーが試合中で成立不可なら、従来どおり not_enough_players で見送る', () => {
+      // r4 がコート2で試合中 → 予約は成立不可 → callable 0 → 待機4人 < 7
+      const state: GameState = {
+        players: [
+          makePlayer('w1'), makePlayer('w2'), makePlayer('w3'), makePlayer('w4'),
+          makePlayer('w5'), makePlayer('w6'),
+          makePlayer('r1', { isResting: true }), makePlayer('r2', { isResting: true }),
+          makePlayer('r3', { isResting: true }), makePlayer('r4'),
+        ],
+        courts: [
+          makeCourt(1, {
+            teamA: ['w1', 'w2'],
+            teamB: ['w3', 'w4'],
+            isPlaying: true,
+            startedAt: 1710500000000,
+          }),
+          makeCourt(2, {
+            teamA: ['r4', 'w5'],
+            teamB: ['w6', 'w6b'],
+            isPlaying: true,
+            startedAt: 1710500000000,
+          }),
+        ],
+        matchHistory: [],
+        reservations: [
+          { id: 'rsv1', orderNumber: 1, playerIds: ['r1', 'r2', 'r3', 'r4'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+        ],
+      };
+      state.players.push(makePlayer('w6b'));
+
+      const result = computeFinishAndContinue(state, 1, continuousOptions);
+      expect(result.continuousNextApplied).toBe(false);
+      expect(result.continuousError).toBe('not_enough_players');
+    });
+
     it('not_enough_players では continuousMatchMode を OFF にしない', () => {
       const state: GameState = {
         players: [

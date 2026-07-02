@@ -10,7 +10,7 @@ import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import type { SyncSettings } from '../services/sessionService';
-import { assignCourts } from './algorithm';
+import { assignCourts, getCallableReservationRestingIds } from './algorithm';
 
 /** 試合の自動終了までの経過時間（ms）。これを超えた試合は自動で終了する。 */
 export const MATCH_AUTO_END_MS = 15 * 60 * 1000;
@@ -32,12 +32,17 @@ export function gameModeFromPracticeType(
   return practiceType === '単' ? 'singles' : 'doubles';
 }
 
-/** 連続モード配置のブロック判定（多様性優先モード用） */
+/**
+ * 連続モード配置のブロック判定（多様性優先モード用）
+ * callableReservedCount: 予約成立で休憩から呼び出せるメンバー数
+ * （待機扱いでカウントに加算する）
+ */
 export function checkContinuousBlock(
   players: Player[],
   courts: Court[],
   prioritizeDiversity: boolean,
   gameMode: 'singles' | 'doubles',
+  callableReservedCount: number = 0,
 ): { blocked: boolean; reason?: string } {
   if (!prioritizeDiversity) return { blocked: false };
 
@@ -45,7 +50,7 @@ export function checkContinuousBlock(
   const threshold = getMinWaitingCount(gameMode);
   const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
   const active = players.filter(p => !p.isResting);
-  const actualWaiting = active.length - occupied.length * ppc;
+  const actualWaiting = active.length + callableReservedCount - occupied.length * ppc;
 
   if (occupied.length > 0 && actualWaiting < threshold) {
     return { blocked: true, reason: 'diversity_block' };
@@ -151,34 +156,58 @@ export function computeFinishAndContinue(
       p => !p.isResting && !playersInCourts.has(p.id)
     );
 
+    // 予約成立で休憩から呼び出せるメンバーは配置に使えるため、待機人数の
+    // 判定に加算する（例: 2コート10人で4人予約中は待機が最大6人になり、
+    // これを数えないと最小待機人数ゲートを永久に下回る）。
+    const callableReservedIds = getCallableReservationRestingIds(
+      updatedPlayers,
+      state.reservations,
+      playersInCourts,
+      {
+        gameMode: options.gameMode,
+        reservationBlockThreshold: options.reservationBlockThreshold,
+      },
+    );
+
     // ブロックチェック
-    const block = checkContinuousBlock(updatedPlayers, updatedCourts, options.prioritizeDiversity, options.gameMode);
+    const block = checkContinuousBlock(
+      updatedPlayers, updatedCourts, options.prioritizeDiversity, options.gameMode,
+      callableReservedIds.size,
+    );
     if (block.blocked) {
       continuousError = block.reason;
     }
 
     if (!continuousError) {
-      if (waitingPlayers.length < getMinWaitingCount(options.gameMode)) {
+      if (waitingPlayers.length + callableReservedIds.size < getMinWaitingCount(options.gameMode)) {
         continuousError = 'not_enough_players';
       }
     }
 
     if (!continuousError) {
-      const assignments = assignCourts(waitingPlayers, 1, updatedMatchHistory, {
-        targetCourtIds: [courtId],
-        totalCourtCount: updatedCourts.length,
-        // 全アクティブプレイヤー (他コートでプレイ中の高 gamesPlayed 含む) を渡す。
-        // lateBalance の maxGamesPlayed 算出に必要。これが無いと待機者だけから
-        // max を取ってしまい、後半均等化ペナルティが過小評価される。
-        allPlayers: updatedPlayers.filter((p) => !p.isResting),
-        useStayDurationPriority: options.useStayDurationPriority,
-        reservations: state.reservations,
-        gameMode: options.gameMode,
-        lateBalanceMode: options.lateBalanceMode,
-        reservationBlockThreshold: options.reservationBlockThreshold,
-        // 予約は休憩中メンバーも呼び出せる（プレイ中でない休憩者）
-        restingPlayers: updatedPlayers.filter((p) => p.isResting && !playersInCourts.has(p.id)),
-      });
+      // ゲートは近似カウント（callable 加算）なので、assignCourts が
+      // insufficient-players を投げる可能性が残る。試合終了自体は成立させたいので
+      // 例外は assignment_failed として握りつぶす。
+      let assignments: ReturnType<typeof assignCourts> = [];
+      try {
+        assignments = assignCourts(waitingPlayers, 1, updatedMatchHistory, {
+          targetCourtIds: [courtId],
+          totalCourtCount: updatedCourts.length,
+          // 全アクティブプレイヤー (他コートでプレイ中の高 gamesPlayed 含む) を渡す。
+          // lateBalance の maxGamesPlayed 算出に必要。これが無いと待機者だけから
+          // max を取ってしまい、後半均等化ペナルティが過小評価される。
+          allPlayers: updatedPlayers.filter((p) => !p.isResting),
+          useStayDurationPriority: options.useStayDurationPriority,
+          reservations: state.reservations,
+          gameMode: options.gameMode,
+          lateBalanceMode: options.lateBalanceMode,
+          reservationBlockThreshold: options.reservationBlockThreshold,
+          // 予約は休憩中メンバーも呼び出せる（プレイ中でない休憩者）
+          restingPlayers: updatedPlayers.filter((p) => p.isResting && !playersInCourts.has(p.id)),
+        });
+      } catch {
+        assignments = [];
+      }
 
       if (assignments[0]) {
         const assignment = assignments[0];

@@ -4,7 +4,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
-import { assignCourts, sortWaitingPlayers } from '../lib/algorithm';
+import { assignCourts, sortWaitingPlayers, getCallableReservationRestingIds } from '../lib/algorithm';
 import { getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { useSettingsStore } from '../stores/settingsStore';
@@ -420,6 +420,11 @@ export function MainPage() {
         })),
         fulfilledIds,
       );
+
+      // assignCourts は人数不足時に配置できるコートだけ返す（部分配置）
+      if (assignments.length < courtsToAssign.length) {
+        toast.info('待機人数が足りないため、配置できるコートのみ配置しました');
+      }
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -525,7 +530,14 @@ export function MainPage() {
     2,
     playersPerCourt
   );
-  const canAutoAssign = emptyCourts.length > 0 && sortedWaitingPlayers.length >= playersPerCourt;
+  // 予約成立で休憩から呼び出せるメンバーは配置に使えるため人数カウントに加算する
+  // （例: 2コート10人で4人予約中、他コート試合中で待機2人でも予約で1面組める）
+  const callableReservedCount = getCallableReservationRestingIds(
+    players, reservations, playersInCourts,
+    { gameMode, reservationBlockThreshold }
+  ).size;
+  const canAutoAssign = emptyCourts.length > 0 &&
+    sortedWaitingPlayers.length + callableReservedCount >= playersPerCourt;
   const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * playersPerCourt;
 
   const handleSwapPlayer = async (courtId: number, position: number, newPlayerId: string) => {

@@ -845,6 +845,69 @@ function selectBestFour(
 }
 
 /**
+ * 「予約の成立により休憩から呼び出して配置に使える」メンバーの ID 集合を返す。
+ *
+ * pending 予約のうち以下を全て満たすものの休憩中メンバーを集める:
+ * - 予約人数が 1〜playersPerCourt 人（singles=2, doubles=4）
+ * - メンバー全員が在席し、誰もコートで試合中でない（=成立可能）
+ * - 試合数が中央値+閾値以上のメンバーを含まない（assignCourts の保留判定と同じ）
+ * - 待機人数で残り枠を補充できる（waiting >= playersPerCourt - 予約人数）
+ *
+ * UI の配置可否判定（canAutoAssign）や連続モードの最小待機人数ゲートで
+ * 「待機者 + 呼び出し可能な休憩者」として人数カウントに加算する。
+ * 複数予約が待機者を取り合うケース等の厳密な成立判定はしない（近似）。
+ * 最終的な配置可否は従来どおり assignCourts 本体が判定する。
+ */
+export function getCallableReservationRestingIds(
+  presentPlayers: Player[],
+  reservations: Reservation[],
+  playersInCourts: Set<string>,
+  options?: {
+    gameMode?: 'singles' | 'doubles';
+    reservationBlockThreshold?: number;
+  }
+): Set<string> {
+  const callable = new Set<string>();
+  const pending = reservations.filter(r => r.status === 'pending');
+  if (pending.length === 0) return callable;
+
+  const playersPerCourt = (options?.gameMode ?? 'doubles') === 'singles' ? 2 : 4;
+  const threshold =
+    options?.reservationBlockThreshold ?? DEFAULT_RESERVATION_BLOCK_THRESHOLD;
+
+  const byId = new Map(presentPlayers.map(p => [p.id, p]));
+  const waitingCount = presentPlayers.filter(
+    p => !p.isResting && !playersInCourts.has(p.id)
+  ).length;
+
+  // 中央値は在席全員（休憩者含む）で算出（assignCourts の保留判定と同じ母集団）
+  const sortedGames = presentPlayers.map(p => p.gamesPlayed).sort((a, b) => a - b);
+  const mid = Math.floor(sortedGames.length / 2);
+  const medianGamesPlayed = sortedGames.length === 0
+    ? 0
+    : sortedGames.length % 2 === 0
+      ? (sortedGames[mid - 1] + sortedGames[mid]) / 2
+      : sortedGames[mid];
+
+  for (const reservation of pending) {
+    const ids = reservation.playerIds;
+    if (ids.length < 1 || ids.length > playersPerCourt) continue;
+
+    const members = ids.map(id => byId.get(id)).filter((p): p is Player => p !== undefined);
+    if (members.length !== ids.length) continue;
+    if (members.some(m => playersInCourts.has(m.id))) continue;
+    if (members.some(m => m.gamesPlayed - medianGamesPlayed >= threshold)) continue;
+    if (waitingCount < playersPerCourt - members.length) continue;
+
+    for (const m of members) {
+      if (m.isResting) callable.add(m.id);
+    }
+  }
+
+  return callable;
+}
+
+/**
  * 自動配置アルゴリズム
  * - レーティングベースのグルーピング（3等分/2等分）
  * - 固定コート配置（3コート: upper→C1, middle→C2, lower→C3）+ 借用フォールバック
@@ -985,7 +1048,13 @@ export function assignCourts(
       p => !singlesUsedPlayers.has(p.id)
     );
 
-    if (singlesNormalCandidates.length < singlesRemainingCourtIds.length * 2) {
+    // 全コート分の人数が無い場合は、埋められるコート数まで縮小して部分配置する。
+    // 1コートも埋められない場合のみ従来どおりエラー（予約配置があればそれだけ返す）。
+    const singlesFillableCount = Math.min(
+      singlesRemainingCourtIds.length,
+      Math.floor(singlesNormalCandidates.length / 2)
+    );
+    if (singlesFillableCount === 0) {
       if (singlesReservationAssignments.length > 0) {
         return singlesReservationAssignments;
       }
@@ -994,6 +1063,7 @@ export function assignCourts(
         'insufficient-players'
       );
     }
+    singlesRemainingCourtIds.splice(singlesFillableCount);
 
     const singlesAssignments = assignCourtsSingles(
       singlesNormalCandidates, singlesRemainingCourtIds, matchHistory, practiceStartTime, useStayDuration, lateBalance
@@ -1115,34 +1185,39 @@ export function assignCourts(
   // 予約で配置されなかった残りのコートを通常ロジックで埋める。
   // 予約メンバーは休憩中なので activePlayers に含まれず自然に除外される
   // （旧来の「未消化予約メンバーを通常配置から除外」ロジックは休憩で代替）。
-  const normalCourtCount = remainingCourtIds.length;
-
   const normalCandidates = activePlayers.filter(
     p => !reservationUsedPlayers.has(p.id)
   );
 
-  if (normalCourtCount === 0) {
+  if (remainingCourtIds.length === 0) {
     return reservationAssignments;
   }
 
-  const requiredPlayers = normalCourtCount * 4;
-  if (normalCandidates.length < requiredPlayers) {
+  // 全コート分の人数が無い場合は、埋められるコート数まで縮小して部分配置する
+  // （例: 2コート10人で4人が予約休憩中 → 待機6人で1コートだけ配置）。
+  // 1コートも埋められない場合のみ従来どおりエラー（予約配置があればそれだけ返す）。
+  const fillableCourtCount = Math.min(
+    remainingCourtIds.length,
+    Math.floor(normalCandidates.length / 4)
+  );
+  if (fillableCourtCount === 0) {
     if (reservationAssignments.length > 0) {
-      // 予約配置分だけ返す（残りのコートは人数不足で配置できない）
       return reservationAssignments;
     }
     throw new SessionError(
-      `アクティブなプレイヤーが不足しています（必要: ${requiredPlayers}人、現在: ${normalCandidates.length}人）`,
+      `アクティブなプレイヤーが不足しています（必要: ${remainingCourtIds.length * 4}人、現在: ${normalCandidates.length}人）`,
       'insufficient-players'
     );
   }
+  const normalCourtIds = remainingCourtIds.slice(0, fillableCourtCount);
+  const normalCourtCount = normalCourtIds.length;
 
   // グループ分けは全アクティブプレイヤー（他コートでプレイ中含む）で行う
   const groupingPlayers = options?.allPlayers ?? activePlayers;
 
   // 2コート同時配置の場合はホリスティック・アプローチを使用
   if (totalCourtCount === 2 && normalCourtCount === 2) {
-    const holistic = assign2CourtsHolistic(normalCandidates, remainingCourtIds, matchHistory, practiceStartTime, groupingPlayers, useStayDuration, lateBalance);
+    const holistic = assign2CourtsHolistic(normalCandidates, normalCourtIds, matchHistory, practiceStartTime, groupingPlayers, useStayDuration, lateBalance);
     return [...reservationAssignments, ...holistic];
   }
 
@@ -1162,7 +1237,7 @@ export function assignCourts(
   // 3コート以上の場合、動的グループ選択を使用
   if (totalCourtCount >= 3 && normalCourtCount >= 1 && groups3) {
     for (let i = 0; i < normalCourtCount; i++) {
-      const courtId = remainingCourtIds[i];
+      const courtId = normalCourtIds[i];
 
       // 最も待っているグループを選択
       const targetGroup = selectMostUrgentGroup(
@@ -1284,7 +1359,7 @@ export function assignCourts(
   // 1コート または 2コートの1コートずつ配置
   // （シンプルな優先度ベース配置）
   for (let i = 0; i < normalCourtCount; i++) {
-    const courtId = remainingCourtIds[i];
+    const courtId = normalCourtIds[i];
 
     // 1コート配置時の最大偏差制限
     let candidatePool = normalCandidates.filter(p => !usedPlayers.has(p.id));
