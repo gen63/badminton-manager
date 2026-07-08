@@ -30,19 +30,23 @@ function formatSessionDate(practiceStartTime: number): { md: string; weekday: st
  * 2. config.gameMode から派生（singles → 単 / doubles → 複）
  * 3. どちらも無ければ「不明」
  */
-/** 未アップロード警告バッジ（開発モード限定）。済んだものは何も表示しない */
+/**
+ * 未アップロード警告バッジ（開発モード限定）。済んだものは何も表示しない。
+ * 1行目は既に情報が詰まっているため、専用の行として独立させ、幅が
+ * 足りない場合は折り返す（他要素とのオーバーラップを避ける）。
+ */
 function UploadStatusBadges({ session }: { session: Session }) {
   const matchBadge = getMatchUploadBadge(session);
   const accountingBadge = needsAccountingUploadBadge(session);
   if (matchBadge === 'none' && !accountingBadge) return null;
   const badgeClass =
-    'inline-flex items-center px-1 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-semibold flex-shrink-0';
+    'inline-flex items-center px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-xs font-semibold';
   return (
-    <>
-      {matchBadge === 'not-uploaded' && <span className={badgeClass}>試合未</span>}
-      {matchBadge === 'stale' && <span className={badgeClass}>試合差</span>}
-      {accountingBadge && <span className={badgeClass}>会計未</span>}
-    </>
+    <div className="flex items-center gap-1 mt-1 flex-wrap">
+      {matchBadge === 'not-uploaded' && <span className={badgeClass}>試合未アップロード</span>}
+      {matchBadge === 'stale' && <span className={badgeClass}>試合結果に差分あり</span>}
+      {accountingBadge && <span className={badgeClass}>会計未アップロード</span>}
+    </div>
   );
 }
 
@@ -307,8 +311,11 @@ export function SessionSelectPage() {
                             {session.incomeTotal.toLocaleString()}
                           </span>
                         )}
-                        {devMode && <UploadStatusBadges session={session} />}
                       </div>
+
+                      {/* 1.5行目: 未アップロード警告（開発モード限定）— 1行目とは別行にして
+                          既存のタイトなアイコン行とのオーバーラップを避ける */}
+                      {devMode && <UploadStatusBadges session={session} />}
 
                       {/* 2行目: メモ（周知事項の最初の1行）— あるときだけ表示し、上に余白を入れる */}
                       {session.information?.text?.trim() && (
