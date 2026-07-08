@@ -8,6 +8,7 @@ import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { formatTime, copyToClipboard } from '../lib/utils';
 import { formatLocalDate } from '../lib/sessionArchive';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
+import { updateSession } from '../services/sessionService';
 import { isMatchOfPlayer } from '../lib/matchFilter';
 import { Copy, Trash2, Edit3, Clock, Upload, Loader2, History, ChevronDown, ChevronUp, User, AlertTriangle } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -330,6 +331,19 @@ export function HistoryPage() {
       );
       if (result.success) {
         toast.success(result.message);
+        // アップロード記録を Firestore に書く（セッション一覧の未実施バッジ用）。
+        // 送信自体は成功しているので、記録の失敗は warn に留めて toast は出さない。
+        try {
+          await updateSession(session.id, {
+            matchUpload: {
+              uploadedAt: Date.now(),
+              matchCount: matchHistory.length,
+              ...(currentUser ? { uploadedBy: currentUser } : {}),
+            },
+          });
+        } catch (err) {
+          console.warn('[History] Failed to record match upload status:', err);
+        }
       } else {
         toast.error(result.message);
       }

@@ -6,6 +6,7 @@ import { useAccountingStore } from '../stores/accountingStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useGameStore } from '../stores/gameStore';
 import { sendAccountingToSheets } from '../lib/sheetsApi';
+import { updateSession } from '../services/sessionService';
 import { GYM_OPTIONS } from '../types/session';
 import { DollarSign, Copy, Upload, Loader2, MapPin, Clock } from 'lucide-react';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
@@ -23,6 +24,7 @@ import {
 
 export function AccountingPage() {
   const session = useSessionStore((s) => s.session);
+  const currentUser = useSessionStore((s) => s.currentUser);
   const updateConfig = useSessionStore((s) => s.updateConfig);
   const updateAccounting = useSessionStore((s) => s.updateAccounting);
   const isAdminFn = useSessionStore((s) => s.isAdmin);
@@ -424,6 +426,20 @@ export function AccountingPage() {
           finalTotal,
         });
         toast.success(result.message);
+        // アップロード記録を Firestore に書く（セッション一覧の未実施バッジ用）。
+        // 送信自体は成功しているので、記録の失敗は warn に留めて toast は出さない。
+        if (session) {
+          try {
+            await updateSession(session.id, {
+              accountingUpload: {
+                uploadedAt: Date.now(),
+                ...(currentUser ? { uploadedBy: currentUser } : {}),
+              },
+            });
+          } catch (err) {
+            console.warn('[Accounting] Failed to record accounting upload status:', err);
+          }
+        }
       } else {
         toast.error(result.message);
       }
