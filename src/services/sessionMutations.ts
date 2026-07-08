@@ -180,6 +180,7 @@ export function computeAddPlayers(
 export function computeRemovePlayer(state: GameState, playerId: string): GameState {
   // DATA1 fix: プレイヤーを消すときに court / reservation の参照も整合的に更新する。
   // - court.teamA / teamB の該当 slot を空文字に
+  // - court.restingPlayerIds から除外
   // - reservation.playerIds から除外し、空になった予約は削除
   // matchHistory はそのまま（履歴上の名前は表示時に「未設定」フォールバック）。
   const blankTeam = (team: [string, string]): [string, string] => [
@@ -193,6 +194,7 @@ export function computeRemovePlayer(state: GameState, playerId: string): GameSta
       ...c,
       teamA: blankTeam(c.teamA),
       teamB: blankTeam(c.teamB),
+      restingPlayerIds: (c.restingPlayerIds ?? []).filter((id) => id !== playerId),
     })),
     reservations: state.reservations
       .map((r) => ({ ...r, playerIds: r.playerIds.filter((id) => id !== playerId) }))
@@ -906,6 +908,8 @@ export function autoAssignAndFulfill(
         isPlaying: a.isPlaying,
         startedAt: a.startedAt,
         finishedAt: 0,
+        // 新しい試合の配置なので、前の試合の「休憩へ戻す」フラグは持ち越さない
+        restingPlayerIds: [],
       });
       for (const pid of a.activatePlayerIds ?? []) {
         next = computeUpdatePlayer(next, pid, { isResting: false });
@@ -918,8 +922,11 @@ export function autoAssignAndFulfill(
 /**
  * コート上のプレイヤーを入れ替える処理を **1 transaction** にまとめる（CON2）。
  * 休憩中プレイヤーを入れた場合は isResting=false にする（コート上で休憩状態の
- * 不整合を防ぐ）。試合後の復帰は computeFinishAndContinue の統一ルール
- * （未成立予約があれば休憩、無ければ待機）に委ねる。
+ * 不整合を防ぐ）。このとき未成立予約に含まれないメンバー（= 手動休憩）は
+ * `court.restingPlayerIds` に積み、試合終了時に休憩へ戻す。予約で休憩中の
+ * メンバーは積まず、computeFinishAndContinue の予約ルール（全員出場で予約消化
+ * → 待機、未成立予約が残れば休憩）に委ねる。
+ * 外れたメンバーが restingPlayerIds に含まれる場合は、その場で休憩へ戻す。
  */
 export function swapPlayer(
   sessionId: string,
@@ -933,6 +940,10 @@ export function swapPlayer(
 
     const newTeamA: [string, string] = [court.teamA[0], court.teamA[1]];
     const newTeamB: [string, string] = [court.teamB[0], court.teamB[1]];
+    const outgoingId =
+      position === 0 || position === 1
+        ? court.teamA[position]
+        : court.teamB[(position - 2) as 0 | 1];
     if (position === 0 || position === 1) {
       newTeamA[position] = newPlayerId;
     } else {
@@ -942,12 +953,35 @@ export function swapPlayer(
 
     const newPlayer = state.players.find((p) => p.id === newPlayerId);
 
+    let restingPlayerIds = court.restingPlayerIds ?? [];
+    const restoreOutgoing =
+      outgoingId !== '' &&
+      outgoingId !== newPlayerId &&
+      restingPlayerIds.includes(outgoingId);
+    if (restoreOutgoing) {
+      restingPlayerIds = restingPlayerIds.filter((id) => id !== outgoingId);
+    }
+    if (newPlayer?.isResting && !restingPlayerIds.includes(newPlayerId)) {
+      const pendingReservedIds = new Set(
+        state.reservations
+          .filter((r) => r.status === 'pending')
+          .flatMap((r) => r.playerIds),
+      );
+      if (!pendingReservedIds.has(newPlayerId)) {
+        restingPlayerIds = [...restingPlayerIds, newPlayerId];
+      }
+    }
+
     let next: GameState = computeUpdateCourt(state, courtId, {
       teamA: newTeamA,
       teamB: newTeamB,
+      restingPlayerIds,
     });
     if (newPlayer?.isResting) {
       next = computeUpdatePlayer(next, newPlayerId, { isResting: false });
+    }
+    if (restoreOutgoing) {
+      next = computeUpdatePlayer(next, outgoingId, { isResting: true });
     }
     return next;
   });
@@ -1006,13 +1040,30 @@ export function swapPositions(
 
     const updatedA = withSlot(courtA.teamA, courtA.teamB, posA.position, playerAtB);
     const updatedB = withSlot(courtB.teamA, courtB.teamB, posB.position, playerAtA);
+
+    // 「試合後に休憩へ戻す」フラグはプレイヤーと一緒に移動先コートへ引き継ぐ
+    const restA = courtA.restingPlayerIds ?? [];
+    const restB = courtB.restingPlayerIds ?? [];
+    const moveAtoB = playerAtA !== '' && restA.includes(playerAtA);
+    const moveBtoA = playerAtB !== '' && restB.includes(playerAtB);
+    const newRestA = [
+      ...(moveAtoB ? restA.filter((id) => id !== playerAtA) : restA),
+      ...(moveBtoA ? [playerAtB] : []),
+    ];
+    const newRestB = [
+      ...(moveBtoA ? restB.filter((id) => id !== playerAtB) : restB),
+      ...(moveAtoB ? [playerAtA] : []),
+    ];
+
     let next = computeUpdateCourt(state, posA.courtId, {
       teamA: updatedA.teamA,
       teamB: updatedA.teamB,
+      restingPlayerIds: newRestA,
     });
     next = computeUpdateCourt(next, posB.courtId, {
       teamA: updatedB.teamA,
       teamB: updatedB.teamB,
+      restingPlayerIds: newRestB,
     });
     return next;
   });

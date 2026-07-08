@@ -143,6 +143,49 @@ describe('computeFinishAndContinue', () => {
         expect(result.newState.players.find(p => p.id === id)?.isResting).toBe(false);
       }
     });
+
+    it('休憩からタップ交換で出場したメンバー（restingPlayerIds）は試合後に休憩へ戻る', () => {
+      const state = makeBaseState();
+      // p1 は休憩からタップ交換で出場した（swapPlayer が restingPlayerIds に積む）
+      state.courts[0].restingPlayerIds = ['p1'];
+      const result = computeFinishAndContinue(state, 1, defaultOptions);
+
+      expect(result.newState.players.find(p => p.id === 'p1')?.isResting).toBe(true);
+      // 他のメンバーは待機へ
+      for (const id of ['p2', 'p3', 'p4']) {
+        expect(result.newState.players.find(p => p.id === id)?.isResting).toBe(false);
+      }
+      // コートクリアでフラグも消える
+      expect(result.newState.courts[0].restingPlayerIds).toEqual([]);
+    });
+
+    it('未成立予約のメンバー全員が出場していた試合の終了で予約を消化し、待機へ戻す', () => {
+      const state = makeBaseState();
+      // p1 と p2 の予約をタップ交換などで手動配置して試合した想定
+      state.reservations = [
+        { id: 'r1', orderNumber: 1, playerIds: ['p1', 'p2'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+      ];
+      const result = computeFinishAndContinue(state, 1, defaultOptions);
+
+      const r1 = result.newState.reservations.find(r => r.id === 'r1');
+      expect(r1?.status).toBe('fulfilled');
+      expect(r1?.fulfilledAt).toBeGreaterThan(0);
+      // 予約は消化されたので休憩ではなく待機へ
+      expect(result.newState.players.find(p => p.id === 'p1')?.isResting).toBe(false);
+      expect(result.newState.players.find(p => p.id === 'p2')?.isResting).toBe(false);
+    });
+
+    it('メンバーの一部しか出場していない未成立予約は消化せず、出場者を休憩へ戻す', () => {
+      const state = makeBaseState();
+      // p1 は待機中の p9 との予約を持つ（p9 は出場していない）
+      state.reservations = [
+        { id: 'r1', orderNumber: 1, playerIds: ['p1', 'p9'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+      ];
+      const result = computeFinishAndContinue(state, 1, defaultOptions);
+
+      expect(result.newState.reservations.find(r => r.id === 'r1')?.status).toBe('pending');
+      expect(result.newState.players.find(p => p.id === 'p1')?.isResting).toBe(true);
+    });
   });
 
   describe('連続モード', () => {

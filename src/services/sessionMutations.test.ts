@@ -1223,6 +1223,74 @@ describe('sessionMutations - swapPlayer (CON2 fix)', () => {
     expect(next.courts[0].teamA).toEqual(['p1', 'p2']);
     expect(next.players.find((p: { id: string }) => p.id === 'p2').isResting).toBe(false);
   });
+
+  it('休憩中プレイヤーを入れると court.restingPlayerIds に積まれる（試合後に休憩へ戻す）', async () => {
+    const state = baseState({
+      players: [
+        makePlayer('p1', { isResting: false }),
+        makePlayer('rest', { isResting: true }),
+      ],
+      courts: [makeCourt(1, { teamA: ['p1', ''], teamB: ['', ''] })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await swapPlayer('s', 1, 0, 'rest');
+
+    const next = mockTransactionUpdate.mock.calls[0][1].gameState;
+    expect(next.courts[0].restingPlayerIds).toEqual(['rest']);
+  });
+
+  it('未成立予約を持つ休憩中プレイヤーは restingPlayerIds に積まない（予約ルールに委ねる）', async () => {
+    const state = baseState({
+      players: [
+        makePlayer('p1', { isResting: false }),
+        makePlayer('rsv', { isResting: true }),
+      ],
+      courts: [makeCourt(1, { teamA: ['p1', ''], teamB: ['', ''] })],
+      reservations: [
+        { id: 'r1', orderNumber: 1, playerIds: ['rsv'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+      ],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await swapPlayer('s', 1, 0, 'rsv');
+
+    const next = mockTransactionUpdate.mock.calls[0][1].gameState;
+    expect(next.courts[0].restingPlayerIds ?? []).toEqual([]);
+    expect(next.players.find((p: { id: string }) => p.id === 'rsv').isResting).toBe(false);
+  });
+
+  it('restingPlayerIds のメンバーをコートから外すと、その場で休憩へ戻る', async () => {
+    const state = baseState({
+      players: [
+        makePlayer('rest', { isResting: false }),
+        makePlayer('w1', { isResting: false }),
+      ],
+      courts: [
+        makeCourt(1, { teamA: ['rest', ''], teamB: ['', ''], restingPlayerIds: ['rest'] }),
+      ],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await swapPlayer('s', 1, 0, 'w1');
+
+    const next = mockTransactionUpdate.mock.calls[0][1].gameState;
+    expect(next.courts[0].teamA).toEqual(['w1', '']);
+    expect(next.courts[0].restingPlayerIds).toEqual([]);
+    expect(next.players.find((p: { id: string }) => p.id === 'rest').isResting).toBe(true);
+  });
 });
 
 describe('sessionMutations - swapPositions (CON5 fix)', () => {
@@ -1306,6 +1374,31 @@ describe('sessionMutations - swapPositions (CON5 fix)', () => {
     const next = mockTransactionUpdate.mock.calls[0][1].gameState;
     expect(next.courts[0].teamA).toEqual(['A', 'B']);
     expect(next.courts[0].teamB).toEqual(['C', 'D']);
+  });
+
+  it('異コート間スワップで restingPlayerIds フラグを移動先コートへ引き継ぐ', async () => {
+    const state = baseState({
+      players: [
+        makePlayer('A'), makePlayer('B'), makePlayer('C'), makePlayer('D'),
+        makePlayer('E'), makePlayer('F'), makePlayer('G'), makePlayer('H'),
+      ],
+      courts: [
+        makeCourt(1, { teamA: ['A', 'B'], teamB: ['C', 'D'], restingPlayerIds: ['A'] }),
+        makeCourt(2, { teamA: ['E', 'F'], teamB: ['G', 'H'] }),
+      ],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    // court 1 pos 0 (A) ⇔ court 2 pos 2 (G)
+    await swapPositions('s', { courtId: 1, position: 0 }, { courtId: 2, position: 2 });
+
+    const next = mockTransactionUpdate.mock.calls[0][1].gameState;
+    expect(next.courts[0].restingPlayerIds).toEqual([]);
+    expect(next.courts[1].restingPlayerIds).toEqual(['A']);
   });
 });
 

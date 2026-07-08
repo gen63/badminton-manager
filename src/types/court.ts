@@ -7,6 +7,8 @@ export interface Court {
   isPlaying: boolean;
   startedAt: number; // 試合開始時刻（Unix timestamp、未設定時は0）
   finishedAt: number; // 試合終了時刻（Unix timestamp、未設定時は0）
+  /** 休憩からタップ交換で出場したメンバー。試合終了時に休憩へ戻す。 */
+  restingPlayerIds?: string[];
 }
 
 /** コートの空状態（配置なし・試合なし） */
@@ -18,6 +20,7 @@ export const EMPTY_COURT_STATE = {
   isPlaying: false,
   startedAt: 0,
   finishedAt: 0,
+  restingPlayerIds: [] as string[],
 } as const satisfies Omit<Court, 'id'>;
 
 export interface CourtAssignment {

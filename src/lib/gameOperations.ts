@@ -114,22 +114,35 @@ export function computeFinishAndContinue(
   };
 
   // 2. プレイヤーの統計を更新 + 試合後の休憩判定
-  // 試合を終えたメンバーのうち、未成立の予約を持つ者は休憩に戻す（次の予約待ち）。
-  // それ以外は待機に戻る。これにより予約で呼び出された休憩者は、他に予約が無ければ
-  // 待機に復帰し、予約があれば休憩のまま次の予約を待つ。
+  // - 未成立予約のメンバー全員がこの試合に出場していた場合、タップ交換など
+  //   手動配置で予約を消化したとみなして fulfilled にする（GAMEOPS1 と同じ
+  //   「全員が同じコートに乗った」判定）。
+  // - 休憩からタップ交換で出場したメンバー（court.restingPlayerIds）は休憩へ戻す。
+  // - 消化後もまだ未成立の予約を持つ者は休憩に戻す（次の予約待ち）。
+  // - それ以外は待機に戻る。予約で呼び出された休憩者は、他に予約が無ければ
+  //   待機に復帰する。
   const activePlayerIds = [...court.teamA, ...court.teamB].filter(id => id);
+  const participantSet = new Set(activePlayerIds);
+  const reservationsAfterFinish = state.reservations.map(r =>
+    r.status === 'pending' &&
+    r.playerIds.length > 0 &&
+    r.playerIds.every(id => participantSet.has(id))
+      ? { ...r, status: 'fulfilled' as const, fulfilledAt: now }
+      : r,
+  );
   const pendingReservedIds = new Set(
-    state.reservations
+    reservationsAfterFinish
       .filter(r => r.status === 'pending')
       .flatMap(r => r.playerIds)
   );
+  const restReturnIds = new Set(court.restingPlayerIds ?? []);
   let updatedPlayers = state.players.map(p => {
     if (activePlayerIds.includes(p.id)) {
       return {
         ...p,
         gamesPlayed: p.gamesPlayed + 1,
         lastPlayedAt: now,
-        isResting: pendingReservedIds.has(p.id),
+        isResting: restReturnIds.has(p.id) || pendingReservedIds.has(p.id),
       };
     }
     return p;
@@ -161,7 +174,7 @@ export function computeFinishAndContinue(
     // これを数えないと最小待機人数ゲートを永久に下回る）。
     const callableReservedIds = getCallableReservationRestingIds(
       updatedPlayers,
-      state.reservations,
+      reservationsAfterFinish,
       playersInCourts,
       {
         gameMode: options.gameMode,
@@ -198,7 +211,7 @@ export function computeFinishAndContinue(
           // max を取ってしまい、後半均等化ペナルティが過小評価される。
           allPlayers: updatedPlayers.filter((p) => !p.isResting),
           useStayDurationPriority: options.useStayDurationPriority,
-          reservations: state.reservations,
+          reservations: reservationsAfterFinish,
           gameMode: options.gameMode,
           lateBalanceMode: options.lateBalanceMode,
           reservationBlockThreshold: options.reservationBlockThreshold,
@@ -242,7 +255,7 @@ export function computeFinishAndContinue(
 
   // GAMEOPS1: 連続配置で消化された予約を fulfilled マークする。
   // (handleAutoAssign と同じロジックを composite に組み込む)
-  let updatedReservations = state.reservations;
+  let updatedReservations = reservationsAfterFinish;
   if (continuousNextApplied) {
     const placedCourt = updatedCourts.find(c => c.id === courtId);
     if (placedCourt) {
@@ -250,7 +263,7 @@ export function computeFinishAndContinue(
         [...placedCourt.teamA, ...placedCourt.teamB].filter(id => id && id.trim()),
       );
       const fulfilledNow = now;
-      updatedReservations = state.reservations.map(r =>
+      updatedReservations = reservationsAfterFinish.map(r =>
         r.status === 'pending' && r.playerIds.every(id => placedIds.has(id))
           ? { ...r, status: 'fulfilled' as const, fulfilledAt: fulfilledNow }
           : r,
