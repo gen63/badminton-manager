@@ -12,6 +12,7 @@ import {
   formatPracticeDate,
   buildPracticeStartTime,
   buildTmpSheetName,
+  AUTO_SESSION_ADMINS,
 } from './auto-create-session';
 
 describe('parseEventTitle', () => {
@@ -459,6 +460,19 @@ describe('buildSessionData', () => {
     expect(data.gameState.players[0].name).toBe('未登録さん');
     expect(data.gameState.players[0]).not.toHaveProperty('rating');
     expect(data.gameState.players[0].gender).toBe('F');
+  });
+
+  it('固定メンバーをadminsとして付与する', () => {
+    const event = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: [], genders: {},
+    };
+    const data = buildSessionData(event, new Map(), new Date(2026, 3, 9));
+    expect(data.admins).toEqual(AUTO_SESSION_ADMINS);
+    expect(data.admins).toContain('げん');
+    expect(data.admins).toContain('りょーちん♂');
   });
 });
 

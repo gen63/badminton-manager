@@ -67,7 +67,7 @@ interface PlayerIssue {
 // Phase A: E-tomoスクレイピング
 // ============================================================
 
-export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName };
+export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName, AUTO_SESSION_ADMINS };
 
 async function fetchEtomoPage(url: string): Promise<string | null> {
   try {
@@ -461,6 +461,16 @@ function formatPracticeDate(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+// 自動作成セッションで管理者権限を付与するメンバー（E-tomo上の表記と一致させること）
+const AUTO_SESSION_ADMINS = [
+  'げん',
+  'まさ',
+  'ゆーた(たっちゃん)',
+  'ほそや',
+  'あいだ',
+  'りょーちん♂',
+];
+
 function buildSessionData(
   event: EtomoEventDetail,
   memberMap: Map<string, MemberData>,
@@ -489,6 +499,7 @@ function buildSessionData(
   return {
     config: { courtCount: 1, targetScore: 15, practiceStartTime, gym: event.venue, gameMode },
     createdBy: 'auto-session-bot',
+    admins: AUTO_SESSION_ADMINS,
     participants: [] as string[],
     registeredPlayers: event.participants,
     status: 'active' as const,
