@@ -43,9 +43,9 @@ function UploadStatusBadges({ session }: { session: Session }) {
     'inline-flex items-center px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-xs font-semibold';
   return (
     <div className="flex items-center gap-1 mt-1 flex-wrap">
-      {matchBadge === 'not-uploaded' && <span className={badgeClass}>試合未アップロード</span>}
-      {matchBadge === 'stale' && <span className={badgeClass}>試合結果に差分あり</span>}
-      {accountingBadge && <span className={badgeClass}>会計未アップロード</span>}
+      {matchBadge === 'not-uploaded' && <span className={badgeClass}>試合未</span>}
+      {matchBadge === 'stale' && <span className={badgeClass}>試合差</span>}
+      {accountingBadge && <span className={badgeClass}>会計未</span>}
     </div>
   );
 }
