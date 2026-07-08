@@ -33,6 +33,19 @@ export interface AccountingInput {
   otherAmount?: number;
 }
 
+/** 試合結果の GAS アップロード記録（セッション一覧での未実施検出用） */
+export interface MatchUploadStatus {
+  uploadedAt: number; // アップロード成功時刻
+  uploadedBy?: string; // 実行者（currentUser があるときのみ）
+  matchCount: number; // アップロード時点の試合数（差分検出用）
+}
+
+/** 会計データの GAS アップロード記録 */
+export interface AccountingUploadStatus {
+  uploadedAt: number;
+  uploadedBy?: string;
+}
+
 /**
  * プレゼンス情報（二重操作抑止のための画面レベルの在席表示）
  * - lastSeenAt: 最終ハートビート（クライアント時刻）
@@ -55,6 +68,8 @@ export interface Session {
   status?: 'active' | 'ended';
   information?: SessionInformation; // 周知事項
   accounting?: AccountingInput; // 会計ページの入力状態（管理者が共有編集）
+  matchUpload?: MatchUploadStatus; // 試合結果アップロード記録（未設定 = 未アップロード）
+  accountingUpload?: AccountingUploadStatus; // 会計アップロード記録（未設定 = 未アップロード）
   presence?: { [username: string]: PresenceEntry }; // 画面を開いている/操作中のユーザー
   etomoEventId?: string; // E-tomoイベントID（自動作成時の重複防止用）
   firstMatchStartedAt?: number | null; // 最初の試合開始時刻。null/未設定 = 試合未開始（12h自動アーカイブ判定用）

@@ -7,6 +7,7 @@ import { setPracticeType as setPracticeTypeMutation } from '../services/sessionM
 import { isSessionVisible } from '../lib/sessionArchive';
 import { clearAppBadge } from '../lib/badge';
 import { useDevMode } from '../hooks/useDevMode';
+import { getMatchUploadBadge, needsAccountingUploadBadge } from '../lib/uploadStatus';
 import { useSessionStore } from '../stores/sessionStore';
 import type { Session } from '../types/session';
 import { Loader2, Plus, Users, MapPin, Calendar, Trophy, StickyNote, Pencil, X, Info } from 'lucide-react';
@@ -29,6 +30,22 @@ function formatSessionDate(practiceStartTime: number): { md: string; weekday: st
  * 2. config.gameMode から派生（singles → 単 / doubles → 複）
  * 3. どちらも無ければ「不明」
  */
+/** 未アップロード警告バッジ（開発モード限定）。済んだものは何も表示しない */
+function UploadStatusBadges({ session }: { session: Session }) {
+  const matchBadge = getMatchUploadBadge(session);
+  const accountingBadge = needsAccountingUploadBadge(session);
+  if (matchBadge === 'none' && !accountingBadge) return null;
+  const badgeClass =
+    'inline-flex items-center px-1 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-semibold flex-shrink-0';
+  return (
+    <>
+      {matchBadge === 'not-uploaded' && <span className={badgeClass}>試合未</span>}
+      {matchBadge === 'stale' && <span className={badgeClass}>試合差</span>}
+      {accountingBadge && <span className={badgeClass}>会計未</span>}
+    </>
+  );
+}
+
 function resolvePracticeTypeLabel(session: Session): string {
   if (session.practiceType) return session.practiceType;
   if (session.config.gameMode === 'singles') return '単';
@@ -290,6 +307,7 @@ export function SessionSelectPage() {
                             {session.incomeTotal.toLocaleString()}
                           </span>
                         )}
+                        {devMode && <UploadStatusBadges session={session} />}
                       </div>
 
                       {/* 2行目: メモ（周知事項の最初の1行）— あるときだけ表示し、上に余白を入れる */}

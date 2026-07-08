@@ -119,6 +119,8 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     status: data.status as Session['status'],
     information: data.information as Session['information'],
     accounting: data.accounting as Session['accounting'],
+    matchUpload: data.matchUpload as Session['matchUpload'],
+    accountingUpload: data.accountingUpload as Session['accountingUpload'],
     presence: data.presence as Session['presence'],
     firstMatchStartedAt: (data.firstMatchStartedAt as number | null | undefined) ?? null,
     matchCount: Array.isArray(gameState?.matchHistory) ? gameState.matchHistory.length : 0,
