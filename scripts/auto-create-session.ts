@@ -469,6 +469,7 @@ const AUTO_SESSION_ADMINS = [
   'ほそや',
   'あいだ',
   'りょーちん♂',
+  'あら',
 ];
 
 function buildSessionData(
