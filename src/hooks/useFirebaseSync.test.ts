@@ -595,3 +595,95 @@ describe('useFirebaseSync - 未対応強制休憩の全員通知', () => {
     expect(mockNotifyForcedRest).not.toHaveBeenCalled();
   });
 });
+
+describe('useFirebaseSync - 結果未登録試合の強制休憩通知', () => {
+  const participants = [
+    { id: 'p1', name: 'Alice', isResting: true, gamesPlayed: 1, lastPlayedAt: 0, activatedAt: 0 },
+    { id: 'p2', name: 'Bob', isResting: true, gamesPlayed: 1, lastPlayedAt: 0, activatedAt: 0 },
+    { id: 'p3', name: 'Carol', isResting: true, gamesPlayed: 1, lastPlayedAt: 0, activatedAt: 0 },
+    { id: 'p4', name: 'Dave', isResting: true, gamesPlayed: 1, lastPlayedAt: 0, activatedAt: 0 },
+  ];
+
+  const unrecordedRestMatch = (id: string, forcedRestAt: number) => ({
+    id,
+    courtId: 1,
+    teamA: ['p1', 'p2'],
+    teamB: ['p3', 'p4'],
+    scoreA: 0,
+    scoreB: 0,
+    startedAt: NOW - 30 * 60_000,
+    finishedAt: NOW - 15 * 60_000,
+    forcedRestAt,
+  });
+
+  it('match.forcedRestAt が新規セットされたら出場者名入りのトーストを出し、再受信では重複しない', () => {
+    setSharedSession();
+    renderHook(() => useFirebaseSync());
+
+    const snapshot = {
+      updatedAt: NOW,
+      gameState: {
+        players: participants,
+        courts: [],
+        matchHistory: [unrecordedRestMatch('ur1', NOW - 1000)],
+        reservations: [],
+      },
+    };
+    act(() => emit(snapshot));
+
+    const notices = useNoticeStore.getState().notices;
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      type: 'warning',
+      message:
+        'Aliceさん・Bobさん・Carolさん・Daveさんは試合結果が未登録のため休憩になりました',
+    });
+    expect(mockNotifyForcedRest).toHaveBeenCalledTimes(1);
+
+    act(() => emit(snapshot));
+    expect(useNoticeStore.getState().notices).toHaveLength(1);
+    expect(mockNotifyForcedRest).toHaveBeenCalledTimes(1);
+  });
+
+  it('出場者本人には結果登録をお願いする文言を出す', () => {
+    setSharedSession();
+    useSessionStore.setState({ currentUser: 'Bob' });
+    renderHook(() => useFirebaseSync());
+
+    act(() =>
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          players: participants,
+          courts: [],
+          matchHistory: [unrecordedRestMatch('ur2', NOW - 2000)],
+          reservations: [],
+        },
+      }),
+    );
+
+    expect(useNoticeStore.getState().notices[0].message).toBe(
+      '出場した試合の結果が未登録のため、休憩になりました。結果の登録をお願いします',
+    );
+  });
+
+  it('2 分以上前の match.forcedRestAt は通知しない（リロード時の誤通知防止）', () => {
+    setSharedSession();
+    renderHook(() => useFirebaseSync());
+
+    act(() =>
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          players: participants,
+          courts: [],
+          matchHistory: [unrecordedRestMatch('ur3', NOW - 3 * 60_000)],
+          reservations: [],
+        },
+      }),
+    );
+
+    expect(useNoticeStore.getState().notices).toHaveLength(0);
+    expect(mockNotifyForcedRest).not.toHaveBeenCalled();
+  });
+});

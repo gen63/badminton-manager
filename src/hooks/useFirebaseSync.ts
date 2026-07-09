@@ -28,6 +28,7 @@ import { notifyMatchStart, notifyForcedRest } from '../lib/notifications';
 import { unresolvedOpsOf } from '../services/sessionMutations';
 import { useNoticeStore } from '../stores/noticeStore';
 import type { Court } from '../types/court';
+import type { Match } from '../types/match';
 import type { Player } from '../types/player';
 import type { GameState } from '../services/sessionService';
 import type { Session } from '../types/session';
@@ -39,6 +40,9 @@ const notifiedMatches = new Set<string>();
 
 /** 未対応強制休憩通知の重複防止（プロセス全体で共有） */
 const notifiedForcedRests = new Set<string>();
+
+/** 結果未登録強制休憩通知の重複防止（プロセス全体で共有） */
+const notifiedUnrecordedRests = new Set<string>();
 
 /** 浅い参照差分があるかを JSON 比較で判定（H3 setState スキップ用） */
 function jsonEqual(a: unknown, b: unknown): boolean {
@@ -205,6 +209,13 @@ export function useFirebaseSync() {
         if (gameState.players !== undefined) {
           checkForcedRestNotifications(gameState.players);
         }
+        // 結果未登録試合による強制休憩の全員通知
+        if (gameState.matchHistory !== undefined) {
+          checkUnrecordedRestNotifications(
+            gameState.matchHistory,
+            gameState.players ?? usePlayerStore.getState().players,
+          );
+        }
 
         // 直接 setState（merge なし）。フィールドが remote に欠損している場合は
         // ローカルを触らない（古い document が新フィールドを空で上書きするのを防ぐ）。
@@ -310,6 +321,7 @@ export function useFirebaseSync() {
       // 通知済みセットはセッション切替時にクリア（新セッションでは再通知してよい）
       notifiedMatches.clear();
       notifiedForcedRests.clear();
+      notifiedUnrecordedRests.clear();
     };
   }, [sessionId, reconnectNonce]);
 }
@@ -343,6 +355,37 @@ function checkForcedRestNotifications(newPlayers: Player[]) {
 
     useNoticeStore.getState().show(message, 'warning', 8000);
     notifyForcedRest(p.name, message);
+  }
+}
+
+/**
+ * 結果未登録試合による強制休憩（`match.forcedRestAt` が新しくセットされた試合）を
+ * 全メンバーに通知する。出場者本人には結果登録をお願いする文言、他メンバーには
+ * お知らせ文言を出し分ける。checkForcedRestNotifications と同じく、グローバル
+ * トースト + Browser Notification の両方で出す。
+ */
+function checkUnrecordedRestNotifications(matchHistory: Match[], players: Player[]) {
+  const currentUser = useSessionStore.getState().currentUser;
+  for (const m of matchHistory) {
+    if (!m.forcedRestAt) continue;
+    const key = `${m.id}-${m.forcedRestAt}`;
+    if (notifiedUnrecordedRests.has(key)) continue;
+    notifiedUnrecordedRests.add(key);
+    // 実施から 2 分以上経過していれば通知しない（リロード時の誤通知防止）
+    if (Date.now() - m.forcedRestAt > 120_000) continue;
+
+    const participantIds = [...m.teamA, ...m.teamB].filter((pid) => pid);
+    const names = participantIds.map(
+      (pid) => players.find((p) => p.id === pid)?.name ?? '未設定',
+    );
+    const isParticipant =
+      currentUser !== null && names.includes(currentUser);
+    const message = isParticipant
+      ? '出場した試合の結果が未登録のため、休憩になりました。結果の登録をお願いします'
+      : `${names.map((n) => `${n}さん`).join('・')}は試合結果が未登録のため休憩になりました`;
+
+    useNoticeStore.getState().show(message, 'warning', 8000);
+    notifyForcedRest(m.id, message);
   }
 }
 

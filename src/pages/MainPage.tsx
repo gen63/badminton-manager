@@ -265,11 +265,12 @@ export function MainPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id, playingCourtsSignature, autoEndMatch]);
 
-  // 会費・名簿未対応メンバーの強制休憩チェック（毎分 + マウント時）。
-  // 「最初の試合を終えてから猶予時間経過 + 会費または名簿が未対応」を満たす
-  // メンバーを強制休憩にする。全端末で走るが、forcedRestAt マーカーにより
-  // 1 人につき 1 度だけ実施される。実施の全員通知は useFirebaseSync が
-  // onSnapshot 受信時にグローバルトースト + Browser Notification で行う
+  // 強制休憩チェック（毎分 + マウント時）:
+  //   - 会費・名簿未対応メンバー（最初の試合を終えてから猶予時間経過）
+  //   - 結果未登録試合の出場者（勝敗記録モード時のみ、終了から猶予時間経過）
+  // 全端末で走るが、forcedRestAt マーカー（Player / Match）により 1 度だけ
+  // 実施される。実施の全員通知は useFirebaseSync が onSnapshot 受信時に
+  // グローバルトースト + Browser Notification で行う
   // （実施端末も自分の onSnapshot で受け取るのでここでは通知しない）。
   useEffect(() => {
     if (!session?.id) return;
@@ -280,13 +281,18 @@ export function MainPage() {
       // ローカル状態で先に候補を評価し、ゼロなら transaction を投げない
       // （全端末×毎分の無駄な read を抑制）。
       const gameStore = useGameStore.getState();
-      const local = sm.computeEnforceForcedRest({
+      const localState = {
         players: usePlayerStore.getState().players,
         courts: gameStore.courts,
         matchHistory: gameStore.matchHistory,
         reservations: [],
-      });
-      if (local.enforced.length === 0) return;
+        settings: { recordScores: useSettingsStore.getState().recordScores },
+      };
+      const localOps = sm.computeEnforceForcedRest(localState);
+      const localUnrecorded = sm.computeEnforceUnrecordedRest(localState);
+      if (localOps.enforced.length === 0 && localUnrecorded.enforcedMatches.length === 0) {
+        return;
+      }
       try {
         await sm.enforceForcedRest(sessionId);
       } catch (err) {

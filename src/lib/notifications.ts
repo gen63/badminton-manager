@@ -49,14 +49,18 @@ export function notifyMatchStart(
   });
 }
 
-/** 会費・名簿未対応メンバーを強制休憩にしたことを通知する（body は呼び出し側で組み立てる） */
-export function notifyForcedRest(playerName: string, body: string): void {
+/**
+ * 未対応（会費・名簿・試合結果）による強制休憩を通知する。
+ * body は呼び出し側で組み立てる。tagKey はプレイヤー名や matchId 等の
+ * 重複置換キー（同じ tag の通知は上書きされる）。
+ */
+export function notifyForcedRest(tagKey: string, body: string): void {
   if (!isNotificationSupported()) return;
   if (Notification.permission !== 'granted') return;
 
   new Notification('未対応のため休憩', {
     body,
     icon: '/badminton-manager/icons/icon-192x192.png',
-    tag: `forced-rest-${playerName}`,
+    tag: `forced-rest-${tagKey}`,
   });
 }

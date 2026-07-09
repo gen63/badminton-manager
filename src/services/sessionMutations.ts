@@ -358,6 +358,69 @@ export function computeEnforceForcedRest(
   return { state: { ...state, players }, enforced };
 }
 
+/** 結果未登録試合の出場者を強制休憩にするまでの猶予時間（ms）。試合終了が起点。 */
+export const UNRECORDED_REST_GRACE_MS = 10 * 60 * 1000;
+
+/** 勝敗未入力の判定（HistoryPage / unrecordedMatchPrompt の判定式と同一に保つ） */
+function isUnrecordedMatch(m: Match): boolean {
+  return m.scoreA === 0 && m.scoreB === 0 && !m.winner;
+}
+
+/**
+ * 結果未登録試合の出場者の強制休憩を計算する。勝敗記録モード
+ * （settings.recordScores === true）のときのみ動作する。対象条件（すべて AND）:
+ *   - 勝敗未入力（scoreA===0 && scoreB===0 && !winner）
+ *   - `match.forcedRestAt` 未セット（べき等マーカー。1 試合につき 1 度だけ発火）
+ *   - 試合終了から `UNRECORDED_REST_GRACE_MS` 以上経過
+ *
+ * 対象試合にマーカーをセットし、出場者のうちコート上にいないメンバーを
+ * 休憩にする（試合中のメンバーは引き剥がさない。全員が試合中でも通知の
+ * ためにマーカーはセットする）。結果が登録されれば条件から外れるので、
+ * 同じメンバーが別の試合を未登録にすれば改めて発火する（試合単位）。
+ */
+export function computeEnforceUnrecordedRest(
+  state: GameState,
+  now: number = Date.now(),
+): { state: GameState; enforcedMatches: Match[] } {
+  if (state.settings?.recordScores !== true) return { state, enforcedMatches: [] };
+
+  const overdueIds = new Set(
+    state.matchHistory
+      .filter(
+        (m) =>
+          !m.forcedRestAt &&
+          isUnrecordedMatch(m) &&
+          m.finishedAt > 0 &&
+          now - m.finishedAt >= UNRECORDED_REST_GRACE_MS,
+      )
+      .map((m) => m.id),
+  );
+  if (overdueIds.size === 0) return { state, enforcedMatches: [] };
+
+  const playingIds = new Set(
+    state.courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((pid) => pid),
+  );
+  const matchHistory = state.matchHistory.map((m) =>
+    overdueIds.has(m.id) ? { ...m, forcedRestAt: now } : m,
+  );
+  const participantIds = new Set(
+    matchHistory
+      .filter((m) => overdueIds.has(m.id))
+      .flatMap((m) => [...m.teamA, ...m.teamB])
+      .filter((pid) => pid),
+  );
+  const players = state.players.map((p) =>
+    participantIds.has(p.id) && !playingIds.has(p.id) && !p.isResting
+      ? { ...p, isResting: true }
+      : p,
+  );
+
+  return {
+    state: { ...state, players, matchHistory },
+    enforcedMatches: matchHistory.filter((m) => overdueIds.has(m.id)),
+  };
+}
+
 export function computeIncrementGamesPlayed(
   state: GameState,
   ids: string[],
@@ -907,16 +970,17 @@ export function markLateBalanceAutoFired(sessionId: string) {
 }
 
 /**
- * 会費・名簿未対応メンバーの強制休憩を実施する。対象がいなければ **書き込まずに**
- * 返す（定期チェックから全端末が毎分呼んでも無駄な write / updatedAt 更新をしない）。
+ * 未対応（会費・名簿）メンバーと結果未登録試合の出場者の強制休憩を
+ * **1 transaction** で実施する。対象がいなければ **書き込まずに** 返す
+ * （定期チェックから全端末が毎分呼んでも無駄な write / updatedAt 更新をしない）。
  *
- * `forcedRestAt` マーカーがべき等キーとして働くため、複数端末が同時に呼んでも
- * 実際に書き込むのは 1 端末だけになる。`now` はクロージャで 1 度だけ生成し、
- * transaction リトライ時も同じ値を使う（idempotent）。
+ * `forcedRestAt` マーカー（Player / Match）がべき等キーとして働くため、複数端末が
+ * 同時に呼んでも実際に書き込むのは 1 端末だけになる。`now` はクロージャで 1 度
+ * だけ生成し、transaction リトライ時も同じ値を使う（idempotent）。
  */
 export async function enforceForcedRest(
   sessionId: string,
-): Promise<{ enforced: Player[] }> {
+): Promise<{ enforced: Player[]; enforcedMatches: Match[] }> {
   const _db = requireDb();
   const ref = doc(_db, 'sessions', sessionId);
   const now = Date.now();
@@ -932,11 +996,18 @@ export async function enforceForcedRest(
         throw new SessionError('セッションの状態が初期化されていません', 'invalid-state');
       }
 
-      const { state: next, enforced } = computeEnforceForcedRest(remote, now);
-      if (enforced.length === 0) return { enforced };
+      const ops = computeEnforceForcedRest(remote, now);
+      const unrecorded = computeEnforceUnrecordedRest(ops.state, now);
+      const result = {
+        enforced: ops.enforced,
+        enforcedMatches: unrecorded.enforcedMatches,
+      };
+      if (result.enforced.length === 0 && result.enforcedMatches.length === 0) {
+        return result;
+      }
 
-      transaction.update(ref, buildGameStatePayload(next));
-      return { enforced };
+      transaction.update(ref, buildGameStatePayload(unrecorded.state));
+      return result;
     });
   } catch (error: unknown) {
     if ((error as { code?: string })?.code === 'aborted') {

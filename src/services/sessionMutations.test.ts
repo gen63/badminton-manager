@@ -64,9 +64,11 @@ import {
   swapPositions,
   markLateBalanceAutoFired,
   computeEnforceForcedRest,
+  computeEnforceUnrecordedRest,
   enforceForcedRest,
   unresolvedOpsOf,
   FORCED_REST_GRACE_MS,
+  UNRECORDED_REST_GRACE_MS,
 } from './sessionMutations';
 import type { GameState } from './sessionService';
 import type { Player } from '../types/player';
@@ -921,6 +923,101 @@ describe('unresolvedOpsOf', () => {
   });
 });
 
+describe('computeEnforceUnrecordedRest', () => {
+  const NOW = 10_000_000_000;
+  // 猶予時間を十分過ぎた試合終了時刻
+  const FINISHED = NOW - UNRECORDED_REST_GRACE_MS - 60_000;
+
+  const unrecordedMatch = (id: string, overrides: Partial<Match> = {}): Match =>
+    makeMatch(id, {
+      teamA: ['p1', 'p2'],
+      teamB: ['p3', 'p4'],
+      scoreA: 0,
+      scoreB: 0,
+      winner: undefined,
+      finishedAt: FINISHED,
+      ...overrides,
+    });
+
+  const fourPlayers = () => ['p1', 'p2', 'p3', 'p4'].map((id) => makePlayer(id));
+
+  const recordOn = (overrides: Partial<GameState> = {}): GameState =>
+    baseState({ settings: { recordScores: true }, players: fourPlayers(), ...overrides });
+
+  it('勝敗記録モード ON + 未登録 + 猶予経過で出場者を休憩にし、試合にマーカーをセットする', () => {
+    const state = recordOn({ matchHistory: [unrecordedMatch('m1')] });
+    const { state: next, enforcedMatches } = computeEnforceUnrecordedRest(state, NOW);
+    expect(enforcedMatches.map((m) => m.id)).toEqual(['m1']);
+    expect(next.matchHistory[0].forcedRestAt).toBe(NOW);
+    expect(next.players.every((p) => p.isResting)).toBe(true);
+  });
+
+  it('勝敗記録モード OFF（false / 未設定）では何もしない', () => {
+    const off = recordOn({
+      settings: { recordScores: false },
+      matchHistory: [unrecordedMatch('m1')],
+    });
+    expect(computeEnforceUnrecordedRest(off, NOW).enforcedMatches).toEqual([]);
+
+    const unset = recordOn({ settings: {}, matchHistory: [unrecordedMatch('m1')] });
+    expect(computeEnforceUnrecordedRest(unset, NOW).enforcedMatches).toEqual([]);
+  });
+
+  it('結果登録済み（スコアまたは winner あり）の試合は対象外', () => {
+    const state = recordOn({
+      matchHistory: [
+        unrecordedMatch('m1', { scoreA: 21, scoreB: 15 }),
+        unrecordedMatch('m2', { winner: 'A' }),
+      ],
+    });
+    const { state: next, enforcedMatches } = computeEnforceUnrecordedRest(state, NOW);
+    expect(enforcedMatches).toEqual([]);
+    expect(next).toBe(state);
+  });
+
+  it('終了から猶予時間が経過していない試合は対象外', () => {
+    const state = recordOn({
+      matchHistory: [unrecordedMatch('m1', { finishedAt: NOW - UNRECORDED_REST_GRACE_MS + 1 })],
+    });
+    expect(computeEnforceUnrecordedRest(state, NOW).enforcedMatches).toEqual([]);
+  });
+
+  it('既にマーカー付きの試合には再発火しない', () => {
+    const state = recordOn({
+      matchHistory: [unrecordedMatch('m1', { forcedRestAt: NOW - 60_000 })],
+    });
+    const { state: next, enforcedMatches } = computeEnforceUnrecordedRest(state, NOW);
+    expect(enforcedMatches).toEqual([]);
+    expect(next).toBe(state);
+  });
+
+  it('コート上（次の試合中）の出場者は引き剥がさないが、マーカーと他メンバーの休憩は行う', () => {
+    const state = recordOn({
+      matchHistory: [unrecordedMatch('m1')],
+      courts: [makeCourt(1, { teamA: ['p1', 'x9'], teamB: ['x8', 'x7'], isPlaying: true })],
+    });
+    const { state: next, enforcedMatches } = computeEnforceUnrecordedRest(state, NOW);
+    expect(enforcedMatches.map((m) => m.id)).toEqual(['m1']);
+    const byId = new Map(next.players.map((p) => [p.id, p]));
+    expect(byId.get('p1')?.isResting).toBe(false); // 試合中
+    expect(byId.get('p2')?.isResting).toBe(true);
+    expect(byId.get('p3')?.isResting).toBe(true);
+    expect(byId.get('p4')?.isResting).toBe(true);
+  });
+
+  it('シングルス（空スロットあり）でも出場者だけを休憩にする', () => {
+    const state = recordOn({
+      matchHistory: [unrecordedMatch('m1', { teamA: ['p1', ''], teamB: ['p3', ''] })],
+    });
+    const { state: next } = computeEnforceUnrecordedRest(state, NOW);
+    const byId = new Map(next.players.map((p) => [p.id, p]));
+    expect(byId.get('p1')?.isResting).toBe(true);
+    expect(byId.get('p2')?.isResting).toBe(false);
+    expect(byId.get('p3')?.isResting).toBe(true);
+    expect(byId.get('p4')?.isResting).toBe(false);
+  });
+});
+
 describe('enforceForcedRest (wrapper)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -975,10 +1072,47 @@ describe('enforceForcedRest (wrapper)', () => {
       ref: { __docRef: true },
     });
 
-    const { enforced } = await enforceForcedRest('session-1');
+    const { enforced, enforcedMatches } = await enforceForcedRest('session-1');
 
     expect(enforced).toEqual([]);
+    expect(enforcedMatches).toEqual([]);
     expect(mockTransactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('結果未登録試合だけが対象でも書き込み、enforcedMatches を返す', async () => {
+    const state = baseState({
+      settings: { recordScores: true },
+      players: [
+        makePlayer('p1', {
+          gamesPlayed: 1,
+          operationStatus: { payment: true, roster: true, checkin: true },
+        }),
+      ],
+      matchHistory: [
+        makeMatch('m1', {
+          teamA: ['p1', ''],
+          teamB: ['x2', ''],
+          scoreA: 0,
+          scoreB: 0,
+          winner: undefined,
+          finishedAt: Date.now() - UNRECORDED_REST_GRACE_MS - 60_000,
+        }),
+      ],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    const { enforced, enforcedMatches } = await enforceForcedRest('session-1');
+
+    expect(enforced).toEqual([]);
+    expect(enforcedMatches.map((m) => m.id)).toEqual(['m1']);
+    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    expect(updateArgs.gameState.matchHistory[0].forcedRestAt).toEqual(expect.any(Number));
+    expect(updateArgs.gameState.players[0].isResting).toBe(true);
   });
 });
 
