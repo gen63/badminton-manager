@@ -48,3 +48,15 @@ export function notifyMatchStart(
     tag: `match-start-court-${courtNumber}`,
   });
 }
+
+/** 未払いメンバーを強制休憩にしたことを通知する */
+export function notifyUnpaidRest(playerName: string): void {
+  if (!isNotificationSupported()) return;
+  if (Notification.permission !== 'granted') return;
+
+  new Notification('会費未払いのため休憩', {
+    body: `${playerName}さんは会費が未払いのため休憩になりました`,
+    icon: '/badminton-manager/icons/icon-192x192.png',
+    tag: `unpaid-rest-${playerName}`,
+  });
+}

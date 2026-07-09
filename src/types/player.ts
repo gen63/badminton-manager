@@ -14,4 +14,5 @@ export interface Player {
   };
   paymentAmount?: number; // 支払った金額（円）
   paymentTimestamp?: number; // 支払い実行時刻（Unix timestamp）
+  unpaidRestAt?: number; // 未払い強制休憩を実施・通知した時刻（Unix timestamp、未実施は undefined）
 }

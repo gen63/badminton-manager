@@ -24,8 +24,9 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { DEFAULT_RESERVATION_BLOCK_THRESHOLD } from '../lib/algorithm';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { usePresenceStore } from '../stores/presenceStore';
-import { notifyMatchStart } from '../lib/notifications';
+import { notifyMatchStart, notifyUnpaidRest } from '../lib/notifications';
 import type { Court } from '../types/court';
+import type { Player } from '../types/player';
 import type { GameState } from '../services/sessionService';
 import type { Session } from '../types/session';
 
@@ -33,6 +34,9 @@ const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 /** 試合開始通知の重複防止（プロセス全体で共有） */
 const notifiedMatches = new Set<string>();
+
+/** 未払い強制休憩通知の重複防止（プロセス全体で共有） */
+const notifiedUnpaidRests = new Set<string>();
 
 /** 浅い参照差分があるかを JSON 比較で判定（H3 setState スキップ用） */
 function jsonEqual(a: unknown, b: unknown): boolean {
@@ -195,6 +199,11 @@ export function useFirebaseSync() {
           checkMatchStartNotifications(oldCourts, gameState.courts);
         }
 
+        // 未払い強制休憩の全員通知（実施端末以外もここで受け取る）
+        if (gameState.players !== undefined) {
+          checkUnpaidRestNotifications(gameState.players);
+        }
+
         // 直接 setState（merge なし）。フィールドが remote に欠損している場合は
         // ローカルを触らない（古い document が新フィールドを空で上書きするのを防ぐ）。
         // 値が同じ場合は JSON 比較でスキップして無駄な再レンダーを抑止する（H3）。
@@ -298,8 +307,26 @@ export function useFirebaseSync() {
       useSyncStatusStore.getState().setGameStateLoaded(false);
       // 通知済みセットはセッション切替時にクリア（新セッションでは再通知してよい）
       notifiedMatches.clear();
+      notifiedUnpaidRests.clear();
     };
   }, [sessionId, reconnectNonce]);
+}
+
+/**
+ * 未払い強制休憩（`unpaidRestAt` が新しくセットされたプレイヤー）を全メンバーに
+ * 通知する。強制休憩を実施した端末も自分の onSnapshot でここを通るので、
+ * 通知許可済みの全端末に届く。
+ */
+function checkUnpaidRestNotifications(newPlayers: Player[]) {
+  for (const p of newPlayers) {
+    if (!p.unpaidRestAt) continue;
+    const key = `${p.id}-${p.unpaidRestAt}`;
+    if (notifiedUnpaidRests.has(key)) continue;
+    notifiedUnpaidRests.add(key);
+    // 実施から 2 分以上経過していれば通知しない（リロード時の誤通知防止）
+    if (Date.now() - p.unpaidRestAt > 120_000) continue;
+    notifyUnpaidRest(p.name);
+  }
 }
 
 /** 自分がメンバーのコートで試合が新規開始されたら通知を出す */

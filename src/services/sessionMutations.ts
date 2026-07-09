@@ -301,6 +301,45 @@ export function computeApplyPayment(
   };
 }
 
+/** 未払いメンバーを強制休憩にするまでの猶予時間（ms）。チェックイン起点。 */
+export const UNPAID_REST_GRACE_MS = 30 * 60 * 1000;
+
+/**
+ * 未払いメンバーの強制休憩を計算する。対象条件（すべて AND）:
+ *   - 支払い未完了（operationStatus.payment が false / 未設定）
+ *   - `unpaidRestAt` 未セット（べき等マーカー。1 人につき 1 度だけ発火）
+ *   - 試合を 1 回以上消化（gamesPlayed >= 1）
+ *   - チェックイン（activatedAt。0 なら lastPlayedAt にフォールバック）から
+ *     `UNPAID_REST_GRACE_MS` 以上経過
+ *   - コート上にいない（試合中のメンバーは引き剥がさず、試合終了後の
+ *     次回チェックで対象化する）
+ *
+ * 対象者は `isResting: true` + `unpaidRestAt: now`。既に休憩中でもマーカーを
+ * セットして `enforced` に含める（元々休憩でも全員通知は行う仕様のため）。
+ */
+export function computeEnforceUnpaidRest(
+  state: GameState,
+  now: number = Date.now(),
+): { state: GameState; enforced: Player[] } {
+  const playingIds = new Set(
+    state.courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((pid) => pid),
+  );
+  const enforced: Player[] = [];
+  const players = state.players.map((p) => {
+    if (p.operationStatus?.payment) return p;
+    if (p.unpaidRestAt) return p;
+    if (p.gamesPlayed < 1) return p;
+    const baseline = p.activatedAt > 0 ? p.activatedAt : p.lastPlayedAt;
+    if (baseline <= 0 || now - baseline < UNPAID_REST_GRACE_MS) return p;
+    if (playingIds.has(p.id)) return p;
+    const next = { ...p, isResting: true, unpaidRestAt: now };
+    enforced.push(next);
+    return next;
+  });
+  if (enforced.length === 0) return { state, enforced };
+  return { state: { ...state, players }, enforced };
+}
+
 export function computeIncrementGamesPlayed(
   state: GameState,
   ids: string[],
@@ -847,6 +886,49 @@ export function markLateBalanceAutoFired(sessionId: string) {
       },
     };
   });
+}
+
+/**
+ * 未払いメンバーの強制休憩を実施する。対象がいなければ **書き込まずに** 返す
+ * （定期チェックから全端末が毎分呼んでも無駄な write / updatedAt 更新をしない）。
+ *
+ * `unpaidRestAt` マーカーがべき等キーとして働くため、複数端末が同時に呼んでも
+ * 実際に書き込むのは 1 端末だけになる。`now` はクロージャで 1 度だけ生成し、
+ * transaction リトライ時も同じ値を使う（idempotent）。
+ */
+export async function enforceUnpaidRest(
+  sessionId: string,
+): Promise<{ enforced: Player[] }> {
+  const _db = requireDb();
+  const ref = doc(_db, 'sessions', sessionId);
+  const now = Date.now();
+
+  try {
+    return await runTransaction(_db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) {
+        throw new SessionError('セッションが見つかりません', 'not-found');
+      }
+      const remote = snap.data().gameState as GameState | undefined;
+      if (!remote) {
+        throw new SessionError('セッションの状態が初期化されていません', 'invalid-state');
+      }
+
+      const { state: next, enforced } = computeEnforceUnpaidRest(remote, now);
+      if (enforced.length === 0) return { enforced };
+
+      transaction.update(ref, buildGameStatePayload(next));
+      return { enforced };
+    });
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === 'aborted') {
+      throw new SessionError(
+        '他のユーザーが更新しました。もう一度お試しください',
+        'conflict',
+      );
+    }
+    throw error;
+  }
 }
 
 // =============================================================================
