@@ -4,11 +4,15 @@ import { X, Plus, Minus } from 'lucide-react';
 interface PaymentModalProps {
   playerName: string;
   defaultAmount: number;
+  /** 既に支払い登録済みか。true の場合のみ「未登録に戻す」操作を表示する */
+  isPaid?: boolean;
   onConfirm: (amount: number) => void;
+  /** 支払い登録を取り消して未登録に戻す（金額は変更しない単純トグル） */
+  onRevert?: () => void;
   onCancel: () => void;
 }
 
-export function PaymentModal({ playerName, defaultAmount, onConfirm, onCancel }: PaymentModalProps) {
+export function PaymentModal({ playerName, defaultAmount, isPaid, onConfirm, onRevert, onCancel }: PaymentModalProps) {
   const [amount, setAmount] = useState(defaultAmount.toString());
 
   useEffect(() => {
@@ -105,6 +109,16 @@ export function PaymentModal({ playerName, defaultAmount, onConfirm, onCancel }:
             確定
           </button>
         </div>
+
+        {/* 誤って登録した場合の取り消し。確定操作とは分離し、金額は変更しない */}
+        {isPaid && onRevert && (
+          <button
+            onClick={onRevert}
+            className="w-full mt-3 text-xs text-muted-foreground hover:text-red-600 underline transition-colors"
+          >
+            未登録に戻す
+          </button>
+        )}
       </div>
     </div>
   );

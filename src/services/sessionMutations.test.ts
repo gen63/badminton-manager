@@ -283,17 +283,28 @@ describe('sessionMutations - players', () => {
       });
     });
 
-    it('payment ON→OFF（再操作）は paymentTimestamp を更新しない', () => {
+    it('支払い済みへの再適用は payment を ON のまま維持し金額のみ更新する（トグルしない）', () => {
       const state = baseState({
         players: [makePlayer('a', {
           operationStatus: { payment: true, roster: false, checkin: false },
+          paymentAmount: 1200,
           paymentTimestamp: 1000,
         })],
       });
-      const next = computeApplyPayment(state, 'a', 0, 9999);
-      expect(next.players[0].operationStatus?.payment).toBe(false);
+      const next = computeApplyPayment(state, 'a', 1000, 9999);
+      expect(next.players[0].operationStatus?.payment).toBe(true);
       expect(next.players[0].paymentTimestamp).toBe(1000);
+      expect(next.players[0].paymentAmount).toBe(1000);
+    });
+
+    it('免除（0円）を適用しても payment は ON になる', () => {
+      const state = baseState({
+        players: [makePlayer('a', { operationStatus: { payment: false, roster: false, checkin: false } })],
+      });
+      const next = computeApplyPayment(state, 'a', 0, 5000);
+      expect(next.players[0].operationStatus?.payment).toBe(true);
       expect(next.players[0].paymentAmount).toBe(0);
+      expect(next.players[0].paymentTimestamp).toBe(5000);
     });
   });
 

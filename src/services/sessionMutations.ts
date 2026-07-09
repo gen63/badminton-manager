@@ -244,6 +244,10 @@ export function computeToggleRest(
   };
 }
 
+/**
+ * field を単純トグルする。payment に使う場合、金額 (paymentAmount) は変更しない。
+ * 誤って支払い登録した状態を未登録に戻す操作に使う（金額修正は computeApplyPayment を使う）。
+ */
 export function computeToggleOperationStatus(
   state: GameState,
   playerId: string,
@@ -267,6 +271,14 @@ export function computeToggleOperationStatus(
   };
 }
 
+/**
+ * 支払い金額を登録・修正する。常に payment: true にする（トグルしない）。
+ * 既に支払い済みの状態で呼んでも「未登録」には戻らず、金額だけが更新される
+ * （¥1200→¥1000 のような一発修正を可能にするため）。誤登録を取り消して
+ * 未登録に戻したい場合は `toggleOperationStatus(sessionId, playerId, 'payment')`
+ * を使う（こちらは金額を変更しない単純トグル）。
+ * paymentTimestamp は未払い→支払いへの遷移時のみ更新し、金額修正では保持する。
+ */
 export function computeApplyPayment(
   state: GameState,
   playerId: string,
@@ -278,12 +290,12 @@ export function computeApplyPayment(
     players: state.players.map((p) => {
       if (p.id !== playerId) return p;
       const current = p.operationStatus ?? DEFAULT_OP_STATUS;
-      const newPayment = !current.payment;
+      const wasPaid = current.payment;
       const updates: Partial<Player> = {
         paymentAmount: amount,
-        operationStatus: { ...current, payment: newPayment },
+        operationStatus: { ...current, payment: true },
       };
-      if (newPayment) updates.paymentTimestamp = now;
+      if (!wasPaid) updates.paymentTimestamp = now;
       return { ...p, ...updates };
     }),
   };
