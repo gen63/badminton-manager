@@ -10,7 +10,7 @@ import { formatLocalDate } from '../lib/sessionArchive';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
 import { updateSession } from '../services/sessionService';
 import { isMatchOfPlayer } from '../lib/matchFilter';
-import { Copy, Trash2, Edit3, Clock, Upload, Loader2, History, ChevronDown, ChevronUp, User, AlertTriangle } from 'lucide-react';
+import { Copy, Trash2, Edit3, Clock, Upload, History, ChevronDown, ChevronUp, User, AlertTriangle } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
@@ -226,7 +226,6 @@ export function HistoryPage() {
   const gasWebAppUrl = useSettingsStore((s) => s.gasWebAppUrl);
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
-  const [isUploading, setIsUploading] = useState(false);
   const [myMatchesOnly, setMyMatchesOnly] = useState(false);
 
   // 自分の試合フィルタは currentUser がある時のみ
@@ -319,37 +318,40 @@ export function HistoryPage() {
     }
   };
 
-  const handleUpload = async () => {
-    if (!session || !gasWebAppUrl || isUploading) return;
-    setIsUploading(true);
-    try {
+  // 楽観的表示: GAS Webアプリは応答まで数十秒かかることがあるため、完了を
+  // 待たずに「送信しました」を出し、裏で失敗を検知したときだけエラーを出す。
+  // GAS 側は matchId で重複排除するので、失敗時の再送信は安全。
+  const handleUpload = () => {
+    if (!session || !gasWebAppUrl) return;
+    const uploadSession = session;
+    const matches = matchHistory;
+    toast.success(`${matches.length}件の試合を送信しました`);
+    void (async () => {
       const result = await sendMatchesToSheets(
         gasWebAppUrl,
-        matchHistory,
+        matches,
         players,
-        session
+        uploadSession
       );
-      if (result.success) {
-        toast.success(result.message);
-        // アップロード記録を Firestore に書く（セッション一覧の未実施バッジ用）。
-        // 送信自体は成功しているので、記録の失敗は warn に留めて toast は出さない。
-        try {
-          await updateSession(session.id, {
-            matchUpload: {
-              uploadedAt: Date.now(),
-              matchCount: matchHistory.length,
-              ...(currentUser ? { uploadedBy: currentUser } : {}),
-            },
-          });
-        } catch (err) {
-          console.warn('[History] Failed to record match upload status:', err);
-        }
-      } else {
-        toast.error(result.message);
+      if (!result.success) {
+        // 「送信しました」の後に出る想定外の通知なので長めに表示する
+        toast.error(result.message, 6000);
+        return;
       }
-    } finally {
-      setIsUploading(false);
-    }
+      // アップロード記録は実際の成功後にのみ Firestore に書く
+      // （セッション一覧の未実施バッジ用）。記録の失敗は warn に留める。
+      try {
+        await updateSession(uploadSession.id, {
+          matchUpload: {
+            uploadedAt: Date.now(),
+            matchCount: matches.length,
+            ...(currentUser ? { uploadedBy: currentUser } : {}),
+          },
+        });
+      } catch (err) {
+        console.warn('[History] Failed to record match upload status:', err);
+      }
+    })();
   };
 
   return (
@@ -364,11 +366,11 @@ export function HistoryPage() {
           {gasWebAppUrl && (
             <button
               onClick={handleUpload}
-              disabled={isUploading || matchHistory.length === 0}
+              disabled={matchHistory.length === 0}
               aria-label="Sheetsにアップロード"
               className="disabled:opacity-50"
             >
-              {isUploading ? <Loader2 size={20} className="animate-spin" /> : <Upload size={20} />}
+              <Upload size={20} />
             </button>
           )}
           <button
