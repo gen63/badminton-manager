@@ -944,22 +944,62 @@ describe('computeEnforceUnrecordedRest', () => {
   const recordOn = (overrides: Partial<GameState> = {}): GameState =>
     baseState({ settings: { recordScores: true }, players: fourPlayers(), ...overrides });
 
-  it('勝敗記録モード ON + 未登録 + 猶予経過で出場者を休憩にし、試合にマーカーをセットする', () => {
-    const state = recordOn({ matchHistory: [unrecordedMatch('m1')] });
+  // 「2試合以上溜まっている」条件を満たすためだけの、猶予内の未登録試合
+  // （出場者はプレイヤー一覧に存在しない id にして休憩化の対象から外す）
+  const fillerUnrecorded = (id = 'filler'): Match =>
+    unrecordedMatch(id, {
+      teamA: ['x1', 'x2'],
+      teamB: ['x3', 'x4'],
+      finishedAt: NOW - 60_000,
+    });
+
+  it('未登録2試合以上 + 猶予経過で出場者を休憩にし、試合にマーカーをセットする', () => {
+    const state = recordOn({ matchHistory: [unrecordedMatch('m1'), fillerUnrecorded()] });
     const { state: next, enforcedMatches } = computeEnforceUnrecordedRest(state, NOW);
+    // 猶予超過は m1 だけ（filler は猶予内なのでマーカーはセットされない）
     expect(enforcedMatches.map((m) => m.id)).toEqual(['m1']);
     expect(next.matchHistory[0].forcedRestAt).toBe(NOW);
+    expect(next.matchHistory[1].forcedRestAt).toBeUndefined();
     expect(next.players.every((p) => p.isResting)).toBe(true);
+  });
+
+  it('未登録が1試合だけなら猶予超過でも発動しない', () => {
+    const state = recordOn({ matchHistory: [unrecordedMatch('m1')] });
+    const { state: next, enforcedMatches } = computeEnforceUnrecordedRest(state, NOW);
+    expect(enforcedMatches).toEqual([]);
+    expect(next).toBe(state);
+  });
+
+  it('登録済み試合は「溜まっている」数に含まない（未登録1 + 登録済み1 は発動しない）', () => {
+    const state = recordOn({
+      matchHistory: [unrecordedMatch('m1'), unrecordedMatch('m2', { winner: 'A' })],
+    });
+    expect(computeEnforceUnrecordedRest(state, NOW).enforcedMatches).toEqual([]);
+  });
+
+  it('マーカー済みの未登録試合も「溜まっている」数に含む', () => {
+    // m1 は発火済みのまま未登録放置、m2 が新たに猶予超過 → m2 だけ発火
+    const state = recordOn({
+      matchHistory: [
+        unrecordedMatch('m1', { forcedRestAt: NOW - 60 * 60_000 }),
+        unrecordedMatch('m2'),
+      ],
+    });
+    const { enforcedMatches } = computeEnforceUnrecordedRest(state, NOW);
+    expect(enforcedMatches.map((m) => m.id)).toEqual(['m2']);
   });
 
   it('勝敗記録モード OFF（false / 未設定）では何もしない', () => {
     const off = recordOn({
       settings: { recordScores: false },
-      matchHistory: [unrecordedMatch('m1')],
+      matchHistory: [unrecordedMatch('m1'), unrecordedMatch('m2')],
     });
     expect(computeEnforceUnrecordedRest(off, NOW).enforcedMatches).toEqual([]);
 
-    const unset = recordOn({ settings: {}, matchHistory: [unrecordedMatch('m1')] });
+    const unset = recordOn({
+      settings: {},
+      matchHistory: [unrecordedMatch('m1'), unrecordedMatch('m2')],
+    });
     expect(computeEnforceUnrecordedRest(unset, NOW).enforcedMatches).toEqual([]);
   });
 
@@ -975,16 +1015,22 @@ describe('computeEnforceUnrecordedRest', () => {
     expect(next).toBe(state);
   });
 
-  it('終了から猶予時間が経過していない試合は対象外', () => {
+  it('全試合が猶予時間内なら発動しない', () => {
     const state = recordOn({
-      matchHistory: [unrecordedMatch('m1', { finishedAt: NOW - UNRECORDED_REST_GRACE_MS + 1 })],
+      matchHistory: [
+        unrecordedMatch('m1', { finishedAt: NOW - UNRECORDED_REST_GRACE_MS + 1 }),
+        fillerUnrecorded(),
+      ],
     });
     expect(computeEnforceUnrecordedRest(state, NOW).enforcedMatches).toEqual([]);
   });
 
   it('既にマーカー付きの試合には再発火しない', () => {
     const state = recordOn({
-      matchHistory: [unrecordedMatch('m1', { forcedRestAt: NOW - 60_000 })],
+      matchHistory: [
+        unrecordedMatch('m1', { forcedRestAt: NOW - 60_000 }),
+        unrecordedMatch('m2', { forcedRestAt: NOW - 60_000 }),
+      ],
     });
     const { state: next, enforcedMatches } = computeEnforceUnrecordedRest(state, NOW);
     expect(enforcedMatches).toEqual([]);
@@ -993,7 +1039,7 @@ describe('computeEnforceUnrecordedRest', () => {
 
   it('コート上（次の試合中）の出場者は引き剥がさないが、マーカーと他メンバーの休憩は行う', () => {
     const state = recordOn({
-      matchHistory: [unrecordedMatch('m1')],
+      matchHistory: [unrecordedMatch('m1'), fillerUnrecorded()],
       courts: [makeCourt(1, { teamA: ['p1', 'x9'], teamB: ['x8', 'x7'], isPlaying: true })],
     });
     const { state: next, enforcedMatches } = computeEnforceUnrecordedRest(state, NOW);
@@ -1007,7 +1053,10 @@ describe('computeEnforceUnrecordedRest', () => {
 
   it('シングルス（空スロットあり）でも出場者だけを休憩にする', () => {
     const state = recordOn({
-      matchHistory: [unrecordedMatch('m1', { teamA: ['p1', ''], teamB: ['p3', ''] })],
+      matchHistory: [
+        unrecordedMatch('m1', { teamA: ['p1', ''], teamB: ['p3', ''] }),
+        fillerUnrecorded(),
+      ],
     });
     const { state: next } = computeEnforceUnrecordedRest(state, NOW);
     const byId = new Map(next.players.map((p) => [p.id, p]));
@@ -1096,6 +1145,15 @@ describe('enforceForcedRest (wrapper)', () => {
           scoreB: 0,
           winner: undefined,
           finishedAt: Date.now() - UNRECORDED_REST_GRACE_MS - 60_000,
+        }),
+        // 「2試合以上溜まっている」条件を満たす猶予内の未登録試合
+        makeMatch('m2', {
+          teamA: ['x3', ''],
+          teamB: ['x4', ''],
+          scoreA: 0,
+          scoreB: 0,
+          winner: undefined,
+          finishedAt: Date.now() - 60_000,
         }),
       ],
     });

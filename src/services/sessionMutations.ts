@@ -361,6 +361,12 @@ export function computeEnforceForcedRest(
 /** 結果未登録試合の出場者を強制休憩にするまでの猶予時間（ms）。試合終了が起点。 */
 export const UNRECORDED_REST_GRACE_MS = 10 * 60 * 1000;
 
+/**
+ * 結果未登録の強制休憩が発動する未登録試合数の下限。1 試合だけなら
+ * 「直後でこれから入力する」可能性が高いので静観し、溜まり始めたら発動する。
+ */
+export const UNRECORDED_REST_MIN_COUNT = 2;
+
 /** 勝敗未入力の判定（HistoryPage / unrecordedMatchPrompt の判定式と同一に保つ） */
 function isUnrecordedMatch(m: Match): boolean {
   return m.scoreA === 0 && m.scoreB === 0 && !m.winner;
@@ -368,7 +374,10 @@ function isUnrecordedMatch(m: Match): boolean {
 
 /**
  * 結果未登録試合の出場者の強制休憩を計算する。勝敗記録モード
- * （settings.recordScores === true）のときのみ動作する。対象条件（すべて AND）:
+ * （settings.recordScores === true）で、かつ未登録試合が
+ * `UNRECORDED_REST_MIN_COUNT`（2）試合以上溜まっているときのみ動作する
+ * （マーカー済み・猶予内の未登録試合も「溜まっている」数には含む）。
+ * 対象試合の条件（すべて AND）:
  *   - 勝敗未入力（scoreA===0 && scoreB===0 && !winner）
  *   - `match.forcedRestAt` 未セット（べき等マーカー。1 試合につき 1 度だけ発火）
  *   - 試合終了から `UNRECORDED_REST_GRACE_MS` 以上経過
@@ -384,15 +393,14 @@ export function computeEnforceUnrecordedRest(
 ): { state: GameState; enforcedMatches: Match[] } {
   if (state.settings?.recordScores !== true) return { state, enforcedMatches: [] };
 
+  const unrecorded = state.matchHistory.filter(
+    (m) => isUnrecordedMatch(m) && m.finishedAt > 0,
+  );
+  if (unrecorded.length < UNRECORDED_REST_MIN_COUNT) return { state, enforcedMatches: [] };
+
   const overdueIds = new Set(
-    state.matchHistory
-      .filter(
-        (m) =>
-          !m.forcedRestAt &&
-          isUnrecordedMatch(m) &&
-          m.finishedAt > 0 &&
-          now - m.finishedAt >= UNRECORDED_REST_GRACE_MS,
-      )
+    unrecorded
+      .filter((m) => !m.forcedRestAt && now - m.finishedAt >= UNRECORDED_REST_GRACE_MS)
       .map((m) => m.id),
   );
   if (overdueIds.size === 0) return { state, enforcedMatches: [] };
