@@ -37,7 +37,7 @@ export function gameModeFromPracticeType(
  * callableReservedCount: 予約成立で休憩から呼び出せるメンバー数
  * （待機扱いでカウントに加算する）
  */
-export function checkContinuousBlock(
+function checkContinuousBlock(
   players: Player[],
   courts: Court[],
   prioritizeDiversity: boolean,

@@ -15,12 +15,3 @@ export interface Player {
   paymentAmount?: number; // 支払った金額（円）
   paymentTimestamp?: number; // 支払い実行時刻（Unix timestamp）
 }
-
-export interface PlayerStats {
-  id: string;
-  name: string;
-  gamesPlayed: number;
-  wins: number;
-  losses: number;
-  points: number;
-}

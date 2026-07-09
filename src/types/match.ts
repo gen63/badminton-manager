@@ -9,10 +9,3 @@ export interface Match {
   finishedAt: number;
   winner?: 'A' | 'B';
 }
-
-export interface MatchLog extends Match {
-  playerNames: {
-    teamA: [string, string];
-    teamB: [string, string];
-  };
-}

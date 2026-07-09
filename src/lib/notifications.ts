@@ -1,7 +1,7 @@
 /** Browser Notification API ユーティリティ */
 
 /** 通知が使える環境かどうか */
-export function isNotificationSupported(): boolean {
+function isNotificationSupported(): boolean {
   return 'Notification' in window;
 }
 

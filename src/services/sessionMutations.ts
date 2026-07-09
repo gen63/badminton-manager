@@ -746,10 +746,6 @@ export function startGame(sessionId: string, courtId: number) {
   return mutateGameState(sessionId, (s) => computeStartGame(s, courtId));
 }
 
-export function clearCourt(sessionId: string, courtId: number) {
-  return mutateGameState(sessionId, (s) => computeClearCourt(s, courtId));
-}
-
 export function resetAllCourts(sessionId: string) {
   return mutateGameState(sessionId, computeResetAllCourts);
 }
@@ -760,10 +756,6 @@ export function clearPlayers(sessionId: string) {
 
 export function clearHistory(sessionId: string) {
   return mutateGameState(sessionId, computeClearHistory);
-}
-
-export function addMatch(sessionId: string, match: Match) {
-  return mutateGameState(sessionId, (s) => computeAddMatch(s, match));
 }
 
 export function removeMatch(sessionId: string, matchId: string) {

@@ -1,4 +1,4 @@
-export type GameMode = 'singles' | 'doubles';
+type GameMode = 'singles' | 'doubles';
 
 export interface SessionConfig {
   courtCount: number;
@@ -34,14 +34,14 @@ export interface AccountingInput {
 }
 
 /** 試合結果の GAS アップロード記録（セッション一覧での未実施検出用） */
-export interface MatchUploadStatus {
+interface MatchUploadStatus {
   uploadedAt: number; // アップロード成功時刻
   uploadedBy?: string; // 実行者（currentUser があるときのみ）
   matchCount: number; // アップロード時点の試合数（差分検出用）
 }
 
 /** 会計データの GAS アップロード記録 */
-export interface AccountingUploadStatus {
+interface AccountingUploadStatus {
   uploadedAt: number;
   uploadedBy?: string;
 }

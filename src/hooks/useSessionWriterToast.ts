@@ -18,7 +18,7 @@ type ToastApi = ReturnType<typeof useToast>;
  *
  * 個別ハンドラで try/catch したい場合は `useSessionWriter` を直接使う。
  */
-export function useToastErrorHandler(toast: ToastApi): NonNullable<SessionWriterOptions['onError']> {
+function useToastErrorHandler(toast: ToastApi): NonNullable<SessionWriterOptions['onError']> {
   return useCallback(
     (err, op) => {
       const code = err instanceof SessionError ? err.code : undefined;
