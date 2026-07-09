@@ -11,6 +11,7 @@ import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { parsePlayerInput } from '../lib/utils';
 import { clearPresence, createSession, leaveSession } from '../services/sessionService';
+import { fetchDefaultAnnouncementTextSafe } from '../services/appConfigService';
 import { getErrorMessage } from '../lib/errorHandler';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
@@ -150,6 +151,13 @@ export function SessionCreate() {
         settings: { recordScores, continuousMatchMode, practiceType },
       };
 
+      // デフォルト周知事項（appConfig/global）があれば周知事項として同梱する。
+      // 読み取り失敗はセッション作成を止めない（safe 版が '' を返す）。
+      const defaultAnnouncementText = await fetchDefaultAnnouncementTextSafe();
+      const initialInformation = defaultAnnouncementText
+        ? { text: defaultAnnouncementText, updatedAt: now, readBy: [] as string[] }
+        : undefined;
+
       // session + gameState を 1 回の setDoc で書き込む（孤立 doc を防ぐ）
       const sessionId = await createSession(
         {
@@ -158,6 +166,7 @@ export function SessionCreate() {
           participants: [creatorName],
           status: 'active',
           registeredPlayers,
+          ...(initialInformation ? { information: initialInformation } : {}),
         },
         initialGameState,
       );
@@ -179,6 +188,7 @@ export function SessionCreate() {
         participants: [creatorName],
         status: 'active',
         registeredPlayers,
+        ...(initialInformation ? { information: initialInformation } : {}),
       });
       setCurrentUser(creatorName);
 

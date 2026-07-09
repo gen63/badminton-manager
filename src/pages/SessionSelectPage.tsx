@@ -4,13 +4,14 @@ import { deleteField } from 'firebase/firestore';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { subscribeToRecentActiveSessions, updateSession } from '../services/sessionService';
 import { setPracticeType as setPracticeTypeMutation } from '../services/sessionMutations';
+import { getDefaultAnnouncement, setDefaultAnnouncement } from '../services/appConfigService';
 import { isSessionVisible } from '../lib/sessionArchive';
 import { clearAppBadge } from '../lib/badge';
 import { useDevMode } from '../hooks/useDevMode';
 import { getMatchUploadBadge, needsAccountingUploadBadge } from '../lib/uploadStatus';
 import { useSessionStore } from '../stores/sessionStore';
 import type { Session } from '../types/session';
-import { Loader2, Plus, Users, MapPin, Calendar, Trophy, StickyNote, Pencil, X, Info } from 'lucide-react';
+import { Loader2, Plus, Users, MapPin, Calendar, Trophy, StickyNote, Pencil, X, Info, Megaphone } from 'lucide-react';
 
 type PracticeType = '単' | '複' | '楽';
 const PRACTICE_TYPES: readonly PracticeType[] = ['単', '複', '楽'];
@@ -70,6 +71,12 @@ export function SessionSelectPage() {
   const [editingText, setEditingText] = useState('');
   const [editingPracticeType, setEditingPracticeType] = useState<PracticeType | ''>('');
   const [saving, setSaving] = useState(false);
+  // デフォルト周知事項（appConfig/global）。dev モード限定で表示・編集。
+  const [defaultAnnouncementText, setDefaultAnnouncementText] = useState('');
+  const [editingDefault, setEditingDefault] = useState(false);
+  const [editingDefaultText, setEditingDefaultText] = useState('');
+  const [savingDefault, setSavingDefault] = useState(false);
+  const [defaultError, setDefaultError] = useState('');
 
   // useFirebaseSync からセッション削除/TTL 切れで遷移してきた場合、
   // location.state.notice を読み取って一度だけバナー表示する。
@@ -164,6 +171,53 @@ export function SessionSelectPage() {
       setSaving(false);
     }
   };
+
+  const openDefaultEdit = () => {
+    setEditingDefaultText(defaultAnnouncementText);
+    setDefaultError('');
+    setEditingDefault(true);
+  };
+
+  const handleSaveDefault = async () => {
+    if (savingDefault) return;
+    const trimmed = editingDefaultText.trim();
+    if (trimmed === defaultAnnouncementText) {
+      setEditingDefault(false);
+      return;
+    }
+    setSavingDefault(true);
+    setDefaultError('');
+    try {
+      await setDefaultAnnouncement(trimmed, currentUser ?? undefined);
+      setDefaultAnnouncementText(trimmed);
+      setEditingDefault(false);
+    } catch (err) {
+      console.error('[SessionSelect] Failed to save default announcement:', err);
+      const message = err instanceof Error && err.message
+        ? err.message
+        : 'デフォルト周知事項の保存に失敗しました';
+      setDefaultError(message);
+    } finally {
+      setSavingDefault(false);
+    }
+  };
+
+  // デフォルト周知事項の現在値を取得（dev モード限定 UI なので dev モード時のみ）
+  useEffect(() => {
+    if (!devMode || !isFirebaseConfigured()) return;
+    let cancelled = false;
+    getDefaultAnnouncement()
+      .then((announcement) => {
+        if (!cancelled) setDefaultAnnouncementText(announcement?.text.trim() ?? '');
+      })
+      .catch((err) => {
+        // 未設定/rules 未対応でも一覧表示は妨げない
+        console.warn('[SessionSelect] Failed to load default announcement:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [devMode]);
 
   // PWAバッジをクリア（セッション未参加状態）
   useEffect(() => {
@@ -261,6 +315,36 @@ export function SessionSelectPage() {
         {error && (
           <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-xl text-sm">
             {error}
+          </div>
+        )}
+
+        {/* デフォルト周知事項（開発モード限定）— 新規セッション作成時に自動設定される */}
+        {devMode && (
+          <div className="card overflow-hidden">
+            <div className="flex items-stretch">
+              <div className="flex-1 min-w-0 px-3 py-2.5">
+                <div className="flex items-center gap-1 text-xs font-semibold text-foreground">
+                  <Megaphone size={14} className="text-primary flex-shrink-0" />
+                  デフォルト周知事項
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground min-w-0">
+                  {defaultAnnouncementText ? (
+                    <span className="block truncate">
+                      {defaultAnnouncementText.split('\n')[0]}
+                    </span>
+                  ) : (
+                    <span>未設定（新規セッション作成時に周知事項へ自動設定されます）</span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={openDefaultEdit}
+                className="text-primary px-3 hover:bg-muted/50 transition-colors flex-shrink-0 flex items-center"
+                aria-label="デフォルト周知事項を編集"
+              >
+                <Pencil size={16} />
+              </button>
+            </div>
           </div>
         )}
 
@@ -374,6 +458,64 @@ export function SessionSelectPage() {
           v{__APP_VERSION__}
         </p>
       </div>
+
+      {/* デフォルト周知事項編集モーダル（開発モード限定の導線から呼び出し） */}
+      {editingDefault && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-card rounded-2xl p-6 max-w-md w-full max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Megaphone size={20} className="text-primary" />
+                デフォルト周知事項
+              </h3>
+              <button
+                onClick={() => setEditingDefault(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                disabled={savingDefault}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto mb-4">
+              <p className="text-xs text-muted-foreground mb-2">
+                新規セッション作成時（手動・自動とも）に周知事項として自動設定されます。
+                既存セッションの周知事項は変わりません。空にすると自動設定されなくなります。
+              </p>
+              <textarea
+                value={editingDefaultText}
+                onChange={(e) => setEditingDefaultText(e.target.value)}
+                className="w-full min-h-[160px] p-3 bg-muted border border-border rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+                placeholder="メンバーへの周知事項を入力..."
+                disabled={savingDefault}
+              />
+            </div>
+
+            {defaultError && (
+              <div className="bg-destructive/10 border border-destructive/20 text-destructive px-3 py-2 rounded-lg text-xs mb-3">
+                {defaultError}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setEditingDefault(false)}
+                className="flex-1 btn-secondary"
+                disabled={savingDefault}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleSaveDefault}
+                className="flex-1 btn-primary"
+                disabled={savingDefault}
+              >
+                {savingDefault ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* セッション情報編集モーダル（開発モード限定の導線から呼び出し） */}
       {editingSession && (

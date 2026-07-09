@@ -476,6 +476,7 @@ function buildSessionData(
   event: EtomoEventDetail,
   memberMap: Map<string, MemberData>,
   targetDate: Date,
+  defaultAnnouncementText?: string,
 ) {
   const practiceStartTime = buildPracticeStartTime(targetDate, event.startTime);
   const gameMode = event.note === '単' ? 'singles' : 'doubles';
@@ -497,6 +498,8 @@ function buildSessionData(
     };
   });
 
+  const trimmedAnnouncement = defaultAnnouncementText?.trim() ?? '';
+
   return {
     config: { courtCount: 1, targetScore: 15, practiceStartTime, gym: event.venue, gameMode },
     createdBy: 'auto-session-bot',
@@ -505,6 +508,10 @@ function buildSessionData(
     registeredPlayers: event.participants,
     status: 'active' as const,
     etomoEventId: event.eventId,
+    // デフォルト周知事項（appConfig/global）を周知事項としてコピー
+    ...(trimmedAnnouncement
+      ? { information: { text: trimmedAnnouncement, updatedAt: Date.now(), readBy: [] as string[] } }
+      : {}),
     gameState: {
       players,
       courts: [{ id: 1, teamA: ['', ''], teamB: ['', ''], scoreA: 0, scoreB: 0, isPlaying: false, startedAt: 0, finishedAt: 0 }],
@@ -518,11 +525,30 @@ function buildSessionData(
 // undefined値を除去（serverTimestamp()等のセンチネル値はsanitize対象外にする）
 const sanitize = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
 
+/**
+ * デフォルト周知事項（appConfig/global）を取得する。
+ * 読めなくても（rules 未対応・未設定など）セッション作成は止めない。
+ */
+async function fetchDefaultAnnouncementText(
+  db: ReturnType<typeof getFirestore>,
+): Promise<string> {
+  try {
+    const snap = await getDoc(doc(db, 'appConfig', 'global'));
+    if (!snap.exists()) return '';
+    const text = (snap.data().defaultAnnouncement as { text?: string } | undefined)?.text;
+    return typeof text === 'string' ? text.trim() : '';
+  } catch (error) {
+    console.warn('Failed to fetch default announcement, continuing without it:', error);
+    return '';
+  }
+}
+
 async function createFirestoreSession(
   db: ReturnType<typeof getFirestore>,
   event: EtomoEventDetail,
   memberMap: Map<string, MemberData>,
   targetDate: Date,
+  defaultAnnouncementText: string,
 ): Promise<string> {
   const maxRetries = 3;
 
@@ -536,7 +562,7 @@ async function createFirestoreSession(
       continue;
     }
 
-    const sessionData = buildSessionData(event, memberMap, targetDate);
+    const sessionData = buildSessionData(event, memberMap, targetDate, defaultAnnouncementText);
 
     await setDoc(docRef, {
       ...sanitize({ id: sessionId, ...sessionData }),
@@ -673,6 +699,10 @@ async function processEvents(
       db,
       eventsWithDetails.map((e) => e.eventId),
     );
+    const defaultAnnouncementText = await fetchDefaultAnnouncementText(db);
+    if (defaultAnnouncementText) {
+      console.log('Default announcement found, will be set on new sessions');
+    }
 
     for (const event of eventsWithDetails) {
       console.log(`\nProcessing: ${event.title}`);
@@ -700,7 +730,7 @@ async function processEvents(
         console.log(`  -> Force creating with ${issues.length} issue(s)`);
       }
 
-      const sessionId = await createFirestoreSession(db, event, memberMap, targetDate);
+      const sessionId = await createFirestoreSession(db, event, memberMap, targetDate, defaultAnnouncementText);
       console.log(`  -> Session created: ${sessionId}`);
       await notifySessionCreated(event, sessionId, targetDate);
     }
