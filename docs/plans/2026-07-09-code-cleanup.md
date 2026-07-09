@@ -42,7 +42,28 @@
 - `presenceStore.ts`: `PresenceMap`
 - `types/session.ts`: `GameMode` / `MatchUploadStatus` / `AccountingUploadStatus`
 
-### 4. 設定・依存のクリーンアップ
+### 4. zustand ストアの死蔵アクション削除（約310行）
+
+Firestore 真実のソース化により、UI からの書き込みは `useSessionWriter` →
+`sessionMutations.ts`、ストアへの反映は `useFirebaseSync` の `setState` に
+一本化された。その結果、ストアのアクションはセッション切替時の clear 系を
+除きすべて呼び出しゼロになっていた（同名関数が `sessionMutations.ts` に
+存在するため grep では `writer.<name>` 呼び出しと区別して確認）。
+
+- `gameStore.ts`: `initializeCourts` / `resizeCourts` / `removeCourtById` /
+  `updateCourt` / `startGame` / `finishGame` / `resetAllCourts` / `removeMatch`
+  を削除。残: `courts` / `matchHistory` / `clearHistory`
+- `playerStore.ts`: `addPlayers` / `removePlayer` / `toggleRest` /
+  `updatePlayer` / `toggleOperationStatus` / `applyPayment` /
+  `incrementGamesPlayed` / `setAllPlayersResting` を削除。
+  残: `players` / `clearPlayers`
+- `reservationStore.ts`: `addReservation` / `removeReservation` /
+  `fulfillReservation` を削除。残: `reservations` / `clearReservations`
+- `accountingStore.ts`: `removeRecord` を削除
+- `sessionStore.ts`: `setSession` を削除
+- `undoStore.ts`: 全アクション使用中のため変更なし
+
+### 5. 設定・依存のクリーンアップ
 
 - 非推奨の `.eslintignore` を削除し、`eslint.config.js` の `globalIgnores` に統合
   （lint 実行時の ESLintIgnoreWarning が解消）

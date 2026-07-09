@@ -4,7 +4,6 @@ import type { AccountingRecord } from '../types/accounting';
 interface AccountingState {
   records: AccountingRecord[];
   addRecord: (record: Omit<AccountingRecord, 'id' | 'timestamp'>) => void;
-  removeRecord: (id: string) => void;
   clearRecords: () => void;
 }
 
@@ -34,11 +33,6 @@ export const useAccountingStore = create<AccountingState>()((set) => ({
           timestamp: Date.now(),
         },
       ],
-    })),
-
-  removeRecord: (id) =>
-    set((state) => ({
-      records: state.records.filter((r) => r.id !== id),
     })),
 
   clearRecords: () => set({ records: [] }),
