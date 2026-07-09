@@ -22,6 +22,23 @@ import {
   toGymShortName,
 } from '../lib/accountingCalc';
 
+// 旧形式（ダブルス/シングルス/初級）の練習種別を新形式（複/単/楽）に変換
+function normalizePracticeType(type: string): string {
+  if (type === 'ダブルス') return '複';
+  if (type === 'シングルス') return '単';
+  if (type === '初級') return '楽';
+  return type;
+}
+
+// 比較用シリアライズ（キー順の揺れを避けるため配列で固定）
+function accountingComparable(v: AccountingInput): string {
+  return JSON.stringify([
+    v.exemptCount, v.maleCount, v.femaleCount, v.maleFee, v.femaleFee,
+    v.gymCost, v.shuttlePrice, v.shuttleCount, v.matchCount, v.practiceType,
+    v.otherDescription ?? '', v.otherAmount ?? 0,
+  ]);
+}
+
 export function AccountingPage() {
   const session = useSessionStore((s) => s.session);
   const currentUser = useSessionStore((s) => s.currentUser);
@@ -100,12 +117,7 @@ export function AccountingPage() {
       setShuttleCount(savedAccounting.shuttleCount);
       setMatchCount(savedAccounting.matchCount || 0);
       // 古いデータとの互換性のため、practiceTypeがなければsettingsStoreの値
-      // 旧形式（ダブルス/シングルス/初級）を新形式（複/単/楽）に変換
-      let type = savedAccounting.practiceType || defaultPracticeType;
-      if (type === 'ダブルス') type = '複';
-      if (type === 'シングルス') type = '単';
-      if (type === '初級') type = '楽';
-      setPracticeType(type);
+      setPracticeType(normalizePracticeType(savedAccounting.practiceType || defaultPracticeType));
       // その他欄の復元（後方互換性のため存在チェック）
       if (savedAccounting.otherDescription !== undefined) setOtherDescription(savedAccounting.otherDescription);
       if (savedAccounting.otherAmount !== undefined) setOtherAmount(savedAccounting.otherAmount);
@@ -172,17 +184,9 @@ export function AccountingPage() {
 
     // 保存された値がない場合のみ、料金設定を過去データ・固定値から取得
     if (!savedAccounting) {
-      // 旧形式の練習種別を新形式に正規化（古いレコードとの互換）
-      const normalizeType = (t: string): string => {
-        if (t === 'ダブルス') return '複';
-        if (t === 'シングルス') return '単';
-        if (t === '初級') return '楽';
-        return t;
-      };
-
       // 料金は同じ練習種別の直近レコードを優先。なければ練習種別の標準料金
       const sameTypeRecord = [...records].reverse().find(
-        (r) => normalizeType(r.practiceType) === defaultPracticeType,
+        (r) => normalizePracticeType(r.practiceType) === defaultPracticeType,
       );
       if (sameTypeRecord) {
         setMaleFee(sameTypeRecord.maleFee);
@@ -280,6 +284,75 @@ export function AccountingPage() {
   useEffect(() => {
     return () => flushPending();
   }, [flushPending]);
+
+  // バックグラウンド移行時にも未送信分を flush する。
+  // PWA がそのまま kill されるとデバウンス中（500ms 以内）の修正が
+  // Firestore に届かず失われるため。
+  useEffect(() => {
+    const handleHide = () => {
+      if (document.visibilityState === 'hidden') flushPending();
+    };
+    document.addEventListener('visibilitychange', handleHide);
+    window.addEventListener('pagehide', handleHide);
+    return () => {
+      document.removeEventListener('visibilitychange', handleHide);
+      window.removeEventListener('pagehide', handleHide);
+    };
+  }, [flushPending]);
+
+  // リモート（他端末・他タブ）で修正された accounting をローカル入力へ反映する。
+  // 初期化は上の useEffect が一度だけ行うが、それ以降 Firestore 側が更新されても
+  // ローカル state に反映されず、コピー用プレビューとアップロード内容が古い値の
+  // まま固定される不具合があった（accounting は「管理者が共有編集」する想定）。
+  // - 自分の書き込みエコーはローカル値と一致するため no-op
+  // - デバウンス書き込みの保留中（編集直後）は上書きしない
+  useEffect(() => {
+    if (!initialized || !savedAccounting) return;
+    if (writeTimerRef.current !== null || pendingSnapshotRef.current !== null) return;
+
+    const remote: AccountingInput = {
+      exemptCount: savedAccounting.exemptCount,
+      maleCount: savedAccounting.maleCount,
+      femaleCount: savedAccounting.femaleCount,
+      maleFee: savedAccounting.maleFee,
+      femaleFee: savedAccounting.femaleFee,
+      gymCost: savedAccounting.gymCost,
+      shuttlePrice: savedAccounting.shuttlePrice,
+      shuttleCount: savedAccounting.shuttleCount,
+      matchCount: savedAccounting.matchCount || 0,
+      practiceType: normalizePracticeType(savedAccounting.practiceType || defaultPracticeType),
+      otherDescription: savedAccounting.otherDescription ?? '',
+      otherAmount: savedAccounting.otherAmount ?? 0,
+    };
+    const local: AccountingInput = {
+      exemptCount, maleCount, femaleCount, maleFee, femaleFee,
+      gymCost, shuttlePrice, shuttleCount, matchCount, practiceType,
+      otherDescription, otherAmount,
+    };
+    if (accountingComparable(remote) === accountingComparable(local)) return;
+
+    setExemptCount(remote.exemptCount);
+    setMaleCount(remote.maleCount);
+    setFemaleCount(remote.femaleCount);
+    setMaleFee(remote.maleFee);
+    setFemaleFee(remote.femaleFee);
+    setGymCost(remote.gymCost);
+    setShuttlePrice(remote.shuttlePrice);
+    setShuttleCount(remote.shuttleCount);
+    setMatchCount(remote.matchCount);
+    setPracticeType(remote.practiceType);
+    setOtherDescription(remote.otherDescription ?? '');
+    setOtherAmount(remote.otherAmount ?? 0);
+    // 入力があればアコーディオンを開く（閉じる方向へは触らない）
+    if (remote.otherDescription || remote.otherAmount) {
+      setIsOtherExpanded(true);
+    }
+  }, [
+    savedAccounting, initialized, defaultPracticeType,
+    exemptCount, maleCount, femaleCount, maleFee, femaleFee,
+    gymCost, shuttlePrice, shuttleCount, matchCount, practiceType,
+    otherDescription, otherAmount,
+  ]);
 
   // すべての入力値を保存するヘルパー関数（デバウンスで Firestore へ）
   const saveAllInputs = (overrides: Partial<AccountingInput> = {}) => {
