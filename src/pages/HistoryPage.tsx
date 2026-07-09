@@ -10,6 +10,7 @@ import { formatLocalDate } from '../lib/sessionArchive';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
 import { updateSession } from '../services/sessionService';
 import { isMatchOfPlayer } from '../lib/matchFilter';
+import { useDevMode } from '../hooks/useDevMode';
 import { Copy, Trash2, Edit3, Clock, Upload, History, ChevronDown, ChevronUp, User, AlertTriangle } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
@@ -224,6 +225,7 @@ export function HistoryPage() {
   const currentUser = useSessionStore((s) => s.currentUser);
   const isAdmin = isCreator();
   const gasWebAppUrl = useSettingsStore((s) => s.gasWebAppUrl);
+  const devMode = useDevMode();
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
   const [myMatchesOnly, setMyMatchesOnly] = useState(false);
@@ -350,6 +352,13 @@ export function HistoryPage() {
         });
       } catch (err) {
         console.warn('[History] Failed to record match upload status:', err);
+        // 一般ユーザーには送信成否と切り離して見せる（設計方針）が、バッジは
+        // 開発モード限定表示のため、その利用者には原因が見えないと診断できない。
+        // devMode のときだけ記録失敗を可視化する。
+        if (devMode) {
+          const detail = err instanceof Error ? err.message : String(err);
+          toast.warning(`アップロード記録の保存に失敗（一覧のバッジは更新されません）: ${detail}`, 8000);
+        }
       }
     })();
   };
