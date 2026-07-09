@@ -3,6 +3,11 @@ import type { Player } from '../types/player';
 import type { Session } from '../types/session';
 import type { AccountingRecord } from '../types/accounting';
 
+// GAS Webアプリはコールドスタート + リダイレクト + Spreadsheet 操作で
+// 10秒を超えることが珍しくない（試合数に関係なく発生する）。
+// 実測でも初回リクエストは 15〜30 秒かかることがあるため余裕を持たせる。
+const GAS_TIMEOUT_MS = 60000;
+
 interface SheetMatch {
   matchId: string;
   date: string;
@@ -61,6 +66,53 @@ function formatMatchesForSheets(
   };
 }
 
+/**
+ * GAS Webアプリへ JSON を POST する共通処理。
+ *
+ * 注意: クライアント側で abort しても GAS 側の実行は中断されないため、
+ * タイムアウト時でも書き込み自体は完了している可能性がある。
+ */
+async function postToGas(
+  url: string,
+  payload: unknown,
+  messages: { success: string; timeout: string }
+): Promise<{ success: boolean; message: string }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), GAS_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+      mode: 'no-cors',
+    });
+
+    // no-cors ではレスポンスが opaque になるので status チェック不可
+    // エラーが投げられなければ成功とみなす
+    if (response.type === 'opaque') {
+      return { success: true, message: messages.success };
+    }
+
+    if (!response.ok) {
+      return { success: false, message: `送信エラー (${response.status})` };
+    }
+
+    return { success: true, message: messages.success };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return { success: false, message: messages.timeout };
+    }
+    return {
+      success: false,
+      message: '送信に失敗しました。Wi-Fi接続を確認してください',
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function sendMatchesToSheets(
   url: string,
   matches: Match[],
@@ -77,40 +129,12 @@ export async function sendMatchesToSheets(
 
   const payload = formatMatchesForSheets(matches, players, session);
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-      mode: 'no-cors',
-    });
-
-    // no-cors ではレスポンスが opaque になるので status チェック不可
-    // エラーが投げられなければ成功とみなす
-    if (response.type === 'opaque') {
-      return { success: true, message: `${matches.length}件の試合を送信しました` };
-    }
-
-    if (!response.ok) {
-      return { success: false, message: `送信エラー (${response.status})` };
-    }
-
-    return { success: true, message: `${matches.length}件の試合を送信しました` };
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      return { success: false, message: '送信がタイムアウトしました' };
-    }
-    return {
-      success: false,
-      message: '送信に失敗しました。Wi-Fi接続を確認してください',
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  return postToGas(url, payload, {
+    success: `${matches.length}件の試合を送信しました`,
+    // GAS 側は matchId で重複排除するため再送信しても二重登録はされない
+    timeout:
+      '応答がタイムアウトしました。反映済みの可能性があるためシートを確認してください（再送信しても重複しません）',
+  });
 }
 
 // 会計データをSheetsに送信
@@ -146,36 +170,9 @@ export async function sendAccountingToSheets(
     finalTotal: record.finalTotal,
   };
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-      mode: 'no-cors',
-    });
-
-    if (response.type === 'opaque') {
-      return { success: true, message: '会計データを送信しました' };
-    }
-
-    if (!response.ok) {
-      return { success: false, message: `送信エラー (${response.status})` };
-    }
-
-    return { success: true, message: '会計データを送信しました' };
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      return { success: false, message: '送信がタイムアウトしました' };
-    }
-    return {
-      success: false,
-      message: '送信に失敗しました。Wi-Fi接続を確認してください',
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  return postToGas(url, payload, {
+    success: '会計データを送信しました',
+    timeout:
+      '応答がタイムアウトしました。反映済みの可能性があるためシートを確認してから再送信してください',
+  });
 }
