@@ -359,7 +359,6 @@ badminton-manager/
 │   │   ├── firestoreUtils.ts          # requireDb / 共通ヘルパー
 │   │   ├── gameOperations.ts          # ゲーム進行ロジック
 │   │   ├── inputValidation.ts         # 入力検証
-│   │   ├── legacyStorageMigration.ts  # 旧 localStorage 撤去
 │   │   ├── matchFilter.ts             # 試合フィルタ（自分の試合等）
 │   │   ├── notifications.ts           # ブラウザ通知
 │   │   ├── reservationUtils.ts        # 予約ロジック

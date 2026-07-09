@@ -69,6 +69,19 @@ Firestore 真実のソース化により、UI からの書き込みは `useSessi
   （lint 実行時の ESLintIgnoreWarning が解消）
 - 未使用 devDependency `@testing-library/user-event` を削除
 
+### 6. ローカルモードの名残り削除（追加対応）
+
+- `src/lib/legacyStorageMigration.ts`（+テスト）と `main.tsx` の呼び出しを削除。
+  ローカルモード時代の localStorage キー（`badminton-players` /
+  `firebase_session_*` 等）を一度だけ掃除するシムで、2026-05 導入から
+  2 ヶ月経過し全端末で実行済みと判断。削除の影響は「5 月以降未訪問の端末に
+  無害な旧キーが残る」のみ。
+- `SessionCreate.tsx` の「ローカルモード廃止」に言及する stale コメントを削除。
+- 残置（現役のため）: `settingsStore` / `sessionStore` の persist `migrate`
+  シム（旧 localStorage 汚染防止の安全弁）、`isFirebaseConfigured` /
+  `FirebaseConfigBanner`（.env 未設定時の明示エラー）、会計計算ページの
+  下書き保存・`dev-mode` フラグ（意図的な端末ローカル機能）。
+
 ## 削除しないと判断したもの
 
 - `docs/webhook.js`: GAS（Google Apps Script）デプロイ用ソース。ビルド対象外だが
