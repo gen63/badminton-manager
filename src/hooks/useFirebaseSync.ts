@@ -24,7 +24,9 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { DEFAULT_RESERVATION_BLOCK_THRESHOLD } from '../lib/algorithm';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { usePresenceStore } from '../stores/presenceStore';
-import { notifyMatchStart, notifyUnpaidRest } from '../lib/notifications';
+import { notifyMatchStart, notifyForcedRest } from '../lib/notifications';
+import { unresolvedOpsOf } from '../services/sessionMutations';
+import { useNoticeStore } from '../stores/noticeStore';
 import type { Court } from '../types/court';
 import type { Player } from '../types/player';
 import type { GameState } from '../services/sessionService';
@@ -35,8 +37,8 @@ const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 /** 試合開始通知の重複防止（プロセス全体で共有） */
 const notifiedMatches = new Set<string>();
 
-/** 未払い強制休憩通知の重複防止（プロセス全体で共有） */
-const notifiedUnpaidRests = new Set<string>();
+/** 未対応強制休憩通知の重複防止（プロセス全体で共有） */
+const notifiedForcedRests = new Set<string>();
 
 /** 浅い参照差分があるかを JSON 比較で判定（H3 setState スキップ用） */
 function jsonEqual(a: unknown, b: unknown): boolean {
@@ -199,9 +201,9 @@ export function useFirebaseSync() {
           checkMatchStartNotifications(oldCourts, gameState.courts);
         }
 
-        // 未払い強制休憩の全員通知（実施端末以外もここで受け取る）
+        // 未対応（会費・名簿）強制休憩の全員通知（実施端末以外もここで受け取る）
         if (gameState.players !== undefined) {
-          checkUnpaidRestNotifications(gameState.players);
+          checkForcedRestNotifications(gameState.players);
         }
 
         // 直接 setState（merge なし）。フィールドが remote に欠損している場合は
@@ -307,25 +309,40 @@ export function useFirebaseSync() {
       useSyncStatusStore.getState().setGameStateLoaded(false);
       // 通知済みセットはセッション切替時にクリア（新セッションでは再通知してよい）
       notifiedMatches.clear();
-      notifiedUnpaidRests.clear();
+      notifiedForcedRests.clear();
     };
   }, [sessionId, reconnectNonce]);
 }
 
 /**
- * 未払い強制休憩（`unpaidRestAt` が新しくセットされたプレイヤー）を全メンバーに
- * 通知する。強制休憩を実施した端末も自分の onSnapshot でここを通るので、
- * 通知許可済みの全端末に届く。
+ * 未対応強制休憩（`forcedRestAt` が新しくセットされたプレイヤー）を全メンバーに
+ * 通知する。強制休憩を実施した端末も自分の onSnapshot でここを通るので全端末に
+ * 届く。通知許可が無いメンバーにも見えるよう、Browser Notification に加えて
+ * グローバルトースト（noticeStore → App 直下の GlobalNotices）でも表示する。
+ * 本人には「お願い」文言、他メンバーには「お知らせ」文言を出し分ける。
  */
-function checkUnpaidRestNotifications(newPlayers: Player[]) {
+function checkForcedRestNotifications(newPlayers: Player[]) {
+  const currentUser = useSessionStore.getState().currentUser;
   for (const p of newPlayers) {
-    if (!p.unpaidRestAt) continue;
-    const key = `${p.id}-${p.unpaidRestAt}`;
-    if (notifiedUnpaidRests.has(key)) continue;
-    notifiedUnpaidRests.add(key);
+    if (!p.forcedRestAt) continue;
+    const key = `${p.id}-${p.forcedRestAt}`;
+    if (notifiedForcedRests.has(key)) continue;
+    notifiedForcedRests.add(key);
     // 実施から 2 分以上経過していれば通知しない（リロード時の誤通知防止）
-    if (Date.now() - p.unpaidRestAt > 120_000) continue;
-    notifyUnpaidRest(p.name);
+    if (Date.now() - p.forcedRestAt > 120_000) continue;
+
+    // 未対応項目（会費/名簿）は受信した最新スナップショットから導出する
+    const unresolved = unresolvedOpsOf(p);
+    const labels = unresolved.map((f) => (f === 'payment' ? '会費の支払い' : '名簿の記入'));
+    const reason = (labels.length > 0 ? labels : ['会費・名簿の対応']).join('と');
+
+    const isSelf = currentUser === p.name;
+    const message = isSelf
+      ? `${reason}がまだのため、休憩になりました。対応後に休憩を解除してください`
+      : `${p.name}さんは${reason}が未対応のため休憩になりました`;
+
+    useNoticeStore.getState().show(message, 'warning', 8000);
+    notifyForcedRest(p.name, message);
   }
 }
 

@@ -5,6 +5,7 @@ import { FirebaseSyncMount } from './components/FirebaseSyncMount';
 import { FirebaseConfigBanner } from './components/FirebaseConfigBanner';
 import { SyncErrorBanner } from './components/SyncErrorBanner';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { GlobalNotices } from './components/GlobalNotices';
 import { Loader2 } from 'lucide-react';
 
 // Phase 8 / PERF1: ルート別 code splitting でメインバンドルを縮小。
@@ -76,6 +77,7 @@ function App() {
             </Routes>
           </Suspense>
           <PWAPrompt />
+          <GlobalNotices />
         </FirebaseSyncMount>
       </BrowserRouter>
     </ErrorBoundary>

@@ -265,11 +265,12 @@ export function MainPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id, playingCourtsSignature, autoEndMatch]);
 
-  // 未払いメンバーの強制休憩チェック（毎分 + マウント時）。
-  // 「試合 1 回以上消化 + チェックインから猶予時間経過 + 未払い」を満たす
-  // メンバーを強制休憩にする。全端末で走るが、unpaidRestAt マーカーにより
+  // 会費・名簿未対応メンバーの強制休憩チェック（毎分 + マウント時）。
+  // 「最初の試合を終えてから猶予時間経過 + 会費または名簿が未対応」を満たす
+  // メンバーを強制休憩にする。全端末で走るが、forcedRestAt マーカーにより
   // 1 人につき 1 度だけ実施される。実施の全員通知は useFirebaseSync が
-  // onSnapshot 受信時に Browser Notification で行う。
+  // onSnapshot 受信時にグローバルトースト + Browser Notification で行う
+  // （実施端末も自分の onSnapshot で受け取るのでここでは通知しない）。
   useEffect(() => {
     if (!session?.id) return;
     if (!isGameStateLoaded) return;
@@ -278,28 +279,25 @@ export function MainPage() {
     const check = async () => {
       // ローカル状態で先に候補を評価し、ゼロなら transaction を投げない
       // （全端末×毎分の無駄な read を抑制）。
-      const local = sm.computeEnforceUnpaidRest({
+      const gameStore = useGameStore.getState();
+      const local = sm.computeEnforceForcedRest({
         players: usePlayerStore.getState().players,
-        courts: useGameStore.getState().courts,
-        matchHistory: [],
+        courts: gameStore.courts,
+        matchHistory: gameStore.matchHistory,
         reservations: [],
       });
       if (local.enforced.length === 0) return;
       try {
-        const { enforced } = await sm.enforceUnpaidRest(sessionId);
-        if (enforced.length > 0) {
-          const names = enforced.map((p) => `${p.name}さん`).join('・');
-          toast.warning(`${names}を会費未払いのため休憩にしました`);
-        }
+        await sm.enforceForcedRest(sessionId);
       } catch (err) {
-        console.error('[EnforceUnpaidRest] Transaction failed:', err);
+        console.error('[EnforceForcedRest] Transaction failed:', err);
       }
     };
 
     void check();
     const intervalId = setInterval(() => void check(), 60_000);
     return () => clearInterval(intervalId);
-  }, [session?.id, isGameStateLoaded, toast]);
+  }, [session?.id, isGameStateLoaded]);
 
   const playersInCourts = useMemo(() => new Set(
     courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim())

@@ -49,14 +49,14 @@ export function notifyMatchStart(
   });
 }
 
-/** 未払いメンバーを強制休憩にしたことを通知する */
-export function notifyUnpaidRest(playerName: string): void {
+/** 会費・名簿未対応メンバーを強制休憩にしたことを通知する（body は呼び出し側で組み立てる） */
+export function notifyForcedRest(playerName: string, body: string): void {
   if (!isNotificationSupported()) return;
   if (Notification.permission !== 'granted') return;
 
-  new Notification('会費未払いのため休憩', {
-    body: `${playerName}さんは会費が未払いのため休憩になりました`,
+  new Notification('未対応のため休憩', {
+    body,
     icon: '/badminton-manager/icons/icon-192x192.png',
-    tag: `unpaid-rest-${playerName}`,
+    tag: `forced-rest-${playerName}`,
   });
 }

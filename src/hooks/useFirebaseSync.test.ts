@@ -47,8 +47,10 @@ vi.mock('react-router-dom', () => ({
 
 // 通知関数を mock
 const mockNotifyMatchStart = vi.fn();
+const mockNotifyForcedRest = vi.fn();
 vi.mock('../lib/notifications', () => ({
   notifyMatchStart: (...args: unknown[]) => mockNotifyMatchStart(...args),
+  notifyForcedRest: (...args: unknown[]) => mockNotifyForcedRest(...args),
 }));
 
 import { useFirebaseSync } from './useFirebaseSync';
@@ -58,6 +60,7 @@ import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
+import { useNoticeStore } from '../stores/noticeStore';
 
 const SESSION_ID = 'sess-1';
 const NOW = 1_700_000_000_000;
@@ -92,6 +95,8 @@ beforeEach(() => {
   mockUnsub.mockClear();
   mockNavigate.mockClear();
   mockNotifyMatchStart.mockClear();
+  mockNotifyForcedRest.mockClear();
+  useNoticeStore.setState({ notices: [] });
   // ストアをリセット
   useSessionStore.setState({ session: null, currentUser: null });
   usePlayerStore.setState({ players: [] });
@@ -474,5 +479,119 @@ describe('useFirebaseSync - 削除 / TTL', () => {
         },
       },
     });
+  });
+});
+
+describe('useFirebaseSync - 未対応強制休憩の全員通知', () => {
+  const emptyGameStateBase = {
+    courts: [],
+    matchHistory: [],
+    reservations: [],
+  };
+
+  const forcedRestPlayer = (
+    id: string,
+    name: string,
+    forcedRestAt: number,
+    operationStatus = { payment: false, roster: true, checkin: true },
+  ) => ({
+    id,
+    name,
+    isResting: true,
+    gamesPlayed: 1,
+    lastPlayedAt: 0,
+    activatedAt: 0,
+    operationStatus,
+    forcedRestAt,
+  });
+
+  it('forcedRestAt が新規セットされたらトースト + Notification を出し、再受信では重複しない', () => {
+    setSharedSession();
+    renderHook(() => useFirebaseSync());
+
+    const snapshot = {
+      updatedAt: NOW,
+      gameState: {
+        ...emptyGameStateBase,
+        players: [forcedRestPlayer('fr1', 'Alice', NOW - 1000)],
+      },
+    };
+    act(() => emit(snapshot));
+
+    const notices = useNoticeStore.getState().notices;
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      type: 'warning',
+      message: 'Aliceさんは会費の支払いが未対応のため休憩になりました',
+    });
+    expect(mockNotifyForcedRest).toHaveBeenCalledTimes(1);
+
+    // 同じスナップショットを再受信しても再通知しない
+    act(() => emit(snapshot));
+    expect(useNoticeStore.getState().notices).toHaveLength(1);
+    expect(mockNotifyForcedRest).toHaveBeenCalledTimes(1);
+  });
+
+  it('会費・名簿の両方が未対応なら両方を文言に含める', () => {
+    setSharedSession();
+    renderHook(() => useFirebaseSync());
+
+    act(() =>
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          ...emptyGameStateBase,
+          players: [
+            forcedRestPlayer('fr2', 'Bob', NOW - 2000, {
+              payment: false,
+              roster: false,
+              checkin: true,
+            }),
+          ],
+        },
+      }),
+    );
+
+    expect(useNoticeStore.getState().notices[0].message).toBe(
+      'Bobさんは会費の支払いと名簿の記入が未対応のため休憩になりました',
+    );
+  });
+
+  it('本人（currentUser）には対応をお願いする文言を出す', () => {
+    setSharedSession();
+    useSessionStore.setState({ currentUser: 'Carol' });
+    renderHook(() => useFirebaseSync());
+
+    act(() =>
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          ...emptyGameStateBase,
+          players: [forcedRestPlayer('fr3', 'Carol', NOW - 3000)],
+        },
+      }),
+    );
+
+    expect(useNoticeStore.getState().notices[0].message).toBe(
+      '会費の支払いがまだのため、休憩になりました。対応後に休憩を解除してください',
+    );
+  });
+
+  it('2 分以上前の forcedRestAt は通知しない（リロード時の誤通知防止）', () => {
+    setSharedSession();
+    renderHook(() => useFirebaseSync());
+
+    act(() =>
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          ...emptyGameStateBase,
+          players: [forcedRestPlayer('fr4', 'Dave', NOW - 3 * 60_000)],
+        },
+      }),
+    );
+
+    expect(useNoticeStore.getState().notices).toHaveLength(0);
+    expect(mockNotifyForcedRest).not.toHaveBeenCalled();
   });
 });

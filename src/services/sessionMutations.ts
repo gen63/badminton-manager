@@ -301,38 +301,56 @@ export function computeApplyPayment(
   };
 }
 
-/** 未払いメンバーを強制休憩にするまでの猶予時間（ms）。チェックイン起点。 */
-export const UNPAID_REST_GRACE_MS = 30 * 60 * 1000;
+/** 会費・名簿未対応メンバーを強制休憩にするまでの猶予時間（ms）。最初の試合終了が起点。 */
+export const FORCED_REST_GRACE_MS = 30 * 60 * 1000;
+
+/** 会費・名簿の未対応項目。空配列 = 対応済み。 */
+export function unresolvedOpsOf(p: Player): ('payment' | 'roster')[] {
+  const unresolved: ('payment' | 'roster')[] = [];
+  if (!p.operationStatus?.payment) unresolved.push('payment');
+  if (!p.operationStatus?.roster) unresolved.push('roster');
+  return unresolved;
+}
 
 /**
- * 未払いメンバーの強制休憩を計算する。対象条件（すべて AND）:
- *   - 支払い未完了（operationStatus.payment が false / 未設定）
- *   - `unpaidRestAt` 未セット（べき等マーカー。1 人につき 1 度だけ発火）
- *   - 試合を 1 回以上消化（gamesPlayed >= 1）
- *   - チェックイン（activatedAt。0 なら lastPlayedAt にフォールバック）から
- *     `UNPAID_REST_GRACE_MS` 以上経過
+ * 会費・名簿未対応メンバーの強制休憩を計算する。対象条件（すべて AND）:
+ *   - 会費（payment）または名簿（roster）が未対応
+ *   - `forcedRestAt` 未セット（べき等マーカー。1 人につき 1 度だけ発火）
+ *   - 最初の試合を終えてから `FORCED_REST_GRACE_MS` 以上経過
+ *     （matchHistory 中の本人出場試合の最古 finishedAt が起点。
+ *      試合未消化なら対象外）
  *   - コート上にいない（試合中のメンバーは引き剥がさず、試合終了後の
  *     次回チェックで対象化する）
  *
- * 対象者は `isResting: true` + `unpaidRestAt: now`。既に休憩中でもマーカーを
+ * 対象者は `isResting: true` + `forcedRestAt: now`。既に休憩中でもマーカーを
  * セットして `enforced` に含める（元々休憩でも全員通知は行う仕様のため）。
  */
-export function computeEnforceUnpaidRest(
+export function computeEnforceForcedRest(
   state: GameState,
   now: number = Date.now(),
 ): { state: GameState; enforced: Player[] } {
   const playingIds = new Set(
     state.courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((pid) => pid),
   );
+  // 各プレイヤーの最初の試合終了時刻
+  const firstFinishedAt = new Map<string, number>();
+  for (const m of state.matchHistory) {
+    if (!m.finishedAt) continue;
+    for (const pid of [...m.teamA, ...m.teamB]) {
+      if (!pid) continue;
+      const cur = firstFinishedAt.get(pid);
+      if (cur === undefined || m.finishedAt < cur) firstFinishedAt.set(pid, m.finishedAt);
+    }
+  }
+
   const enforced: Player[] = [];
   const players = state.players.map((p) => {
-    if (p.operationStatus?.payment) return p;
-    if (p.unpaidRestAt) return p;
-    if (p.gamesPlayed < 1) return p;
-    const baseline = p.activatedAt > 0 ? p.activatedAt : p.lastPlayedAt;
-    if (baseline <= 0 || now - baseline < UNPAID_REST_GRACE_MS) return p;
+    if (unresolvedOpsOf(p).length === 0) return p;
+    if (p.forcedRestAt) return p;
+    const baseline = firstFinishedAt.get(p.id);
+    if (baseline === undefined || now - baseline < FORCED_REST_GRACE_MS) return p;
     if (playingIds.has(p.id)) return p;
-    const next = { ...p, isResting: true, unpaidRestAt: now };
+    const next = { ...p, isResting: true, forcedRestAt: now };
     enforced.push(next);
     return next;
   });
@@ -889,14 +907,14 @@ export function markLateBalanceAutoFired(sessionId: string) {
 }
 
 /**
- * 未払いメンバーの強制休憩を実施する。対象がいなければ **書き込まずに** 返す
- * （定期チェックから全端末が毎分呼んでも無駄な write / updatedAt 更新をしない）。
+ * 会費・名簿未対応メンバーの強制休憩を実施する。対象がいなければ **書き込まずに**
+ * 返す（定期チェックから全端末が毎分呼んでも無駄な write / updatedAt 更新をしない）。
  *
- * `unpaidRestAt` マーカーがべき等キーとして働くため、複数端末が同時に呼んでも
+ * `forcedRestAt` マーカーがべき等キーとして働くため、複数端末が同時に呼んでも
  * 実際に書き込むのは 1 端末だけになる。`now` はクロージャで 1 度だけ生成し、
  * transaction リトライ時も同じ値を使う（idempotent）。
  */
-export async function enforceUnpaidRest(
+export async function enforceForcedRest(
   sessionId: string,
 ): Promise<{ enforced: Player[] }> {
   const _db = requireDb();
@@ -914,7 +932,7 @@ export async function enforceUnpaidRest(
         throw new SessionError('セッションの状態が初期化されていません', 'invalid-state');
       }
 
-      const { state: next, enforced } = computeEnforceUnpaidRest(remote, now);
+      const { state: next, enforced } = computeEnforceForcedRest(remote, now);
       if (enforced.length === 0) return { enforced };
 
       transaction.update(ref, buildGameStatePayload(next));

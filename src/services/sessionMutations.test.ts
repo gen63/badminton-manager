@@ -63,9 +63,10 @@ import {
   swapPlayer,
   swapPositions,
   markLateBalanceAutoFired,
-  computeEnforceUnpaidRest,
-  enforceUnpaidRest,
-  UNPAID_REST_GRACE_MS,
+  computeEnforceForcedRest,
+  enforceForcedRest,
+  unresolvedOpsOf,
+  FORCED_REST_GRACE_MS,
 } from './sessionMutations';
 import type { GameState } from './sessionService';
 import type { Player } from '../types/player';
@@ -763,128 +764,183 @@ describe('sessionMutations - markLateBalanceAutoFired', () => {
 });
 
 // =============================================================================
-// 未払いメンバーの強制休憩
+// 会費・名簿未対応メンバーの強制休憩
 // =============================================================================
 
-describe('computeEnforceUnpaidRest', () => {
+describe('computeEnforceForcedRest', () => {
   const NOW = 10_000_000_000;
-  // 猶予時間を十分過ぎたチェックイン時刻
-  const CHECKED_IN = NOW - UNPAID_REST_GRACE_MS - 60_000;
+  // 猶予時間を十分過ぎた「最初の試合終了」時刻
+  const FIRST_FINISHED = NOW - FORCED_REST_GRACE_MS - 60_000;
 
-  const unpaidPlayed = (id: string, overrides: Partial<Player> = {}): Player =>
+  // p1 が最初の試合を FIRST_FINISHED に終えている履歴
+  const historyFor = (playerId: string, finishedAt = FIRST_FINISHED): Match[] => [
+    makeMatch('m1', { teamA: [playerId, 'x1'], teamB: ['x2', 'x3'], finishedAt }),
+  ];
+
+  const unresolvedPlayer = (id: string, overrides: Partial<Player> = {}): Player =>
     makePlayer(id, {
       gamesPlayed: 1,
-      activatedAt: CHECKED_IN,
-      lastPlayedAt: NOW - 5 * 60_000,
       operationStatus: { payment: false, roster: true, checkin: true },
       ...overrides,
     });
 
-  it('未払い + 試合 1 回以上 + 猶予経過で強制休憩 + マーカーをセットする', () => {
-    const state = baseState({ players: [unpaidPlayed('p1')] });
-    const { state: next, enforced } = computeEnforceUnpaidRest(state, NOW);
+  it('会費未払い + 最初の試合終了から猶予経過で強制休憩 + マーカーをセットする', () => {
+    const state = baseState({
+      players: [unresolvedPlayer('p1')],
+      matchHistory: historyFor('p1'),
+    });
+    const { state: next, enforced } = computeEnforceForcedRest(state, NOW);
     expect(enforced.map((p) => p.id)).toEqual(['p1']);
     expect(next.players[0]).toMatchObject({
       isResting: true,
-      unpaidRestAt: NOW,
+      forcedRestAt: NOW,
     });
   });
 
-  it('支払い済みのプレイヤーは対象外', () => {
+  it('名簿未対応（会費は支払い済み）でも対象になる', () => {
     const state = baseState({
       players: [
-        unpaidPlayed('p1', {
+        unresolvedPlayer('p1', {
+          operationStatus: { payment: true, roster: false, checkin: true },
+        }),
+      ],
+      matchHistory: historyFor('p1'),
+    });
+    const { enforced } = computeEnforceForcedRest(state, NOW);
+    expect(enforced.map((p) => p.id)).toEqual(['p1']);
+  });
+
+  it('会費・名簿とも対応済みのプレイヤーは対象外', () => {
+    const state = baseState({
+      players: [
+        unresolvedPlayer('p1', {
           operationStatus: { payment: true, roster: true, checkin: true },
         }),
       ],
+      matchHistory: historyFor('p1'),
     });
-    const { state: next, enforced } = computeEnforceUnpaidRest(state, NOW);
+    const { state: next, enforced } = computeEnforceForcedRest(state, NOW);
     expect(enforced).toEqual([]);
     expect(next).toBe(state);
   });
 
-  it('試合を消化していない (gamesPlayed=0) プレイヤーは対象外', () => {
+  it('試合を 1 度も終えていないプレイヤーは対象外', () => {
     const state = baseState({
-      players: [unpaidPlayed('p1', { gamesPlayed: 0, lastPlayedAt: 0 })],
+      players: [unresolvedPlayer('p1')],
+      matchHistory: [],
     });
-    const { enforced } = computeEnforceUnpaidRest(state, NOW);
+    const { enforced } = computeEnforceForcedRest(state, NOW);
     expect(enforced).toEqual([]);
   });
 
-  it('チェックインから猶予時間が経過していないプレイヤーは対象外', () => {
+  it('最初の試合終了から猶予時間が経過していないプレイヤーは対象外', () => {
     const state = baseState({
-      players: [unpaidPlayed('p1', { activatedAt: NOW - UNPAID_REST_GRACE_MS + 1 })],
+      players: [unresolvedPlayer('p1')],
+      matchHistory: historyFor('p1', NOW - FORCED_REST_GRACE_MS + 1),
     });
-    const { enforced } = computeEnforceUnpaidRest(state, NOW);
+    const { enforced } = computeEnforceForcedRest(state, NOW);
     expect(enforced).toEqual([]);
   });
 
-  it('activatedAt=0 のときは lastPlayedAt にフォールバックして経過判定する', () => {
-    const eligible = unpaidPlayed('p1', { activatedAt: 0, lastPlayedAt: CHECKED_IN });
-    const notYet = unpaidPlayed('p2', {
-      activatedAt: 0,
-      lastPlayedAt: NOW - UNPAID_REST_GRACE_MS + 1,
+  it('起点は「最初の」試合終了時刻（直近ではない）', () => {
+    // 1 試合目は猶予超過、2 試合目は直近 → 1 試合目起点なので対象
+    const state = baseState({
+      players: [unresolvedPlayer('p1', { gamesPlayed: 2 })],
+      matchHistory: [
+        makeMatch('m2', { teamA: ['p1', 'x1'], teamB: ['x2', 'x3'], finishedAt: NOW - 60_000 }),
+        makeMatch('m1', { teamA: ['p1', 'x1'], teamB: ['x2', 'x3'], finishedAt: FIRST_FINISHED }),
+      ],
     });
-    const { enforced } = computeEnforceUnpaidRest(
-      baseState({ players: [eligible, notYet] }),
-      NOW,
-    );
+    const { enforced } = computeEnforceForcedRest(state, NOW);
     expect(enforced.map((p) => p.id)).toEqual(['p1']);
   });
 
   it('コート上（試合中）のプレイヤーは引き剥がさない（マーカーもセットしない）', () => {
     const state = baseState({
-      players: [unpaidPlayed('p1')],
+      players: [unresolvedPlayer('p1')],
+      matchHistory: historyFor('p1'),
       courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'], isPlaying: true })],
     });
-    const { state: next, enforced } = computeEnforceUnpaidRest(state, NOW);
+    const { state: next, enforced } = computeEnforceForcedRest(state, NOW);
     expect(enforced).toEqual([]);
-    expect(next.players[0].unpaidRestAt).toBeUndefined();
+    expect(next.players[0].forcedRestAt).toBeUndefined();
     expect(next.players[0].isResting).toBe(false);
   });
 
-  it('既にマーカー付き (unpaidRestAt) のプレイヤーには再発火しない', () => {
+  it('既にマーカー付き (forcedRestAt) のプレイヤーには再発火しない', () => {
     const state = baseState({
-      players: [unpaidPlayed('p1', { isResting: true, unpaidRestAt: NOW - 60_000 })],
+      players: [unresolvedPlayer('p1', { isResting: true, forcedRestAt: NOW - 60_000 })],
+      matchHistory: historyFor('p1'),
     });
-    const { state: next, enforced } = computeEnforceUnpaidRest(state, NOW);
+    const { state: next, enforced } = computeEnforceForcedRest(state, NOW);
     expect(enforced).toEqual([]);
     expect(next).toBe(state);
   });
 
   it('元々休憩中でもマーカーをセットして enforced に含める（通知対象）', () => {
-    const state = baseState({ players: [unpaidPlayed('p1', { isResting: true })] });
-    const { state: next, enforced } = computeEnforceUnpaidRest(state, NOW);
+    const state = baseState({
+      players: [unresolvedPlayer('p1', { isResting: true })],
+      matchHistory: historyFor('p1'),
+    });
+    const { state: next, enforced } = computeEnforceForcedRest(state, NOW);
     expect(enforced.map((p) => p.id)).toEqual(['p1']);
-    expect(next.players[0]).toMatchObject({ isResting: true, unpaidRestAt: NOW });
+    expect(next.players[0]).toMatchObject({ isResting: true, forcedRestAt: NOW });
   });
 
-  it('operationStatus 未設定（旧データ）は未払いとして扱う', () => {
+  it('operationStatus 未設定（旧データ）は会費・名簿とも未対応として扱う', () => {
     const state = baseState({
-      players: [unpaidPlayed('p1', { operationStatus: undefined })],
+      players: [unresolvedPlayer('p1', { operationStatus: undefined })],
+      matchHistory: historyFor('p1'),
     });
-    const { enforced } = computeEnforceUnpaidRest(state, NOW);
+    const { enforced } = computeEnforceForcedRest(state, NOW);
     expect(enforced.map((p) => p.id)).toEqual(['p1']);
   });
 });
 
-describe('enforceUnpaidRest (wrapper)', () => {
+describe('unresolvedOpsOf', () => {
+  it('未対応の項目だけを返す', () => {
+    expect(
+      unresolvedOpsOf(
+        makePlayer('p1', { operationStatus: { payment: false, roster: true, checkin: true } }),
+      ),
+    ).toEqual(['payment']);
+    expect(
+      unresolvedOpsOf(
+        makePlayer('p1', { operationStatus: { payment: true, roster: false, checkin: true } }),
+      ),
+    ).toEqual(['roster']);
+    expect(unresolvedOpsOf(makePlayer('p1', { operationStatus: undefined }))).toEqual([
+      'payment',
+      'roster',
+    ]);
+    expect(
+      unresolvedOpsOf(
+        makePlayer('p1', { operationStatus: { payment: true, roster: true, checkin: false } }),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe('enforceForcedRest (wrapper)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
   });
 
-  const CHECKED_IN = Date.now() - UNPAID_REST_GRACE_MS - 60_000;
+  const FIRST_FINISHED = Date.now() - FORCED_REST_GRACE_MS - 60_000;
+  const history: Match[] = [
+    makeMatch('m1', { teamA: ['p1', 'x1'], teamB: ['x2', 'x3'], finishedAt: FIRST_FINISHED }),
+  ];
 
   it('対象がいれば gameState を書き込み enforced を返す', async () => {
     const state = baseState({
       players: [
         makePlayer('p1', {
-          gamesPlayed: 2,
-          activatedAt: CHECKED_IN,
-          operationStatus: { payment: false, roster: true, checkin: true },
+          gamesPlayed: 1,
+          operationStatus: { payment: false, roster: false, checkin: true },
         }),
       ],
+      matchHistory: history,
     });
     mockTransactionGet.mockResolvedValueOnce({
       exists: () => true,
@@ -892,14 +948,14 @@ describe('enforceUnpaidRest (wrapper)', () => {
       ref: { __docRef: true },
     });
 
-    const { enforced } = await enforceUnpaidRest('session-1');
+    const { enforced } = await enforceForcedRest('session-1');
 
     expect(enforced.map((p) => p.id)).toEqual(['p1']);
     expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
     const updateArgs = mockTransactionUpdate.mock.calls[0][1];
     expect(updateArgs.gameState.players[0]).toMatchObject({
       isResting: true,
-      unpaidRestAt: expect.any(Number),
+      forcedRestAt: expect.any(Number),
     });
   });
 
@@ -907,11 +963,11 @@ describe('enforceUnpaidRest (wrapper)', () => {
     const state = baseState({
       players: [
         makePlayer('p1', {
-          gamesPlayed: 2,
-          activatedAt: CHECKED_IN,
+          gamesPlayed: 1,
           operationStatus: { payment: true, roster: true, checkin: true },
         }),
       ],
+      matchHistory: history,
     });
     mockTransactionGet.mockResolvedValueOnce({
       exists: () => true,
@@ -919,7 +975,7 @@ describe('enforceUnpaidRest (wrapper)', () => {
       ref: { __docRef: true },
     });
 
-    const { enforced } = await enforceUnpaidRest('session-1');
+    const { enforced } = await enforceForcedRest('session-1');
 
     expect(enforced).toEqual([]);
     expect(mockTransactionUpdate).not.toHaveBeenCalled();
