@@ -6,13 +6,13 @@ on:
     - cron: '0 21 * * *'
   workflow_dispatch:
     inputs:
-      mode:
-        description: '実行モード'
+      target_date:
+        description: '対象日: tomorrow=翌日を対象（通常の定期実行と同じ） / nearest=直近の練習日を対象（動作確認用）。どちらも本番Firestore/GAS/Discordへ実際に書き込みます'
         type: choice
         options:
-          - production
-          - test
-        default: production
+          - tomorrow
+          - nearest
+        default: tomorrow
       force:
         description: '不明点があっても強制的にセッションを作成する'
         type: boolean
@@ -40,7 +40,7 @@ jobs:
           ETOMO_URL: ${{ secrets.ETOMO_URL }}
           GAS_WEB_APP_URL: ${{ secrets.GAS_WEB_APP_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          MODE: ${{ inputs.mode || 'production' }}
+          TARGET_DATE: ${{ inputs.target_date || 'tomorrow' }}
           FORCE_CREATE: ${{ inputs.force || 'false' }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}

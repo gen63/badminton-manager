@@ -17,7 +17,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "auto-session": "tsx scripts/auto-create-session.ts",
-    "auto-session:test": "MODE=test tsx scripts/auto-create-session.ts"
+    "auto-session:nearest": "TARGET_DATE=nearest tsx scripts/auto-create-session.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
