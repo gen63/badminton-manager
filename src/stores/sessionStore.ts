@@ -15,7 +15,6 @@ const isDevMode = (): boolean => {
 interface SessionState {
   session: Session | null;
   currentUser: string | null;
-  setSession: (session: Session) => void;
   updateConfig: (config: Partial<SessionConfig>) => Promise<void>;
   clearSession: () => void;
   setCurrentUser: (name: string | null) => void;
@@ -33,7 +32,6 @@ export const useSessionStore = create<SessionState>()(
     (set, get) => ({
       session: null,
       currentUser: null,
-      setSession: (session) => set({ session }),
       updateConfig: async (config) => {
         // ローカル更新（即座に反映、クライアント時刻）
         set((state) => ({

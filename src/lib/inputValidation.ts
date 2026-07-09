@@ -10,9 +10,6 @@
 /** プレイヤー名の最大長（UTF-16 単位） */
 export const MAX_PLAYER_NAME_LENGTH = 32;
 
-/** セッション ID の長さ（generateFirebaseSessionId と一致） */
-export const SESSION_ID_LENGTH = 6;
-
 /** セッション ID は大文字英数字 */
 const SESSION_ID_REGEX = /^[A-Z0-9]{6}$/;
 

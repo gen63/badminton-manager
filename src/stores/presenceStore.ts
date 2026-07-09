@@ -7,7 +7,7 @@ import type { PresenceEntry } from '../types/session';
  * sessionStore は persist で localStorage に永続化されるため、
  * ハートビートのたびに localStorage 書き込みが発生しないよう別ストアで管理する。
  */
-export type PresenceMap = { [username: string]: PresenceEntry };
+type PresenceMap = { [username: string]: PresenceEntry };
 
 interface PresenceState {
   remotePresence: PresenceMap;

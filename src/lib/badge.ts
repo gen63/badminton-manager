@@ -1,12 +1,12 @@
 /** PWA Badge API ユーティリティ */
 
 /** Badging APIが使える環境かどうか */
-export function isBadgeSupported(): boolean {
+function isBadgeSupported(): boolean {
   return 'setAppBadge' in navigator && 'clearAppBadge' in navigator;
 }
 
 /** アプリバッジに数値を設定 */
-export async function setAppBadge(count: number): Promise<void> {
+async function setAppBadge(count: number): Promise<void> {
   if (!isBadgeSupported()) return;
   
   try {

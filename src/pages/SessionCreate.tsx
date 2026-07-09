@@ -64,7 +64,6 @@ export function SessionCreate() {
   const navigate = useNavigate();
   const initializeSession = useSessionStore((state) => state.initialize);
 
-  // Phase 4 で常に Firebase 共有セッションを作成する（ローカルモード廃止）
   const [showCreatorSelect, setShowCreatorSelect] = useState(false);
   const [selectedCreatorName, setSelectedCreatorName] = useState('');
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);

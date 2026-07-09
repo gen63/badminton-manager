@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 /** 「不明」/×でスヌーズしたときのデフォルト時間（10 分）。 */
-export const UNRECORDED_DISMISS_DURATION_MS = 10 * 60 * 1000;
+const UNRECORDED_DISMISS_DURATION_MS = 10 * 60 * 1000;
 
 /**
  * 「未記録試合プロンプト」を「不明」/×で閉じた matchId → スヌーズ期限

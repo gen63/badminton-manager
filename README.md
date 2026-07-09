@@ -326,22 +326,17 @@ badminton-manager/
 ├── src/
 │   ├── components/
 │   │   ├── BottomNav.tsx              # ボトムナビゲーション（4タブ・未入力バッジ）
-│   │   ├── CourtCard.tsx              # コートカード（タイマー付き）
 │   │   ├── CourtTimer.tsx             # コートタイマー（独立更新）
 │   │   ├── EmptyState.tsx             # 空状態表示
 │   │   ├── ErrorBoundary.tsx          # 例外捕捉
 │   │   ├── FirebaseConfigBanner.tsx   # Firebase 未設定時の警告
 │   │   ├── FirebaseSyncMount.tsx      # onSnapshot 購読のマウント
-│   │   ├── LoadingSpinner.tsx         # ローディング表示
 │   │   ├── PWAPrompt.tsx              # PWAインストールプロンプト
 │   │   ├── PaymentModal.tsx           # 支払い管理モーダル
 │   │   ├── PlayerAddInput.tsx         # メイン画面のメンバー追加 input
 │   │   ├── PlayerEditModal.tsx        # プレイヤー編集モーダル
-│   │   ├── PlayerSwapModal.tsx        # メンバー交換モーダル
 │   │   ├── PresenceIndicator.tsx      # 接続中ユーザー表示
 │   │   ├── ReservationAddModal.tsx    # 予約追加モーダル
-│   │   ├── ReservationModal.tsx       # 予約一覧モーダル
-│   │   ├── ScoreInputModal.tsx        # スコア入力モーダル
 │   │   ├── SyncErrorBanner.tsx        # 同期エラー表示
 │   │   ├── Toast.tsx                  # トースト通知
 │   │   ├── UnrecordedMatchPrompt.tsx  # 未入力試合プロンプト
@@ -349,7 +344,6 @@ badminton-manager/
 │   ├── hooks/
 │   │   ├── useDevMode.ts              # dev mode 判定
 │   │   ├── useFirebaseSync.ts         # Firestore onSnapshot 購読
-│   │   ├── useGameTimer.ts            # ゲームタイマー
 │   │   ├── useGuardedAction.ts        # 連続クリック抑止
 │   │   ├── usePresence.ts             # プレゼンス送出
 │   │   ├── useSessionWriter.ts        # 書き込みラッパ（sessionMutations 呼び出し）
@@ -365,7 +359,6 @@ badminton-manager/
 │   │   ├── firestoreUtils.ts          # requireDb / 共通ヘルパー
 │   │   ├── gameOperations.ts          # ゲーム進行ロジック
 │   │   ├── inputValidation.ts         # 入力検証
-│   │   ├── legacyStorageMigration.ts  # 旧 localStorage 撤去
 │   │   ├── matchFilter.ts             # 試合フィルタ（自分の試合等）
 │   │   ├── notifications.ts           # ブラウザ通知
 │   │   ├── reservationUtils.ts        # 予約ロジック
