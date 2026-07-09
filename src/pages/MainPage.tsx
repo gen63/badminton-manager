@@ -62,6 +62,9 @@ export function MainPage() {
   const paymentToggle = useGuardedAction(async (playerId: string, amount: number) => {
     await writer.applyPayment(playerId, amount);
   });
+  const paymentRevert = useGuardedAction(async (playerId: string) => {
+    await writer.toggleOperationStatus(playerId, 'payment');
+  });
   const players = usePlayerStore((s) => s.players);
   const courts = useGameStore((s) => s.courts);
   const matchHistory = useGameStore((s) => s.matchHistory);
@@ -98,7 +101,7 @@ export function MainPage() {
 
   const [recentlyRestoredIds, setRecentlyRestoredIds] = useState<Set<string>>(new Set());
   const [showAddPlayer, setShowAddPlayer] = useState(false);
-  const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
+  const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number; isPaid: boolean } | null>(null);
   // 90秒以内の試合終了で確認ダイアログを出す対象コート（null = 非表示）
   const [pendingFinishCourtId, setPendingFinishCourtId] = useState<number | null>(null);
   const [showInformationModal, setShowInformationModal] = useState(false);
@@ -498,7 +501,7 @@ export function MainPage() {
     const player = players.find(p => p.id === playerId);
     if (!player) return;
 
-    const defaultAmount = player.gender === 'M'
+    const genderFee = player.gender === 'M'
       ? maleFee
       : player.gender === 'F'
       ? femaleFee
@@ -507,13 +510,21 @@ export function MainPage() {
     setPaymentModalPlayer({
       id: player.id,
       name: player.name,
-      defaultAmount,
+      // 既に金額が入力済みなら修正しやすいようその値を初期表示する
+      defaultAmount: player.paymentAmount ?? genderFee,
+      isPaid: player.operationStatus?.payment ?? false,
     });
   };
 
   const handlePaymentConfirm = async (amount: number) => {
     if (!paymentModalPlayer) return;
     await paymentToggle.run(paymentModalPlayer.id, amount);
+    setPaymentModalPlayer(null);
+  };
+
+  const handlePaymentRevert = async () => {
+    if (!paymentModalPlayer) return;
+    await paymentRevert.run(paymentModalPlayer.id);
     setPaymentModalPlayer(null);
   };
 
@@ -1199,7 +1210,9 @@ export function MainPage() {
         <PaymentModal
           playerName={paymentModalPlayer.name}
           defaultAmount={paymentModalPlayer.defaultAmount}
+          isPaid={paymentModalPlayer.isPaid}
           onConfirm={handlePaymentConfirm}
+          onRevert={handlePaymentRevert}
           onCancel={() => setPaymentModalPlayer(null)}
         />
       )}

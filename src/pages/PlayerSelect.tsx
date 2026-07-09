@@ -30,7 +30,10 @@ export function PlayerSelect() {
   const paymentToggle = useGuardedAction(async (playerId: string, amount: number) => {
     await writer.applyPayment(playerId, amount);
   });
-  const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number } | null>(null);
+  const paymentRevert = useGuardedAction(async (playerId: string) => {
+    await writer.toggleOperationStatus(playerId, 'payment');
+  });
+  const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number; isPaid: boolean } | null>(null);
   const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F' } | null>(null);
   const [paidCollapsed, setPaidCollapsed] = useState(true);
   const practiceDefaults =
@@ -86,7 +89,7 @@ export function PlayerSelect() {
     const player = players.find(p => p.id === playerId);
     if (!player) return;
 
-    const defaultAmount = player.gender === 'M'
+    const genderFee = player.gender === 'M'
       ? maleFee
       : player.gender === 'F'
       ? femaleFee
@@ -95,13 +98,21 @@ export function PlayerSelect() {
     setPaymentModalPlayer({
       id: player.id,
       name: player.name,
-      defaultAmount,
+      // 既に金額が入力済みなら修正しやすいようその値を初期表示する
+      defaultAmount: player.paymentAmount ?? genderFee,
+      isPaid: player.operationStatus?.payment ?? false,
     });
   };
 
   const handlePaymentConfirm = async (amount: number) => {
     if (!paymentModalPlayer) return;
     await paymentToggle.run(paymentModalPlayer.id, amount);
+    setPaymentModalPlayer(null);
+  };
+
+  const handlePaymentRevert = async () => {
+    if (!paymentModalPlayer) return;
+    await paymentRevert.run(paymentModalPlayer.id);
     setPaymentModalPlayer(null);
   };
 
@@ -256,7 +267,9 @@ export function PlayerSelect() {
         <PaymentModal
           playerName={paymentModalPlayer.name}
           defaultAmount={paymentModalPlayer.defaultAmount}
+          isPaid={paymentModalPlayer.isPaid}
           onConfirm={handlePaymentConfirm}
+          onRevert={handlePaymentRevert}
           onCancel={() => setPaymentModalPlayer(null)}
         />
       )}
