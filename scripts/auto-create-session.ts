@@ -10,8 +10,7 @@
  *   GAS_WEB_APP_URL    - メンバーデータGAS Web App URL
  *   DISCORD_WEBHOOK_URL - Discord Webhook URL
  *   FORCE_CREATE       - 'true'なら不明点があっても強制作成
- *   TARGET_DATE        - 対象日ロジック。'nearest'なら直近の練習日、それ以外(デフォルト'tomorrow')は翌日を対象にする。
- *                        どちらもFirestore/GAS/Discordへの書き込みは本番同様に実行される（安全なドライランではない）
+ *   TARGET_DATE        - 対象日（本番書き込みあり）。'nearest'=直近の練習日、それ以外(デフォルト)='tomorrow'=翌日
  *   VITE_FIREBASE_*    - Firebase設定
  *   TZ                 - Asia/Tokyo
  */

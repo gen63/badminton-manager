@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       target_date:
-        description: '対象日: tomorrow=翌日を対象（通常の定期実行と同じ） / nearest=直近の練習日を対象（動作確認用）。どちらも本番Firestore/GAS/Discordへ実際に書き込みます'
+        description: '対象日（本番書き込みあり）: tomorrow=翌日 / nearest=直近の練習日'
         type: choice
         options:
           - tomorrow
