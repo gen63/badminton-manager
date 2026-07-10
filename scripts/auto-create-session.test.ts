@@ -462,6 +462,32 @@ describe('buildSessionData', () => {
     expect(data.gameState.players[0].gender).toBe('F');
   });
 
+  it('デフォルト周知事項があればinformationとして設定する', () => {
+    const event = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: [], genders: {},
+    };
+    const data = buildSessionData(event, new Map(), new Date(2026, 3, 9), '体育館は土足厳禁です\n会費は現金で');
+    expect(data.information).toBeDefined();
+    expect(data.information?.text).toBe('体育館は土足厳禁です\n会費は現金で');
+    expect(data.information?.readBy).toEqual([]);
+    expect(typeof data.information?.updatedAt).toBe('number');
+  });
+
+  it('デフォルト周知事項が未設定・空白のみならinformationを含めない', () => {
+    const event = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: [], genders: {},
+    };
+    expect(buildSessionData(event, new Map(), new Date(2026, 3, 9))).not.toHaveProperty('information');
+    expect(buildSessionData(event, new Map(), new Date(2026, 3, 9), '')).not.toHaveProperty('information');
+    expect(buildSessionData(event, new Map(), new Date(2026, 3, 9), '  \n ')).not.toHaveProperty('information');
+  });
+
   it('固定メンバーをadminsとして付与する', () => {
     const event = {
       eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
