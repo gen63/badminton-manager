@@ -435,7 +435,7 @@ describe('buildSessionData', () => {
     expect(data.gameState.players[1].rating).toBe(997); // 1000 - 3
     expect(data.gameState.players[0].isResting).toBe(true);
     expect(data.gameState.settings.practiceType).toBe('複');
-    expect(data.gameState.settings.recordScores).toBe(false);
+    expect(data.gameState.settings.recordScores).toBe(true);
   });
 
   it('シングルスのgameModeが正しい', () => {
@@ -447,6 +447,17 @@ describe('buildSessionData', () => {
     };
     const data = buildSessionData(event, new Map(), new Date(2026, 3, 9));
     expect(data.config.gameMode).toBe('singles');
+  });
+
+  it('楽のときはrecordScoresがOFFになる', () => {
+    const event = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '千川館', note: '楽',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: [], genders: {},
+    };
+    const data = buildSessionData(event, new Map(), new Date(2026, 3, 9));
+    expect(data.gameState.settings.recordScores).toBe(false);
   });
 
   it('序列未設定の参加者はrating無し、性別はE-tomoから取得', () => {
