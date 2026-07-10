@@ -435,6 +435,7 @@ describe('buildSessionData', () => {
     expect(data.gameState.players[1].rating).toBe(997); // 1000 - 3
     expect(data.gameState.players[0].isResting).toBe(true);
     expect(data.gameState.settings.practiceType).toBe('複');
+    expect(data.gameState.settings.recordScores).toBe(false);
   });
 
   it('シングルスのgameModeが正しい', () => {

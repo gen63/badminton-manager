@@ -517,7 +517,7 @@ function buildSessionData(
       courts: [{ id: 1, teamA: ['', ''], teamB: ['', ''], scoreA: 0, scoreB: 0, isPlaying: false, startedAt: 0, finishedAt: 0 }],
       matchHistory: [],
       reservations: [],
-      settings: { practiceType: event.note as '単' | '複' | '楽' },
+      settings: { practiceType: event.note as '単' | '複' | '楽', recordScores: false },
     },
   };
 }
