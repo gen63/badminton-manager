@@ -687,3 +687,79 @@ describe('useFirebaseSync - 結果未登録試合の強制休憩通知', () => {
     expect(mockNotifyForcedRest).not.toHaveBeenCalled();
   });
 });
+
+describe('useFirebaseSync - 未対応強制休憩のまとめ通知', () => {
+  const forcedRestPlayer2 = (
+    id: string,
+    name: string,
+    forcedRestAt: number,
+    operationStatus = { payment: false, roster: true, checkin: true },
+  ) => ({
+    id,
+    name,
+    isResting: true,
+    gamesPlayed: 1,
+    lastPlayedAt: 0,
+    activatedAt: 0,
+    operationStatus,
+    forcedRestAt,
+  });
+
+  it('同時に複数人が対象なら 1 件にまとめて通知する（未対応項目は和集合）', () => {
+    setSharedSession();
+    renderHook(() => useFirebaseSync());
+
+    act(() =>
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          players: [
+            forcedRestPlayer2('g1', 'Alice', NOW - 1000),
+            forcedRestPlayer2('g2', 'Bob', NOW - 1000, {
+              payment: true,
+              roster: false,
+              checkin: true,
+            }),
+          ],
+          courts: [],
+          matchHistory: [],
+          reservations: [],
+        },
+      }),
+    );
+
+    const notices = useNoticeStore.getState().notices;
+    expect(notices).toHaveLength(1);
+    expect(notices[0].message).toBe(
+      'Aliceさん・Bobさんは会費の支払いと名簿の記入が未対応のため休憩になりました',
+    );
+    expect(mockNotifyForcedRest).toHaveBeenCalledTimes(1);
+  });
+
+  it('本人が含まれる場合は本人向け 1 件 + 他メンバーまとめ 1 件に分けて出す', () => {
+    setSharedSession();
+    useSessionStore.setState({ currentUser: 'Alice' });
+    renderHook(() => useFirebaseSync());
+
+    act(() =>
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          players: [
+            forcedRestPlayer2('g3', 'Alice', NOW - 1000),
+            forcedRestPlayer2('g4', 'Bob', NOW - 1000),
+          ],
+          courts: [],
+          matchHistory: [],
+          reservations: [],
+        },
+      }),
+    );
+
+    const messages = useNoticeStore.getState().notices.map((n) => n.message);
+    expect(messages).toEqual([
+      '会費の支払いがまだのため、休憩になりました。対応後に休憩を解除してください',
+      'Bobさんは会費の支払いが未対応のため休憩になりました',
+    ]);
+  });
+});

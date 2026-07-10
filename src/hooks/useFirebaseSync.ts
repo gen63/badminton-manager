@@ -326,15 +326,25 @@ export function useFirebaseSync() {
   }, [sessionId, reconnectNonce]);
 }
 
+/** 未対応項目（会費/名簿）の表示ラベル。受信した最新スナップショットから導出する。 */
+function unresolvedLabelsOf(p: Player): string[] {
+  const labels = unresolvedOpsOf(p).map((f) =>
+    f === 'payment' ? '会費の支払い' : '名簿の記入',
+  );
+  return labels.length > 0 ? labels : ['会費・名簿の対応'];
+}
+
 /**
  * 未対応強制休憩（`forcedRestAt` が新しくセットされたプレイヤー）を全メンバーに
  * 通知する。強制休憩を実施した端末も自分の onSnapshot でここを通るので全端末に
  * 届く。通知許可が無いメンバーにも見えるよう、Browser Notification に加えて
  * グローバルトースト（noticeStore → App 直下の GlobalNotices）でも表示する。
- * 本人には「お願い」文言、他メンバーには「お知らせ」文言を出し分ける。
+ * 本人には「お願い」文言、他メンバーには「お知らせ」文言を出し分け、同時に
+ * 複数人が対象になった場合は 1 件にまとめて出す（結果未登録通知と同様）。
  */
 function checkForcedRestNotifications(newPlayers: Player[]) {
   const currentUser = useSessionStore.getState().currentUser;
+  const targets: Player[] = [];
   for (const p of newPlayers) {
     if (!p.forcedRestAt) continue;
     const key = `${p.id}-${p.forcedRestAt}`;
@@ -342,19 +352,25 @@ function checkForcedRestNotifications(newPlayers: Player[]) {
     notifiedForcedRests.add(key);
     // 実施から 2 分以上経過していれば通知しない（リロード時の誤通知防止）
     if (Date.now() - p.forcedRestAt > 120_000) continue;
+    targets.push(p);
+  }
+  if (targets.length === 0) return;
 
-    // 未対応項目（会費/名簿）は受信した最新スナップショットから導出する
-    const unresolved = unresolvedOpsOf(p);
-    const labels = unresolved.map((f) => (f === 'payment' ? '会費の支払い' : '名簿の記入'));
-    const reason = (labels.length > 0 ? labels : ['会費・名簿の対応']).join('と');
+  const self = targets.find((p) => p.name === currentUser);
+  const others = targets.filter((p) => p !== self);
 
-    const isSelf = currentUser === p.name;
-    const message = isSelf
-      ? `${reason}がまだのため、休憩になりました。対応後に休憩を解除してください`
-      : `${p.name}さんは${reason}が未対応のため休憩になりました`;
-
+  if (self) {
+    const message = `${unresolvedLabelsOf(self).join('と')}がまだのため、休憩になりました。対応後に休憩を解除してください`;
     useNoticeStore.getState().show(message, 'warning', 8000);
-    notifyForcedRest(p.name, message);
+    notifyForcedRest(self.name, message);
+  }
+  if (others.length > 0) {
+    // 未対応項目はメンバーごとに違い得るので、まとめ文言では和集合を出す
+    const labelSet = new Set(others.flatMap((p) => unresolvedLabelsOf(p)));
+    const names = others.map((p) => `${p.name}さん`).join('・');
+    const message = `${names}は${[...labelSet].join('と')}が未対応のため休憩になりました`;
+    useNoticeStore.getState().show(message, 'warning', 8000);
+    notifyForcedRest(others.map((p) => p.name).join('-'), message);
   }
 }
 
