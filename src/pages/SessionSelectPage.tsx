@@ -11,7 +11,7 @@ import { useDevMode } from '../hooks/useDevMode';
 import { getMatchUploadBadge, needsAccountingUploadBadge } from '../lib/uploadStatus';
 import { useSessionStore } from '../stores/sessionStore';
 import type { Session } from '../types/session';
-import { Loader2, Plus, Users, MapPin, Calendar, Trophy, StickyNote, Pencil, X, Info, Megaphone } from 'lucide-react';
+import { Loader2, Plus, Users, MapPin, Calendar, Trophy, StickyNote, Pencil, X, Info, Megaphone, ChevronDown } from 'lucide-react';
 
 type PracticeType = '単' | '複' | '楽';
 const PRACTICE_TYPES: readonly PracticeType[] = ['単', '複', '楽'];
@@ -73,6 +73,7 @@ export function SessionSelectPage() {
   const [saving, setSaving] = useState(false);
   // デフォルト周知事項（appConfig/global）。dev モード限定で表示・編集。
   const [defaultAnnouncementText, setDefaultAnnouncementText] = useState('');
+  const [defaultAnnouncementExpanded, setDefaultAnnouncementExpanded] = useState(false);
   const [editingDefault, setEditingDefault] = useState(false);
   const [editingDefaultText, setEditingDefaultText] = useState('');
   const [savingDefault, setSavingDefault] = useState(false);
@@ -318,25 +319,38 @@ export function SessionSelectPage() {
           </div>
         )}
 
-        {/* デフォルト周知事項（開発モード限定）— 新規セッション作成時に自動設定される */}
+        {/* デフォルト周知事項（開発モード限定）— 新規セッション作成時に自動設定される。
+            アコーディオンで開閉し、開くと全文を表示する。 */}
         {devMode && (
           <div className="card overflow-hidden">
             <div className="flex items-stretch">
-              <div className="flex-1 min-w-0 px-3 py-2.5">
+              <button
+                onClick={() => setDefaultAnnouncementExpanded((prev) => !prev)}
+                className="flex-1 min-w-0 text-left px-3 py-2.5 transition-colors hover:bg-muted/50"
+                aria-expanded={defaultAnnouncementExpanded}
+              >
                 <div className="flex items-center gap-1 text-xs font-semibold text-foreground">
                   <Megaphone size={14} className="text-primary flex-shrink-0" />
                   デフォルト周知事項
+                  <ChevronDown
+                    size={14}
+                    className={`ml-auto flex-shrink-0 text-muted-foreground transition-transform duration-200 ${
+                      defaultAnnouncementExpanded ? 'rotate-180' : ''
+                    }`}
+                  />
                 </div>
-                <div className="mt-1 text-xs text-muted-foreground min-w-0">
-                  {defaultAnnouncementText ? (
-                    <span className="block truncate">
-                      {defaultAnnouncementText.split('\n')[0]}
-                    </span>
-                  ) : (
-                    <span>未設定（新規セッション作成時に周知事項へ自動設定されます）</span>
-                  )}
-                </div>
-              </div>
+                {!defaultAnnouncementExpanded && (
+                  <div className="mt-1 text-xs text-muted-foreground min-w-0">
+                    {defaultAnnouncementText ? (
+                      <span className="block truncate">
+                        {defaultAnnouncementText.split('\n')[0]}
+                      </span>
+                    ) : (
+                      <span>未設定（新規セッション作成時に周知事項へ自動設定されます）</span>
+                    )}
+                  </div>
+                )}
+              </button>
               <button
                 onClick={openDefaultEdit}
                 className="text-primary px-3 hover:bg-muted/50 transition-colors flex-shrink-0 flex items-center"
@@ -345,6 +359,11 @@ export function SessionSelectPage() {
                 <Pencil size={16} />
               </button>
             </div>
+            {defaultAnnouncementExpanded && (
+              <div className="px-3 pb-3 -mt-1 text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+                {defaultAnnouncementText || '未設定（新規セッション作成時に周知事項へ自動設定されます）'}
+              </div>
+            )}
           </div>
         )}
 
