@@ -32,6 +32,8 @@ export interface AccountingInputValues {
   otherAmount: number;
   /** 運営協力割引（標準会費と実支払額の差額の合計、円）。省略時は 0 */
   discount?: number;
+  /** 寄付（標準会費を超えて支払われた差額の合計、円）。省略時は 0 */
+  donation?: number;
 }
 
 export interface AccountingTotals {
@@ -43,6 +45,7 @@ export interface AccountingTotals {
   finalTotal: number;
   shuttleUsableCount: number;
   discount: number;
+  donation: number;
 }
 
 /** 会計の各種合計値を計算（入力値のみから算出、純粋関数） */
@@ -52,13 +55,15 @@ export function calculateAccountingTotals(input: AccountingInputValues): Account
   const femaleTotal = input.femaleCount * input.femaleFee;
   const shuttleTotal = input.shuttleCount * input.shuttlePrice;
   const discount = input.discount ?? 0;
-  // incomeTotal は運営協力割引を差し引いた「純収入」。割引は収入の減額として扱う。
-  const incomeTotal = maleTotal + femaleTotal - discount;
+  const donation = input.donation ?? 0;
+  // incomeTotal は運営協力割引を差し引き寄付を加えた「純収入」。
+  // 割引は収入の減額、寄付は収入の増額として扱う。
+  const incomeTotal = maleTotal + femaleTotal - discount + donation;
   const finalTotal = incomeTotal - input.gymCost - shuttleTotal + input.otherAmount;
   const shuttleUsableCount = input.shuttlePrice > 0
     ? Math.max(0, Math.floor((incomeTotal - input.gymCost + input.otherAmount) / input.shuttlePrice))
     : 0;
-  return { participantCount, maleTotal, femaleTotal, incomeTotal, shuttleTotal, finalTotal, shuttleUsableCount, discount };
+  return { participantCount, maleTotal, femaleTotal, incomeTotal, shuttleTotal, finalTotal, shuttleUsableCount, discount, donation };
 }
 
 export interface AccountingCopyInput extends AccountingInputValues {
@@ -77,7 +82,7 @@ export interface AccountingCopyInput extends AccountingInputValues {
 /** コピー用テキストを生成（AccountingPage / AccountingCalcPage で共用） */
 export function buildAccountingCopyText(input: AccountingCopyInput): string {
   const totals = calculateAccountingTotals(input);
-  const { participantCount, maleTotal, femaleTotal, incomeTotal, shuttleTotal, finalTotal, shuttleUsableCount, discount } = totals;
+  const { participantCount, maleTotal, femaleTotal, incomeTotal, shuttleTotal, finalTotal, shuttleUsableCount, discount, donation } = totals;
   const {
     exemptCount, maleCount, femaleCount, maleFee, femaleFee,
     gymCost, shuttlePrice, shuttleCount, otherAmount,
@@ -105,6 +110,11 @@ export function buildAccountingCopyText(input: AccountingCopyInput): string {
     lines.push(`運営協力 -${discount.toLocaleString()}`);
   }
 
+  // 寄付（標準会費を超えた支払い分）は収入の増額として表示
+  if (donation > 0) {
+    lines.push(`寄付 +${donation.toLocaleString()}`);
+  }
+
   // その他（プラスの場合は収入に追加）
   if ((otherDescription || otherAmount !== 0) && otherAmount > 0) {
     lines.push(`${otherDescription || 'その他'} ${otherAmount.toLocaleString()}`);
@@ -129,6 +139,9 @@ export function buildAccountingCopyText(input: AccountingCopyInput): string {
   let totalFormula = `${grossIncome.toLocaleString()}`;
   if (discount > 0) {
     totalFormula += `-${discount.toLocaleString()}`;
+  }
+  if (donation > 0) {
+    totalFormula += `+${donation.toLocaleString()}`;
   }
   totalFormula += `-${gymCost.toLocaleString()}-${shuttleTotal.toLocaleString()}`;
   if (otherAmount !== 0) {

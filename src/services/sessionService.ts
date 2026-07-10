@@ -70,6 +70,38 @@ function generateFirebaseSessionId(): string {
   return result;
 }
 
+/**
+ * セッション一覧用の派生 incomeTotal を計算（純粋関数）。
+ *
+ * AccountingPage の calculateAccountingTotals と同じ「純収入」定義:
+ * 男女会費合計 − 運営協力割引 + 寄付 + プラスのその他収入。
+ * accounting 未設定なら undefined（一覧で非表示）。
+ */
+export function computeDerivedIncomeTotal(
+  accounting: Session['accounting'],
+  players: Player[],
+): number | undefined {
+  if (!accounting) return undefined;
+  const maleFee = accounting.maleFee ?? 0;
+  const femaleFee = accounting.femaleFee ?? 0;
+  // 運営協力割引（標準会費より少なく払った差額）と寄付（多く払った差額）
+  let discount = 0;
+  let donation = 0;
+  for (const p of players) {
+    if (!p?.operationStatus?.payment) continue;
+    const actual = p.paymentAmount ?? 0;
+    if (actual === 0) continue;
+    const expectedFee = p.gender === 'F' ? femaleFee : maleFee;
+    const diff = expectedFee - actual;
+    if (diff > 0) discount += diff;
+    else if (diff < 0) donation += -diff;
+  }
+  const maleTotal = (accounting.maleCount ?? 0) * maleFee;
+  const femaleTotal = (accounting.femaleCount ?? 0) * femaleFee;
+  const otherAmount = accounting.otherAmount ?? 0;
+  return maleTotal + femaleTotal - discount + donation + (otherAmount > 0 ? otherAmount : 0);
+}
+
 /** Firestoreドキュメントからセッションを変換 */
 function docToSession(id: string, data: Record<string, unknown>): Session {
   const gameState = data.gameState as
@@ -83,26 +115,7 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     ? gameState.players.filter((p) => p?.operationStatus?.payment === true).length
     : 0;
   const accounting = data.accounting as Session['accounting'];
-  let incomeTotal: number | undefined;
-  if (accounting) {
-    const players = gameState?.players ?? [];
-    const maleFee = accounting.maleFee ?? 0;
-    const femaleFee = accounting.femaleFee ?? 0;
-    // 運営協力割引（標準会費と実支払額の差額の合計）
-    let discount = 0;
-    for (const p of players) {
-      if (!p?.operationStatus?.payment) continue;
-      const actual = p.paymentAmount ?? 0;
-      if (actual === 0) continue;
-      const expectedFee = p.gender === 'F' ? femaleFee : maleFee;
-      const diff = expectedFee - actual;
-      if (diff > 0) discount += diff;
-    }
-    const maleTotal = (accounting.maleCount ?? 0) * maleFee;
-    const femaleTotal = (accounting.femaleCount ?? 0) * femaleFee;
-    const otherAmount = accounting.otherAmount ?? 0;
-    incomeTotal = maleTotal + femaleTotal - discount + (otherAmount > 0 ? otherAmount : 0);
-  }
+  const incomeTotal = computeDerivedIncomeTotal(accounting, gameState?.players ?? []);
   return {
     id,
     config: data.config as Session['config'],

@@ -217,19 +217,22 @@ export function AccountingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchHistory, players, records, gymShortName, initialized, session, savedAccounting]);
 
-  // 運営協力割引：標準会費と実支払額の差額の合計
+  // 運営協力割引・寄付：標準会費と実支払額の差額の合計
   // 支払い済み (payment === true) かつ 0 円でない（=免除でない）プレイヤーが対象
-  const cooperationDiscount = useMemo(() => {
+  // 少なく払った差額 → 運営協力割引（discount）、多く払った差額 → 寄付（donation）
+  const { discount: cooperationDiscount, donation } = useMemo(() => {
     const paidPlayers = players.filter((p) => p.operationStatus?.payment);
-    let total = 0;
+    let discount = 0;
+    let donation = 0;
     for (const p of paidPlayers) {
       const actual = p.paymentAmount ?? 0;
       if (actual === 0) continue;
       const expectedFee = p.gender === 'F' ? femaleFee : maleFee;
       const diff = expectedFee - actual;
-      if (diff > 0) total += diff;
+      if (diff > 0) discount += diff;
+      else if (diff < 0) donation += -diff;
     }
-    return total;
+    return { discount, donation };
   }, [players, maleFee, femaleFee]);
 
   // 入力値ベースの各種合計
@@ -237,6 +240,7 @@ export function AccountingPage() {
     exemptCount, maleCount, femaleCount, maleFee, femaleFee,
     gymCost, shuttlePrice, shuttleCount, otherAmount,
     discount: cooperationDiscount,
+    donation,
   });
   const { participantCount, maleTotal, femaleTotal, incomeTotal, shuttleTotal, finalTotal } = totals;
 
@@ -408,6 +412,7 @@ export function AccountingPage() {
       exemptCount, maleCount, femaleCount, maleFee, femaleFee,
       gymCost, shuttlePrice, shuttleCount, otherAmount,
       discount: cooperationDiscount,
+      donation,
       matchCount, otherDescription,
       activePlayerCount,
     });
@@ -984,6 +989,15 @@ export function AccountingPage() {
                 </span>
               </div>
             )}
+
+            {donation > 0 && (
+              <div className="flex items-center justify-between bg-green-50 rounded-lg px-3 py-2">
+                <span className="text-sm text-muted-foreground">寄付</span>
+                <span className="text-lg font-bold text-green-600">
+                  +{donation.toLocaleString()}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1172,6 +1186,7 @@ export function AccountingPage() {
           <div className="text-xs text-muted-foreground mb-2 font-mono">
             {maleTotal.toLocaleString()}+{femaleTotal.toLocaleString()}
             {cooperationDiscount > 0 && `-${cooperationDiscount.toLocaleString()}`}
+            {donation > 0 && `+${donation.toLocaleString()}`}
             -{gymCost.toLocaleString()}-{shuttleTotal.toLocaleString()}
             {otherAmount !== 0 && (otherAmount >= 0 ? `+${otherAmount.toLocaleString()}` : `${otherAmount.toLocaleString()}`)}
           </div>

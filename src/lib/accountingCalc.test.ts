@@ -77,6 +77,38 @@ describe('calculateAccountingTotals', () => {
     // (2400 - 900 - 200) / 480 = 2.708 → 2
     expect(t.shuttleUsableCount).toBe(2);
   });
+
+  it('donation（寄付）を収入に加算した純収入を返す', () => {
+    const t = calculateAccountingTotals({ ...base, donation: 300 });
+    // gross = 2400, incomeTotal (net) = 2400 + 300 = 2700
+    expect(t.incomeTotal).toBe(2400 + 300);
+    expect(t.finalTotal).toBe(2400 + 300 - 900);
+    expect(t.donation).toBe(300);
+  });
+
+  it('donation 未指定時は 0 として扱う', () => {
+    const t = calculateAccountingTotals(base);
+    expect(t.donation).toBe(0);
+    expect(t.finalTotal).toBe(2400 - 900);
+  });
+
+  it('discount と donation の併存時は両方を反映する', () => {
+    const t = calculateAccountingTotals({ ...base, discount: 200, donation: 300 });
+    expect(t.incomeTotal).toBe(2400 - 200 + 300);
+    expect(t.finalTotal).toBe(2400 - 200 + 300 - 900);
+    expect(t.discount).toBe(200);
+    expect(t.donation).toBe(300);
+  });
+
+  it('shuttleUsableCount は donation を加算して算出する', () => {
+    const t = calculateAccountingTotals({
+      ...base,
+      shuttlePrice: 480,
+      donation: 500,
+    });
+    // (2400 + 500 - 900) / 480 = 4.166 → 4
+    expect(t.shuttleUsableCount).toBe(4);
+  });
 });
 
 describe('buildAccountingCopyText', () => {
@@ -141,6 +173,34 @@ describe('buildAccountingCopyText', () => {
   it('discount = 0 のときは運営協力行を出さない', () => {
     const text = buildAccountingCopyText(base);
     expect(text).not.toContain('運営協力');
+  });
+
+  it('donation > 0 のとき収入セクションに寄付行と合計式に +donation が出る', () => {
+    const text = buildAccountingCopyText({ ...base, donation: 300 });
+    const incomeIdx = text.indexOf('【収入】');
+    const expenseIdx = text.indexOf('【支出】');
+    // 寄付は【収入】と【支出】の間（=収入セクション内）
+    expect(text.indexOf('寄付 +300')).toBeGreaterThan(incomeIdx);
+    expect(text.indexOf('寄付 +300')).toBeLessThan(expenseIdx);
+    // 収入合計は寄付込み: 2400 + 300 + 400 = 3,100
+    expect(text).toContain('収入合計 3,100');
+    // 合計式: 2,400+300-900-0+400 = 2,200
+    expect(text).toContain('2,400+300-900-0+400 = 2,200');
+  });
+
+  it('donation = 0 のときは寄付行を出さない', () => {
+    const text = buildAccountingCopyText(base);
+    expect(text).not.toContain('寄付');
+  });
+
+  it('discount と donation の併存時は両方の行と合計式が出る', () => {
+    const text = buildAccountingCopyText({ ...base, discount: 200, donation: 300 });
+    expect(text).toContain('運営協力 -200');
+    expect(text).toContain('寄付 +300');
+    // 収入合計: 2400 - 200 + 300 + 400 = 2,900
+    expect(text).toContain('収入合計 2,900');
+    // 合計式: 2,400-200+300-900-0+400 = 2,000
+    expect(text).toContain('2,400-200+300-900-0+400 = 2,000');
   });
 
   it('otherAmount が負の場合は支出セクションに追加される', () => {
