@@ -257,6 +257,44 @@ describe('useFirebaseSync - settings 反映の副作用', () => {
     expect(useSettingsStore.getState().prioritizeDiversity).toBe(false);
   });
 
+  it('settings.continuousMatchMode 未設定の受信ではローカルが false に同期される', () => {
+    // フィールド欠損セッションで UI トグルが ON 表示のままだと、
+    // finishMatchAndContinue の `?? false` と食い違うため、表示側を実効値に揃える
+    setSharedSession();
+    useSettingsStore.setState({ continuousMatchMode: true });
+    renderHook(() => useFirebaseSync());
+
+    act(() => {
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          players: [], courts: [], matchHistory: [], reservations: [],
+          settings: { practiceType: '複' },
+        },
+      });
+    });
+
+    expect(useSettingsStore.getState().continuousMatchMode).toBe(false);
+  });
+
+  it('settings.continuousMatchMode=true の受信でローカルに反映される', () => {
+    setSharedSession();
+    useSettingsStore.setState({ continuousMatchMode: false });
+    renderHook(() => useFirebaseSync());
+
+    act(() => {
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          players: [], courts: [], matchHistory: [], reservations: [],
+          settings: { practiceType: '複', continuousMatchMode: true },
+        },
+      });
+    });
+
+    expect(useSettingsStore.getState().continuousMatchMode).toBe(true);
+  });
+
   it('settings.practiceType 未設定 + config.gameMode 未設定では端末ローカル "単" を "複" に矯正する', () => {
     // 旧セッション等で gameState.settings.practiceType が無い場合、前セッションから
     // 持ち越した端末ローカル '単' が gameMode に流出すると、ダブルス練習でも

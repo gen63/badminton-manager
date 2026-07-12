@@ -258,11 +258,11 @@ export function useFirebaseSync() {
           ) {
             s.setRecordScores(gameState.settings.recordScores);
           }
-          if (
-            gameState.settings.continuousMatchMode !== undefined &&
-            gameState.settings.continuousMatchMode !== s.continuousMatchMode
-          ) {
-            s.setContinuousMatchMode(gameState.settings.continuousMatchMode);
+          // continuousMatchMode は未設定なら false 扱い（finishMatchAndContinue の
+          // `?? false` フォールバックと表示を一致させる。旧セッション互換）
+          const remoteContinuous = gameState.settings.continuousMatchMode ?? false;
+          if (remoteContinuous !== s.continuousMatchMode) {
+            s.setContinuousMatchMode(remoteContinuous);
           }
           // lateBalanceMode は未設定なら false 扱い（旧セッション互換）
           const remoteLateBalance = gameState.settings.lateBalanceMode ?? false;
