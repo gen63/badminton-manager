@@ -12,7 +12,6 @@ import {
   formatPracticeDate,
   buildPracticeStartTime,
   buildTmpSheetName,
-  AUTO_SESSION_ADMINS,
 } from './auto-create-session';
 
 describe('parseEventTitle', () => {
@@ -501,17 +500,27 @@ describe('buildSessionData', () => {
     expect(buildSessionData(event, new Map(), new Date(2026, 3, 9), '  \n ')).not.toHaveProperty('information');
   });
 
-  it('固定メンバーをadminsとして付与する', () => {
+  it('参加者に含まれる管理者候補だけをadminsとして付与する', () => {
     const event = {
       eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
       startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
       participantCount: 0, capacity: null, waitlistCount: 0,
-      location: '', participants: [], genders: {},
+      location: '', participants: ['げん', 'りょーちん♂', '一般さん'], genders: {},
     };
     const data = buildSessionData(event, new Map(), new Date(2026, 3, 9));
-    expect(data.admins).toEqual(AUTO_SESSION_ADMINS);
-    expect(data.admins).toContain('げん');
-    expect(data.admins).toContain('りょーちん♂');
+    expect(data.admins).toEqual(['げん', 'りょーちん♂']);
+    expect(data.admins).not.toContain('一般さん');
+  });
+
+  it('参加者に管理者候補がいなければadminsは空になる', () => {
+    const event = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: ['一般さん'], genders: {},
+    };
+    const data = buildSessionData(event, new Map(), new Date(2026, 3, 9));
+    expect(data.admins).toEqual([]);
   });
 });
 

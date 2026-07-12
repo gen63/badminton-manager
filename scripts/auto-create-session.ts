@@ -461,12 +461,15 @@ function formatPracticeDate(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-// 自動作成セッションで管理者権限を付与するメンバー（E-tomo上の表記と一致させること）
+// 自動作成セッションで管理者権限を付与するメンバー候補（E-tomo上の表記と一致させること）
+// 実際に admins に入るのは、このうち E-tomo の参加者に含まれるメンバーのみ
 const AUTO_SESSION_ADMINS = [
   'げん',
   'まさ',
   'ゆーた(たっちゃん)',
   'ほそや',
+  'かえで',
+  'ツッキー',
   'あいだ',
   'りょーちん♂',
   'あら',
@@ -503,7 +506,7 @@ function buildSessionData(
   return {
     config: { courtCount: 1, targetScore: 15, practiceStartTime, gym: event.venue, gameMode },
     createdBy: 'auto-session-bot',
-    admins: AUTO_SESSION_ADMINS,
+    admins: AUTO_SESSION_ADMINS.filter((name) => event.participants.includes(name)),
     participants: [] as string[],
     registeredPlayers: event.participants,
     status: 'active' as const,
