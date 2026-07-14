@@ -18,7 +18,7 @@ export function ScoreInputPage() {
 
   const match = matchHistory.find((m) => m.id === matchId);
   const session = useSessionStore((state) => state.session);
-  const targetScore = session?.config.targetScore || 21;
+  const targetScore = session?.config.targetScore || 15;
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
   

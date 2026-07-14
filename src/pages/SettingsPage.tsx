@@ -10,21 +10,18 @@ import { useReservationStore } from '../stores/reservationStore';
 import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { deleteSession, updateSession as updateFirebaseSession, updateCreator } from '../services/sessionService';
 import { clearAppBadge } from '../lib/badge';
-import { copyToClipboard } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Wifi, Copy, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2 } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
   const session = useSessionStore((s) => s.session);
-  const updateConfig = useSessionStore((s) => s.updateConfig);
   const clearSession = useSessionStore((s) => s.clearSession);
   const isCreator = useSessionStore((s) => s.isCreator);
   const isAdmin = useSessionStore((s) => s.isAdmin);
   const currentUser = useSessionStore((s) => s.currentUser);
-  const [sessionIdCopied, setSessionIdCopied] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
   const [selectedAdmins, setSelectedAdmins] = useState<string[]>([]);
   const [isAddingAdmins, setIsAddingAdmins] = useState(false);
@@ -72,17 +69,6 @@ export function SettingsPage() {
     return null;
   }
 
-  const handleTargetScoreChange = (score: number) => {
-    updateConfig({ targetScore: score });
-  };
-
-  const handleCopySessionId = async () => {
-    if (!session.id) return;
-    await copyToClipboard(session.id);
-    setSessionIdCopied(true);
-    setTimeout(() => setSessionIdCopied(false), 2000);
-  };
-
   const handleMatchReset = async () => {
     const confirmed = window.confirm(
       '試合をリセットしますか？\n\n' +
@@ -93,7 +79,7 @@ export function SettingsPage() {
       '・試合予約\n' +
       '・会計記録\n\n' +
       '参加者リストは保持されます。\n\n' +
-      '※オンラインモードの場合、他の参加者も影響を受けます'
+      '※他の参加者も影響を受けます'
     );
 
     if (!confirmed) return;
@@ -117,7 +103,7 @@ export function SettingsPage() {
       '・会計記録\n' +
       '・試合予約\n\n' +
       'この操作は取り消せません。\n\n' +
-      '※オンラインモードの場合、他の参加者も影響を受けます'
+      '※他の参加者も影響を受けます'
     );
 
     if (!confirmed) return;
@@ -266,26 +252,6 @@ export function SettingsPage() {
             コート設定
           </h2>
           <div className="space-y-3">
-            <div>
-              <label className="label">目標点数</label>
-              <div className="flex gap-3">
-                {[15, 21].map((score) => (
-                  <button
-                    key={score}
-                    onClick={() => handleTargetScoreChange(score)}
-                    className={`select-button ${
-                      session.config.targetScore === score
-                        ? 'select-button-active'
-                        : 'select-button-inactive'
-                    }`}
-                  >
-                    {session.config.targetScore === score && <span className="mr-1">✓</span>}
-                    {score}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div>
               <label className="text-xs font-semibold text-gray-700 mb-1.5 block">練習種別</label>
               <div className="flex gap-2">
@@ -471,59 +437,6 @@ export function SettingsPage() {
             </div>
           </div>
         </div>
-
-        {/* 同期ステータス表示 */}
-        <div className="card p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-500">
-              <Wifi size={20} className="text-white" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-base font-bold text-foreground">オンラインモード</h3>
-              <p className="text-xs text-muted-foreground">
-                リアルタイム同期中・複数デバイスで共有
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* セッション管理（管理者のみ） */}
-        {userIsAdmin && (
-          <div className="card p-4">
-            <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
-              <span className="w-6 h-6 rounded-lg bg-purple-100 flex items-center justify-center">
-                <Shield size={14} className="text-purple-600" />
-              </span>
-              セッション情報
-              <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">管理者</span>
-            </h2>
-            <div className="bg-muted rounded-xl p-3 text-xs space-y-1.5">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">管理者</span>
-                <span className="font-medium">{session.createdBy}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">セッションID</span>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono">{session.id}</span>
-                  <button
-                    onClick={handleCopySessionId}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                    title="セッションIDをコピー"
-                  >
-                    {sessionIdCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
-                  </button>
-                </div>
-              </div>
-              {session.participants && session.participants.length > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">参加者</span>
-                  <span className="font-medium">{session.participants.length}人</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* 管理者管理（作成者のみ） */}
         {userIsCreator && (
