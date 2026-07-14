@@ -99,37 +99,12 @@ export function ScoreInputPage() {
     setInputHistory([]);
   };
 
-  // 目標点数に対する最大点数を取得
-  const getMaxScore = (target: number): number => {
-    switch (target) {
-      case 21: return 30;
-      case 15: return 21;
-      default: return target + 9;
-    }
-  };
-
-  const maxScore = getMaxScore(targetScore);
-
-  // スコアバリデーション
+  // スコアバリデーション（同点だと勝敗が決まらないため、同点のみ禁止する）
   const validateScore = (a: number, b: number): string | null => {
-    // 同点禁止
     if (a === b) {
       return '同点は入力できません';
     }
-    
-    // 最大点数到達時は2点差不要（先取で勝利）
-    if (a === maxScore || b === maxScore) {
-      return null;
-    }
-    
-    // 両方targetScore以上の場合（デュース突入後）、2点差が必要
-    if (a >= targetScore && b >= targetScore) {
-      if (Math.abs(a - b) !== 2) {
-        return 'デュース後は2点差で終了する必要があります';
-      }
-    }
-    
-    return null; // バリデーションOK
+    return null;
   };
 
   const handleConfirm = async () => {
