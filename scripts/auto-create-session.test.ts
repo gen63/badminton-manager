@@ -12,6 +12,8 @@ import {
   formatPracticeDate,
   buildPracticeStartTime,
   buildTmpSheetName,
+  computeRosterDiff,
+  computeRosterSync,
 } from './auto-create-session';
 
 describe('parseEventTitle', () => {
@@ -529,5 +531,181 @@ describe('buildTmpSheetName', () => {
     expect(buildTmpSheetName(new Date(2026, 3, 9))).toBe('tmp_0409');
     expect(buildTmpSheetName(new Date(2026, 0, 1))).toBe('tmp_0101');
     expect(buildTmpSheetName(new Date(2026, 11, 31))).toBe('tmp_1231');
+  });
+});
+
+describe('computeRosterDiff', () => {
+  it('追加のみ検出する', () => {
+    expect(computeRosterDiff(['A', 'B'], ['A', 'B', 'C'])).toEqual({
+      toAdd: ['C'],
+      toRemove: [],
+    });
+  });
+
+  it('削除のみ検出する', () => {
+    expect(computeRosterDiff(['A', 'B', 'C'], ['A', 'B'])).toEqual({
+      toAdd: [],
+      toRemove: ['C'],
+    });
+  });
+
+  it('追加と削除の両方を検出する', () => {
+    expect(computeRosterDiff(['A', 'B'], ['B', 'C'])).toEqual({
+      toAdd: ['C'],
+      toRemove: ['A'],
+    });
+  });
+
+  it('変化が無ければ両方とも空配列', () => {
+    expect(computeRosterDiff(['A', 'B'], ['A', 'B'])).toEqual({
+      toAdd: [],
+      toRemove: [],
+    });
+  });
+
+  it('toAdd/toRemoveの順序はそれぞれの入力配列の出現順に従う', () => {
+    expect(computeRosterDiff(['A', 'B', 'C'], ['D', 'C', 'B', 'E'])).toEqual({
+      toAdd: ['D', 'E'],
+      toRemove: ['A'],
+    });
+  });
+});
+
+describe('computeRosterSync', () => {
+  const baseEvent = {
+    eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+    startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
+    participantCount: 0, capacity: null, waitlistCount: 0,
+    location: '',
+  };
+
+  it('新規出席者が isResting: true / gamesPlayed: 0 等の初期値で追加され、memberMapからrating/genderが補完される', () => {
+    const state = {
+      players: [
+        { id: 'p1', name: '田中太郎', isResting: false, gamesPlayed: 3, lastPlayedAt: 100, activatedAt: 50 },
+      ],
+      courts: [],
+      matchHistory: [],
+      reservations: [],
+    };
+    const event = { ...baseEvent, participants: ['田中太郎', '佐藤花子'], genders: { '佐藤花子': 'F' as const } };
+    const memberMap = new Map([['佐藤花子', { ordering: 2, gender: 'M' as const }]]);
+
+    const { state: nextState, added, removed } = computeRosterSync(state, event, memberMap);
+
+    expect(added).toEqual(['佐藤花子']);
+    expect(removed).toEqual([]);
+    expect(nextState.players).toHaveLength(2);
+    const newPlayer = nextState.players.find((p) => p.name === '佐藤花子');
+    expect(newPlayer).toBeDefined();
+    expect(newPlayer?.isResting).toBe(true);
+    expect(newPlayer?.gamesPlayed).toBe(0);
+    expect(newPlayer?.lastPlayedAt).toBe(0);
+    expect(newPlayer?.activatedAt).toBe(0);
+    expect(newPlayer?.rating).toBe(998); // 1000 - 2
+    // genders は event.genders が memberMap より優先される
+    expect(newPlayer?.gender).toBe('F');
+    expect(typeof newPlayer?.id).toBe('string');
+  });
+
+  it('memberMapに無い場合はratingを持たない', () => {
+    const state = { players: [], courts: [], matchHistory: [], reservations: [] };
+    const event = { ...baseEvent, participants: ['未登録さん'], genders: {} };
+    const { state: nextState } = computeRosterSync(state, event, new Map());
+    expect(nextState.players[0]).not.toHaveProperty('rating');
+    expect(nextState.players[0]).not.toHaveProperty('gender');
+  });
+
+  it('削除対象プレイヤーがコートのteamA/teamBから除去される', () => {
+    const state = {
+      players: [
+        { id: 'p1', name: '田中太郎', isResting: false, gamesPlayed: 0, lastPlayedAt: 0, activatedAt: 0 },
+        { id: 'p2', name: '佐藤花子', isResting: false, gamesPlayed: 0, lastPlayedAt: 0, activatedAt: 0 },
+      ],
+      courts: [
+        { id: 1, teamA: ['p1', 'p2'] as [string, string], teamB: ['', ''] as [string, string], scoreA: 0, scoreB: 0, isPlaying: true, startedAt: 0, finishedAt: 0 },
+      ],
+      matchHistory: [],
+      reservations: [],
+    };
+    const event = { ...baseEvent, participants: ['田中太郎'], genders: {} };
+    const { state: nextState, removed } = computeRosterSync(state, event, new Map());
+
+    expect(removed).toEqual(['佐藤花子']);
+    expect(nextState.players.map((p) => p.name)).toEqual(['田中太郎']);
+    expect(nextState.courts[0].teamA).toEqual(['p1', '']);
+  });
+
+  it('削除対象プレイヤーがrestingPlayerIdsから除去される', () => {
+    const state = {
+      players: [
+        { id: 'p1', name: '田中太郎', isResting: false, gamesPlayed: 0, lastPlayedAt: 0, activatedAt: 0 },
+        { id: 'p2', name: '佐藤花子', isResting: true, gamesPlayed: 0, lastPlayedAt: 0, activatedAt: 0 },
+      ],
+      courts: [
+        { id: 1, teamA: ['', ''] as [string, string], teamB: ['', ''] as [string, string], scoreA: 0, scoreB: 0, isPlaying: false, startedAt: 0, finishedAt: 0, restingPlayerIds: ['p1', 'p2'] },
+      ],
+      matchHistory: [],
+      reservations: [],
+    };
+    const event = { ...baseEvent, participants: ['田中太郎'], genders: {} };
+    const { state: nextState } = computeRosterSync(state, event, new Map());
+
+    expect(nextState.courts[0].restingPlayerIds).toEqual(['p1']);
+  });
+
+  it('削除により空になった予約は削除され、空にならない予約は該当IDだけ除去される', () => {
+    const state = {
+      players: [
+        { id: 'p1', name: '田中太郎', isResting: false, gamesPlayed: 0, lastPlayedAt: 0, activatedAt: 0 },
+        { id: 'p2', name: '佐藤花子', isResting: false, gamesPlayed: 0, lastPlayedAt: 0, activatedAt: 0 },
+        { id: 'p3', name: '山田次郎', isResting: false, gamesPlayed: 0, lastPlayedAt: 0, activatedAt: 0 },
+      ],
+      courts: [],
+      matchHistory: [],
+      reservations: [
+        { id: 'r1', orderNumber: 1, playerIds: ['p2'], status: 'pending' as const, createdAt: 0, fulfilledAt: 0 },
+        { id: 'r2', orderNumber: 2, playerIds: ['p1', 'p2'], status: 'pending' as const, createdAt: 0, fulfilledAt: 0 },
+      ],
+    };
+    // p2, p3(未参加なので初めから対象外) を削除対象、p1のみ残す
+    const event = { ...baseEvent, participants: ['田中太郎'], genders: {} };
+    const { state: nextState, removed } = computeRosterSync(state, event, new Map());
+
+    expect(removed.sort()).toEqual(['佐藤花子', '山田次郎'].sort());
+    expect(nextState.reservations).toHaveLength(1);
+    expect(nextState.reservations[0].id).toBe('r2');
+    expect(nextState.reservations[0].playerIds).toEqual(['p1']);
+  });
+
+  it('matchHistoryは変更されない', () => {
+    const match = { id: 'm1', courtId: 1, teamA: ['p1', 'p2'] as [string, string], teamB: ['p3', ''] as [string, string], scoreA: 15, scoreB: 10, startedAt: 0, finishedAt: 100 };
+    const state = {
+      players: [
+        { id: 'p1', name: '田中太郎', isResting: false, gamesPlayed: 1, lastPlayedAt: 100, activatedAt: 0 },
+        { id: 'p3', name: '山田次郎', isResting: false, gamesPlayed: 1, lastPlayedAt: 100, activatedAt: 0 },
+      ],
+      courts: [],
+      matchHistory: [match],
+      reservations: [],
+    };
+    const event = { ...baseEvent, participants: ['田中太郎'], genders: {} };
+    const { state: nextState } = computeRosterSync(state, event, new Map());
+
+    expect(nextState.matchHistory).toEqual([match]);
+    expect(nextState.matchHistory).toBe(state.matchHistory);
+  });
+
+  it('変化が無ければaddedもremovedも空配列', () => {
+    const state = {
+      players: [{ id: 'p1', name: '田中太郎', isResting: false, gamesPlayed: 0, lastPlayedAt: 0, activatedAt: 0 }],
+      courts: [],
+      matchHistory: [],
+      reservations: [],
+    };
+    const event = { ...baseEvent, participants: ['田中太郎'], genders: {} };
+    const { added, removed } = computeRosterSync(state, event, new Map());
+    expect(added).toEqual([]);
+    expect(removed).toEqual([]);
   });
 });

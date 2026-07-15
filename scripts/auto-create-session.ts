@@ -26,8 +26,11 @@ import {
   query,
   where,
   serverTimestamp,
+  runTransaction,
 } from 'firebase/firestore';
 import iconv from 'iconv-lite';
+import type { GameState } from '../src/services/sessionService';
+import type { Player } from '../src/types/player';
 
 // ============================================================
 // 型定義
@@ -67,7 +70,7 @@ interface PlayerIssue {
 // Phase A: E-tomoスクレイピング
 // ============================================================
 
-export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName, AUTO_SESSION_ADMINS };
+export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName, AUTO_SESSION_ADMINS, computeRosterDiff, computeRosterSync };
 
 async function fetchEtomoPage(url: string): Promise<string | null> {
   try {
@@ -425,20 +428,20 @@ function checkPlayerIssues(
   return issues;
 }
 
-async function fetchCreatedEventIds(
+async function fetchCreatedSessions(
   db: ReturnType<typeof getFirestore>,
   eventIds: string[],
-): Promise<Set<string>> {
-  if (eventIds.length === 0) return new Set();
+): Promise<Map<string, string>> {
+  if (eventIds.length === 0) return new Map();
   // Firestore 'in' クエリは最大30要素
-  const created = new Set<string>();
+  const created = new Map<string, string>();
   for (let i = 0; i < eventIds.length; i += 30) {
     const batch = eventIds.slice(i, i + 30);
     const q = query(collection(db, 'sessions'), where('etomoEventId', 'in', batch));
     const snapshot = await getDocs(q);
-    snapshot.docs.forEach((doc) => {
-      const id = doc.data().etomoEventId;
-      if (id) created.add(id);
+    snapshot.docs.forEach((docSnap) => {
+      const id = docSnap.data().etomoEventId;
+      if (id) created.set(id, docSnap.id);
     });
   }
   return created;
@@ -530,6 +533,80 @@ function buildSessionData(
   };
 }
 
+// ============================================================
+// Phase D-2: 既存セッションの出欠同期（再実行時）
+// ============================================================
+
+/** currentNames と latestNames の単純な集合差分（順序は各入力配列の出現順） */
+function computeRosterDiff(
+  currentNames: string[],
+  latestNames: string[],
+): { toAdd: string[]; toRemove: string[] } {
+  const currentSet = new Set(currentNames);
+  const latestSet = new Set(latestNames);
+  return {
+    toAdd: latestNames.filter((name) => !currentSet.has(name)),
+    toRemove: currentNames.filter((name) => !latestSet.has(name)),
+  };
+}
+
+/**
+ * gameState.players の実ロースターを E-ToMo の最新出席者リストへ同期する。
+ * 追加プレイヤーの構築ルールは buildSessionData の player 構築と同一。
+ * 削除は src/services/sessionMutations.ts の computeRemovePlayer と同じ整合性
+ * ルール（court の teamA/teamB を空文字に、restingPlayerIds/reservation.playerIds
+ * から除外し空になった予約は削除）を踏襲する。matchHistory は変更しない。
+ */
+function computeRosterSync(
+  state: GameState,
+  event: EtomoEventDetail,
+  memberMap: Map<string, MemberData>,
+): { state: GameState; added: string[]; removed: string[] } {
+  const currentNames = state.players.map((p) => p.name);
+  const { toAdd, toRemove } = computeRosterDiff(currentNames, event.participants);
+
+  const newPlayers: Player[] = toAdd.map((name) => {
+    const member = memberMap.get(name);
+    const gender = event.genders[name] || member?.gender;
+    const rating = member?.ordering != null ? 1000 - member.ordering : undefined;
+    return {
+      id: crypto.randomUUID(),
+      name,
+      ...(rating != null && { rating }),
+      ...(gender && { gender }),
+      isResting: true,
+      gamesPlayed: 0,
+      lastPlayedAt: 0,
+      activatedAt: 0,
+    };
+  });
+
+  const removeIds = new Set(
+    state.players.filter((p) => toRemove.includes(p.name)).map((p) => p.id),
+  );
+
+  const blankTeam = (team: [string, string]): [string, string] => [
+    removeIds.has(team[0]) ? '' : team[0],
+    removeIds.has(team[1]) ? '' : team[1],
+  ];
+
+  const nextState: GameState = {
+    ...state,
+    players: [...state.players.filter((p) => !removeIds.has(p.id)), ...newPlayers],
+    courts: state.courts.map((c) => ({
+      ...c,
+      teamA: blankTeam(c.teamA),
+      teamB: blankTeam(c.teamB),
+      restingPlayerIds: (c.restingPlayerIds ?? []).filter((id) => !removeIds.has(id)),
+    })),
+    reservations: state.reservations
+      .map((r) => ({ ...r, playerIds: r.playerIds.filter((id) => !removeIds.has(id)) }))
+      .filter((r) => r.playerIds.length > 0),
+  };
+
+  return { state: nextState, added: toAdd, removed: toRemove };
+}
+
 // undefined値を除去（serverTimestamp()等のセンチネル値はsanitize対象外にする）
 const sanitize = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
 
@@ -582,6 +659,43 @@ async function createFirestoreSession(
   }
 
   throw new Error('Failed to generate unique session ID after 3 attempts');
+}
+
+/**
+ * 既存セッションの gameState.players を E-ToMo の最新出席者リストへ同期する。
+ * 変更（追加/削除）があった場合のみ Firestore を更新する。
+ */
+async function syncSessionRoster(
+  db: ReturnType<typeof getFirestore>,
+  sessionId: string,
+  event: EtomoEventDetail,
+  memberMap: Map<string, MemberData>,
+): Promise<{ added: string[]; removed: string[] }> {
+  const docRef = doc(db, 'sessions', sessionId);
+
+  return await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(docRef);
+    if (!snap.exists()) {
+      throw new Error(`Session ${sessionId} not found`);
+    }
+    const data = snap.data();
+    const gameState = data.gameState as GameState | undefined;
+    if (!gameState) {
+      throw new Error(`Session ${sessionId} has no gameState`);
+    }
+
+    const { state: nextState, added, removed } = computeRosterSync(gameState, event, memberMap);
+
+    if (added.length > 0 || removed.length > 0) {
+      transaction.update(docRef, {
+        gameState: sanitize(nextState),
+        registeredPlayers: nextState.players.map((p) => p.name),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    return { added, removed };
+  });
 }
 
 // ============================================================
@@ -659,10 +773,35 @@ async function notifySessionPending(
   await sendDiscordMessage(message);
 }
 
-async function notifySkipped(event: EtomoEventDetail, targetDate: Date): Promise<void> {
+async function notifyNoRosterChange(event: EtomoEventDetail, targetDate: Date): Promise<void> {
   const summary = formatEventSummary(event, targetDate);
-  const message = ['⏭️ **作成済みのためスキップ**', '━━━━━━━━━━━━━━━━━━', summary].join('\n');
+  const message = ['✅ **同期済み（変更なし）**', '━━━━━━━━━━━━━━━━━━', summary].join('\n');
   await sendDiscordMessage(message);
+}
+
+async function notifySessionSynced(
+  event: EtomoEventDetail,
+  sessionId: string,
+  targetDate: Date,
+  added: string[],
+  removed: string[],
+): Promise<void> {
+  const summary = formatEventSummary(event, targetDate);
+  const lines = [
+    '🔄 **メンバー同期完了**',
+    '━━━━━━━━━━━━━━━━━━',
+    summary,
+    `セッションID: **${sessionId}**`,
+  ];
+
+  if (added.length > 0) {
+    lines.push('', '➕ **追加:**', added.map((name) => `  • ${name}`).join('\n'));
+  }
+  if (removed.length > 0) {
+    lines.push('', '➖ **削除:**', removed.map((name) => `  • ${name}`).join('\n'));
+  }
+
+  await sendDiscordMessage(lines.join('\n'));
 }
 
 // ============================================================
@@ -703,7 +842,7 @@ async function processEvents(
   const db = getFirestore(app);
 
   try {
-    const createdIds = await fetchCreatedEventIds(
+    const createdSessions = await fetchCreatedSessions(
       db,
       eventsWithDetails.map((e) => e.eventId),
     );
@@ -715,9 +854,19 @@ async function processEvents(
     for (const event of eventsWithDetails) {
       console.log(`\nProcessing: ${event.title}`);
 
-      if (createdIds.has(event.eventId)) {
-        console.log(`  -> Already created, skipping`);
-        await notifySkipped(event, targetDate);
+      const existingSessionId = createdSessions.get(event.eventId);
+      if (existingSessionId) {
+        console.log(`  -> Already created (${existingSessionId}), syncing roster`);
+        const { added, removed } = await syncSessionRoster(db, existingSessionId, event, memberMap);
+        if (added.length > 0 || removed.length > 0) {
+          console.log(`  -> Roster synced: +${added.length} / -${removed.length}`);
+          if (added.length > 0) console.log(`     added: ${added.join(', ')}`);
+          if (removed.length > 0) console.log(`     removed: ${removed.join(', ')}`);
+          await notifySessionSynced(event, existingSessionId, targetDate, added, removed);
+        } else {
+          console.log(`  -> No roster changes`);
+          await notifyNoRosterChange(event, targetDate);
+        }
         continue;
       }
 
