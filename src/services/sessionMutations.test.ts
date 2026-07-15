@@ -303,6 +303,25 @@ describe('sessionMutations - players', () => {
       expect(next.players[0].operationStatus?.payment).toBe(false);
       expect(next.players[0].paymentOperatorName).toBe('太郎');
     });
+
+    it('回帰: OFF→ON→revert→再度 ON（operatorName 未指定）で古い paymentOperatorName が残らない', () => {
+      // 太郎が支払い登録 → 取り消し（revert）→ 裏管理（operatorName 無し）で再登録。
+      // paymentTimestamp は更新されるが paymentOperatorName が stale な '太郎' のまま
+      // 残ってはいけない（AccountingPage での誤帰属を防ぐ）。
+      const state = baseState({
+        players: [makePlayer('a', { operationStatus: { payment: false, roster: false, checkin: false } })],
+      });
+      const paid = computeToggleOperationStatus(state, 'a', 'payment', 1000, '太郎');
+      expect(paid.players[0].paymentOperatorName).toBe('太郎');
+
+      const reverted = computeToggleOperationStatus(paid, 'a', 'payment', 2000, '太郎');
+      expect(reverted.players[0].operationStatus?.payment).toBe(false);
+
+      const rePaid = computeToggleOperationStatus(reverted, 'a', 'payment', 3000);
+      expect(rePaid.players[0].operationStatus?.payment).toBe(true);
+      expect(rePaid.players[0].paymentTimestamp).toBe(3000);
+      expect(rePaid.players[0].paymentOperatorName).toBeUndefined();
+    });
   });
 
   describe('computeApplyPayment', () => {

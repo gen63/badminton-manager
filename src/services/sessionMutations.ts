@@ -266,7 +266,7 @@ export function computeToggleOperationStatus(
       };
       if (field === 'payment' && newValue) {
         updates.paymentTimestamp = now;
-        if (operatorName) updates.paymentOperatorName = operatorName;
+        updates.paymentOperatorName = operatorName;
       }
       return { ...p, ...updates };
     }),
@@ -300,7 +300,7 @@ export function computeApplyPayment(
       };
       if (!wasPaid) {
         updates.paymentTimestamp = now;
-        if (operatorName) updates.paymentOperatorName = operatorName;
+        updates.paymentOperatorName = operatorName;
       }
       return { ...p, ...updates };
     }),
