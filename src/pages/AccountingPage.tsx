@@ -259,6 +259,7 @@ export function AccountingPage() {
         amount: p.paymentAmount ?? 0,
         gamesPlayed: p.gamesPlayed,
         paymentTimestamp: p.paymentTimestamp,
+        paymentOperatorName: p.paymentOperatorName,
       })).sort((a, b) => {
         // 支払い時刻の新しい順でソート（時刻がない場合は金額順）
         if (a.paymentTimestamp && b.paymentTimestamp) {
@@ -629,6 +630,7 @@ export function AccountingPage() {
                           {paymentTime && (
                             <span className="ml-2 text-[10px]">
                               🕐 {paymentTime}
+                              {player.paymentOperatorName && `・${player.paymentOperatorName}`}
                             </span>
                           )}
                         </div>

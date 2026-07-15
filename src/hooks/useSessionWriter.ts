@@ -27,6 +27,7 @@ export interface SessionWriterOptions {
 
 export function useSessionWriter(options?: SessionWriterOptions) {
   const sessionId = useSessionStore((s) => s.session?.id);
+  const currentUser = useSessionStore((s) => s.currentUser);
 
   const onError = options?.onError;
   const handle = useCallback(
@@ -73,14 +74,18 @@ export function useSessionWriter(options?: SessionWriterOptions) {
 
   const toggleOperationStatus = useCallback(
     (id: string, field: 'payment' | 'roster' | 'checkin') =>
-      handle('toggleOperationStatus', (sid) => sm.toggleOperationStatus(sid, id, field)),
-    [handle],
+      handle('toggleOperationStatus', (sid) =>
+        sm.toggleOperationStatus(sid, id, field, currentUser ?? undefined),
+      ),
+    [handle, currentUser],
   );
 
   const applyPayment = useCallback(
     (id: string, amount: number) =>
-      handle('applyPayment', (sid) => sm.applyPayment(sid, id, amount)),
-    [handle],
+      handle('applyPayment', (sid) =>
+        sm.applyPayment(sid, id, amount, currentUser ?? undefined),
+      ),
+    [handle, currentUser],
   );
 
   const incrementGamesPlayed = useCallback(

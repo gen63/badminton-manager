@@ -253,6 +253,7 @@ export function computeToggleOperationStatus(
   playerId: string,
   field: 'payment' | 'roster' | 'checkin',
   now: number = Date.now(),
+  operatorName?: string,
 ): GameState {
   return {
     ...state,
@@ -265,6 +266,7 @@ export function computeToggleOperationStatus(
       };
       if (field === 'payment' && newValue) {
         updates.paymentTimestamp = now;
+        updates.paymentOperatorName = operatorName;
       }
       return { ...p, ...updates };
     }),
@@ -284,6 +286,7 @@ export function computeApplyPayment(
   playerId: string,
   amount: number,
   now: number = Date.now(),
+  operatorName?: string,
 ): GameState {
   return {
     ...state,
@@ -295,7 +298,10 @@ export function computeApplyPayment(
         paymentAmount: amount,
         operationStatus: { ...current, payment: true },
       };
-      if (!wasPaid) updates.paymentTimestamp = now;
+      if (!wasPaid) {
+        updates.paymentTimestamp = now;
+        updates.paymentOperatorName = operatorName;
+      }
       return { ...p, ...updates };
     }),
   };
@@ -834,12 +840,22 @@ export function toggleOperationStatus(
   sessionId: string,
   playerId: string,
   field: 'payment' | 'roster' | 'checkin',
+  operatorName?: string,
 ) {
-  return mutateGameState(sessionId, (s) => computeToggleOperationStatus(s, playerId, field));
+  return mutateGameState(sessionId, (s) =>
+    computeToggleOperationStatus(s, playerId, field, undefined, operatorName),
+  );
 }
 
-export function applyPayment(sessionId: string, playerId: string, amount: number) {
-  return mutateGameState(sessionId, (s) => computeApplyPayment(s, playerId, amount));
+export function applyPayment(
+  sessionId: string,
+  playerId: string,
+  amount: number,
+  operatorName?: string,
+) {
+  return mutateGameState(sessionId, (s) =>
+    computeApplyPayment(s, playerId, amount, undefined, operatorName),
+  );
 }
 
 export function incrementGamesPlayed(
