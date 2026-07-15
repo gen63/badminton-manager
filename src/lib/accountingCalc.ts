@@ -7,7 +7,7 @@
 export const PRACTICE_TYPE_OPTIONS = [
   { value: '複', maleFee: 800, femaleFee: 600 },
   { value: '単', maleFee: 1200, femaleFee: 800 },
-  { value: '楽', maleFee: 600, femaleFee: 400 },
+  { value: '楽', maleFee: 500, femaleFee: 500 },
 ] as const;
 
 /** 体育館名を略称に変換 */
