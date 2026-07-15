@@ -8,7 +8,8 @@ import { useGameStore } from '../stores/gameStore';
 import { sendAccountingToSheets } from '../lib/sheetsApi';
 import { updateSession } from '../services/sessionService';
 import { GYM_OPTIONS } from '../types/session';
-import { DollarSign, Copy, Upload, Loader2, MapPin, Clock } from 'lucide-react';
+import { useDevMode } from '../hooks/useDevMode';
+import { DollarSign, Copy, Upload, MapPin, Clock } from 'lucide-react';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { AccountingInput } from '../types/session';
 import { useToast } from '../hooks/useToast';
@@ -54,6 +55,7 @@ export function AccountingPage() {
   const defaultPracticeType = useSettingsStore((s) => s.practiceType);
   const toast = useToast();
   const isAdmin = isAdminFn();
+  const devMode = useDevMode();
 
   // タブ状態
   const [activeTab, setActiveTab] = useState<'input' | 'payments'>('input');
@@ -72,7 +74,6 @@ export function AccountingPage() {
   const [otherDescription, setOtherDescription] = useState<string>('');
   const [otherAmount, setOtherAmount] = useState<number>(0);
   const [isOtherExpanded, setIsOtherExpanded] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
   // 日付フォーマット（YYYY/MM/DD）
@@ -429,10 +430,13 @@ export function AccountingPage() {
     }
   };
 
-  const handleUpload = async () => {
-    if (!accountingWebAppUrl || isUploading) return;
+  // 楽観的表示: GAS Webアプリは応答まで数十秒かかることがあるため、完了を
+  // 待たずに「送信しました」を出し、裏で失敗を検知したときだけエラーを出す。
+  // 試合結果アップロード（HistoryPage）と同じ方針で統一している。
+  const handleUpload = () => {
+    if (!accountingWebAppUrl) return;
     flushPending();
-    
+
     // 試合履歴に出たプレイヤーのIDを収集
     const participantIds = new Set<string>();
     matchHistory.forEach((match) => {
@@ -477,53 +481,57 @@ export function AccountingPage() {
       finalTotal,
     };
 
-    setIsUploading(true);
-    try {
+    toast.success('会計データを送信しました');
+    void (async () => {
       const result = await sendAccountingToSheets(accountingWebAppUrl, record);
-      if (result.success) {
-        // アップロード成功時にローカルにも保存（次回の自動入力用）
-        addRecord({
-          date: formattedDate,
-          gym: gymShortName,
-          practiceType,
-          maleCount,
-          maleFee,
-          femaleCount,
-          femaleFee,
-          exemptCount,
-          participantCount,
-          matchCount,
-          members: membersJson,
-          incomeTotal: uploadIncomeTotal,
-          gymCost,
-          shuttlePrice,
-          shuttleCount,
-          expenseTotal,
-          otherDescription: otherDescription || undefined,
-          otherAmount: otherAmount || undefined,
-          finalTotal,
-        });
-        toast.success(result.message);
-        // アップロード記録を Firestore に書く（セッション一覧の未実施バッジ用）。
-        // 送信自体は成功しているので、記録の失敗は warn に留めて toast は出さない。
-        if (session) {
-          try {
-            await updateSession(session.id, {
-              accountingUpload: {
-                uploadedAt: Date.now(),
-                ...(currentUser ? { uploadedBy: currentUser } : {}),
-              },
-            });
-          } catch (err) {
-            console.warn('[Accounting] Failed to record accounting upload status:', err);
+      if (!result.success) {
+        // 「送信しました」の後に出る想定外の通知なので長めに表示する
+        toast.error(result.message, 6000);
+        return;
+      }
+      // アップロード成功時にローカルにも保存（次回の自動入力用）
+      addRecord({
+        date: formattedDate,
+        gym: gymShortName,
+        practiceType,
+        maleCount,
+        maleFee,
+        femaleCount,
+        femaleFee,
+        exemptCount,
+        participantCount,
+        matchCount,
+        members: membersJson,
+        incomeTotal: uploadIncomeTotal,
+        gymCost,
+        shuttlePrice,
+        shuttleCount,
+        expenseTotal,
+        otherDescription: otherDescription || undefined,
+        otherAmount: otherAmount || undefined,
+        finalTotal,
+      });
+      // アップロード記録は実際の成功後にのみ Firestore に書く
+      // （セッション一覧の未実施バッジ用）。記録の失敗は warn に留める。
+      if (session) {
+        try {
+          await updateSession(session.id, {
+            accountingUpload: {
+              uploadedAt: Date.now(),
+              ...(currentUser ? { uploadedBy: currentUser } : {}),
+            },
+          });
+        } catch (err) {
+          console.warn('[Accounting] Failed to record accounting upload status:', err);
+          // 一般ユーザーには送信成否と切り離して見せる（設計方針）が、バッジは
+          // 開発モード限定表示のため、その利用者には原因が見えないと診断できない。
+          if (devMode) {
+            const detail = err instanceof Error ? err.message : String(err);
+            toast.warning(`アップロード記録の保存に失敗（一覧のバッジは更新されません）: ${detail}`, 8000);
           }
         }
-      } else {
-        toast.error(result.message);
       }
-    } finally {
-      setIsUploading(false);
-    }
+    })();
   };
 
   return (
@@ -1215,20 +1223,10 @@ export function AccountingPage() {
           {accountingWebAppUrl && isAdmin && (
             <button
               onClick={handleUpload}
-              disabled={isUploading}
-              className="flex-1 btn-primary flex items-center justify-center gap-2 py-3 px-6 disabled:opacity-50"
+              className="flex-1 btn-primary flex items-center justify-center gap-2 py-3 px-6"
             >
-              {isUploading ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  送信中...
-                </>
-              ) : (
-                <>
-                  <Upload size={18} />
-                  アップロード
-                </>
-              )}
+              <Upload size={18} />
+              アップロード
             </button>
           )}
         </div>
