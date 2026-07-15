@@ -274,6 +274,35 @@ describe('sessionMutations - players', () => {
         checkin: true,
       });
     });
+
+    it('payment OFF → ON で operatorName を渡すと paymentOperatorName がセットされる', () => {
+      const state = baseState({
+        players: [makePlayer('a', { operationStatus: { payment: false, roster: false, checkin: false } })],
+      });
+      const next = computeToggleOperationStatus(state, 'a', 'payment', 5000, '太郎');
+      expect(next.players[0].paymentOperatorName).toBe('太郎');
+    });
+
+    it('payment OFF → ON で operatorName を渡さない場合 paymentOperatorName はセットされない', () => {
+      const state = baseState({
+        players: [makePlayer('a', { operationStatus: { payment: false, roster: false, checkin: false } })],
+      });
+      const next = computeToggleOperationStatus(state, 'a', 'payment', 5000);
+      expect(next.players[0].paymentOperatorName).toBeUndefined();
+    });
+
+    it('payment ON → OFF（revert）では paymentOperatorName を変更しない', () => {
+      const state = baseState({
+        players: [makePlayer('a', {
+          operationStatus: { payment: true, roster: false, checkin: false },
+          paymentTimestamp: 1000,
+          paymentOperatorName: '太郎',
+        })],
+      });
+      const next = computeToggleOperationStatus(state, 'a', 'payment', 9999, '花子');
+      expect(next.players[0].operationStatus?.payment).toBe(false);
+      expect(next.players[0].paymentOperatorName).toBe('太郎');
+    });
   });
 
   describe('computeApplyPayment', () => {
@@ -311,6 +340,36 @@ describe('sessionMutations - players', () => {
       expect(next.players[0].operationStatus?.payment).toBe(true);
       expect(next.players[0].paymentAmount).toBe(0);
       expect(next.players[0].paymentTimestamp).toBe(5000);
+    });
+
+    it('未払い→支払いへの遷移時に operatorName を渡すと paymentOperatorName がセットされる', () => {
+      const state = baseState({
+        players: [makePlayer('a', { operationStatus: { payment: false, roster: false, checkin: false } })],
+      });
+      const next = computeApplyPayment(state, 'a', 800, 5000, '太郎');
+      expect(next.players[0].paymentOperatorName).toBe('太郎');
+    });
+
+    it('未払い→支払いへの遷移時に operatorName を渡さない場合 paymentOperatorName はセットされない', () => {
+      const state = baseState({
+        players: [makePlayer('a', { operationStatus: { payment: false, roster: false, checkin: false } })],
+      });
+      const next = computeApplyPayment(state, 'a', 800, 5000);
+      expect(next.players[0].paymentOperatorName).toBeUndefined();
+    });
+
+    it('金額修正（既に支払い済み）では operatorName を渡しても paymentOperatorName は既存値を保持する', () => {
+      const state = baseState({
+        players: [makePlayer('a', {
+          operationStatus: { payment: true, roster: false, checkin: false },
+          paymentAmount: 1200,
+          paymentTimestamp: 1000,
+          paymentOperatorName: '太郎',
+        })],
+      });
+      const next = computeApplyPayment(state, 'a', 1000, 9999, '花子');
+      expect(next.players[0].paymentAmount).toBe(1000);
+      expect(next.players[0].paymentOperatorName).toBe('太郎');
     });
   });
 
