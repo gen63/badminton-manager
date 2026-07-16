@@ -58,6 +58,29 @@ describe('getMatchUploadBadge', () => {
     });
     expect(getMatchUploadBadge(session)).toBe('none');
   });
+
+  it('勝敗記録モード OFF なら試合があってもバッジを出さない', () => {
+    expect(
+      getMatchUploadBadge(makeSession({ matchCount: 5, recordScores: false })),
+    ).toBe('none');
+    // アップロード後に試合が増えても OFF なら stale も出さない
+    expect(
+      getMatchUploadBadge(
+        makeSession({
+          matchCount: 7,
+          recordScores: false,
+          matchUpload: { uploadedAt: Date.now(), matchCount: 5 },
+        }),
+      ),
+    ).toBe('none');
+  });
+
+  it('勝敗記録モード ON / 未設定なら従来どおりバッジを出す', () => {
+    expect(getMatchUploadBadge(makeSession({ matchCount: 5, recordScores: true }))).toBe(
+      'not-uploaded',
+    );
+    expect(getMatchUploadBadge(makeSession({ matchCount: 5 }))).toBe('not-uploaded');
+  });
 });
 
 describe('needsAccountingUploadBadge', () => {

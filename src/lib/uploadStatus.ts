@@ -17,6 +17,9 @@ import type { Session } from '../types/session';
 export type MatchUploadBadge = 'none' | 'not-uploaded' | 'stale';
 
 export function getMatchUploadBadge(session: Session): MatchUploadBadge {
+  // 勝敗記録モード OFF のセッションは試合結果を GAS に上げない運用のため、
+  // 「未アップロード」を促すバッジ自体を出さない（recordScores 未設定は ON 扱い）。
+  if (session.recordScores === false) return 'none';
   const matchCount = session.matchCount ?? 0;
   if (matchCount === 0) return 'none';
   if (!session.matchUpload) return 'not-uploaded';

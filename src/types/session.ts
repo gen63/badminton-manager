@@ -78,4 +78,5 @@ export interface Session {
   paidCount?: number; // 支払い完了済みプレイヤー数（gameState.players から算出）
   incomeTotal?: number; // 収入合計（運営協力割引・その他収入込み）。accounting 未設定なら undefined
   practiceType?: '単' | '複' | '楽';
+  recordScores?: boolean; // 勝敗記録モード（gameState.settings.recordScores）。未設定 = ON 扱い
 }
