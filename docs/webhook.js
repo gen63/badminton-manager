@@ -81,7 +81,7 @@ function doPost(e) {
     if (data.action === 'createTmpSheet') {
       var result = createOrUpdateTmpSheet_(data.sheet, data.participants);
       return ContentService.createTextOutput(
-        JSON.stringify({ status: 'ok', created: result.created, missingOrdering: result.missingOrdering })
+        JSON.stringify({ status: 'ok', created: result.created, missingOrdering: result.missingOrdering, deleted: result.deleted })
       ).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -616,7 +616,62 @@ function createOrUpdateTmpSheet_(sheetName, participants) {
     }
   }
 
-  return { created: isNew, missingOrdering: missingOrdering };
+  // 過去日の古い tmp シートを自動削除（タブ増殖の抑制）
+  var deleted = cleanupOldTmpSheets_(ss, sheetName);
+
+  return { created: isNew, missingOrdering: missingOrdering, deleted: deleted };
+}
+
+/**
+ * tmp_MMDD シートのうち、日付が「今日(JST)」より前のものを削除する。
+ * - tmp シートの序列/性別はセッション作成時に Firestore へ読み込まれるため、
+ *   イベントが過去になった tmp シートは破棄してよい。
+ * - 当日・未来の予定シート、および今作成/更新したシート(keepSheetName)は残す
+ *   ので、保留中（序列未入力・手動リラン待ち）の入力は消えない。
+ * @param {Spreadsheet} ss 対象スプレッドシート
+ * @param {string} keepSheetName 削除対象から必ず除外するシート名
+ * @return {string[]} 削除したシート名の配列
+ */
+function cleanupOldTmpSheets_(ss, keepSheetName) {
+  // JST の「今日」を 0 時基準の Date として求める
+  var todayParts = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd').split('/');
+  var today = new Date(
+    parseInt(todayParts[0], 10),
+    parseInt(todayParts[1], 10) - 1,
+    parseInt(todayParts[2], 10)
+  );
+  var todayYear = today.getFullYear();
+  var DAY_MS = 86400000;
+
+  var deleted = [];
+  // 反復中に削除するため、シート配列を先に確保しておく
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    var name = sheets[i].getName();
+    if (name === keepSheetName) continue;
+
+    var m = name.match(/^tmp_(\d{2})(\d{2})$/);
+    if (!m) continue;
+
+    var mm = parseInt(m[1], 10);
+    var dd = parseInt(m[2], 10);
+
+    // MMDD に年が無いので、今日に最も近い年を推定（±180日を超えたら補正）
+    var candidate = new Date(todayYear, mm - 1, dd);
+    if ((candidate - today) / DAY_MS > 180) {
+      candidate = new Date(todayYear - 1, mm - 1, dd);
+    } else if ((today - candidate) / DAY_MS > 180) {
+      candidate = new Date(todayYear + 1, mm - 1, dd);
+    }
+
+    // 今日より厳密に前（イベントが過去）なら削除
+    if (candidate < today) {
+      ss.deleteSheet(sheets[i]);
+      deleted.push(name);
+    }
+  }
+
+  return deleted;
 }
 
 /**

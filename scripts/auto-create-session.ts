@@ -351,7 +351,7 @@ async function createTmpSheet(
 
   console.log(`[DEBUG] POST response: status=${response.status}, url=${response.url}, redirected=${response.redirected}`);
   const text = await response.text();
-  let data: { status: string; created?: boolean; missingOrdering?: string[] };
+  let data: { status: string; created?: boolean; missingOrdering?: string[]; deleted?: string[] };
   try {
     data = JSON.parse(text);
   } catch {
@@ -363,7 +363,10 @@ async function createTmpSheet(
     throw new Error('GAS createTmpSheet returned error');
   }
 
-  console.log(`Tmp sheet "${sheetName}": ${data.created ? 'created' : 'updated'}, missing: ${data.missingOrdering?.length ?? 0}`);
+  console.log(`Tmp sheet "${sheetName}": ${data.created ? 'created' : 'updated'}, missing: ${data.missingOrdering?.length ?? 0}, deleted old: ${data.deleted?.length ?? 0}`);
+  if (data.deleted && data.deleted.length > 0) {
+    console.log(`  Deleted old tmp sheets: ${data.deleted.join(', ')}`);
+  }
   return data.missingOrdering ?? [];
 }
 
