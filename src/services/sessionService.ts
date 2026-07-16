@@ -108,7 +108,7 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     | {
         matchHistory?: unknown[];
         players?: Player[];
-        settings?: { practiceType?: '単' | '複' | '楽' };
+        settings?: { practiceType?: '単' | '複' | '楽'; recordScores?: boolean };
       }
     | undefined;
   const paidCount = Array.isArray(gameState?.players)
@@ -140,6 +140,7 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     paidCount,
     incomeTotal,
     practiceType: gameState?.settings?.practiceType,
+    recordScores: gameState?.settings?.recordScores,
   };
 }
 
