@@ -22,7 +22,12 @@ export function getMatchUploadBadge(session: Session): MatchUploadBadge {
   if (session.recordScores === false) return 'none';
   const matchCount = session.matchCount ?? 0;
   if (matchCount === 0) return 'none';
-  if (!session.matchUpload) return 'not-uploaded';
+  if (!session.matchUpload) {
+    // 「楽」は気軽な練習用のため、未アップロードを促す「試合未」は出さない。
+    // （一度アップロード済みで差分が出た「試合差」は従来どおり通知する）
+    if (session.practiceType === '楽') return 'none';
+    return 'not-uploaded';
+  }
   if (matchCount > session.matchUpload.matchCount) return 'stale';
   return 'none';
 }
