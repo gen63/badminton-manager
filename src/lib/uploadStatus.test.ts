@@ -81,6 +81,30 @@ describe('getMatchUploadBadge', () => {
     );
     expect(getMatchUploadBadge(makeSession({ matchCount: 5 }))).toBe('not-uploaded');
   });
+
+  it('練習種別が楽なら未アップロードの「試合未」は出さない（recordScores ON でも）', () => {
+    expect(
+      getMatchUploadBadge(makeSession({ matchCount: 5, practiceType: '楽', recordScores: true })),
+    ).toBe('none');
+    expect(
+      getMatchUploadBadge(makeSession({ matchCount: 5, practiceType: '楽' })),
+    ).toBe('none');
+  });
+
+  it('楽でもアップロード後に試合が増えた「試合差」は従来どおり出す', () => {
+    const session = makeSession({
+      matchCount: 7,
+      practiceType: '楽',
+      matchUpload: { uploadedAt: Date.now(), matchCount: 5 },
+    });
+    expect(getMatchUploadBadge(session)).toBe('stale');
+  });
+
+  it('楽以外（単/複）は未アップロードで「試合未」を出す', () => {
+    expect(getMatchUploadBadge(makeSession({ matchCount: 5, practiceType: '複' }))).toBe(
+      'not-uploaded',
+    );
+  });
 });
 
 describe('needsAccountingUploadBadge', () => {
