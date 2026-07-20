@@ -319,14 +319,20 @@ export function unresolvedOpsOf(p: Player): ('payment' | 'roster')[] {
 }
 
 /**
- * 会費・名簿未対応メンバーの強制休憩を計算する。対象条件（すべて AND）:
+ * 会費・名簿未対応メンバーの強制休憩を計算する。共通の除外条件（すべて AND）:
  *   - 会費（payment）または名簿（roster）が未対応
- *   - `forcedRestAt` 未セット（べき等マーカー。1 人につき 1 度だけ発火）
- *   - 最初の試合を終えてから `FORCED_REST_GRACE_MS` 以上経過
- *     （matchHistory 中の本人出場試合の最古 finishedAt が起点。
- *      試合未消化なら対象外）
  *   - コート上にいない（試合中のメンバーは引き剥がさず、試合終了後の
  *     次回チェックで対象化する）
+ *
+ * その上で「初回」と「再発火」の 2 経路で判定する:
+ *   - **初回**（`forcedRestAt` 未セット）: 最初の出場試合を終えてから
+ *     `FORCED_REST_GRACE_MS` 以上経過で発火（matchHistory 中の本人出場試合の
+ *     最古 finishedAt が起点。試合未消化なら対象外）。
+ *   - **再発火**（`forcedRestAt` セット済み）: 未対応が解消されないまま、前回の
+ *     強制休憩（`forcedRestAt`）より後に終了した本人出場試合が 1 つでもあれば
+ *     発火する（= ボーダー超過後にもう 1 試合こなした）。「毎試合ごと」に
+ *     休憩にするため猶予は課さない。発火時に `forcedRestAt` を now へ更新する
+ *     ことで、その試合は次回チェックでは「前回休憩より前」になり毎分連打を防ぐ。
  *
  * 対象者は `isResting: true` + `forcedRestAt: now`。既に休憩中でもマーカーを
  * セットして `enforced` に含める（元々休憩でも全員通知は行う仕様のため）。
@@ -338,24 +344,33 @@ export function computeEnforceForcedRest(
   const playingIds = new Set(
     state.courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((pid) => pid),
   );
-  // 各プレイヤーの最初の試合終了時刻
+  // 各プレイヤーの最初 / 最新の試合終了時刻
   const firstFinishedAt = new Map<string, number>();
+  const lastFinishedAt = new Map<string, number>();
   for (const m of state.matchHistory) {
     if (!m.finishedAt) continue;
     for (const pid of [...m.teamA, ...m.teamB]) {
       if (!pid) continue;
-      const cur = firstFinishedAt.get(pid);
-      if (cur === undefined || m.finishedAt < cur) firstFinishedAt.set(pid, m.finishedAt);
+      const first = firstFinishedAt.get(pid);
+      if (first === undefined || m.finishedAt < first) firstFinishedAt.set(pid, m.finishedAt);
+      const last = lastFinishedAt.get(pid);
+      if (last === undefined || m.finishedAt > last) lastFinishedAt.set(pid, m.finishedAt);
     }
   }
 
   const enforced: Player[] = [];
   const players = state.players.map((p) => {
     if (unresolvedOpsOf(p).length === 0) return p;
-    if (p.forcedRestAt) return p;
-    const baseline = firstFinishedAt.get(p.id);
-    if (baseline === undefined || now - baseline < FORCED_REST_GRACE_MS) return p;
     if (playingIds.has(p.id)) return p;
+    if (p.forcedRestAt) {
+      // 再発火: 前回の強制休憩より後に終えた試合があれば毎試合ごとに再休憩。
+      const last = lastFinishedAt.get(p.id);
+      if (last === undefined || last <= p.forcedRestAt) return p;
+    } else {
+      // 初回: 最初の出場試合終了から猶予経過で休憩。
+      const baseline = firstFinishedAt.get(p.id);
+      if (baseline === undefined || now - baseline < FORCED_REST_GRACE_MS) return p;
+    }
     const next = { ...p, isResting: true, forcedRestAt: now };
     enforced.push(next);
     return next;

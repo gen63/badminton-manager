@@ -947,10 +947,53 @@ describe('computeEnforceForcedRest', () => {
     expect(next.players[0].isResting).toBe(false);
   });
 
-  it('既にマーカー付き (forcedRestAt) のプレイヤーには再発火しない', () => {
+  it('マーカー付きでも前回休憩後に終えた試合が無ければ再発火しない', () => {
     const state = baseState({
       players: [unresolvedPlayer('p1', { isResting: true, forcedRestAt: NOW - 60_000 })],
       matchHistory: historyFor('p1'),
+    });
+    const { state: next, enforced } = computeEnforceForcedRest(state, NOW);
+    expect(enforced).toEqual([]);
+    expect(next).toBe(state);
+  });
+
+  it('前回強制休憩後に終えた試合があれば毎試合ごとに再発火し forcedRestAt を更新する', () => {
+    const PREV_REST = NOW - 20 * 60_000;
+    const state = baseState({
+      players: [
+        unresolvedPlayer('p1', {
+          gamesPlayed: 2,
+          isResting: false,
+          forcedRestAt: PREV_REST,
+        }),
+      ],
+      // 前回休憩(PREV_REST)より後に終わった試合を消化 → 猶予なしで再発火
+      matchHistory: [
+        makeMatch('m1', { teamA: ['p1', 'x1'], teamB: ['x2', 'x3'], finishedAt: FIRST_FINISHED }),
+        makeMatch('m2', {
+          teamA: ['p1', 'x1'],
+          teamB: ['x2', 'x3'],
+          finishedAt: NOW - 5 * 60_000,
+        }),
+      ],
+    });
+    const { state: next, enforced } = computeEnforceForcedRest(state, NOW);
+    expect(enforced.map((p) => p.id)).toEqual(['p1']);
+    expect(next.players[0]).toMatchObject({ isResting: true, forcedRestAt: NOW });
+  });
+
+  it('再発火対象でもコート上（試合中）なら引き剥がさない', () => {
+    const PREV_REST = NOW - 20 * 60_000;
+    const state = baseState({
+      players: [unresolvedPlayer('p1', { forcedRestAt: PREV_REST })],
+      matchHistory: [
+        makeMatch('m2', {
+          teamA: ['p1', 'x1'],
+          teamB: ['x2', 'x3'],
+          finishedAt: NOW - 5 * 60_000,
+        }),
+      ],
+      courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'], isPlaying: true })],
     });
     const { state: next, enforced } = computeEnforceForcedRest(state, NOW);
     expect(enforced).toEqual([]);
