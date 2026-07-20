@@ -281,7 +281,8 @@ export function HistoryPage() {
   const filterActive = !!session && !!filterPlayerName;
 
   // 選択できるメンバー（試合に参加したことのある人 + 自分）を名前で列挙。
-  // 自分を先頭に、残りを五十音（localeCompare）順で並べる。
+  // 通常は自分を先頭に、残りを五十音（localeCompare）順で並べる。
+  // 作成者または開発モード（showWinRate）のときは勝率の高い順に並べる。
   const filterablePlayerNames = useMemo(() => {
     const participantIds = new Set<string>();
     for (const match of matchHistory) {
@@ -294,12 +295,29 @@ export function HistoryPage() {
       if (participantIds.has(p.id) && p.name) names.add(p.name);
     }
     if (currentUser) names.add(currentUser);
-    const sorted = [...names].sort((a, b) => a.localeCompare(b, 'ja'));
+    const list = [...names];
+
+    if (showWinRate) {
+      // 勝率の高い順。未確定（試合数 0）の人は最後。同率は勝ち数→五十音で安定化。
+      const recordOf = (name: string) =>
+        computePlayerRecord(matchHistory, name, players);
+      return list.sort((a, b) => {
+        const ra = recordOf(a);
+        const rb = recordOf(b);
+        const wa = ra.winRate ?? -1;
+        const wb = rb.winRate ?? -1;
+        if (wb !== wa) return wb - wa;
+        if (rb.wins !== ra.wins) return rb.wins - ra.wins;
+        return a.localeCompare(b, 'ja');
+      });
+    }
+
+    const sorted = list.sort((a, b) => a.localeCompare(b, 'ja'));
     if (currentUser && names.has(currentUser)) {
       return [currentUser, ...sorted.filter((n) => n !== currentUser)];
     }
     return sorted;
-  }, [matchHistory, players, currentUser]);
+  }, [matchHistory, players, currentUser, showWinRate]);
 
   // 選択中のメンバーが候補から消えた場合（例: 管理者がそのメンバーの最後の
   // 試合を削除）はフィルタを解除する。controlled select の value が
