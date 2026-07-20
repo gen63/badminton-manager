@@ -27,6 +27,8 @@ npm run test:run # ユニットテスト
 
 - **DESIGN.md** - UIデザインガイドライン（デザイン変更時に必ず参照）
 - **README.md** - プロジェクト概要、技術スタック
+- **docs/deployment.md** - 本番反映（デプロイ）手順。master への PR マージで
+  GitHub Actions が GitHub Pages に自動デプロイする
 
 ## 同期アーキテクチャ（2026-05 Phase 1-5 リファクタ後）
 
