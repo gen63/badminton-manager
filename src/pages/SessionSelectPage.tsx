@@ -10,6 +10,12 @@ import { clearAppBadge } from '../lib/badge';
 import { useDevMode } from '../hooks/useDevMode';
 import { getMatchUploadBadge, needsAccountingUploadBadge } from '../lib/uploadStatus';
 import { useSessionStore } from '../stores/sessionStore';
+import {
+  resolvePracticeTypeLabel,
+  deriveFilterOptions,
+  applySessionFilters,
+  type SessionFilterState,
+} from '../lib/sessionFilters';
 import type { Session } from '../types/session';
 import { Loader2, Plus, Users, MapPin, Calendar, Trophy, StickyNote, Pencil, X, Info, Megaphone, ChevronDown } from 'lucide-react';
 
@@ -25,12 +31,6 @@ function formatSessionDate(practiceStartTime: number): { md: string; weekday: st
   return { md: `${month}/${day}`, weekday: weekdays[date.getDay()] };
 }
 
-/**
- * 練習種別の表示ラベルを解決する。
- * 1. gameState.settings.practiceType（実データ）
- * 2. config.gameMode から派生（singles → 単 / doubles → 複）
- * 3. どちらも無ければ「不明」
- */
 /**
  * 未アップロード警告バッジ（開発モード限定）。済んだものは何も表示しない。
  * 1行目は既に情報が詰まっているため、専用の行として独立させ、幅が
@@ -51,11 +51,48 @@ function UploadStatusBadges({ session }: { session: Session }) {
   );
 }
 
-function resolvePracticeTypeLabel(session: Session): string {
-  if (session.practiceType) return session.practiceType;
-  if (session.config.gameMode === 'singles') return '単';
-  if (session.config.gameMode === 'doubles') return '複';
-  return '不明';
+/** フィルタバーの1軸分（体育館 / 種別 / 日時）のチップ行。選択肢が2未満の軸は呼び出し側で描画しない */
+function FilterChipRow({
+  label,
+  options,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  options: { value: string; display: string }[];
+  selected: string | null;
+  onSelect: (value: string | null) => void;
+}) {
+  const chipClass = (isSelected: boolean) =>
+    `px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-colors active:scale-[0.98] ${
+      isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground hover:bg-muted/70'
+    }`;
+  return (
+    <div>
+      <p className="text-xs font-semibold text-muted-foreground mb-1">{label}</p>
+      <div className="flex flex-nowrap gap-2 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => onSelect(null)}
+          aria-pressed={selected === null}
+          className={chipClass(selected === null)}
+        >
+          すべて
+        </button>
+        {options.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onSelect(opt.value)}
+            aria-pressed={selected === opt.value}
+            className={chipClass(selected === opt.value)}
+          >
+            {opt.display}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function SessionSelectPage() {
@@ -267,6 +304,19 @@ export function SessionSelectPage() {
     [sessions, devMode, now],
   );
 
+  // 体育館 / 種別 / 日時フィルタ。ephemeral（persist しない）。
+  const [filter, setFilter] = useState<SessionFilterState>({
+    gym: null,
+    practiceType: null,
+    day: null,
+  });
+  const options = useMemo(() => deriveFilterOptions(visibleSessions), [visibleSessions]);
+  const filteredSessions = useMemo(
+    () => applySessionFilters(visibleSessions, filter),
+    [visibleSessions, filter],
+  );
+  const clearFilter = () => setFilter({ gym: null, practiceType: null, day: null });
+
   // ローディング
   if (loading) {
     return (
@@ -367,10 +417,64 @@ export function SessionSelectPage() {
           </div>
         )}
 
+        {/* フィルタバー（体育館 / 種別 / 日時）— 開発モード限定。選択肢が2未満の軸は行を出さない */}
+        {devMode && visibleSessions.length > 0 && (
+          <div className="card p-3 space-y-3">
+            {options.gyms.length >= 2 && (
+              <FilterChipRow
+                label="体育館"
+                options={options.gyms.map((g) => ({ value: g, display: g }))}
+                selected={filter.gym}
+                onSelect={(value) => setFilter((prev) => ({ ...prev, gym: value }))}
+              />
+            )}
+            {options.practiceTypes.length >= 2 && (
+              <FilterChipRow
+                label="種別"
+                options={options.practiceTypes.map((t) => ({ value: t, display: t }))}
+                selected={filter.practiceType}
+                onSelect={(value) => setFilter((prev) => ({ ...prev, practiceType: value }))}
+              />
+            )}
+            {options.days.length >= 2 && (
+              <FilterChipRow
+                label="日時"
+                options={options.days.map((d) => {
+                  const { md, weekday } = formatSessionDate(d);
+                  return { value: String(d), display: `${md}(${weekday})` };
+                })}
+                selected={filter.day !== null ? String(filter.day) : null}
+                onSelect={(value) => setFilter((prev) => ({ ...prev, day: value === null ? null : Number(value) }))}
+              />
+            )}
+          </div>
+        )}
+
         {/* セッション一覧 */}
-        {visibleSessions.length > 0 ? (
+        {visibleSessions.length === 0 ? (
+          !error ? (
+            /* 空の状態 */
+            <div className="card p-6 text-center">
+              <div className="text-4xl mb-3">🏸</div>
+              <h3 className="text-base font-semibold text-foreground mb-1">
+                アクティブなセッションがありません
+              </h3>
+            </div>
+          ) : null
+        ) : devMode && filteredSessions.length === 0 ? (
+          /* フィルタ結果が0件（フィルタバーは devMode 限定なので、この分岐も devMode 限定） */
+          <div className="card p-6 text-center">
+            <div className="text-4xl mb-3">🔍</div>
+            <h3 className="text-base font-semibold text-foreground mb-3">
+              条件に一致するセッションがありません
+            </h3>
+            <button onClick={clearFilter} className="btn-secondary">
+              フィルタをクリア
+            </button>
+          </div>
+        ) : (
           <div className="space-y-2">
-            {visibleSessions.map((session) => (
+            {filteredSessions.map((session) => (
               <div key={session.id} className="card overflow-hidden">
                 <div className="flex items-stretch">
                   <button
@@ -446,15 +550,7 @@ export function SessionSelectPage() {
               </div>
             ))}
           </div>
-        ) : !error ? (
-          /* 空の状態 */
-          <div className="card p-6 text-center">
-            <div className="text-4xl mb-3">🏸</div>
-            <h3 className="text-base font-semibold text-foreground mb-1">
-              アクティブなセッションがありません
-            </h3>
-          </div>
-        ) : null}
+        )}
 
         {/* アクションボタン（開発モードのみ） */}
         {devMode && (
