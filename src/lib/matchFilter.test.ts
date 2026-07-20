@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { isMatchOfPlayer } from './matchFilter';
+import {
+  isMatchOfPlayer,
+  getMatchResultForPlayer,
+  computePlayerRecord,
+} from './matchFilter';
 import type { Match } from '../types/match';
 import type { Player } from '../types/player';
 
@@ -24,6 +28,17 @@ const makeMatch = (
   scoreB: 0,
   startedAt: 0,
   finishedAt: 0,
+});
+
+const makeScoredMatch = (
+  teamA: [string, string],
+  teamB: [string, string],
+  winner: 'A' | 'B'
+): Match => ({
+  ...makeMatch(teamA, teamB),
+  scoreA: winner === 'A' ? 21 : 15,
+  scoreB: winner === 'B' ? 21 : 15,
+  winner,
 });
 
 describe('isMatchOfPlayer', () => {
@@ -90,5 +105,97 @@ describe('isMatchOfPlayer', () => {
     const match = makeMatch(['id-2', ''], ['id-1', '']);
     // どちらのIDでも 'Same' が当たればtrue
     expect(isMatchOfPlayer(match, 'Same', dupePlayers)).toBe(true);
+  });
+});
+
+describe('getMatchResultForPlayer', () => {
+  const players: Player[] = [
+    makePlayer('id-alice', 'Alice'),
+    makePlayer('id-bob', 'Bob'),
+    makePlayer('id-carol', 'Carol'),
+    makePlayer('id-dave', 'Dave'),
+    makePlayer('id-eve', 'Eve'),
+  ];
+
+  it('teamAの勝者側なら win', () => {
+    const match = makeScoredMatch(['id-alice', 'id-bob'], ['id-carol', 'id-dave'], 'A');
+    expect(getMatchResultForPlayer(match, 'Alice', players)).toBe('win');
+  });
+
+  it('teamBの敗者側なら loss', () => {
+    const match = makeScoredMatch(['id-alice', 'id-bob'], ['id-carol', 'id-dave'], 'A');
+    expect(getMatchResultForPlayer(match, 'Carol', players)).toBe('loss');
+  });
+
+  it('teamBの勝者側なら win', () => {
+    const match = makeScoredMatch(['id-alice', 'id-bob'], ['id-carol', 'id-dave'], 'B');
+    expect(getMatchResultForPlayer(match, 'Dave', players)).toBe('win');
+  });
+
+  it('参加していない試合は null', () => {
+    const match = makeScoredMatch(['id-alice', 'id-bob'], ['id-carol', 'id-dave'], 'A');
+    expect(getMatchResultForPlayer(match, 'Eve', players)).toBeNull();
+  });
+
+  it('勝敗未確定（winner 無し = 未入力）は null', () => {
+    const match = makeMatch(['id-alice', 'id-bob'], ['id-carol', 'id-dave']);
+    expect(getMatchResultForPlayer(match, 'Alice', players)).toBeNull();
+  });
+
+  it('playerName が null なら null', () => {
+    const match = makeScoredMatch(['id-alice', 'id-bob'], ['id-carol', 'id-dave'], 'A');
+    expect(getMatchResultForPlayer(match, null, players)).toBeNull();
+  });
+
+  it('シングルスでも判定できる', () => {
+    const match = makeScoredMatch(['id-alice', ''], ['id-bob', ''], 'B');
+    expect(getMatchResultForPlayer(match, 'Alice', players)).toBe('loss');
+    expect(getMatchResultForPlayer(match, 'Bob', players)).toBe('win');
+  });
+});
+
+describe('computePlayerRecord', () => {
+  const players: Player[] = [
+    makePlayer('id-alice', 'Alice'),
+    makePlayer('id-bob', 'Bob'),
+    makePlayer('id-carol', 'Carol'),
+    makePlayer('id-dave', 'Dave'),
+  ];
+
+  it('勝敗と勝率を集計する（未入力・不参加は除外）', () => {
+    const matches: Match[] = [
+      makeScoredMatch(['id-alice', 'id-bob'], ['id-carol', 'id-dave'], 'A'), // Alice win
+      makeScoredMatch(['id-alice', 'id-carol'], ['id-bob', 'id-dave'], 'B'), // Alice loss
+      makeScoredMatch(['id-alice', 'id-dave'], ['id-bob', 'id-carol'], 'A'), // Alice win
+      makeMatch(['id-alice', 'id-bob'], ['id-carol', 'id-dave']), // 未入力 → 除外
+      makeScoredMatch(['id-bob', 'id-carol'], ['id-dave', ''], 'A'), // Alice 不参加 → 除外
+    ];
+    const record = computePlayerRecord(matches, 'Alice', players);
+    expect(record).toEqual({ wins: 2, losses: 1, total: 3, winRate: 67 });
+  });
+
+  it('試合が無い場合は winRate が null', () => {
+    const matches: Match[] = [
+      makeScoredMatch(['id-bob', 'id-carol'], ['id-dave', ''], 'A'),
+    ];
+    const record = computePlayerRecord(matches, 'Alice', players);
+    expect(record).toEqual({ wins: 0, losses: 0, total: 0, winRate: null });
+  });
+
+  it('全勝なら勝率100', () => {
+    const matches: Match[] = [
+      makeScoredMatch(['id-alice', 'id-bob'], ['id-carol', 'id-dave'], 'A'),
+      makeScoredMatch(['id-alice', 'id-carol'], ['id-bob', 'id-dave'], 'A'),
+    ];
+    const record = computePlayerRecord(matches, 'Alice', players);
+    expect(record).toEqual({ wins: 2, losses: 0, total: 2, winRate: 100 });
+  });
+
+  it('playerName が null なら空の成績', () => {
+    const matches: Match[] = [
+      makeScoredMatch(['id-alice', 'id-bob'], ['id-carol', 'id-dave'], 'A'),
+    ];
+    const record = computePlayerRecord(matches, null, players);
+    expect(record).toEqual({ wins: 0, losses: 0, total: 0, winRate: null });
   });
 });

@@ -9,7 +9,8 @@ import { formatTime, copyToClipboard } from '../lib/utils';
 import { formatLocalDate } from '../lib/sessionArchive';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
 import { updateSession } from '../services/sessionService';
-import { isMatchOfPlayer } from '../lib/matchFilter';
+import { isMatchOfPlayer, computePlayerRecord } from '../lib/matchFilter';
+import type { PlayerRecord } from '../lib/matchFilter';
 import { useDevMode } from '../hooks/useDevMode';
 import { Copy, Trash2, Edit3, Clock, Upload, History, ChevronDown, ChevronUp, User, AlertTriangle } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -28,7 +29,7 @@ function MatchCard({
   getPlayerRating,
   handleEdit,
   handleDelete,
-  isAdmin,
+  canDelete,
   onShortMatchWarning,
 }: {
   match: Match;
@@ -37,7 +38,7 @@ function MatchCard({
   getPlayerRating: (id: string) => number;
   handleEdit: (id: string) => void;
   handleDelete: (id: string) => void;
-  isAdmin: boolean;
+  canDelete: boolean;
   onShortMatchWarning: () => void;
 }) {
   const durationMs = match.finishedAt - match.startedAt;
@@ -128,7 +129,7 @@ function MatchCard({
           >
             <Edit3 size={13} />
           </button>
-          {isAdmin && (
+          {canDelete && (
             <button
               onClick={() => handleDelete(match.id)}
               aria-label="削除"
@@ -150,7 +151,7 @@ function MatchList({
   getPlayerRating,
   handleEdit,
   handleDelete,
-  isAdmin,
+  canDelete,
   scoredCollapsed,
   setScoredCollapsed,
   onShortMatchWarning,
@@ -161,7 +162,7 @@ function MatchList({
   getPlayerRating: (id: string) => number;
   handleEdit: (id: string) => void;
   handleDelete: (id: string) => void;
-  isAdmin: boolean;
+  canDelete: boolean;
   scoredCollapsed: boolean;
   setScoredCollapsed: (v: boolean) => void;
   onShortMatchWarning: () => void;
@@ -178,7 +179,7 @@ function MatchList({
           getPlayerRating={getPlayerRating}
           handleEdit={handleEdit}
           handleDelete={handleDelete}
-          isAdmin={isAdmin}
+          canDelete={canDelete}
           onShortMatchWarning={onShortMatchWarning}
         />
       ))}
@@ -206,11 +207,47 @@ function MatchList({
               getPlayerRating={getPlayerRating}
               handleEdit={handleEdit}
               handleDelete={handleDelete}
-              isAdmin={isAdmin}
+              canDelete={canDelete}
               onShortMatchWarning={onShortMatchWarning}
             />
           ))}
         </>
+      )}
+    </div>
+  );
+}
+
+function PlayerRecordSummary({
+  playerName,
+  isSelf,
+  record,
+  showWinRate,
+}: {
+  playerName: string | null;
+  isSelf: boolean;
+  record: PlayerRecord;
+  // 勝率は作成者または開発モードのときのみ表示する
+  showWinRate: boolean;
+}) {
+  const label = isSelf ? '自分の成績' : `${playerName} さんの成績`;
+  return (
+    <div
+      className="rounded-xl px-4 py-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1"
+      style={{ backgroundColor: '#eef2ff', color: '#3730a3' }}
+    >
+      <span className="text-sm font-medium">{label}</span>
+      <span className="text-sm">
+        <span className="text-base font-bold">{record.wins}</span>勝{' '}
+        <span className="text-base font-bold">{record.losses}</span>敗
+      </span>
+      {showWinRate && (
+        <span className="text-sm">
+          勝率{' '}
+          <span className="text-base font-bold">
+            {record.winRate === null ? '—' : record.winRate}
+          </span>
+          {record.winRate === null ? '' : '%'}
+        </span>
       )}
     </div>
   );
@@ -222,17 +259,63 @@ export function HistoryPage() {
   const players = usePlayerStore((s) => s.players);
   const session = useSessionStore((s) => s.session);
   const isCreator = useSessionStore((s) => s.isCreator);
+  const isAdmin = useSessionStore((s) => s.isAdmin);
   const currentUser = useSessionStore((s) => s.currentUser);
-  const isAdmin = isCreator();
+  // 試合削除は作成者のみ（既存仕様）
+  const canDelete = isCreator();
+  // 勝率の表示は作成者または開発モードのときのみ（isCreator() は開発モードで true）
+  const showWinRate = isCreator();
   const gasWebAppUrl = useSettingsStore((s) => s.gasWebAppUrl);
   const devMode = useDevMode();
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
-  const [myMatchesOnly, setMyMatchesOnly] = useState(false);
+
+  // フィルタ対象プレイヤー名（null = フィルタ無し / 全試合表示）
+  const [filterPlayerName, setFilterPlayerName] = useState<string | null>(null);
 
   // 自分の試合フィルタは currentUser がある時のみ
   const canFilterByMe = !!session && !!currentUser;
-  const filterActive = canFilterByMe && myMatchesOnly;
+  // 管理者以上の権限、または開発モードのときは自分以外のメンバーも選択できる。
+  // （store の isAdmin() は開発モードでは true を返すため devMode の明示は不要）
+  const canSelectOthers = !!session && isAdmin();
+  const filterActive = !!session && !!filterPlayerName;
+
+  // 選択できるメンバー（試合に参加したことのある人 + 自分）を名前で列挙。
+  // 自分を先頭に、残りを五十音（localeCompare）順で並べる。
+  const filterablePlayerNames = useMemo(() => {
+    const participantIds = new Set<string>();
+    for (const match of matchHistory) {
+      for (const id of [...match.teamA, ...match.teamB]) {
+        if (id) participantIds.add(id);
+      }
+    }
+    const names = new Set<string>();
+    for (const p of players) {
+      if (participantIds.has(p.id) && p.name) names.add(p.name);
+    }
+    if (currentUser) names.add(currentUser);
+    const sorted = [...names].sort((a, b) => a.localeCompare(b, 'ja'));
+    if (currentUser && names.has(currentUser)) {
+      return [currentUser, ...sorted.filter((n) => n !== currentUser)];
+    }
+    return sorted;
+  }, [matchHistory, players, currentUser]);
+
+  // 選択中のメンバーが候補から消えた場合（例: 管理者がそのメンバーの最後の
+  // 試合を削除）はフィルタを解除する。controlled select の value が
+  // option 集合とずれて「表示は全員なのに実際は空フィルタ」になるのを防ぐ。
+  // filterablePlayerNames は currentUser を常に含むため自分選択時は解除されない。
+  useEffect(() => {
+    if (filterPlayerName && !filterablePlayerNames.includes(filterPlayerName)) {
+      setFilterPlayerName(null);
+    }
+  }, [filterPlayerName, filterablePlayerNames]);
+
+  // フィルタ対象プレイヤーの通算成績（勝敗・勝率）。フィルタ中のみ算出。
+  const playerRecord = useMemo(() => {
+    if (!filterPlayerName) return null;
+    return computePlayerRecord(matchHistory, filterPlayerName, players);
+  }, [matchHistory, filterPlayerName, players]);
 
   // 全試合に通し番号を振った後でフィルタを適用（番号は全体基準で安定）
   const { unscoredMatches, scoredMatches } = useMemo(() => {
@@ -241,7 +324,7 @@ export function HistoryPage() {
     const unscored: { match: Match; matchNumber: number }[] = [];
     const scored: { match: Match; matchNumber: number }[] = [];
     reversed.forEach((match, reverseIndex) => {
-      if (filterActive && !isMatchOfPlayer(match, currentUser, players)) return;
+      if (filterActive && !isMatchOfPlayer(match, filterPlayerName, players)) return;
       const matchNumber = totalCount - reverseIndex;
       const isNoScore = match.scoreA === 0 && match.scoreB === 0 && !match.winner;
       if (isNoScore) {
@@ -251,7 +334,7 @@ export function HistoryPage() {
       }
     });
     return { unscoredMatches: unscored, scoredMatches: scored };
-  }, [matchHistory, filterActive, currentUser, players]);
+  }, [matchHistory, filterActive, filterPlayerName, players]);
 
   // フィルタ適用後の未入力有無で折り畳みを判定（自分視点に合わせる）
   const hasUnscored = unscoredMatches.length > 0;
@@ -403,46 +486,94 @@ export function HistoryPage() {
             />
           ) : (
             <div className="space-y-2">
-              {canFilterByMe && (
-                <button
-                  onClick={() => setMyMatchesOnly((v) => !v)}
-                  aria-pressed={myMatchesOnly}
-                  aria-label="自分の試合のみ表示"
-                  className={`w-full flex items-center justify-center gap-2 px-3 rounded-xl text-sm font-medium transition-colors min-h-[44px] active:scale-[0.98] ${
-                    myMatchesOnly
-                      ? ''
-                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                  }`}
-                  style={
-                    myMatchesOnly
-                      ? { backgroundColor: '#e0e7ff', color: '#3730a3' }
-                      : undefined
-                  }
-                >
-                  <User size={16} />
-                  <span>{myMatchesOnly ? '自分の試合のみ ✓' : '自分の試合のみ'}</span>
-                </button>
+              {canSelectOthers ? (
+                // 管理者以上 / 開発モード: 任意のメンバーで絞り込める
+                <label className="w-full flex items-center gap-2 px-3 rounded-xl text-sm font-medium bg-secondary text-secondary-foreground min-h-[44px]">
+                  <User size={16} className="flex-shrink-0" />
+                  <span className="flex-shrink-0">メンバー</span>
+                  <select
+                    value={filterPlayerName ?? ''}
+                    onChange={(e) => setFilterPlayerName(e.target.value || null)}
+                    aria-label="メンバーで絞り込み"
+                    className="flex-1 min-w-0 bg-transparent text-base font-medium text-right py-2 focus:outline-none appearance-none"
+                    style={{ WebkitAppearance: 'none' }}
+                  >
+                    <option value="">全員</option>
+                    {filterablePlayerNames.map((name) => (
+                      <option key={name} value={name}>
+                        {name === currentUser ? `${name}（自分）` : name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                canFilterByMe && (
+                  <button
+                    onClick={() =>
+                      setFilterPlayerName((prev) => (prev ? null : currentUser))
+                    }
+                    aria-pressed={filterActive}
+                    aria-label="自分の試合のみ表示"
+                    className={`w-full flex items-center justify-center gap-2 px-3 rounded-xl text-sm font-medium transition-colors min-h-[44px] active:scale-[0.98] ${
+                      filterActive
+                        ? ''
+                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                    }`}
+                    style={
+                      filterActive
+                        ? { backgroundColor: '#e0e7ff', color: '#3730a3' }
+                        : undefined
+                    }
+                  >
+                    <User size={16} />
+                    <span>{filterActive ? '自分の試合のみ ✓' : '自分の試合のみ'}</span>
+                  </button>
+                )
               )}
 
               {filterActive && unscoredMatches.length === 0 && scoredMatches.length === 0 ? (
-                <EmptyState
-                  icon="🔍"
-                  title="あなたの試合はまだありません"
-                  description="フィルタを解除すると、すべての試合が表示されます。"
-                />
+                <>
+                  <EmptyState
+                    icon="🔍"
+                    title={
+                      filterPlayerName === currentUser
+                        ? 'あなたの試合はまだありません'
+                        : `「${filterPlayerName}」さんの試合はまだありません`
+                    }
+                    description="フィルタを解除すると、すべての試合が表示されます。"
+                  />
+                  {playerRecord && (
+                    <PlayerRecordSummary
+                      playerName={filterPlayerName}
+                      isSelf={filterPlayerName === currentUser}
+                      record={playerRecord}
+                      showWinRate={showWinRate}
+                    />
+                  )}
+                </>
               ) : (
-                <MatchList
-                  unscoredMatches={unscoredMatches}
-                  scoredMatches={scoredMatches}
-                  getPlayerName={getPlayerName}
-                  getPlayerRating={getPlayerRating}
-                  handleEdit={handleEdit}
-                  handleDelete={handleDelete}
-                  isAdmin={isAdmin}
-                  scoredCollapsed={scoredCollapsed}
-                  setScoredCollapsed={setScoredCollapsed}
-                  onShortMatchWarning={handleShortMatchWarning}
-                />
+                <>
+                  <MatchList
+                    unscoredMatches={unscoredMatches}
+                    scoredMatches={scoredMatches}
+                    getPlayerName={getPlayerName}
+                    getPlayerRating={getPlayerRating}
+                    handleEdit={handleEdit}
+                    handleDelete={handleDelete}
+                    canDelete={canDelete}
+                    scoredCollapsed={scoredCollapsed}
+                    setScoredCollapsed={setScoredCollapsed}
+                    onShortMatchWarning={handleShortMatchWarning}
+                  />
+                  {filterActive && playerRecord && (
+                    <PlayerRecordSummary
+                      playerName={filterPlayerName}
+                      isSelf={filterPlayerName === currentUser}
+                      record={playerRecord}
+                      showWinRate={showWinRate}
+                    />
+                  )}
+                </>
               )}
             </div>
           )}
