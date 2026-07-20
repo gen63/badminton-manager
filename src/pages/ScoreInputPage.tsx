@@ -24,9 +24,11 @@ export function ScoreInputPage() {
   
   // 開いた時は常に空からスタート（履歴からの編集は「訂正」前提のため、
   // 既存スコアを残すと一部の数字だけ上書きする操作が分かりにくい）。
-  // 視覚的なレイアウト（左右の入れ替え）は履歴と揃えるため、既存の winner
-  // を見て swap だけ初期化する。
-  const swap = match?.winner === 'B';
+  // 視覚的なレイアウト（左右／ペア内の並び）は履歴画面（MatchCard）と揃える:
+  //  - 左右: 勝者チームを左に置く。勝者未確定（winner が 'A' 以外）のときは
+  //    履歴と同様に teamB を左に置く。
+  //  - ペア内: レーティング降順 → 名前昇順 → id（getPlayerRating/sortPositions…）。
+  const teamBOnLeft = match?.winner !== 'A';
   const [scoreA, setScoreA] = useState(0);
   const [scoreB, setScoreB] = useState(0);
   const [inputHistory, setInputHistory] = useState<string[]>([]);
@@ -40,12 +42,36 @@ export function ScoreInputPage() {
   }
 
   const isMatchSingles = match.teamA[1] === '' && match.teamB[1] === '';
-  const leftScore = swap ? scoreB : scoreA;
-  const rightScore = swap ? scoreA : scoreB;
+  const leftScore = teamBOnLeft ? scoreB : scoreA;
+  const rightScore = teamBOnLeft ? scoreA : scoreB;
 
   const getPlayerName = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.name || '未設定';
   };
+
+  const getPlayerRating = (playerId: string) => {
+    return players.find((p) => p.id === playerId)?.rating ?? 0;
+  };
+
+  // position 0=teamA[0], 1=teamA[1], 2=teamB[0], 3=teamB[1]
+  const playerIdAt = (pos: number) =>
+    pos === 0 ? match.teamA[0]
+      : pos === 1 ? match.teamA[1]
+      : pos === 2 ? match.teamB[0]
+      : match.teamB[1];
+
+  // ペア内の表示順を履歴画面（MatchCard.sortPairForDisplay）と揃える:
+  // レーティング降順 → 名前昇順 → id。position の配列を並べ替えて返す。
+  const sortPositionsForDisplay = (positions: number[]) =>
+    [...positions].sort((pa, pb) => {
+      const a = playerIdAt(pa);
+      const b = playerIdAt(pb);
+      const ratingDiff = getPlayerRating(b) - getPlayerRating(a);
+      if (ratingDiff !== 0) return ratingDiff;
+      const nameDiff = getPlayerName(a).localeCompare(getPlayerName(b));
+      if (nameDiff !== 0) return nameDiff;
+      return a.localeCompare(b);
+    });
 
   const handlePlayerTap = async (position: number) => {
     if (!selectedPlayer) {
@@ -83,11 +109,13 @@ export function ScoreInputPage() {
 
   const handleNumberClick = (num: number) => {
     if (inputHistory.length === 0) {
-      if (swap) setScoreB(num);
+      // 1タップ目 = 左チームのスコア
+      if (teamBOnLeft) setScoreB(num);
       else setScoreA(num);
       setInputHistory([`${num}`]);
     } else if (inputHistory.length === 1) {
-      if (swap) setScoreA(num);
+      // 2タップ目 = 右チームのスコア
+      if (teamBOnLeft) setScoreA(num);
       else setScoreB(num);
       setInputHistory([...inputHistory, `${num}`]);
     }
@@ -158,17 +186,13 @@ export function ScoreInputPage() {
               </button>
             );
 
-            // position 0=teamA[0], 1=teamA[1], 2=teamB[0], 3=teamB[1]
-            // swap が true の時は teamB を左に表示する
-            const leftTop = swap ? 2 : 0;
-            const leftBottom = swap ? 3 : 1;
-            const rightTop = swap ? 0 : 2;
-            const rightBottom = swap ? 1 : 3;
-            const playerIdAt = (pos: number) =>
-              pos === 0 ? match.teamA[0]
-                : pos === 1 ? match.teamA[1]
-                : pos === 2 ? match.teamB[0]
-                : match.teamB[1];
+            // 履歴画面（MatchCard）と同じ並び:
+            //  - 勝者チームを左（未確定なら teamB を左）
+            //  - ペア内はレーティング降順（sortPositionsForDisplay）
+            const leftPositions = teamBOnLeft ? [2, 3] : [0, 1];
+            const rightPositions = teamBOnLeft ? [0, 1] : [2, 3];
+            const [leftTop, leftBottom] = sortPositionsForDisplay(leftPositions);
+            const [rightTop, rightBottom] = sortPositionsForDisplay(rightPositions);
 
             return isMatchSingles ? (
               /* シングルス: 勝者 vs 敗者 */
