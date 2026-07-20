@@ -29,7 +29,7 @@ function MatchCard({
   getPlayerRating,
   handleEdit,
   handleDelete,
-  isAdmin,
+  canDelete,
   onShortMatchWarning,
 }: {
   match: Match;
@@ -38,7 +38,7 @@ function MatchCard({
   getPlayerRating: (id: string) => number;
   handleEdit: (id: string) => void;
   handleDelete: (id: string) => void;
-  isAdmin: boolean;
+  canDelete: boolean;
   onShortMatchWarning: () => void;
 }) {
   const durationMs = match.finishedAt - match.startedAt;
@@ -129,7 +129,7 @@ function MatchCard({
           >
             <Edit3 size={13} />
           </button>
-          {isAdmin && (
+          {canDelete && (
             <button
               onClick={() => handleDelete(match.id)}
               aria-label="削除"
@@ -151,7 +151,7 @@ function MatchList({
   getPlayerRating,
   handleEdit,
   handleDelete,
-  isAdmin,
+  canDelete,
   scoredCollapsed,
   setScoredCollapsed,
   onShortMatchWarning,
@@ -162,7 +162,7 @@ function MatchList({
   getPlayerRating: (id: string) => number;
   handleEdit: (id: string) => void;
   handleDelete: (id: string) => void;
-  isAdmin: boolean;
+  canDelete: boolean;
   scoredCollapsed: boolean;
   setScoredCollapsed: (v: boolean) => void;
   onShortMatchWarning: () => void;
@@ -179,7 +179,7 @@ function MatchList({
           getPlayerRating={getPlayerRating}
           handleEdit={handleEdit}
           handleDelete={handleDelete}
-          isAdmin={isAdmin}
+          canDelete={canDelete}
           onShortMatchWarning={onShortMatchWarning}
         />
       ))}
@@ -207,7 +207,7 @@ function MatchList({
               getPlayerRating={getPlayerRating}
               handleEdit={handleEdit}
               handleDelete={handleDelete}
-              isAdmin={isAdmin}
+              canDelete={canDelete}
               onShortMatchWarning={onShortMatchWarning}
             />
           ))}
@@ -254,9 +254,10 @@ export function HistoryPage() {
   const players = usePlayerStore((s) => s.players);
   const session = useSessionStore((s) => s.session);
   const isCreator = useSessionStore((s) => s.isCreator);
-  const isAdminFn = useSessionStore((s) => s.isAdmin);
+  const isAdmin = useSessionStore((s) => s.isAdmin);
   const currentUser = useSessionStore((s) => s.currentUser);
-  const isAdmin = isCreator();
+  // 試合削除は作成者のみ（既存仕様）
+  const canDelete = isCreator();
   const gasWebAppUrl = useSettingsStore((s) => s.gasWebAppUrl);
   const devMode = useDevMode();
   const toast = useToast();
@@ -267,8 +268,9 @@ export function HistoryPage() {
 
   // 自分の試合フィルタは currentUser がある時のみ
   const canFilterByMe = !!session && !!currentUser;
-  // 管理者以上の権限、または開発モードのときは自分以外のメンバーも選択できる
-  const canSelectOthers = !!session && (isAdminFn() || devMode);
+  // 管理者以上の権限、または開発モードのときは自分以外のメンバーも選択できる。
+  // （store の isAdmin() は開発モードでは true を返すため devMode の明示は不要）
+  const canSelectOthers = !!session && isAdmin();
   const filterActive = !!session && !!filterPlayerName;
 
   // 選択できるメンバー（試合に参加したことのある人 + 自分）を名前で列挙。
@@ -291,6 +293,16 @@ export function HistoryPage() {
     }
     return sorted;
   }, [matchHistory, players, currentUser]);
+
+  // 選択中のメンバーが候補から消えた場合（例: 管理者がそのメンバーの最後の
+  // 試合を削除）はフィルタを解除する。controlled select の value が
+  // option 集合とずれて「表示は全員なのに実際は空フィルタ」になるのを防ぐ。
+  // filterablePlayerNames は currentUser を常に含むため自分選択時は解除されない。
+  useEffect(() => {
+    if (filterPlayerName && !filterablePlayerNames.includes(filterPlayerName)) {
+      setFilterPlayerName(null);
+    }
+  }, [filterPlayerName, filterablePlayerNames]);
 
   // フィルタ対象プレイヤーの通算成績（勝敗・勝率）。フィルタ中のみ算出。
   const playerRecord = useMemo(() => {
@@ -540,7 +552,7 @@ export function HistoryPage() {
                     getPlayerRating={getPlayerRating}
                     handleEdit={handleEdit}
                     handleDelete={handleDelete}
-                    isAdmin={isAdmin}
+                    canDelete={canDelete}
                     scoredCollapsed={scoredCollapsed}
                     setScoredCollapsed={setScoredCollapsed}
                     onShortMatchWarning={handleShortMatchWarning}
