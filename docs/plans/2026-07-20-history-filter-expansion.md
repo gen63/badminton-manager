@@ -50,7 +50,7 @@ UI から切り離してテスト可能にするため、純関数として実�
   等）は `useEffect` でフィルタを解除する。controlled `<select>` の value が
   option 集合とずれるのを防ぐ。候補は常に `currentUser` を含むため自分選択時は
   解除されない。
-- 成績サマリ `PlayerRecordSummary`: フィルタ中、試合一覧の下に
+- 成績サマリ `PlayerRecordSummary`: フィルタ中、フィルタUIの下・試合一覧の上に
   「◯勝 ◯敗 勝率 ◯%」を表示。対象 0 件のときは勝率を「—」表示。
   - **勝率は作成者または開発モードのときのみ表示**（`showWinRate = isCreator()`。
     `isCreator()` は開発モードで true を返す）。勝敗数（◯勝 ◯敗）は全員に表示。

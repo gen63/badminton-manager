@@ -531,49 +531,39 @@ export function HistoryPage() {
                 )
               )}
 
+              {/* 成績サマリはフィルタの下・試合一覧の上に表示する */}
+              {filterActive && playerRecord && (
+                <PlayerRecordSummary
+                  playerName={filterPlayerName}
+                  isSelf={filterPlayerName === currentUser}
+                  record={playerRecord}
+                  showWinRate={showWinRate}
+                />
+              )}
+
               {filterActive && unscoredMatches.length === 0 && scoredMatches.length === 0 ? (
-                <>
-                  <EmptyState
-                    icon="🔍"
-                    title={
-                      filterPlayerName === currentUser
-                        ? 'あなたの試合はまだありません'
-                        : `「${filterPlayerName}」さんの試合はまだありません`
-                    }
-                    description="フィルタを解除すると、すべての試合が表示されます。"
-                  />
-                  {playerRecord && (
-                    <PlayerRecordSummary
-                      playerName={filterPlayerName}
-                      isSelf={filterPlayerName === currentUser}
-                      record={playerRecord}
-                      showWinRate={showWinRate}
-                    />
-                  )}
-                </>
+                <EmptyState
+                  icon="🔍"
+                  title={
+                    filterPlayerName === currentUser
+                      ? 'あなたの試合はまだありません'
+                      : `「${filterPlayerName}」さんの試合はまだありません`
+                  }
+                  description="フィルタを解除すると、すべての試合が表示されます。"
+                />
               ) : (
-                <>
-                  <MatchList
-                    unscoredMatches={unscoredMatches}
-                    scoredMatches={scoredMatches}
-                    getPlayerName={getPlayerName}
-                    getPlayerRating={getPlayerRating}
-                    handleEdit={handleEdit}
-                    handleDelete={handleDelete}
-                    canDelete={canDelete}
-                    scoredCollapsed={scoredCollapsed}
-                    setScoredCollapsed={setScoredCollapsed}
-                    onShortMatchWarning={handleShortMatchWarning}
-                  />
-                  {filterActive && playerRecord && (
-                    <PlayerRecordSummary
-                      playerName={filterPlayerName}
-                      isSelf={filterPlayerName === currentUser}
-                      record={playerRecord}
-                      showWinRate={showWinRate}
-                    />
-                  )}
-                </>
+                <MatchList
+                  unscoredMatches={unscoredMatches}
+                  scoredMatches={scoredMatches}
+                  getPlayerName={getPlayerName}
+                  getPlayerRating={getPlayerRating}
+                  handleEdit={handleEdit}
+                  handleDelete={handleDelete}
+                  canDelete={canDelete}
+                  scoredCollapsed={scoredCollapsed}
+                  setScoredCollapsed={setScoredCollapsed}
+                  onShortMatchWarning={handleShortMatchWarning}
+                />
               )}
             </div>
           )}
