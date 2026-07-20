@@ -9,9 +9,10 @@
 
 ## 開発ワークフロー
 - 新機能・大きな変更は**必ず `plan` モードで計画**してから実装
-- plan は `docs/plans/YYYY-MM-DD-<機能名>.md` にコミット
-- 探索前に、**関連する** plan があれば `docs/plans/` を grep で当たり設計意図を確認
-  する（全件通読はしない）
+- plan は `docs/plans/YYYY-MM-DD-<機能名>.md` にコミットし、`docs/plans/INDEX.md`
+  にも1行追記する
+- 過去の設計意図は **`docs/plans/INDEX.md`（1行索引）で該当 plan を探し、その1件だけ**
+  読む。`docs/plans/` の全件通読はしない
 
 ## コミット前チェック（必須）
 master へ push する前に順に実行し、すべて通す:
