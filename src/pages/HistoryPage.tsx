@@ -221,10 +221,13 @@ function PlayerRecordSummary({
   playerName,
   isSelf,
   record,
+  showWinRate,
 }: {
   playerName: string | null;
   isSelf: boolean;
   record: PlayerRecord;
+  // 勝率は作成者または開発モードのときのみ表示する
+  showWinRate: boolean;
 }) {
   const label = isSelf ? '自分の成績' : `${playerName} さんの成績`;
   return (
@@ -237,13 +240,15 @@ function PlayerRecordSummary({
         <span className="text-base font-bold">{record.wins}</span>勝{' '}
         <span className="text-base font-bold">{record.losses}</span>敗
       </span>
-      <span className="text-sm">
-        勝率{' '}
-        <span className="text-base font-bold">
-          {record.winRate === null ? '—' : record.winRate}
+      {showWinRate && (
+        <span className="text-sm">
+          勝率{' '}
+          <span className="text-base font-bold">
+            {record.winRate === null ? '—' : record.winRate}
+          </span>
+          {record.winRate === null ? '' : '%'}
         </span>
-        {record.winRate === null ? '' : '%'}
-      </span>
+      )}
     </div>
   );
 }
@@ -258,6 +263,8 @@ export function HistoryPage() {
   const currentUser = useSessionStore((s) => s.currentUser);
   // 試合削除は作成者のみ（既存仕様）
   const canDelete = isCreator();
+  // 勝率の表示は作成者または開発モードのときのみ（isCreator() は開発モードで true）
+  const showWinRate = isCreator();
   const gasWebAppUrl = useSettingsStore((s) => s.gasWebAppUrl);
   const devMode = useDevMode();
   const toast = useToast();
@@ -540,6 +547,7 @@ export function HistoryPage() {
                       playerName={filterPlayerName}
                       isSelf={filterPlayerName === currentUser}
                       record={playerRecord}
+                      showWinRate={showWinRate}
                     />
                   )}
                 </>
@@ -562,6 +570,7 @@ export function HistoryPage() {
                       playerName={filterPlayerName}
                       isSelf={filterPlayerName === currentUser}
                       record={playerRecord}
+                      showWinRate={showWinRate}
                     />
                   )}
                 </>
