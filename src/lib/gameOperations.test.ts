@@ -506,4 +506,73 @@ describe('computeFinishAndContinue', () => {
       expect(result.newState.settings).toBeUndefined();
     });
   });
+
+  describe('未対応メンバーの試合終了ごとの強制休憩', () => {
+    const NOW_MARKER = 1710000000000; // 過去の forcedRestAt（ボーダー超過済み）
+    const unpaidResolved = { payment: true, roster: true, checkin: true };
+    const unpaidUnresolved = { payment: false, roster: true, checkin: true };
+
+    it('ボーダー超過済み(forcedRestAt有)で未払いのまま試合を終えると休憩へ戻し forcedRestAt を更新する', () => {
+      const state = makeBaseState();
+      state.players = state.players.map(p =>
+        p.id === 'p1'
+          ? { ...p, operationStatus: unpaidUnresolved, forcedRestAt: NOW_MARKER }
+          : p,
+      );
+      const result = computeFinishAndContinue(state, 1, defaultOptions);
+      const p1 = result.newState.players.find(p => p.id === 'p1')!;
+      expect(p1.isResting).toBe(true);
+      expect(p1.forcedRestAt).toBeGreaterThan(NOW_MARKER);
+      // 同席の対応済みメンバーは待機に戻る
+      expect(result.newState.players.find(p => p.id === 'p2')!.isResting).toBe(false);
+    });
+
+    it('forcedRestAt 未設定（初回未発火）なら試合終了で休憩にはしない（30分猶予はポーリング側）', () => {
+      const state = makeBaseState();
+      state.players = state.players.map(p =>
+        p.id === 'p1' ? { ...p, operationStatus: unpaidUnresolved } : p,
+      );
+      const result = computeFinishAndContinue(state, 1, defaultOptions);
+      const p1 = result.newState.players.find(p => p.id === 'p1')!;
+      expect(p1.isResting).toBe(false);
+      expect(p1.forcedRestAt).toBeUndefined();
+    });
+
+    it('会費・名簿とも対応済みなら forcedRestAt が残っていても休憩にしない', () => {
+      const state = makeBaseState();
+      state.players = state.players.map(p =>
+        p.id === 'p1'
+          ? { ...p, operationStatus: unpaidResolved, forcedRestAt: NOW_MARKER }
+          : p,
+      );
+      const result = computeFinishAndContinue(state, 1, defaultOptions);
+      const p1 = result.newState.players.find(p => p.id === 'p1')!;
+      expect(p1.isResting).toBe(false);
+      expect(p1.forcedRestAt).toBe(NOW_MARKER);
+    });
+
+    it('単・連続モードでも強制休憩者は次の自動配置に選ばれない', () => {
+      // singles: 1コート2人。p1 が未対応かつボーダー超過済み。
+      const state: GameState = {
+        players: [
+          makePlayer('p1', { operationStatus: unpaidUnresolved, forcedRestAt: NOW_MARKER }),
+          makePlayer('p2'),
+          makePlayer('p3'), makePlayer('p4'), makePlayer('p5'),
+        ],
+        courts: [makeCourt(1, { teamA: ['p1', ''], teamB: ['p2', ''], isPlaying: true, startedAt: 1710500000000 })],
+        matchHistory: [],
+        reservations: [],
+      };
+      const result = computeFinishAndContinue(state, 1, {
+        ...defaultOptions,
+        gameMode: 'singles',
+        continuousMatchMode: true,
+      });
+      const p1 = result.newState.players.find(p => p.id === 'p1')!;
+      expect(p1.isResting).toBe(true);
+      // 次の試合（もし配置されていれば）に p1 は含まれない
+      const nextCourt = result.newState.courts[0];
+      expect([...nextCourt.teamA, ...nextCourt.teamB]).not.toContain('p1');
+    });
+  });
 });

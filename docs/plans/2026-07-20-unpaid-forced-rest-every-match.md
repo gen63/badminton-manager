@@ -54,6 +54,35 @@ matchHistory から求め、再発火判定に使う（初回判定用の `first
 - 通知文言は既存のまま流用（「会費の支払い…がまだのため休憩になりました」）。
 - 対応完了時の自動「待機」復帰は行わない（従来どおり手動運用）。
 
+## 追記（2026-07-20 フォローアップ）: 試合終了時に確定させる
+
+### 問題
+
+上記の再発火は MainPage の **60 秒ポーリング**でしか走らない。試合終了時
+（`computeFinishAndContinue`）は出場者を **待機（`isResting: false`）** に戻すため、
+ボーダー超過済みの未対応メンバーも一旦待機に戻り、**次のポーリングまでの最大
+60 秒の隙間**に連続配置（continuous mode）や手動再投入で再出場してしまう。
+特に **単（singles, 1 コート 2 人）** は待機プールが小さく回転が速いので、
+ポーリングが競合に負けて「毎試合ごとの強制休憩が効かない」ように見える。
+
+### 対策（イベント駆動で確定）
+
+`src/lib/gameOperations.ts` の `computeFinishAndContinue` で、出場者のうち
+**`forcedRestAt` がセット済み（＝一度ボーダー超過）かつ会費/名簿が未対応** の
+メンバーは、試合終了時に待機ではなく **強制休憩（`isResting: true`）へ戻す**。
+同時に `forcedRestAt` を now に更新し、`useFirebaseSync` の onSnapshot 通知を
+再発火させる。これにより:
+
+- 連続配置の `waitingPlayers` フィルタ（`!isResting`）から確実に外れ、
+  次の自動配置に選ばれない。
+- ポーリングの隙間に依存せず **試合終了と同時に**確定する（毎試合ごと）。
+- 初回（`forcedRestAt` 未設定）は従来どおり待機に戻し、30 分猶予の初回発火は
+  ポーリング側に委ねる。
+- 循環 import を避けるため `hasUnresolvedOps`（`unresolvedOpsOf` 相当）を
+  gameOperations 内に小さく持つ。
+- べき等: 更新後の `forcedRestAt` は同試合の `finishedAt` と同値になるため、
+  ポーリングの再発火（`last <= forcedRestAt`）は空振りし二重書き込みしない。
+
 ## 確認
 
 - `npm run build` / `npm run lint` / `npm run test:run`
@@ -61,3 +90,8 @@ matchHistory から求め、再発火判定に使う（初回判定用の `first
   - `forcedRestAt` 後に終了した試合があれば再発火し `forcedRestAt` を更新する
   - `forcedRestAt` 後に新しい試合が無ければ再発火しない（既存テスト踏襲）
   - 再発火対象でもコート上なら引き剥がさない
+- `gameOperations.test.ts` に試合終了時強制休憩のテストを追加:
+  - ボーダー超過済み＋未対応 → 休憩へ戻し `forcedRestAt` 更新
+  - `forcedRestAt` 未設定 → 休憩にしない（初回はポーリング）
+  - 対応済み → `forcedRestAt` が残っていても休憩にしない
+  - 単・連続モードで強制休憩者が次の自動配置に選ばれない
