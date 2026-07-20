@@ -524,6 +524,29 @@ describe('buildSessionData', () => {
     const data = buildSessionData(event, new Map(), new Date(2026, 3, 9));
     expect(data.admins).toEqual([]);
   });
+
+  it('createdByはAUTO_SESSION_ADMINSの序列で最上位の参加者になる', () => {
+    const event = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: ['りょーちん♂', 'ほそや', '一般さん'], genders: {},
+    };
+    const data = buildSessionData(event, new Map(), new Date(2026, 3, 9));
+    expect(data.createdBy).toBe('ほそや');
+  });
+
+  it('管理者候補が参加者にいなければcreatedByはsentinelのまま', () => {
+    const event = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: ['一般さん'], genders: {},
+    };
+    const data = buildSessionData(event, new Map(), new Date(2026, 3, 9));
+    expect(data.createdBy).toBe('auto-session-bot');
+    expect(data.admins).toEqual([]);
+  });
 });
 
 describe('buildTmpSheetName', () => {

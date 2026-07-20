@@ -30,6 +30,7 @@ import {
 } from 'firebase/firestore';
 import iconv from 'iconv-lite';
 import type { GameState } from '../src/services/sessionService';
+import { AUTO_SESSION_BOT_CREATOR } from '../src/services/sessionService';
 import type { Player } from '../src/types/player';
 
 // ============================================================
@@ -509,11 +510,14 @@ function buildSessionData(
   });
 
   const trimmedAnnouncement = defaultAnnouncementText?.trim() ?? '';
+  const presentAdmins = AUTO_SESSION_ADMINS.filter((name) => event.participants.includes(name));
 
   return {
     config: { courtCount: 1, targetScore: 15, practiceStartTime, gym: event.venue, gameMode },
-    createdBy: 'auto-session-bot',
-    admins: AUTO_SESSION_ADMINS.filter((name) => event.participants.includes(name)),
+    // 作成者は AUTO_SESSION_ADMINS の序列で参加者に含まれる先頭のメンバー。
+    // 誰も居なければ sentinel（bot）に留め、初回参加者が作成者を引き継ぐ既存挙動を温存する。
+    createdBy: presentAdmins[0] ?? AUTO_SESSION_BOT_CREATOR,
+    admins: presentAdmins,
     participants: [] as string[],
     registeredPlayers: event.participants,
     status: 'active' as const,
