@@ -67,6 +67,20 @@
 - `devMode` 分岐や `isSessionVisible` の既存ロジックは変更しない
   （フィルタは `visibleSessions` の**後段**に乗せるだけ）。
 
+## 改訂 (2026-07-20 その2)
+
+- **UI: チップ行 → プルダウン（`<select>`）の横並び**に変更。
+  体育館 / 種別 / 月 の 3 つの `<select>` を 1 行に横並び（`flex gap-2`、各 `flex-1`）。
+  各 `<select>` の先頭は「すべて」（＝その軸 null）。
+- **日時 → 月単位フィルタ**に変更。
+  - `startOfMonth(ts)` を追加（ローカル月初 0:00）。
+  - `deriveFilterOptions` の `days` を `months`（distinct な月初、昇順）に置換。
+  - `applySessionFilters` の `day` 軸を `month` 軸に置換
+    （`startOfMonth(practiceStartTime) === filter.month`）。
+  - `SessionFilterState.day` → `month` にリネーム。
+  - 月ラベルは `YYYY年M月`。
+- 「選択肢2未満の軸は出さない」ルールは踏襲（`<select>` 自体を出さない）。
+
 ## テスト / 受け入れ
 
 - `npm run build` / `npm run lint` / `npm run test:run` が全て通ること。

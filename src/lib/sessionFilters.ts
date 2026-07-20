@@ -6,7 +6,7 @@ import type { Session } from '../types/session';
 export interface SessionFilterState {
   gym: string | null;
   practiceType: string | null;
-  day: number | null;
+  month: number | null;
 }
 
 /**
@@ -22,33 +22,40 @@ export function resolvePracticeTypeLabel(session: Session): string {
   return '不明';
 }
 
-/** Unix ms タイムスタンプをローカル日付の 0:00 (Unix ms) に丸める */
-export function startOfDay(ts: number): number {
+/** Unix ms タイムスタンプをローカル月初 0:00 (Unix ms) に丸める */
+export function startOfMonth(ts: number): number {
   const d = new Date(ts);
+  d.setDate(1);
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
 
-/** フィルタ各軸の選択肢（`sessions` に実在する値のみ、distinct）。日時は昇順ソート */
+/** 月初タイムスタンプを「YYYY年M月」形式にフォーマットする */
+export function formatMonthLabel(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}年${d.getMonth() + 1}月`;
+}
+
+/** フィルタ各軸の選択肢（`sessions` に実在する値のみ、distinct）。月は昇順ソート */
 export function deriveFilterOptions(sessions: Session[]): {
   gyms: string[];
   practiceTypes: string[];
-  days: number[];
+  months: number[];
 } {
   const gyms = new Set<string>();
   const practiceTypes = new Set<string>();
-  const days = new Set<number>();
+  const months = new Set<number>();
 
   for (const session of sessions) {
     if (session.config.gym) gyms.add(session.config.gym);
     practiceTypes.add(resolvePracticeTypeLabel(session));
-    days.add(startOfDay(session.config.practiceStartTime));
+    months.add(startOfMonth(session.config.practiceStartTime));
   }
 
   return {
     gyms: Array.from(gyms),
     practiceTypes: Array.from(practiceTypes),
-    days: Array.from(days).sort((a, b) => a - b),
+    months: Array.from(months).sort((a, b) => a - b),
   };
 }
 
@@ -59,7 +66,7 @@ export function applySessionFilters(sessions: Session[], filter: SessionFilterSt
     if (filter.practiceType !== null && resolvePracticeTypeLabel(session) !== filter.practiceType) {
       return false;
     }
-    if (filter.day !== null && startOfDay(session.config.practiceStartTime) !== filter.day) {
+    if (filter.month !== null && startOfMonth(session.config.practiceStartTime) !== filter.month) {
       return false;
     }
     return true;

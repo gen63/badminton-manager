@@ -14,6 +14,7 @@ import {
   resolvePracticeTypeLabel,
   deriveFilterOptions,
   applySessionFilters,
+  formatMonthLabel,
   type SessionFilterState,
 } from '../lib/sessionFilters';
 import type { Session } from '../types/session';
@@ -51,46 +52,38 @@ function UploadStatusBadges({ session }: { session: Session }) {
   );
 }
 
-/** フィルタバーの1軸分（体育館 / 種別 / 日時）のチップ行。選択肢が2未満の軸は呼び出し側で描画しない */
-function FilterChipRow({
-  label,
+/** フィルタバーの1軸分（体育館 / 種別 / 月）のドロップダウン。選択肢が2未満の軸は呼び出し側で描画しない */
+function FilterSelect({
+  axisLabel,
   options,
   selected,
   onSelect,
 }: {
-  label: string;
+  axisLabel: string;
   options: { value: string; display: string }[];
   selected: string | null;
   onSelect: (value: string | null) => void;
 }) {
-  const chipClass = (isSelected: boolean) =>
-    `px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-colors active:scale-[0.98] ${
-      isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground hover:bg-muted/70'
-    }`;
   return (
-    <div>
-      <p className="text-xs font-semibold text-muted-foreground mb-1">{label}</p>
-      <div className="flex flex-nowrap gap-2 overflow-x-auto">
-        <button
-          type="button"
-          onClick={() => onSelect(null)}
-          aria-pressed={selected === null}
-          className={chipClass(selected === null)}
-        >
-          すべて
-        </button>
+    <div className="relative flex-1 min-w-0">
+      <select
+        value={selected ?? ''}
+        onChange={(e) => onSelect(e.target.value === '' ? null : e.target.value)}
+        aria-label={axisLabel}
+        className="w-full bg-input border border-border rounded-xl pl-3 pr-8 py-2 text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+        style={{ WebkitAppearance: 'none' }}
+      >
+        <option value="">{`${axisLabel}：すべて`}</option>
         {options.map((opt) => (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => onSelect(opt.value)}
-            aria-pressed={selected === opt.value}
-            className={chipClass(selected === opt.value)}
-          >
+          <option key={opt.value} value={opt.value}>
             {opt.display}
-          </button>
+          </option>
         ))}
-      </div>
+      </select>
+      <ChevronDown
+        size={14}
+        className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+      />
     </div>
   );
 }
@@ -304,18 +297,18 @@ export function SessionSelectPage() {
     [sessions, devMode, now],
   );
 
-  // 体育館 / 種別 / 日時フィルタ。ephemeral（persist しない）。
+  // 体育館 / 種別 / 月フィルタ。ephemeral（persist しない）。
   const [filter, setFilter] = useState<SessionFilterState>({
     gym: null,
     practiceType: null,
-    day: null,
+    month: null,
   });
   const options = useMemo(() => deriveFilterOptions(visibleSessions), [visibleSessions]);
   const filteredSessions = useMemo(
     () => applySessionFilters(visibleSessions, filter),
     [visibleSessions, filter],
   );
-  const clearFilter = () => setFilter({ gym: null, practiceType: null, day: null });
+  const clearFilter = () => setFilter({ gym: null, practiceType: null, month: null });
 
   // ローディング
   if (loading) {
@@ -417,38 +410,41 @@ export function SessionSelectPage() {
           </div>
         )}
 
-        {/* フィルタバー（体育館 / 種別 / 日時）— 開発モード限定。選択肢が2未満の軸は行を出さない */}
-        {devMode && visibleSessions.length > 0 && (
-          <div className="card p-3 space-y-3">
-            {options.gyms.length >= 2 && (
-              <FilterChipRow
-                label="体育館"
-                options={options.gyms.map((g) => ({ value: g, display: g }))}
-                selected={filter.gym}
-                onSelect={(value) => setFilter((prev) => ({ ...prev, gym: value }))}
-              />
-            )}
-            {options.practiceTypes.length >= 2 && (
-              <FilterChipRow
-                label="種別"
-                options={options.practiceTypes.map((t) => ({ value: t, display: t }))}
-                selected={filter.practiceType}
-                onSelect={(value) => setFilter((prev) => ({ ...prev, practiceType: value }))}
-              />
-            )}
-            {options.days.length >= 2 && (
-              <FilterChipRow
-                label="日時"
-                options={options.days.map((d) => {
-                  const { md, weekday } = formatSessionDate(d);
-                  return { value: String(d), display: `${md}(${weekday})` };
-                })}
-                selected={filter.day !== null ? String(filter.day) : null}
-                onSelect={(value) => setFilter((prev) => ({ ...prev, day: value === null ? null : Number(value) }))}
-              />
-            )}
-          </div>
-        )}
+        {/* フィルタバー（体育館 / 種別 / 月）— 開発モード限定。選択肢が2未満の軸は出さない */}
+        {devMode &&
+          visibleSessions.length > 0 &&
+          (options.gyms.length >= 2 || options.practiceTypes.length >= 2 || options.months.length >= 2) && (
+            <div className="card p-3">
+              <div className="flex gap-2">
+                {options.gyms.length >= 2 && (
+                  <FilterSelect
+                    axisLabel="体育館"
+                    options={options.gyms.map((g) => ({ value: g, display: g }))}
+                    selected={filter.gym}
+                    onSelect={(value) => setFilter((prev) => ({ ...prev, gym: value }))}
+                  />
+                )}
+                {options.practiceTypes.length >= 2 && (
+                  <FilterSelect
+                    axisLabel="種別"
+                    options={options.practiceTypes.map((t) => ({ value: t, display: t }))}
+                    selected={filter.practiceType}
+                    onSelect={(value) => setFilter((prev) => ({ ...prev, practiceType: value }))}
+                  />
+                )}
+                {options.months.length >= 2 && (
+                  <FilterSelect
+                    axisLabel="月"
+                    options={options.months.map((m) => ({ value: String(m), display: formatMonthLabel(m) }))}
+                    selected={filter.month !== null ? String(filter.month) : null}
+                    onSelect={(value) =>
+                      setFilter((prev) => ({ ...prev, month: value === null ? null : Number(value) }))
+                    }
+                  />
+                )}
+              </div>
+            </div>
+          )}
 
         {/* セッション一覧 */}
         {visibleSessions.length === 0 ? (
