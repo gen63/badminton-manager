@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
@@ -270,8 +270,25 @@ export function HistoryPage() {
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
 
-  // フィルタ対象プレイヤー名（null = フィルタ無し / 全試合表示）
-  const [filterPlayerName, setFilterPlayerName] = useState<string | null>(null);
+  // フィルタ対象プレイヤー名（null = フィルタ無し / 全試合表示）。
+  // URL クエリ `?player=名前` に保持する。こうすることでスコア入力画面へ遷移して
+  // 戻った際（`navigate('/history?player=…')` による再マウント）もフィルタが維持される。
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filterPlayerName = searchParams.get('player');
+  const setFilterPlayerName = useCallback(
+    (name: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (name) next.set('player', name);
+          else next.delete('player');
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
 
   // 自分の試合フィルタは currentUser がある時のみ
   const canFilterByMe = !!session && !!currentUser;
@@ -327,7 +344,7 @@ export function HistoryPage() {
     if (filterPlayerName && !filterablePlayerNames.includes(filterPlayerName)) {
       setFilterPlayerName(null);
     }
-  }, [filterPlayerName, filterablePlayerNames]);
+  }, [filterPlayerName, filterablePlayerNames, setFilterPlayerName]);
 
   // フィルタ対象プレイヤーの通算成績（勝敗・勝率）。フィルタ中のみ算出。
   const playerRecord = useMemo(() => {
@@ -375,7 +392,11 @@ export function HistoryPage() {
   };
 
   const handleEdit = (matchId: string) => {
-    navigate(`/score/${matchId}`, { state: { from: '/history' } });
+    // フィルタ中はクエリを付けて戻り先に引き継ぐ（スコア入力後もフィルタを維持）
+    const from = filterPlayerName
+      ? `/history?player=${encodeURIComponent(filterPlayerName)}`
+      : '/history';
+    navigate(`/score/${matchId}`, { state: { from } });
   };
 
   const handleDelete = async (matchId: string) => {
@@ -528,7 +549,7 @@ export function HistoryPage() {
                 canFilterByMe && (
                   <button
                     onClick={() =>
-                      setFilterPlayerName((prev) => (prev ? null : currentUser))
+                      setFilterPlayerName(filterPlayerName ? null : currentUser)
                     }
                     aria-pressed={filterActive}
                     aria-label="自分の試合のみ表示"

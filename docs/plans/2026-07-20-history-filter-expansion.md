@@ -37,8 +37,11 @@ UI から切り離してテスト可能にするため、純関数として実�
 
 ### UI（`src/pages/HistoryPage.tsx`）
 
-- state を `myMatchesOnly: boolean` → `filterPlayerName: string | null` に変更
-  （null = フィルタ無し / 全試合）。
+- フィルタ状態は URL クエリ `?player=名前` に保持する（`useSearchParams`）。
+  `filterPlayerName = searchParams.get('player')`。ローカル `useState` だと
+  スコア入力画面へ遷移して戻る（`navigate('/history')` で再マウント）際に
+  フィルタが失われるため、URL に載せて維持する。`handleEdit` は遷移時に
+  `state.from` へ `?player=…` を含めて渡し、戻り先で復元する。
 - フィルタ操作:
   - 一般ユーザー: 従来どおり「自分の試合のみ」トグル
     （`filterPlayerName` を `currentUser` ↔ null にトグル）。
