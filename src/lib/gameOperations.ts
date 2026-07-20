@@ -20,6 +20,14 @@ export function getPlayersPerCourt(gameMode: 'singles' | 'doubles'): number {
   return gameMode === 'singles' ? 2 : 4;
 }
 
+/**
+ * 会費・名簿が未対応か（sessionMutations.unresolvedOpsOf と同じ判定）。
+ * gameOperations ⇄ sessionMutations の循環 import を避けるためここに小さく持つ。
+ */
+function hasUnresolvedOps(p: Player): boolean {
+  return !p.operationStatus?.payment || !p.operationStatus?.roster;
+}
+
 /** ゲームモードに応じた連続モード配置に必要な最小待機人数 */
 export function getMinWaitingCount(gameMode: 'singles' | 'doubles'): number {
   return gameMode === 'singles' ? 3 : 7;
@@ -138,11 +146,18 @@ export function computeFinishAndContinue(
   const restReturnIds = new Set(court.restingPlayerIds ?? []);
   let updatedPlayers = state.players.map(p => {
     if (activePlayerIds.includes(p.id)) {
+      // 会費・名簿が未対応のまま一度ボーダーを超えて強制休憩になった
+      // （forcedRestAt セット済み）メンバーは、試合終了ごとに待機ではなく
+      // 強制休憩へ戻す。待機に戻すと連続配置や手動再投入で 60 秒ポーリングの
+      // 再休憩より先に再出場してしまうため、ここで確定させる（毎試合ごと）。
+      // forcedRestAt を更新して全員通知（useFirebaseSync）を再発火させる。
+      const forceRestAgain = p.forcedRestAt !== undefined && hasUnresolvedOps(p);
       return {
         ...p,
         gamesPlayed: p.gamesPlayed + 1,
         lastPlayedAt: now,
-        isResting: restReturnIds.has(p.id) || pendingReservedIds.has(p.id),
+        isResting: forceRestAgain || restReturnIds.has(p.id) || pendingReservedIds.has(p.id),
+        ...(forceRestAgain ? { forcedRestAt: now } : {}),
       };
     }
     return p;
