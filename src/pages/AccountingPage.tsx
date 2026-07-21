@@ -249,10 +249,12 @@ export function AccountingPage() {
   const paymentStats = useMemo(() => {
     const paidPlayers = players.filter(p => p.operationStatus?.payment);
     const totalAmount = paidPlayers.reduce((sum, p) => sum + (p.paymentAmount ?? 0), 0);
+    const remittedCount = paidPlayers.filter(p => (p.paymentAmount ?? 0) > 0).length;
     return {
       paidCount: paidPlayers.length,
       totalPlayers: players.length,
       totalAmount,
+      remittedCount,
       players: paidPlayers.map(p => ({
         id: p.id,
         name: p.name,
@@ -269,6 +271,23 @@ export function AccountingPage() {
       }),
     };
   }, [players]);
+
+  // 支払い詳細リストの金額フィルタ（表示のみに作用。サマリー集計には影響しない）
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'exempt' | number>('all');
+
+  const paymentFilterOptions = useMemo(() => {
+    const hasExempt = paymentStats.players.some(p => p.amount === 0);
+    const amounts = Array.from(
+      new Set(paymentStats.players.filter(p => p.amount > 0).map(p => p.amount)),
+    ).sort((a, b) => a - b);
+    return { hasExempt, amounts };
+  }, [paymentStats.players]);
+
+  const filteredPaymentPlayers = useMemo(() => {
+    if (paymentFilter === 'all') return paymentStats.players;
+    if (paymentFilter === 'exempt') return paymentStats.players.filter(p => p.amount === 0);
+    return paymentStats.players.filter(p => p.amount === paymentFilter);
+  }, [paymentStats.players, paymentFilter]);
 
   // Firestore への書き込みをデバウンス（onChange 連打を 1 回にまとめる）
   const writeTimerRef = useRef<number | null>(null);
@@ -582,7 +601,7 @@ export function AccountingPage() {
           <div className="card p-4">
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">支払い済み</span>
+                <span className="text-sm text-muted-foreground">会計対応済み</span>
                 <span className="text-lg font-bold text-foreground">
                   {paymentStats.paidCount} / {paymentStats.totalPlayers}人
                 </span>
@@ -591,6 +610,12 @@ export function AccountingPage() {
                 <span className="text-sm text-muted-foreground">合計金額</span>
                 <span className="text-2xl font-bold text-primary">
                   ¥{paymentStats.totalAmount.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">送金済み</span>
+                <span className="text-sm font-medium text-foreground">
+                  {paymentStats.remittedCount}人
                 </span>
               </div>
               {paymentStats.players.filter(p => p.amount === 0).length > 0 && (
@@ -612,36 +637,82 @@ export function AccountingPage() {
                 まだ支払いがありません
               </p>
             ) : (
-              <div className="space-y-2">
-                {paymentStats.players.map((player) => {
-                  const paymentTime = player.paymentTimestamp
-                    ? new Date(player.paymentTimestamp).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
-                    : null;
-                  
-                  return (
-                    <div
-                      key={player.id}
-                      className="flex items-center justify-between py-2 border-b border-border last:border-0"
+              <>
+                {/* 金額フィルタチップ */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <button
+                    onClick={() => setPaymentFilter('all')}
+                    className={`select-button text-xs px-3 py-1.5 ${
+                      paymentFilter === 'all' ? 'select-button-active' : 'select-button-inactive'
+                    }`}
+                  >
+                    全て
+                  </button>
+                  {paymentFilterOptions.hasExempt && (
+                    <button
+                      onClick={() => setPaymentFilter('exempt')}
+                      className={`select-button text-xs px-3 py-1.5 ${
+                        paymentFilter === 'exempt' ? 'select-button-active' : 'select-button-inactive'
+                      }`}
                     >
-                      <div>
-                        <div className="text-sm font-medium text-foreground">{player.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {player.gamesPlayed}試合
-                          {paymentTime && (
-                            <span className="ml-2 text-[10px]">
-                              🕐 {paymentTime}
-                              {player.paymentOperatorName && `・${player.paymentOperatorName}`}
+                      免除
+                    </button>
+                  )}
+                  {paymentFilterOptions.amounts.map((amount) => (
+                    <button
+                      key={amount}
+                      onClick={() => setPaymentFilter(amount)}
+                      className={`select-button text-xs px-3 py-1.5 ${
+                        paymentFilter === amount ? 'select-button-active' : 'select-button-inactive'
+                      }`}
+                    >
+                      ¥{amount.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+
+                {filteredPaymentPlayers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    該当する支払いはありません
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredPaymentPlayers.map((player, index) => {
+                      const paymentTime = player.paymentTimestamp
+                        ? new Date(player.paymentTimestamp).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+                        : null;
+
+                      return (
+                        <div
+                          key={player.id}
+                          className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground w-5 shrink-0 text-right">
+                              {index + 1}
                             </span>
-                          )}
+                            <div>
+                              <div className="text-sm font-medium text-foreground">{player.name}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {player.gamesPlayed}試合
+                                {paymentTime && (
+                                  <span className="ml-2 text-[10px]">
+                                    🕐 {paymentTime}
+                                    {player.paymentOperatorName && `・${player.paymentOperatorName}`}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className={`text-base font-bold ${player.amount === 0 ? 'text-amber-600' : 'text-foreground'}`}>
+                            {player.amount === 0 ? '免除' : `¥${player.amount.toLocaleString()}`}
+                          </div>
                         </div>
-                      </div>
-                      <div className={`text-base font-bold ${player.amount === 0 ? 'text-amber-600' : 'text-foreground'}`}>
-                        {player.amount === 0 ? '免除' : `¥${player.amount.toLocaleString()}`}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
