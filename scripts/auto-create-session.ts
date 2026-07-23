@@ -30,7 +30,7 @@ import {
 } from 'firebase/firestore';
 import iconv from 'iconv-lite';
 import type { GameState } from '../src/services/sessionService';
-import { AUTO_SESSION_BOT_CREATOR } from '../src/services/sessionService';
+import { AUTO_SESSION_BOT_CREATOR } from '../src/constants/autoSession';
 import type { Player } from '../src/types/player';
 
 // ============================================================
