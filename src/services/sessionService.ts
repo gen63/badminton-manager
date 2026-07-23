@@ -30,6 +30,7 @@ import type { Reservation } from '../types/reservation';
 import { SessionError } from '../lib/errorHandler';
 import { requireDb, sanitize } from '../lib/firestoreUtils';
 import { computeFirstMatchStartedAt, isSessionVisible } from '../lib/sessionArchive';
+import { AUTO_SESSION_BOT_CREATOR } from '../constants/autoSession';
 
 /** セッションレベルの設定（Firebase同期対象） */
 export interface SyncSettings {
@@ -251,8 +252,7 @@ export async function updateSession(
   });
 }
 
-/** bot 作成セッションの sentinel 値。最初にログインした人が作成者に昇格する */
-export const AUTO_SESSION_BOT_CREATOR = 'auto-session-bot';
+export { AUTO_SESSION_BOT_CREATOR };
 
 /** セッションに参加者を追加（トランザクションでgameState.playersにも追加） */
 export async function joinSession(
