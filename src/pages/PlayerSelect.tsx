@@ -12,6 +12,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 import { formatLastSeen, type LastSeenTone } from '../lib/lastSeen';
+import { sortPlayers, type PlayerSortMode } from '../lib/playerSort';
 import { formatTime } from '../lib/utils';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
@@ -57,7 +58,14 @@ export function PlayerSelect() {
   });
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number; isPaid: boolean } | null>(null);
   const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F' } | null>(null);
-  const [paidCollapsed, setPaidCollapsed] = useState(true);
+  // アコーディオンの開閉。null = ユーザー未操作（自動判定に委ねる）。
+  // 未操作なら全員完了時に自動で開き、それ以外は既定で閉じる。ユーザーが一度
+  // タップしたらその選択（override）を優先し、以降は allComplete の変化で
+  // 上書きされない（下記 paidCollapsed の算出を参照）。
+  const [paidCollapsedOverride, setPaidCollapsedOverride] = useState<boolean | null>(null);
+  // ソート選択（settingsStore へは永続化しない。CLAUDE.md のローカルストレージ最小化方針）。
+  // 非管理者は lastSeen データが見えないため、ロジックでも 'games' 固定にする（下記 sortedPlayers 参照）。
+  const [sortMode, setSortMode] = useState<PlayerSortMode>('games');
   const practiceDefaults =
     PRACTICE_TYPE_OPTIONS.find((t) => t.value === practiceType) ?? PRACTICE_TYPE_OPTIONS[0];
   const maleFee = session?.accounting?.maleFee ?? practiceDefaults.maleFee;
@@ -68,8 +76,21 @@ export function PlayerSelect() {
     matchHistory.flatMap((match) => [...match.teamA, ...match.teamB])
   );
 
-  // 参加回数の多い順でソート
-  const sortedPlayers = [...players].sort((a, b) => b.gamesPlayed - a.gamesPlayed);
+  // 参加者一覧のソート（非管理者は lastSeen が非表示のため常に 'games' 固定）
+  const sortedPlayers = sortPlayers(players, isAdmin ? sortMode : 'games', lastSeen);
+
+  // タスク（会費・名簿）未完了 / 完了済みのグルーピング。アコーディオン自動展開の
+  // 派生値（allComplete）が incompletePlayers.length を参照するため renderPlayerList
+  // から巻き上げる。
+  const incompletePlayers = sortedPlayers.filter(p => !p.operationStatus?.payment || !p.operationStatus?.roster);
+  const completePlayers = sortedPlayers.filter(p => p.operationStatus?.payment && p.operationStatus?.roster);
+
+  // 全員のタスクが完了（未完了 0 人）なら「完了済み」を自動で開く対象とする。
+  const allComplete = players.length > 0 && incompletePlayers.length === 0;
+  // 手動操作（override）が無い間は allComplete の派生値、操作後はその選択を優先する。
+  // effect を使わない純粋な派生値なので、毎レンダーで再評価されても手動で閉じた
+  // 状態が上書きされることはない（override が一度でも設定されればそちらが勝つ）。
+  const paidCollapsed = paidCollapsedOverride ?? !allComplete;
 
   const handleDelete = async (player: { id: string; name: string }) => {
     if (playersInHistory.has(player.id)) {
@@ -235,9 +256,6 @@ export function PlayerSelect() {
       );
     }
 
-    const incompletePlayers = sortedPlayers.filter(p => !p.operationStatus?.payment || !p.operationStatus?.roster);
-    const completePlayers = sortedPlayers.filter(p => p.operationStatus?.payment && p.operationStatus?.roster);
-
     return (
       <div className="space-y-2">
         {/* 未完了の参加者（常に表示） */}
@@ -247,7 +265,7 @@ export function PlayerSelect() {
         {completePlayers.length > 0 && (
           <>
             <button
-              onClick={() => setPaidCollapsed(!paidCollapsed)}
+              onClick={() => setPaidCollapsedOverride(!paidCollapsed)}
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-colors"
               style={{
                 backgroundColor: '#d1fae5',
@@ -289,6 +307,24 @@ export function PlayerSelect() {
               ({players.length}人)
             </span>
           </h2>
+          {/* ソート切替（管理者のみ表示。非管理者には lastSeen の根拠データが見えないため） */}
+          {isAdmin && (
+            <div className="flex gap-2 mb-3">
+              {([['games', '試合数が多い順'], ['lastSeen', '見ていない順']] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  onClick={() => setSortMode(mode)}
+                  aria-pressed={sortMode === mode}
+                  className={`flex-1 min-h-[44px] px-2 rounded-xl text-sm font-medium transition-colors active:scale-[0.98] ${
+                    sortMode === mode ? '' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                  }`}
+                  style={sortMode === mode ? { backgroundColor: '#e0e7ff', color: '#3730a3' } : undefined}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           {renderPlayerList()}
         </div>
       </div>
