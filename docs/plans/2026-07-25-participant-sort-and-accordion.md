@@ -37,17 +37,18 @@
 ### 2. 全員タスク完了時のアコーディオン自動展開
 
 - 「未完了」が 0 人になった時点で「完了済み」アコーディオンを**自動で開く**。
-- **手動操作を尊重する**: 開いたあとユーザーが閉じられること。したがって
-  「常に開く」派生値ではなく、`未完了 > 0 → 0` の遷移（およびマウント時に既に 0）で
-  1 度だけ `paidCollapsed` を `false` にする `useEffect` にする。
+- **手動操作を尊重する**: 開いたあとユーザーが閉じられること。
+- 実装は `useEffect` + `setState` を使わず、**「手動 override が無ければ派生値」**という
+  純粋な導出にする（`react-hooks/set-state-in-effect` の lint 抑制も不要になる）:
   ```ts
   const allComplete = players.length > 0 && incompletePlayers.length === 0;
-  useEffect(() => {
-    if (allComplete) setPaidCollapsed(false);
-  }, [allComplete]);
+  // null = ユーザー未操作（自動判定に委ねる）
+  const [paidCollapsedOverride, setPaidCollapsedOverride] = useState<boolean | null>(null);
+  const paidCollapsed = paidCollapsedOverride ?? !allComplete;
   ```
-  `allComplete` が false に戻り再び true になったときのみ再発火するので、手動で
-  閉じた状態が毎レンダーで上書きされることはない。
+  トグルボタンは `setPaidCollapsedOverride(!paidCollapsed)` を呼ぶ。未操作の間は
+  「全員完了なら開く / それ以外は閉じる」が自動で効き、一度タップした後はその選択が
+  優先される（毎レンダーで上書きされない）。
 - 参加者 0 人（`players.length === 0`）は既存の空状態表示のままで、この処理は無効。
 
 ## 実装ステップ
