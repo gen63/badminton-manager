@@ -136,3 +136,4 @@
 - `2026-07-20-session-selection-filters.md` — セッション選択画面へのフィルタ追加
 - `2026-07-20-unpaid-forced-rest-every-match.md` — 未対応メンバーの「毎試合ごと」強制休憩（ボーダー超過後の再発火）
 - `2026-07-21-payment-list-label-filter.md` — 支払い一覧の改善（「支払い済み」→「会計対応済み」+送金済み行 / 金額フィルタチップ / 連番）
+- `2026-07-25-participant-last-seen.md` — 参加者管理ページに「最終画面参照からの経過時間」を表示（管理者以上）

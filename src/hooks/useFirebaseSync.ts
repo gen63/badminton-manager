@@ -163,10 +163,11 @@ export function useFirebaseSync() {
           information,
           accounting: data.accounting as Session['accounting'],
         });
-        // プレゼンスは揮発ストアへ
-        usePresenceStore.getState().setRemotePresence(
-          (data.presence as Session['presence']) ?? {},
-        );
+        // プレゼンス / 最終画面参照時刻は揮発ストアへ（1回のsetStateでまとめる）
+        usePresenceStore.getState().setPresenceSnapshot({
+          presence: (data.presence as Session['presence']) ?? {},
+          lastSeen: (data.lastSeen as Session['lastSeen']) ?? {},
+        });
 
         // TTL（最終更新から 30 日経過）チェック
         if (updatedAtMs > 0 && Date.now() - updatedAtMs > TTL_MS) {

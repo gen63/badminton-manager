@@ -71,6 +71,8 @@ export interface Session {
   matchUpload?: MatchUploadStatus; // 試合結果アップロード記録（未設定 = 未アップロード）
   accountingUpload?: AccountingUploadStatus; // 会計アップロード記録（未設定 = 未アップロード）
   presence?: { [username: string]: PresenceEntry }; // 画面を開いている/操作中のユーザー
+  /** 最終画面参照時刻 (Unix ms, クライアント時刻)。presence と違い削除しない */
+  lastSeen?: { [username: string]: number };
   etomoEventId?: string; // E-tomoイベントID（自動作成時の重複防止用）
   firstMatchStartedAt?: number | null; // 最初の試合開始時刻。null/未設定 = 試合未開始（12h自動アーカイブ判定用）
   // 一覧表示用の派生フィールド（docToSession で gameState から抽出）

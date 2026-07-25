@@ -136,6 +136,7 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     matchUpload: data.matchUpload as Session['matchUpload'],
     accountingUpload: data.accountingUpload as Session['accountingUpload'],
     presence: data.presence as Session['presence'],
+    lastSeen: data.lastSeen as Session['lastSeen'],
     firstMatchStartedAt: (data.firstMatchStartedAt as number | null | undefined) ?? null,
     matchCount: Array.isArray(gameState?.matchHistory) ? gameState.matchHistory.length : 0,
     paidCount,
@@ -489,6 +490,35 @@ export async function clearPresence(sessionId: string, username: string): Promis
     );
   } catch (error) {
     console.warn('[Presence] clearPresence failed:', error);
+  }
+}
+
+/**
+ * 「最後にアプリ画面を見た時刻」を書き込み（fire-and-forget）
+ *
+ * `presence` と違い削除されない履歴フィールド。参加者管理ページの「放置検知」用途。
+ * - ユーザー名に `.` が含まれてもキー階層が壊れないよう `FieldPath` を使用
+ * - `updatedAt` は意図的に更新しない（TTL カウントと onSnapshot 経路の無駄トリガを避けるため）
+ * - Firestore 未設定 / 無効な引数 / 書き込み失敗 はすべて silent（warn）。
+ *   ハートビート系は失敗してもアプリの主要機能を止めないことが優先。
+ */
+export async function writeLastSeen(
+  sessionId: string,
+  username: string,
+  at: number,
+): Promise<void> {
+  if (!db) return;
+  if (!sessionId || !username) return;
+
+  const docRef = doc(db, 'sessions', sessionId);
+  try {
+    await (updateDoc as (...args: unknown[]) => Promise<void>)(
+      docRef,
+      new FieldPath('lastSeen', username),
+      at,
+    );
+  } catch (error) {
+    console.warn('[LastSeen] writeLastSeen failed:', error);
   }
 }
 
