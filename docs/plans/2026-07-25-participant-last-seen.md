@@ -22,12 +22,12 @@
   |---|---|---|---|
   | 閲覧中 | `now - lastSeen <= 90s` | `閲覧中` | `text-emerald-600` |
   | 直近 | `< 15分` | `N分前` | `text-muted-foreground` |
-  | 放置 | `15分以上` | `N分前` / `N時間前` | `text-amber-600` |
+  | 放置 | `15分以上` | `N分前` | `text-amber-600` |
   | 記録なし | `lastSeen` エントリ無し | `未閲覧` | `text-muted-foreground` |
 
   （`never` は当初 `/60` を想定したが DESIGN.md のコントラスト比を下回るおそれがあり、
   ラベル文字列で `recent` と十分に区別できるため通常の muted 色にした）
-- 1時間以上は `N時間前`、24時間以上は `1日以上前`（セッションは実質半日なので上限表記で十分）。
+- 表示は**分単位のみ**。実運用で 100 分以上放置されるケースは想定しないため時間/日表記は持たない。
 - 相対時間なので **30秒ごとに再評価**（`PresenceIndicator` と同じ tick 方式、間隔だけ長い）。
 
 ## データモデル
@@ -120,10 +120,8 @@ export function formatLastSeen(lastSeenAt: number | undefined, now: number): Las
 - 未来時刻（クライアント時計ずれ）→ `live` 扱い（負値を表示しない）
 - `diff <= 90_000` → `{ '閲覧中', 'live' }`
 - `diff < 15分` → `{ 'N分前', 'recent' }`（`Math.floor(diff / 60_000)`、0 分は 90 秒閾値で到達しない）
-- `15分 <= diff < 60分` → `{ 'N分前', 'stale' }`
-- `60分 <= diff < 24時間` → `{ 'N時間前', 'stale' }`（`Math.floor(diff / 3_600_000)`）
-- `24時間以上` → `{ '1日以上前', 'stale' }`
-- `src/lib/lastSeen.test.ts` で各境界（90s 前後 / 15分 / 60分 / 24h / undefined / 未来）を網羅。
+- `15分 <= diff` → `{ 'N分前', 'stale' }`（分表記のみ。100分以上の放置は想定しないため時間/日表記は持たない）
+- `src/lib/lastSeen.test.ts` で各境界（90s 前後 / 15分 / undefined / 未来 / 60分超でも分表記のまま）を網羅。
 
 ### 8. 参加者カードへの組み込み（`src/pages/PlayerSelect.tsx`）
 
@@ -136,7 +134,8 @@ export function formatLastSeen(lastSeenAt: number | undefined, now: number): Las
     固定分は gap-2×4 = 32 + 試合数 14 + 支払/名簿 112 = 158px。名前 div に残る 137px のうち
     編集(20)+削除(20)+gap(16) = 56px を除くと名前テキストは約 81px。ここへ固定幅バッジ
     48px + gap 8px を足すと名前が潰れて `…` だけになる。
-  - さらに `text-[10px]` の日本語 5 文字「1日以上前」は約 50px で `w-12`(48px) に収まらない。
+  - 2 行目なら幅制約が無くなるため、ラベル文字数（`閲覧中` / `未閲覧` / `N分前`）に
+    関係なく固定幅・切り詰めが不要になる。
   ```tsx
   <div key={player.id} className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm">
     <div className="flex items-center gap-2">{/* 既存の 1 行目をそのまま移動 */}</div>

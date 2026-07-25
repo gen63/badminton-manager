@@ -40,30 +40,7 @@ describe('formatLastSeen', () => {
     expect(formatLastSeen(NOW - 59 * 60_000, NOW)).toEqual({ label: '59分前', tone: 'stale' });
   });
 
-  it('60分未満の境界: 3599999ms は分表示 (59分前)', () => {
-    expect(formatLastSeen(NOW - 3_599_999, NOW)).toEqual({ label: '59分前', tone: 'stale' });
-  });
-
-  it('60分ちょうどで時間表示に切り替わる', () => {
-    expect(formatLastSeen(NOW - 60 * 60_000, NOW)).toEqual({ label: '1時間前', tone: 'stale' });
-  });
-
-  it('23時間前は放置扱いで時間表示', () => {
-    expect(formatLastSeen(NOW - 23 * 60 * 60_000, NOW)).toEqual({ label: '23時間前', tone: 'stale' });
-  });
-
-  it('24時間未満の境界: 86399999ms は時間表示 (23時間前)', () => {
-    expect(formatLastSeen(NOW - 86_399_999, NOW)).toEqual({ label: '23時間前', tone: 'stale' });
-  });
-
-  it('24時間ちょうどで「1日以上前」に切り替わる', () => {
-    expect(formatLastSeen(NOW - 24 * 60 * 60_000, NOW)).toEqual({ label: '1日以上前', tone: 'stale' });
-  });
-
-  it('24時間を大きく超えても「1日以上前」にまとめる', () => {
-    expect(formatLastSeen(NOW - 3 * 24 * 60 * 60_000, NOW)).toEqual({
-      label: '1日以上前',
-      tone: 'stale',
-    });
+  it('60分を超えても分表記のまま', () => {
+    expect(formatLastSeen(NOW - 90 * 60_000, NOW)).toEqual({ label: '90分前', tone: 'stale' });
   });
 });
