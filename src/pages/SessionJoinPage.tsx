@@ -30,7 +30,10 @@ export function SessionJoinPage() {
   const [loading, setLoading] = useState(!!sessionId);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(() => sessionId ? '' : 'セッションIDが指定されていません');
-  const [showJoinedMembers, setShowJoinedMembers] = useState(false);
+  // アコーディオンの開閉。null = ユーザー未操作（自動判定に委ねる）。
+  // 未操作なら全員入室済み or 選択中の名前が入室済みの場合に自動で開き、
+  // それ以外は既定で閉じる。ユーザーが一度タップしたらその選択（override）を優先する。
+  const [showJoinedOverride, setShowJoinedOverride] = useState<boolean | null>(null);
 
   const initializeSession = useSessionStore((state) => state.initialize);
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
@@ -301,8 +304,10 @@ export function SessionJoinPage() {
   const allSelectablePlayers = [...allRegisteredPlayers, ...additionalPlayerNames];
   const notJoinedPlayers = allSelectablePlayers.filter((name) => !joinedNames.has(name));
   const joinedPlayers = allSelectablePlayers.filter((name) => joinedNames.has(name));
-  // 選択中の名前が入室済みリストにある場合はアコーディオンを自動展開
-  const isJoinedExpanded = showJoinedMembers || (!!selectedName && joinedNames.has(selectedName));
+  // 全員入室済み、または選択中の名前が入室済みリストにある場合はアコーディオンを自動展開
+  const allJoined = joinedPlayers.length > 0 && notJoinedPlayers.length === 0;
+  const isJoinedExpanded =
+    showJoinedOverride ?? (allJoined || (!!selectedName && joinedNames.has(selectedName)));
 
   return (
     <div className="min-h-screen p-4">
@@ -344,7 +349,7 @@ export function SessionJoinPage() {
           {joinedPlayers.length > 0 && (
             <div className="mb-3">
               <button
-                onClick={() => setShowJoinedMembers(!isJoinedExpanded)}
+                onClick={() => setShowJoinedOverride(!isJoinedExpanded)}
                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-2"
               >
                 <ChevronDown
