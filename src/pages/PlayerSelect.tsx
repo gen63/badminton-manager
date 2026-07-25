@@ -1,18 +1,32 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
+import { usePresenceStore } from '../stores/presenceStore';
 import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { useGuardedAction } from '../hooks/useGuardedAction';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
-import { Trash2, Pencil, Users, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trash2, Pencil, Users, ChevronDown, ChevronUp, Clock } from 'lucide-react';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
+import { formatLastSeen, type LastSeenTone } from '../lib/lastSeen';
+import { formatTime } from '../lib/utils';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
 import { PlayerEditModal } from '../components/PlayerEditModal';
+
+/** 経過時間トーンごとの表示色（DESIGN.md のカラーガイドラインに沿った semantic 色） */
+const LAST_SEEN_TONE_CLASS: Record<LastSeenTone, string> = {
+  live: 'text-emerald-600',
+  recent: 'text-muted-foreground',
+  stale: 'text-amber-600',
+  never: 'text-muted-foreground',
+};
+
+/** 経過時間バッジの再評価間隔（相対時間表示なので `PresenceIndicator` より長め） */
+const LAST_SEEN_TICK_MS = 30_000;
 
 export function PlayerSelect() {
   const players = usePlayerStore((s) => s.players);
@@ -22,6 +36,14 @@ export function PlayerSelect() {
   const currentUser = useSessionStore((s) => s.currentUser);
   const practiceType = useSettingsStore((s) => s.practiceType);
   const isAdmin = isAdminFn();
+  const lastSeen = usePresenceStore((s) => s.lastSeen);
+  // 相対時間の再評価用 tick。非管理者では interval 自体を張らない（無駄な再レンダー回避）。
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    if (!isAdmin) return;
+    const id = setInterval(() => setNow(Date.now()), LAST_SEEN_TICK_MS);
+    return () => clearInterval(id);
+  }, [isAdmin]);
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
   const rosterToggle = useGuardedAction(async (playerId: string) => {
@@ -124,61 +146,77 @@ export function PlayerSelect() {
     const canEdit = isAdmin || player.name === currentUser;
     // 削除は admin/creator のみ（自分自身の self-delete は誤操作リスクのため不可）。
     const canDelete = isAdmin;
+    // 最終画面参照からの経過時間（管理者のみ）。1行目は幅がタイトなため、
+    // カード内の2行目に表示してレイアウト崩れ・シフトを避ける。
+    const lastSeenAt = isAdmin ? lastSeen[player.name] : undefined;
+    const view = formatLastSeen(lastSeenAt, now);
     return (
       <div
         key={player.id}
-        className="bg-card border border-border rounded-xl px-3 py-2 flex items-center gap-2 shadow-sm"
+        className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm"
       >
-        {/* 名前 + 編集/削除 */}
-        <div className="flex-1 min-w-0 flex items-center gap-2">
-          <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
-          {canEdit && (
-            <button
-              onClick={() => handleEdit(player)}
-              aria-label={`${player.name}を編集`}
-              className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
-            >
-              <Pencil className="w-3 h-3" />
-            </button>
-          )}
-          {!hasHistory && canDelete && (
-            <button
-              onClick={() => handleDelete(player)}
-              aria-label={`${player.name}を削除`}
-              className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
-          )}
+        <div className="flex items-center gap-2">
+          {/* 名前 + 編集/削除 */}
+          <div className="flex-1 min-w-0 flex items-center gap-2">
+            <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
+            {canEdit && (
+              <button
+                onClick={() => handleEdit(player)}
+                aria-label={`${player.name}を編集`}
+                className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
+              >
+                <Pencil className="w-3 h-3" />
+              </button>
+            )}
+            {!hasHistory && canDelete && (
+              <button
+                onClick={() => handleDelete(player)}
+                aria-label={`${player.name}を削除`}
+                className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          {/* 試合数 */}
+          <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 tabular-nums">
+            {player.gamesPlayed}
+          </span>
+
+          {/* 支払 / 名簿 ボタン */}
+          <button
+            onClick={() => handlePaymentClick(player.id)}
+            className="w-14 flex-shrink-0 text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1"
+            style={{
+              backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
+              color: status.payment ? '#ffffff' : '#6b7280',
+            }}
+          >
+            {status.payment ? '✓' : ''}支払
+          </button>
+          <button
+            onClick={() => void rosterToggle.run(player.id)}
+            disabled={rosterToggle.isPending}
+            className="w-14 flex-shrink-0 text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
+            style={{
+              backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
+              color: status.roster ? '#ffffff' : '#6b7280',
+            }}
+          >
+            {status.roster ? '✓' : ''}名簿
+          </button>
         </div>
 
-        {/* 試合数 */}
-        <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 tabular-nums">
-          {player.gamesPlayed}
-        </span>
-
-        {/* 支払 / 名簿 ボタン */}
-        <button
-          onClick={() => handlePaymentClick(player.id)}
-          className="w-14 flex-shrink-0 text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1"
-          style={{
-            backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
-            color: status.payment ? '#ffffff' : '#6b7280',
-          }}
-        >
-          {status.payment ? '✓' : ''}支払
-        </button>
-        <button
-          onClick={() => void rosterToggle.run(player.id)}
-          disabled={rosterToggle.isPending}
-          className="w-14 flex-shrink-0 text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
-          style={{
-            backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
-            color: status.roster ? '#ffffff' : '#6b7280',
-          }}
-        >
-          {status.roster ? '✓' : ''}名簿
-        </button>
+        {/* 最終画面参照からの経過時間（2行目・管理者のみ） */}
+        {isAdmin && (
+          <div className={`mt-0.5 flex items-center gap-1 text-[10px] leading-tight ${LAST_SEEN_TONE_CLASS[view.tone]}`}>
+            <Clock className="w-3 h-3 shrink-0" aria-hidden />
+            <span title={typeof lastSeenAt === 'number' ? formatTime(lastSeenAt) : undefined}>
+              {view.label}
+            </span>
+          </div>
+        )}
       </div>
     );
   };

@@ -23,7 +23,10 @@
   | 閲覧中 | `now - lastSeen <= 90s` | `閲覧中` | `text-emerald-600` |
   | 直近 | `< 15分` | `N分前` | `text-muted-foreground` |
   | 放置 | `15分以上` | `N分前` / `N時間前` | `text-amber-600` |
-  | 記録なし | `lastSeen` エントリ無し | `未閲覧` | `text-muted-foreground/60` |
+  | 記録なし | `lastSeen` エントリ無し | `未閲覧` | `text-muted-foreground` |
+
+  （`never` は当初 `/60` を想定したが DESIGN.md のコントラスト比を下回るおそれがあり、
+  ラベル文字列で `recent` と十分に区別できるため通常の muted 色にした）
 - 1時間以上は `N時間前`、24時間以上は `1日以上前`（セッションは実質半日なので上限表記で十分）。
 - 相対時間なので **30秒ごとに再評価**（`PresenceIndicator` と同じ tick 方式、間隔だけ長い）。
 
@@ -127,17 +130,28 @@ export function formatLastSeen(lastSeenAt: number | undefined, now: number): Las
 - `usePresenceStore((s) => s.lastSeen)` を購読。
 - 相対時間の再評価用に 30 秒 tick（`useState` + `useEffect`/`setInterval`）。
   **`isAdmin` が false のときは interval を張らない**（無駄な再レンダー回避）。
-- `renderPlayerCard` 内、試合数 `<span>`（L156-158）と「支払」ボタンの間に挿入:
+- **カードを縦2行構成に変更**し、経過時間は 2 行目に置く。1 行目（名前 + 編集/削除 + 試合数 +
+  支払 + 名簿）に差し込む案は iPhone 375px 幅で破綻するため採らない:
+  - 内容幅の実測見積り: `max-w-md p-3` → 351px → `.card p-4` → 319px → カード `px-3` → 295px。
+    固定分は gap-2×4 = 32 + 試合数 14 + 支払/名簿 112 = 158px。名前 div に残る 137px のうち
+    編集(20)+削除(20)+gap(16) = 56px を除くと名前テキストは約 81px。ここへ固定幅バッジ
+    48px + gap 8px を足すと名前が潰れて `…` だけになる。
+  - さらに `text-[10px]` の日本語 5 文字「1日以上前」は約 50px で `w-12`(48px) に収まらない。
   ```tsx
-  {isAdmin && (
-    <span className="w-12 shrink-0 text-right text-[10px] tabular-nums leading-tight ...tone色">
-      {view.label}
-    </span>
-  )}
+  <div key={player.id} className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm">
+    <div className="flex items-center gap-2">{/* 既存の 1 行目をそのまま移動 */}</div>
+    {isAdmin && (
+      <div className={`mt-0.5 flex items-center gap-1 text-[10px] leading-tight ${tone色}`}>
+        <Clock className="w-3 h-3 shrink-0" aria-hidden />
+        <span title={絶対時刻}>{view.label}</span>
+      </div>
+    )}
+  </div>
   ```
-  - **固定幅 `w-12`** で、ラベル文字数変化によるレイアウトシフトを防ぐ
-    （`docs/plans/2026-03-16-fix-layout-shift.md` の方針）。
-  - `title` 属性に絶対時刻（`HH:MM`）を入れる（PC でのホバー補助。無くても可）。
+  - 2 行目は幅に余裕があるためラベルが切れず、1 行目の要素構成は不変なのでレイアウトシフトも
+    起きない（`docs/plans/2026-03-16-fix-layout-shift.md` の方針を満たす）。
+  - `title` 属性に絶対時刻（既存 `formatTime` の `HH:MM`）を入れる（PC でのホバー補助）。
+  - 管理者のみカードが 1 行分（約 14px）高くなる。可読性を優先したトレードオフ。
   - 突き合わせは `lastSeen[player.name]`。名前変更時は `sessionMutations.updatePlayer` が
     `lastSeen` を書き換えないため旧名エントリが孤立するが、**表示が `未閲覧` に戻るだけ**の
     軽微な劣化として許容（次のハートビートで新名エントリが作られる）。
