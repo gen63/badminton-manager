@@ -300,8 +300,9 @@ describe('applyStreakSwaps', () => {
       matches
     );
     // 1勝目: D(3)が1つ上 → A,B,D,C,E,F
-    // 2連勝目: D(2)がstepSize=2つ上 → D,A,B,C,E,F
-    expect(order).toEqual(['D', 'A', 'B', 'C', 'E', 'F']);
+    // 2連勝目: D(2)がstepSize=2つ上を狙うが、元の序列(3)から離れてよいのは
+    // 1グループ分(stepSize=2)まで → index 1 で止まる（上位グループには入る）
+    expect(order).toEqual(['A', 'D', 'B', 'C', 'E', 'F']);
   });
 
   it('二連敗でceil(gs/2)ずつ下に移動', () => {
@@ -330,12 +331,12 @@ describe('applyStreakSwaps', () => {
       matches
     );
     // 1勝目: D(3)→1つ上 → A,B,D,C,E,F
-    // 2連勝目: D(2)→2つ上 → D,A,B,C,E,F
-    // 3勝目: D(0)→既にtop、変化なし
-    expect(order).toEqual(['D', 'A', 'B', 'C', 'E', 'F']);
+    // 2連勝目: D(2)→上限(元の序列3 - stepSize2 = 1)まで → A,D,B,C,E,F
+    // 3勝目: D(1)→上限に到達済みなので動かない
+    expect(order).toEqual(['A', 'D', 'B', 'C', 'E', 'F']);
   });
 
-  it('四連勝でも既にtopなら変化なし', () => {
+  it('四連勝でも上限に達したらそれ以上は上がらない', () => {
     const matches = [
       createMatch(['D', 'X'], ['S', 'R'], 21, 15), // 1試合目（古）
       createMatch(['D', 'X'], ['U', 'T'], 21, 15), // 2試合目
@@ -346,8 +347,8 @@ describe('applyStreakSwaps', () => {
       ['A', 'B', 'C', 'D', 'E', 'F'],
       matches
     );
-    // 1勝+2連勝でtopに到達、以降は変化なし
-    expect(order).toEqual(['D', 'A', 'B', 'C', 'E', 'F']);
+    // 1勝+2連勝で上限（元の序列から1グループ分上）に到達、以降は変化なし
+    expect(order).toEqual(['A', 'D', 'B', 'C', 'E', 'F']);
   });
 
   it('最上位での二連勝は変化なし', () => {
@@ -376,6 +377,27 @@ describe('applyStreakSwaps', () => {
     expect(order).toEqual(['A', 'B', 'C']);
   });
 
+  it('連勝を重ねても元の序列から1グループ分より上には行かない', () => {
+    // 9人3グループ（stepSize=3）。最下位 I が 6 連勝しても index 5 まで。
+    const order = applyStreakSwaps(
+      ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
+      Array.from({ length: 6 }, () => createMatch(['I', 'X'], ['Y', 'Z'], 21, 15))
+    );
+    expect(order.indexOf('I')).toBe(5); // 元の 8 から stepSize=3 上まで
+    // 上位グループ（0-2）には侵入しない
+    expect(order.slice(0, 3)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('連敗を重ねても元の序列から1グループ分より下には行かない', () => {
+    const order = applyStreakSwaps(
+      ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
+      Array.from({ length: 6 }, () => createMatch(['Y', 'Z'], ['A', 'X'], 21, 15))
+    );
+    expect(order.indexOf('A')).toBe(3); // 元の 0 から stepSize=3 下まで
+    // 下位グループ（6-8）には落ちない
+    expect(order.slice(6)).toEqual(['G', 'H', 'I']);
+  });
+
   it('勝ち→負けで上昇分を降下が相殺', () => {
     const matches = [
       createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 1試合目: D勝ち（古）
@@ -388,6 +410,64 @@ describe('applyStreakSwaps', () => {
     // 1勝目: D(3)→1つ上 → A,B,D,C,E,F
     // 2試合目: D負け → 1つ下 → A,B,C,D,E,F（元に戻る）
     expect(order).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
+  });
+});
+
+describe('assignCourts - 実力差の分離', () => {
+  /** 序列 rank 順（rating 降順）に人数分作る。gamesPlayed で優先度を作れる。 */
+  const makeRoster = (count: number, fewerGames: number[]): Player[] =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `p${i}`,
+      name: `P${i}`,
+      rating: 1000 - i,
+      isResting: false,
+      // 試合数が少ない = 優先度が高い（-Infinity にならないよう 1 以上にする）
+      gamesPlayed: fewerGames.includes(i) ? 1 : 2,
+      lastPlayedAt: 0,
+      activatedAt: 0,
+    }));
+
+  it('人数が多いセッションでは、最上位と最下位が優先度で有利でも同じコートに入れない', () => {
+    // 12人。最上位(p0)と最下位(p11)だけ試合数が少ない = 本来なら最優先で選ばれる
+    const players = makeRoster(12, [0, 11]);
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: 0,
+      useStayDurationPriority: false,
+      allPlayers: players,
+    });
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB];
+    expect(ids).toHaveLength(4);
+    expect(ids.includes('p0') && ids.includes('p11')).toBe(false);
+  });
+
+  it('人数が少ないセッションでは実力差を考慮しない（優先度どおりに選ぶ）', () => {
+    // 8人（MIN_ROSTER_FOR_SKILL_GAP 未満）。同じ条件でも両極端が選ばれる
+    const players = makeRoster(8, [0, 7]);
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: 0,
+      useStayDurationPriority: false,
+      allPlayers: players,
+    });
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB];
+    expect(ids.includes('p0') && ids.includes('p7')).toBe(true);
+  });
+
+  it('実力が近ければ優先度の高い人がそのまま選ばれる', () => {
+    // 12人で、序列が隣接する 4 人だけ試合数が少ない → ペナルティ 0 で選ばれる
+    const players = makeRoster(12, [4, 5, 6, 7]);
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: 0,
+      useStayDurationPriority: false,
+      allPlayers: players,
+    });
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB].sort();
+    expect(ids).toEqual(['p4', 'p5', 'p6', 'p7']);
   });
 });
 
@@ -649,6 +729,118 @@ describe('formTeams - MIXペアリング', () => {
   });
 });
 
+describe('formTeams - パートナー/対戦相手の多様性（matchHistory）', () => {
+  const createPlayer = (id: string, name: string, rating: number): Player => ({
+    id, name, rating, gamesPlayed: 0, isResting: false, lastPlayedAt: 0, activatedAt: 0,
+  });
+
+  const createMatch = (teamA: [string, string], teamB: [string, string]): Match => ({
+    id: `match-${teamA.join('')}-${teamB.join('')}`,
+    courtId: 1,
+    teamA,
+    teamB,
+    scoreA: 21,
+    scoreB: 15,
+    winner: 'A',
+    startedAt: 0,
+    finishedAt: 0,
+  });
+
+  it('matchHistory省略時は従来通り1+4 vs 2+3を返す', () => {
+    const players = [
+      createPlayer('p1', 'P1', 2000),
+      createPlayer('p2', 'P2', 1800),
+      createPlayer('p3', 'P3', 1600),
+      createPlayer('p4', 'P4', 1400),
+    ];
+    const order = ['p1', 'p2', 'p3', 'p4'];
+    // 過去に p1+p4 vs p2+p3 を何度繰り返していても、matchHistory を渡さなければ
+    // 多様性ロジックは働かない（従来の呼び出し元との後方互換のため）
+    const result = formTeams(players, order);
+    expect(result.teamA).toEqual(['p1', 'p4']);
+    expect(result.teamB).toEqual(['p2', 'p3']);
+  });
+
+  it('序列に十分な余裕があれば、バランスを保ちつつ過去に組んだ回数が少ないペア分けを選ぶ', () => {
+    const players = [
+      createPlayer('p1', 'P1', 2000),
+      createPlayer('p2', 'P2', 1800),
+      createPlayer('p3', 'P3', 1600),
+      createPlayer('p4', 'P4', 1400),
+    ];
+    // playerOrder を12人分にしておくとバランス許容幅（人数/3=4）が広がり、
+    // 1+3 vs 2+4（バランス悪化幅2）も選択肢に入る
+    const order = ['p1', 'p2', 'p3', 'p4', 'x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'x8'];
+    // デフォルト（p1+p4 vs p2+p3）を過去に3回繰り返し済み
+    const matchHistory: Match[] = [
+      createMatch(['p1', 'p4'], ['p2', 'p3']),
+      createMatch(['p1', 'p4'], ['p2', 'p3']),
+      createMatch(['p1', 'p4'], ['p2', 'p3']),
+    ];
+    const result = formTeams(players, order, matchHistory);
+
+    // 1+3 vs 2+4（p1+p3 vs p2+p4）は過去に一度も組んでいないため、そちらを選ぶ
+    expect(result.teamA).toEqual(['p1', 'p3']);
+    expect(result.teamB).toEqual(['p2', 'p4']);
+  });
+
+  it('序列に余裕が無い（4人だけ）場合は、履歴が偏っていてもバランスを崩さずデフォルトのまま', () => {
+    const players = [
+      createPlayer('p1', 'P1', 2000),
+      createPlayer('p2', 'P2', 1800),
+      createPlayer('p3', 'P3', 1600),
+      createPlayer('p4', 'P4', 1400),
+    ];
+    // playerOrder が4人のみ → 許容幅 floor(4/3)=1 で、1+3 vs 2+4（悪化幅2）は
+    // 許容範囲を超えるため選べない
+    const order = ['p1', 'p2', 'p3', 'p4'];
+    const matchHistory: Match[] = [
+      createMatch(['p1', 'p4'], ['p2', 'p3']),
+      createMatch(['p1', 'p4'], ['p2', 'p3']),
+      createMatch(['p1', 'p4'], ['p2', 'p3']),
+    ];
+    const result = formTeams(players, order, matchHistory);
+
+    // バランス優先でデフォルトのまま
+    expect(result.teamA).toEqual(['p1', 'p4']);
+    expect(result.teamB).toEqual(['p2', 'p3']);
+  });
+});
+
+describe('assignCourts - パートナー/対戦相手重複ペナルティ（selectBestFour）', () => {
+  const createPlayer = (id: string, rating: number): Player => ({
+    id, name: id, rating, gamesPlayed: 1, isResting: false, lastPlayedAt: 0, activatedAt: 0,
+  });
+
+  it('優先度が同点でも、過去にパートナー/対戦相手として重複が少ない4人を選ぶ', () => {
+    // 6人（p0>p1>...>p5 のレーティング）。全員 gamesPlayed=1 で優先度は同点。
+    // 過去に p0+p1 vs p2+p3 の1試合のみがあり、p0-p1(パートナー), p2-p3(パートナー),
+    // p0-p2/p0-p3/p1-p2/p1-p3(対戦相手) の6ペア全てに履歴が付く。
+    // p4, p5 は未プレイなので、p4+p5 を含む組み合わせほど重複が少ない。
+    const players = [0, 1, 2, 3, 4, 5].map((i) => createPlayer(`p${i}`, 1000 - i));
+    const matchHistory: Match[] = [{
+      id: 'm1', courtId: 1, teamA: ['p0', 'p1'], teamB: ['p2', 'p3'],
+      scoreA: 21, scoreB: 15, winner: 'A', startedAt: 0, finishedAt: 0,
+    }];
+
+    const assignments = assignCourts(players, 1, matchHistory, {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: 0,
+      useStayDurationPriority: false,
+      allPlayers: players,
+    });
+
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB].sort();
+    // {p0,p1,p2,p3}（直近試合と4人中4人重複）は制約で除外される。
+    // 残る有効な組み合わせのうち、対戦相手ペナルティ(0.05)がパートナー
+    // ペナルティ(0.1)より軽いため、p0-p2 のような「対戦相手だった」ペアを含む
+    // {p0,p2,p4,p5} が最小コストになり選ばれる（{p0,p1,p4,p5} のような
+    // 「パートナーだった」ペアを含む組より優先される）。
+    expect(ids).toEqual(['p0', 'p2', 'p4', 'p5']);
+  });
+});
+
 describe('assignCourts - 性別ペナルティ', () => {
   const now = Date.now();
 
@@ -717,6 +909,156 @@ describe('assignCourts - 性別ペナルティ', () => {
     expect(assignedSet.has('m2')).toBe(true);
     expect(assignedSet.has('m3')).toBe(true);
     expect(assignedSet.has('m4')).toBe(true);
+  });
+});
+
+describe('assignCourts - 少数派性別1人のときの3-1ペナルティ無効化', () => {
+  const now = Date.now();
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const createGenderedPlayer = (
+    id: string, name: string, rating: number, gender: 'M' | 'F',
+    gamesPlayed: number = 1
+  ): Player => ({
+    id, name, rating, gender, gamesPlayed,
+    isResting: false, lastPlayedAt: 0,
+    activatedAt: now - 60 * 60 * 1000,
+  });
+
+  it('少数派が1人のセッションでは3-1ペナルティが効かない（優先度どおり最も待っている女性が配置される）', () => {
+    // p1-p4: 男性 gp=10、p5: 女性 gp=8（最も待っている）。
+    // セッション全体（options.allPlayers省略時はplayers全員）で女性は p5 の1人だけ
+    // → 2-2は物理的に作れない構成。修正前は 3-1 ペナルティ(+3.0)が常に勝ち、
+    //   p5 は 4-0 (16.0) より不利な 3-1 (15.2+3.0=18.2) として弾かれ続けていた。
+    // 修正後はペナルティが無効化され、素直に優先度（待ち時間）順で p5 が選ばれる。
+    const players: Player[] = [
+      createGenderedPlayer('p1', 'P1', 1500, 'M', 10),
+      createGenderedPlayer('p2', 'P2', 1500, 'M', 10),
+      createGenderedPlayer('p3', 'P3', 1500, 'M', 10),
+      createGenderedPlayer('p4', 'P4', 1500, 'M', 10),
+      createGenderedPlayer('p5', 'P5', 1500, 'F', 8),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: now - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('p5')).toBe(true);
+  });
+
+  it('バランスが取れる構成（少数派が全体で2人以上）では今回の候補が女性1人でも従来どおり3-1を避ける', () => {
+    // players（今回の配置候補）は p1-p4(M) + p5(F) の5人だが、
+    // options.allPlayers（セッション全体、他コートでプレイ中の p6(F) を含む）では
+    // 女性が2人いる = 2-2が作れる可能性がある「バランスが取れる構成」。
+    // このときは genderPairImpossible が false のまま維持され、
+    // 従来どおり 3-1 ペナルティが有効 → 単独では待っていても p5 は選ばれない。
+    const players: Player[] = [
+      createGenderedPlayer('p1', 'P1', 1500, 'M', 10),
+      createGenderedPlayer('p2', 'P2', 1500, 'M', 10),
+      createGenderedPlayer('p3', 'P3', 1500, 'M', 10),
+      createGenderedPlayer('p4', 'P4', 1500, 'M', 10),
+      createGenderedPlayer('p5', 'P5', 1500, 'F', 8),
+    ];
+    const allPlayers: Player[] = [
+      ...players,
+      createGenderedPlayer('p6', 'P6', 1500, 'F', 10), // 他コートでプレイ中の女性
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: now - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      allPlayers,
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('p5')).toBe(false);
+  });
+});
+
+describe('assignCourts - 少数派性別が少ないときのMIX優遇 (preferGenderMix)', () => {
+  const now = Date.now();
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const createGenderedPlayer = (
+    id: string, gender: 'M' | 'F', gamesPlayed: number
+  ): Player => ({
+    id, name: id, rating: 1500, gender, gamesPlayed,
+    isResting: false, lastPlayedAt: 0,
+    activatedAt: now - 60 * 60 * 1000,
+  });
+
+  it('少数派が少ないセッション（30%未満）ではMIX（2-2）が同性（4-0）より優先される', () => {
+    // 5M+2F=7人（少数派比率 2/7≈28.6% < 30% → preferGenderMix）。
+    // useStayDurationPriority: false なので oneGameDelta=1.0、優先度スコアは
+    // gamesPlayed * 0.4（GAMES_PLAYED_SCORE_UNIT）。
+    // 最良の4-0（m1,m2,m3 + m4かm5）: 0.4+0.4+0.8+1.2 = 2.8
+    // 最良のMIX（m1,m2,f1,f2）    : 0.4+0.4+0.8+0.8 = 2.4
+    // 差は 0.4 で GENDER_MIX_PENALTY(0.5) より小さいため、
+    // 修正前（MIXに常に+0.5）なら 2.4+0.5=2.9 > 2.8 で4-0が勝つが、
+    // 修正後（少数派が少ないときはMIXペナルティ0）なら 2.4 < 2.8 でMIXが勝つ。
+    const players: Player[] = [
+      createGenderedPlayer('m1', 'M', 1),
+      createGenderedPlayer('m2', 'M', 1),
+      createGenderedPlayer('m3', 'M', 2),
+      createGenderedPlayer('m4', 'M', 3),
+      createGenderedPlayer('m5', 'M', 3),
+      createGenderedPlayer('f1', 'F', 2),
+      createGenderedPlayer('f2', 'F', 2),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: now - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('f1')).toBe(true);
+    expect(picked.has('f2')).toBe(true);
+  });
+
+  it('男女が拮抗したセッション（30%以上）では従来どおり同性（4-0）がMIXより優先される', () => {
+    // 4M+2F=6人（少数派比率 2/6≈33.3% ≥ 30% → preferGenderMix にはならない）。
+    // 最良の4-0（m1,m2,m3,m4）: 0.4+0.4+0.8+1.2 = 2.8
+    // 最良のMIX（m1,m2,f1,f2）: 0.4+0.4+0.8+0.8+0.5(GENDER_MIX_PENALTY) = 2.9
+    // 2.8 < 2.9 なので、男女比が拮抗している場合は修正前と変わらず4-0が勝つ
+    // （3-1 は shouldAllowUnbalancedGender が false になりハード制約で弾かれる）。
+    const players: Player[] = [
+      createGenderedPlayer('m1', 'M', 1),
+      createGenderedPlayer('m2', 'M', 1),
+      createGenderedPlayer('m3', 'M', 2),
+      createGenderedPlayer('m4', 'M', 3),
+      createGenderedPlayer('f1', 'F', 2),
+      createGenderedPlayer('f2', 'F', 2),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: now - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('f1')).toBe(false);
+    expect(picked.has('f2')).toBe(false);
+    expect(picked.has('m1')).toBe(true);
+    expect(picked.has('m2')).toBe(true);
+    expect(picked.has('m3')).toBe(true);
+    expect(picked.has('m4')).toBe(true);
   });
 });
 
@@ -1085,12 +1427,17 @@ describe('assignCourts - 後半均等化モード (lateBalanceMode)', () => {
   });
 
   it('lateBalanceMode=false (既定) では同シナリオで gender 3-1 が回避され男性 4人が選ばれる', () => {
+    // p6(F, gp=100)を追加して少数派を2人にする（バランスが取れる構成）。
+    // 少数派が p5 だけ（1人）だと 2-2 が物理的に作れないため 3-1 ペナルティ自体が
+    // 無効化される（別 describe 参照）。p6 は gp=100 で優先度が著しく低く
+    // どの組にも選ばれないため、p1-p5 だけの探索と実質的に同じ結果になる。
     const players: Player[] = [
       createGenderedPlayer('p1', 'M', 10),
       createGenderedPlayer('p2', 'M', 10),
       createGenderedPlayer('p3', 'M', 10),
       createGenderedPlayer('p4', 'M', 10),
       createGenderedPlayer('p5', 'F', 8),
+      createGenderedPlayer('p6', 'F', 100),
     ];
 
     const assignments = assignCourts(players, 1, [], {
@@ -1108,12 +1455,14 @@ describe('assignCourts - 後半均等化モード (lateBalanceMode)', () => {
 
   it('lateBalanceMode=true でも gap=1 のときは gender 3-1 が依然回避される', () => {
     // gap=1 → lateBalance ペナルティ -2.0 が gender 3-1 ペナルティ +3.0 に劣る
+    // p6(F, gp=100)を追加して少数派を2人にする（バランスが取れる構成、理由は上のテスト参照）
     const players: Player[] = [
       createGenderedPlayer('p1', 'M', 10),
       createGenderedPlayer('p2', 'M', 10),
       createGenderedPlayer('p3', 'M', 10),
       createGenderedPlayer('p4', 'M', 10),
       createGenderedPlayer('p5', 'F', 9),
+      createGenderedPlayer('p6', 'F', 100),
     ];
 
     const assignments = assignCourts(players, 1, [], {
