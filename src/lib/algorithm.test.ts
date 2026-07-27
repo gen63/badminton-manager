@@ -800,6 +800,78 @@ describe('assignCourts - 性別ペナルティ', () => {
   });
 });
 
+describe('assignCourts - 少数派性別1人のときの3-1ペナルティ無効化', () => {
+  const now = Date.now();
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const createGenderedPlayer = (
+    id: string, name: string, rating: number, gender: 'M' | 'F',
+    gamesPlayed: number = 1
+  ): Player => ({
+    id, name, rating, gender, gamesPlayed,
+    isResting: false, lastPlayedAt: 0,
+    activatedAt: now - 60 * 60 * 1000,
+  });
+
+  it('少数派が1人のセッションでは3-1ペナルティが効かない（優先度どおり最も待っている女性が配置される）', () => {
+    // p1-p4: 男性 gp=10、p5: 女性 gp=8（最も待っている）。
+    // セッション全体（options.allPlayers省略時はplayers全員）で女性は p5 の1人だけ
+    // → 2-2は物理的に作れない構成。修正前は 3-1 ペナルティ(+3.0)が常に勝ち、
+    //   p5 は 4-0 (16.0) より不利な 3-1 (15.2+3.0=18.2) として弾かれ続けていた。
+    // 修正後はペナルティが無効化され、素直に優先度（待ち時間）順で p5 が選ばれる。
+    const players: Player[] = [
+      createGenderedPlayer('p1', 'P1', 1500, 'M', 10),
+      createGenderedPlayer('p2', 'P2', 1500, 'M', 10),
+      createGenderedPlayer('p3', 'P3', 1500, 'M', 10),
+      createGenderedPlayer('p4', 'P4', 1500, 'M', 10),
+      createGenderedPlayer('p5', 'P5', 1500, 'F', 8),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: now - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('p5')).toBe(true);
+  });
+
+  it('バランスが取れる構成（少数派が全体で2人以上）では今回の候補が女性1人でも従来どおり3-1を避ける', () => {
+    // players（今回の配置候補）は p1-p4(M) + p5(F) の5人だが、
+    // options.allPlayers（セッション全体、他コートでプレイ中の p6(F) を含む）では
+    // 女性が2人いる = 2-2が作れる可能性がある「バランスが取れる構成」。
+    // このときは genderPairImpossible が false のまま維持され、
+    // 従来どおり 3-1 ペナルティが有効 → 単独では待っていても p5 は選ばれない。
+    const players: Player[] = [
+      createGenderedPlayer('p1', 'P1', 1500, 'M', 10),
+      createGenderedPlayer('p2', 'P2', 1500, 'M', 10),
+      createGenderedPlayer('p3', 'P3', 1500, 'M', 10),
+      createGenderedPlayer('p4', 'P4', 1500, 'M', 10),
+      createGenderedPlayer('p5', 'P5', 1500, 'F', 8),
+    ];
+    const allPlayers: Player[] = [
+      ...players,
+      createGenderedPlayer('p6', 'P6', 1500, 'F', 10), // 他コートでプレイ中の女性
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: now - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      allPlayers,
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('p5')).toBe(false);
+  });
+});
+
 describe('assignCourts (シングルス)', () => {
   const NOW = 1730000000000; // 固定の現在時刻
 
@@ -1165,12 +1237,17 @@ describe('assignCourts - 後半均等化モード (lateBalanceMode)', () => {
   });
 
   it('lateBalanceMode=false (既定) では同シナリオで gender 3-1 が回避され男性 4人が選ばれる', () => {
+    // p6(F, gp=100)を追加して少数派を2人にする（バランスが取れる構成）。
+    // 少数派が p5 だけ（1人）だと 2-2 が物理的に作れないため 3-1 ペナルティ自体が
+    // 無効化される（別 describe 参照）。p6 は gp=100 で優先度が著しく低く
+    // どの組にも選ばれないため、p1-p5 だけの探索と実質的に同じ結果になる。
     const players: Player[] = [
       createGenderedPlayer('p1', 'M', 10),
       createGenderedPlayer('p2', 'M', 10),
       createGenderedPlayer('p3', 'M', 10),
       createGenderedPlayer('p4', 'M', 10),
       createGenderedPlayer('p5', 'F', 8),
+      createGenderedPlayer('p6', 'F', 100),
     ];
 
     const assignments = assignCourts(players, 1, [], {
@@ -1188,12 +1265,14 @@ describe('assignCourts - 後半均等化モード (lateBalanceMode)', () => {
 
   it('lateBalanceMode=true でも gap=1 のときは gender 3-1 が依然回避される', () => {
     // gap=1 → lateBalance ペナルティ -2.0 が gender 3-1 ペナルティ +3.0 に劣る
+    // p6(F, gp=100)を追加して少数派を2人にする（バランスが取れる構成、理由は上のテスト参照）
     const players: Player[] = [
       createGenderedPlayer('p1', 'M', 10),
       createGenderedPlayer('p2', 'M', 10),
       createGenderedPlayer('p3', 'M', 10),
       createGenderedPlayer('p4', 'M', 10),
       createGenderedPlayer('p5', 'F', 9),
+      createGenderedPlayer('p6', 'F', 100),
     ];
 
     const assignments = assignCourts(players, 1, [], {

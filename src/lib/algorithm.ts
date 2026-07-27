@@ -351,6 +351,24 @@ function shouldAllowUnbalancedGender(
   return minorityRatio < 0.30;
 }
 
+/**
+ * 少数派性別が1人以下で、2-2構成が物理的に作れない状況かを判定
+ *
+ * `shouldAllowUnbalancedGender`（30%未満なら3-1をハード制約として許容）とは別の、
+ * より狭い基準。少数派が2人以上いれば2-2は作れる可能性があり
+ * （実測で少数派3人以上ならほぼ解消することを確認済み）、その場合まで
+ * 3-1ソフトペナルティを無効化すると、待たせる効果自体を失って
+ * 逆に3-1構成の試合が増えてしまう（男11女3構成で実測: 3-1比率が
+ * 39.6%→54.2%に悪化）。少数派が1人だけ＝どう組んでも2-2にできない
+ * 場合に限定することで、この副作用を避ける。
+ */
+function isGenderPairImpossible(allPlayers: Player[]): boolean {
+  const genderedPlayers = allPlayers.filter(p => p.gender === 'M' || p.gender === 'F');
+  const maleCount = genderedPlayers.filter(p => p.gender === 'M').length;
+  const femaleCount = genderedPlayers.length - maleCount;
+  const minorityCount = Math.min(maleCount, femaleCount);
+  return minorityCount === 1;
+}
 
 /**
  * ペアがMF（男女混合）かどうかを判定
@@ -490,6 +508,7 @@ function assign2CourtsHolistic(
   groupingPlayers: Player[],
   useStayDuration: boolean = true,
   lateBalance?: LateBalanceCtx,
+  genderPairImpossible: boolean = false,
 ): CourtAssignment[] {
   // 最大偏差制限: 平均より3試合以上多い人は除外
   const allGamesPlayed = activePlayers.map(p => p.gamesPlayed);
@@ -516,8 +535,10 @@ function assign2CourtsHolistic(
   let selected = prioritySorted.slice(0, requiredCount);
 
   // 全員に性別が設定されている場合のみ性別バランスを適用
+  // genderPairImpossible（少数派1人で2-2が物理的に作れない構成）の場合、
+  // 少数派を外しても待たせるだけで2-2は作れないためスキップする
   const allGendered = selected.every(p => p.gender === 'M' || p.gender === 'F');
-  if (allGendered) {
+  if (allGendered && !genderPairImpossible) {
     const femaleCount = selected.filter(p => p.gender === 'F').length;
     const maleCount = selected.filter(p => p.gender === 'M').length;
     // 少数派の性別を特定（同数の場合はバランス不要）
@@ -701,28 +722,37 @@ function calculatePriorityScore(
  * 4人の性別構成に基づくペナルティを計算
  * 4人全員に性別が設定されている場合のみ有効
  * 2-2（MIX）or 4-0（同性）→ 0、3-1 → ペナルティ
+ *
+ * @param genderPairImpossible `isGenderPairImpossible` の判定結果。少数派性別が
+ *   1人だけで 2-2 構成が物理的に作れない場合に true。
+ *   この場合、少数派を含む組は必ず 3-1 になるため、3-1 ペナルティを課しても
+ *   バランスは改善せず、少数派の出場機会を待たせるだけになる → ペナルティを無効化する。
+ *   少数派が2人以上いる（＝2-2が作れる余地がある）場合はここには該当せず、
+ *   従来どおりペナルティを効かせて2-2/4-0へ誘導する。
  */
 function getGenderPenalty(
   combo: Player[],
-  oneGameDelta: number
+  oneGameDelta: number,
+  genderPairImpossible: boolean = false
 ): number {
   const genders = combo.map(p => p.gender).filter(Boolean);
   if (genders.length < 4) return 0; // 性別未設定がいる場合は影響なし
 
   const maleCount = genders.filter(g => g === 'M').length;
-  
+
   // 優先順位: 同性（4-0） > MIX（2-2） > 3-1
-  
+
   // 3-1構成 → 強ペナルティ（制約でも弾かれる）
+  // ただし genderPairImpossible（少数派1人で2-2が作れない構成）の場合は無効化
   if (maleCount === 1 || maleCount === 3) {
-    return oneGameDelta * GENDER_UNBALANCED_PENALTY;
+    return genderPairImpossible ? 0 : oneGameDelta * GENDER_UNBALANCED_PENALTY;
   }
-  
+
   // MIX（2-2）→ 軽いペナルティ（同性より優先度低め）
   if (maleCount === 2) {
     return oneGameDelta * GENDER_MIX_PENALTY;
   }
-  
+
   // 同性（4-0 or 0-4）→ ペナルティなし（最優先）
   return 0;
 }
@@ -884,6 +914,7 @@ function selectBestFour(
   allowUnbalanced?: boolean,
   lateBalance?: LateBalanceCtx,
   baseRankById?: Map<string, number>,
+  genderPairImpossible?: boolean,
 ): Player[] {
   if (candidates.length <= 4) return candidates;
 
@@ -917,7 +948,7 @@ function selectBestFour(
           if (!isValid(ids)) continue;
 
           const s = combo.reduce((sum, p) => sum + playerScore(p), 0)
-            + getGenderPenalty(combo, oneGameDelta)
+            + getGenderPenalty(combo, oneGameDelta, genderPairImpossible)
             + getComboRepeatPenalty(ids, matchHistory, oneGameDelta)
             + (baseRankById ? getSkillGapPenalty(ids, baseRankById, oneGameDelta) : 0);
 
@@ -1305,17 +1336,19 @@ export function assignCourts(
   // グループ分けは全アクティブプレイヤー（他コートでプレイ中含む）で行う
   const groupingPlayers = options?.allPlayers ?? activePlayers;
 
+  // 性別構成の偏りを許容するか判定（セッション全体で判定、ハード制約用）
+  const allowUnbalanced = shouldAllowUnbalancedGender(groupingPlayers, normalCourtCount);
+  // 少数派性別が1人で2-2構成が物理的に作れないか（ソフトペナルティ無効化用）
+  const genderPairImpossible = isGenderPairImpossible(groupingPlayers);
+
   // 2コート同時配置の場合はホリスティック・アプローチを使用
   if (totalCourtCount === 2 && normalCourtCount === 2) {
-    const holistic = assign2CourtsHolistic(normalCandidates, normalCourtIds, matchHistory, practiceStartTime, groupingPlayers, useStayDuration, lateBalance);
+    const holistic = assign2CourtsHolistic(normalCandidates, normalCourtIds, matchHistory, practiceStartTime, groupingPlayers, useStayDuration, lateBalance, genderPairImpossible);
     return [...reservationAssignments, ...holistic];
   }
 
   // グループ分け（グローバル）
   const groups3 = totalCourtCount >= 3 ? groupPlayers3Court(groupingPlayers, matchHistory) : null;
-
-  // 性別構成の偏りを許容するか判定（セッション全体で判定）
-  const allowUnbalanced = shouldAllowUnbalancedGender(groupingPlayers, normalCourtCount);
 
   // 序列を計算（formTeamsのペアリングに使用）
   const groupCount = totalCourtCount >= 3 ? 3 : 2;
@@ -1352,7 +1385,7 @@ export function assignCourts(
 
         const selected = selectBestFour(
           remaining, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById
+          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById, genderPairImpossible
         );
 
         selected.forEach(p => usedPlayers.add(p.id));
@@ -1409,7 +1442,7 @@ export function assignCourts(
 
         const result = selectBestFour(
           candidates, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById
+          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById, genderPairImpossible
         );
 
         const resultIds = result.map(p => p.id);
@@ -1435,7 +1468,7 @@ export function assignCourts(
         );
         selected = selectBestFour(
           allAvailable, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById
+          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById, genderPairImpossible
         );
       }
 
@@ -1475,7 +1508,7 @@ export function assignCourts(
     // 制約を満たす4人を選択
     const selected = selectBestFour(
       candidatePool, matchHistory, groups3, totalCourtCount,
-      practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById
+      practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById, genderPairImpossible
     );
 
     if (selected.length < 4) {
