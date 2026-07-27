@@ -513,11 +513,17 @@ const PAIRING_BALANCE_TOLERANCE_RATIO = 1 / 3;
  * それ以外は matchHistory が渡されていれば、バランスを大きく崩さない範囲で
  * パートナー/対戦相手として過去に組んだ回数が最も少ないペア分けを選ぶ。
  * matchHistory 省略時（デフォルト = []）は常に 1+4 vs 2+3 を返す（従来の挙動）。
+ *
+ * `pairCounts` は matchHistory から集計済みの `buildHistoryCounts(...).pair` を
+ * 渡すためのオプション引数。呼び出し元（assignCourts 等）がコート数ぶん
+ * formTeams を呼ぶ際に、都度 matchHistory を全走査するのを避けられる。
+ * 省略時は内部で従来どおり計算する。
  */
 export function formTeams(
   fourPlayers: Player[],
   playerOrder: string[],
-  matchHistory: Match[] = []
+  matchHistory: Match[] = [],
+  pairCounts?: PairHistoryCounts
 ): { teamA: [string, string]; teamB: [string, string] } {
   // 序列順にソート（playerOrder内の位置が若い = 上位）
   const sorted = [...fourPlayers].sort((a, b) => {
@@ -548,7 +554,10 @@ export function formTeams(
         teamB: [sorted[1].id, sorted[3].id],
       };
     }
-    // どちらもMIXにできない（同性のみ等）→ 下の多様性ロジックに委ねる
+    // ここには到達しない: 2M+2Fなら sorted の性別並びは6通り
+    // （MMFF/MFMF/MFFM/FMMF/FFMM/FMFM）しかなく、全パターンで default か alt の
+    // いずれかが必ずMIXになる（数学的に証明済み）。万一に備えて安全側に
+    // 下の多様性ロジックへフォールスルーさせる。
   }
 
   // 3通りのペア分け候補（バランス: 1+4/2+3 > 1+3/2+4 > 1+2/3+4 の順）
@@ -583,18 +592,19 @@ export function formTeams(
   // 「同一グループ相当」の幅までバランス悪化を許容する
   const allowance = Math.floor(playerOrder.length * PAIRING_BALANCE_TOLERANCE_RATIO);
 
-  const pairCounts = buildPairHistoryCounts(matchHistory);
+  // 呼び出し元から渡されていなければ内部で集計する（従来どおりの挙動）
+  const counts = pairCounts ?? buildHistoryCounts(matchHistory).pair;
   const repeatCount = (pairing: (typeof pairings)[number]): number => {
     const [a, b] = pairing.teamA;
     const [c, d] = pairing.teamB;
     const partner =
-      (pairCounts.partner.get(pairKey(a.id, b.id)) ?? 0) +
-      (pairCounts.partner.get(pairKey(c.id, d.id)) ?? 0);
+      (counts.partner.get(pairKey(a.id, b.id)) ?? 0) +
+      (counts.partner.get(pairKey(c.id, d.id)) ?? 0);
     const opponent =
-      (pairCounts.opponent.get(pairKey(a.id, c.id)) ?? 0) +
-      (pairCounts.opponent.get(pairKey(a.id, d.id)) ?? 0) +
-      (pairCounts.opponent.get(pairKey(b.id, c.id)) ?? 0) +
-      (pairCounts.opponent.get(pairKey(b.id, d.id)) ?? 0);
+      (counts.opponent.get(pairKey(a.id, c.id)) ?? 0) +
+      (counts.opponent.get(pairKey(a.id, d.id)) ?? 0) +
+      (counts.opponent.get(pairKey(b.id, c.id)) ?? 0) +
+      (counts.opponent.get(pairKey(b.id, d.id)) ?? 0);
     return partner + opponent;
   };
 
@@ -659,7 +669,11 @@ function assign2CourtsHolistic(
   useStayDuration: boolean = true,
   lateBalance?: LateBalanceCtx,
   genderPairImpossible: boolean = false,
+  historyCounts?: HistoryCounts,
 ): CourtAssignment[] {
+  // formTeams を2回（コートごとに）呼ぶため、集計済みなら使い回す
+  const pairCounts = historyCounts?.pair;
+
   // 最大偏差制限: 平均より3試合以上多い人は除外
   const allGamesPlayed = activePlayers.map(p => p.gamesPlayed);
   const avgGames = allGamesPlayed.reduce((sum, g) => sum + g, 0) / allGamesPlayed.length;
@@ -768,8 +782,8 @@ function assign2CourtsHolistic(
     const sortedCourtIds = [...targetCourtIds].sort((a, b) => a - b);
 
     // 8. チーム編成（序列ベースの最強+最弱ペアリング）
-    const upperTeams = formTeams(upperCourt, order, matchHistory);
-    const lowerTeams = formTeams(lowerCourt, order, matchHistory);
+    const upperTeams = formTeams(upperCourt, order, matchHistory, pairCounts);
+    const lowerTeams = formTeams(lowerCourt, order, matchHistory, pairCounts);
 
     return [
       { courtId: sortedCourtIds[0], teamA: upperTeams.teamA, teamB: upperTeams.teamB },
@@ -801,8 +815,8 @@ function assign2CourtsHolistic(
   const sortedCourtIds = [...targetCourtIds].sort((a, b) => a - b);
 
   // 8. チーム編成（序列ベースの最強+最弱ペアリング）
-  const upperTeams = formTeams(upperCourt, order, matchHistory);
-  const lowerTeams = formTeams(lowerCourt, order, matchHistory);
+  const upperTeams = formTeams(upperCourt, order, matchHistory, pairCounts);
+  const lowerTeams = formTeams(lowerCourt, order, matchHistory, pairCounts);
 
   return [
     { courtId: sortedCourtIds[0], teamA: upperTeams.teamA, teamB: upperTeams.teamB },
@@ -960,18 +974,17 @@ function getSkillGapPenalty(
 /**
  * セッション通算で同じ4人の組み合わせが繰り返される場合のペナルティ
  * 2回目までは許容、3回目以降は強いペナルティを加算
+ *
+ * `comboCounts` は `buildHistoryCounts` で事前集計した「4人組み合わせキー →
+ * 出現回数」の Map。selectBestFour の候補探索（4重ループ）の中で毎回
+ * matchHistory を全走査すると重くなるため、外側で1回だけ集計した結果を渡す。
  */
 function getComboRepeatPenalty(
   comboIds: string[],
-  matchHistory: Match[],
+  comboCounts: Map<string, number>,
   oneGameDelta: number
 ): number {
-  const key = [...comboIds].sort().join(',');
-  let count = 0;
-  for (const match of matchHistory) {
-    const matchKey = [...match.teamA, ...match.teamB].sort().join(',');
-    if (matchKey === key) count++;
-  }
+  const count = comboCounts.get(comboKey(comboIds)) ?? 0;
   // 3回目以降を強く回避（2回までは許容）
   return count >= COMBO_REPEAT_ALLOWANCE ? oneGameDelta * COMBO_REPEAT_PENALTY : 0;
 }
@@ -981,6 +994,11 @@ function pairKey(id1: string, id2: string): string {
   return [id1, id2].sort().join(',');
 }
 
+/** 4人1組の組み合わせキー（順序に依らず一意） */
+function comboKey(ids: readonly string[]): string {
+  return [...ids].sort().join(',');
+}
+
 /** 2人の組み合わせごとの「パートナーだった回数」「対戦相手だった回数」の集計結果 */
 interface PairHistoryCounts {
   partner: Map<string, number>;
@@ -988,13 +1006,28 @@ interface PairHistoryCounts {
 }
 
 /**
- * matchHistory 全体を1回走査し、任意の2人がパートナー/対戦相手だった回数を
- * ペアごとに集計する。selectBestFour の候補組み合わせ探索（4重ループ）の外側で
- * 1回だけ呼び、ループ内はこのマップの参照のみにすることで探索を軽く保つ。
+ * matchHistory から集計した結果一式。パートナー/対戦相手重複ペナルティ
+ * （`getPairRepeatPenalty`）と、同一4人組み合わせ重複ペナルティ
+ * （`getComboRepeatPenalty`）の両方で使う。
  */
-function buildPairHistoryCounts(matchHistory: Match[]): PairHistoryCounts {
+interface HistoryCounts {
+  pair: PairHistoryCounts;
+  combo: Map<string, number>;
+}
+
+/**
+ * matchHistory 全体を1回走査し、
+ * - 任意の2人がパートナー/対戦相手だった回数（ペアごと）
+ * - 同じ4人の組み合わせが出現した回数
+ * をまとめて集計する。selectBestFour の候補組み合わせ探索（4重ループ、さらに
+ * 借用の段階拡大ループで最大 n 回呼ばれる）や formTeams のペア分け判定で
+ * 毎回 matchHistory を全走査すると重くなるため、assignCourts 側で1回だけ
+ * 計算し、各所に使い回す。
+ */
+function buildHistoryCounts(matchHistory: Match[]): HistoryCounts {
   const partner = new Map<string, number>();
   const opponent = new Map<string, number>();
+  const combo = new Map<string, number>();
   const bump = (map: Map<string, number>, id1: string, id2: string) => {
     if (!id1 || !id2) return; // シングルス等で空文字が入るケースを無視
     const key = pairKey(id1, id2);
@@ -1009,8 +1042,11 @@ function buildPairHistoryCounts(matchHistory: Match[]): PairHistoryCounts {
     bump(opponent, a1, b2);
     bump(opponent, a2, b1);
     bump(opponent, a2, b2);
+
+    const key = comboKey([a1, a2, b1, b2]);
+    combo.set(key, (combo.get(key) ?? 0) + 1);
   }
-  return { partner, opponent };
+  return { pair: { partner, opponent }, combo };
 }
 
 /**
@@ -1136,6 +1172,7 @@ function selectBestFour(
   baseRankById?: Map<string, number>,
   genderPairImpossible?: boolean,
   preferGenderMix?: boolean,
+  historyCounts?: HistoryCounts,
 ): Player[] {
   if (candidates.length <= 4) return candidates;
 
@@ -1156,9 +1193,10 @@ function selectBestFour(
   // 性別ペナルティ用の基準値（1試合分のスコア差）
   const oneGameDelta = computeOneGameDelta(practiceStartTime, useStayDuration);
 
-  // パートナー/対戦相手重複ペナルティ用に、matchHistory 全体を1回だけ集計
-  // （4重ループの中で毎回 matchHistory を走査すると重くなるため）
-  const pairCounts = buildPairHistoryCounts(matchHistory);
+  // パートナー/対戦相手重複・同一4人組み合わせ重複ペナルティ用に、matchHistory
+  // 全体を1回だけ集計（4重ループの中で毎回 matchHistory を走査すると重くなるため）。
+  // 呼び出し元（assignCourts）が既に集計済みなら渡してもらい、再集計を避ける。
+  const counts = historyCounts ?? buildHistoryCounts(matchHistory);
 
   let bestCombo: Player[] | null = null;
   let bestScore = Infinity;
@@ -1174,8 +1212,8 @@ function selectBestFour(
 
           const s = combo.reduce((sum, p) => sum + playerScore(p), 0)
             + getGenderPenalty(combo, oneGameDelta, genderPairImpossible, preferGenderMix)
-            + getComboRepeatPenalty(ids, matchHistory, oneGameDelta)
-            + getPairRepeatPenalty(ids, pairCounts, oneGameDelta)
+            + getComboRepeatPenalty(ids, counts.combo, oneGameDelta)
+            + getPairRepeatPenalty(ids, counts.pair, oneGameDelta)
             + (baseRankById ? getSkillGapPenalty(ids, baseRankById, oneGameDelta) : 0);
 
           if (s < bestScore) {
@@ -1517,6 +1555,11 @@ export function assignCourts(
   const fulfilledReservationIds: string[] = [];
   const remainingCourtIds = [...targetCourtIds];
 
+  // パートナー/対戦相手重複・同一4人組み合わせ重複ペナルティ用の集計を1回だけ
+  // 行い、以降の formTeams / selectBestFour 呼び出し（コート数ぶん、借用の
+  // 段階拡大ループも含めると最大 n 回）に使い回す。
+  const historyCounts = buildHistoryCounts(matchHistory);
+
   for (const reservation of pendingReservations) {
     if (remainingCourtIds.length === 0) break;
 
@@ -1611,7 +1654,7 @@ export function assignCourts(
         reservationPool.find(p => p.id === rsvPlayerIds[0])!,
         nonReserved[0], nonReserved[1], nonReserved[2],
       ];
-      const teams = formTeams(fourPlayers, playerOrder, matchHistory);
+      const teams = formTeams(fourPlayers, playerOrder, matchHistory, historyCounts.pair);
       reservationAssignments.push({ courtId, teamA: teams.teamA, teamB: teams.teamB, activatedFromRestIds });
       reservationUsedPlayers.add(nonReserved[0].id);
       reservationUsedPlayers.add(nonReserved[1].id);
@@ -1667,7 +1710,7 @@ export function assignCourts(
 
   // 2コート同時配置の場合はホリスティック・アプローチを使用
   if (totalCourtCount === 2 && normalCourtCount === 2) {
-    const holistic = assign2CourtsHolistic(normalCandidates, normalCourtIds, matchHistory, practiceStartTime, groupingPlayers, useStayDuration, lateBalance, genderPairImpossible);
+    const holistic = assign2CourtsHolistic(normalCandidates, normalCourtIds, matchHistory, practiceStartTime, groupingPlayers, useStayDuration, lateBalance, genderPairImpossible, historyCounts);
     return [...reservationAssignments, ...holistic];
   }
 
@@ -1714,7 +1757,7 @@ export function assignCourts(
 
         const selected = selectBestFour(
           remaining, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById, genderPairImpossible, preferGenderMix
+          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById, genderPairImpossible, preferGenderMix, historyCounts
         );
 
         selected.forEach(p => usedPlayers.add(p.id));
@@ -1770,7 +1813,7 @@ export function assignCourts(
 
         const result = selectBestFour(
           candidates, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById, genderPairImpossible, preferGenderMix
+          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById, genderPairImpossible, preferGenderMix, historyCounts
         );
 
         const resultIds = result.map(p => p.id);
@@ -1796,7 +1839,7 @@ export function assignCourts(
         );
         selected = selectBestFour(
           allAvailable, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById, genderPairImpossible, preferGenderMix
+          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById, genderPairImpossible, preferGenderMix, historyCounts
         );
       }
 
@@ -1817,7 +1860,7 @@ export function assignCourts(
     }
 
     for (const { courtId, selected } of courtSelections) {
-      const teams = formTeams(selected, playerOrder, matchHistory);
+      const teams = formTeams(selected, playerOrder, matchHistory, historyCounts.pair);
       assignments.push({ courtId, teamA: teams.teamA, teamB: teams.teamB });
     }
 
@@ -1848,7 +1891,7 @@ export function assignCourts(
     // 制約を満たす4人を選択
     const selected = selectBestFour(
       candidatePool, matchHistory, groups3, totalCourtCount,
-      practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById, genderPairImpossible, preferGenderMix
+      practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById, genderPairImpossible, preferGenderMix, historyCounts
     );
 
     if (selected.length < 4) {
@@ -1858,7 +1901,7 @@ export function assignCourts(
     selected.forEach(p => usedPlayers.add(p.id));
 
     // チーム分け（序列ベースの最強+最弱ペアリング）
-    const teams = formTeams(selected, playerOrder, matchHistory);
+    const teams = formTeams(selected, playerOrder, matchHistory, historyCounts.pair);
     assignments.push({ courtId, teamA: teams.teamA, teamB: teams.teamB });
   }
 
