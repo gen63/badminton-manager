@@ -104,6 +104,17 @@ export function applyStreakSwaps(
   const stepSize = Math.max(1, Math.floor(order.length / groupCount));
   const dropAmount = Math.max(1, Math.ceil(stepSize / 2));
 
+  // 元の序列から離れてよい上限は 1 グループ分。連勝すれば隣のグループまで上がれる
+  // が、それ以上は積み上がらない。無制限だと上位者が下位グループまで沈み、グループ
+  // 内の実力幅が広がってしまう（18人3コートで 5 → 10.5）。
+  const maxDrift = stepSize;
+  const baseIndex = new Map(initialOrder.map((id, index) => [id, index]));
+  const clampTarget = (id: string, target: number): number => {
+    const base = baseIndex.get(id);
+    if (base === undefined) return target;
+    return Math.min(Math.max(target, base - maxDrift), base + maxDrift);
+  };
+
   // 各プレイヤーの連勝カウント（処理中の累積）
   const streaks = new Map<string, number>();
 
@@ -117,19 +128,13 @@ export function applyStreakSwaps(
       streaks.set(id, newStreak);
 
       const idx = order.indexOf(id);
-      if (newStreak >= 2 && newStreak % 2 === 0) {
-        // 2連勝ごとにグループ1つ分上に移動
-        const newIdx = Math.max(0, idx - stepSize);
-        if (newIdx < idx) {
-          order.splice(idx, 1);
-          order.splice(newIdx, 0, id);
-        }
-      } else {
-        // 通常の勝利: 1つ上に移動
-        if (idx > 0) {
-          order.splice(idx, 1);
-          order.splice(idx - 1, 0, id);
-        }
+      if (idx === -1) continue;
+      // 2連勝ごとにグループ1つ分上、それ以外の勝利は1つ上
+      const rawTarget = newStreak >= 2 && newStreak % 2 === 0 ? idx - stepSize : idx - 1;
+      const newIdx = Math.max(0, clampTarget(id, rawTarget));
+      if (newIdx < idx) {
+        order.splice(idx, 1);
+        order.splice(newIdx, 0, id);
       }
     }
 
@@ -138,7 +143,7 @@ export function applyStreakSwaps(
       streaks.set(id, 0);
       const idx = order.indexOf(id);
       if (idx === -1) continue;
-      const newIdx = Math.min(order.length - 1, idx + dropAmount);
+      const newIdx = Math.min(order.length - 1, clampTarget(id, idx + dropAmount));
       if (newIdx > idx) {
         order.splice(idx, 1);
         order.splice(newIdx, 0, id);
@@ -678,6 +683,47 @@ function getGenderPenalty(
   return 0;
 }
 
+/** 実力差ペナルティの重み（1試合分のスコア差 = oneGameDelta の何倍か） */
+const SKILL_GAP_WEIGHT = 2.0;
+/** この人数未満のセッションでは実力差を考慮しない（選択の余地が無く、混ざって当然） */
+const MIN_ROSTER_FOR_SKILL_GAP = 12;
+
+/**
+ * 実力が離れすぎた 4 人が同じコートに入るのを避けるためのペナルティ。
+ *
+ * 判定には**ハシゴ式（applyStreakSwaps）適用前の序列**を使う。ハシゴ式はコート
+ * 固定化を防ぐための回転装置で序列を撹拌するため、撹拌後の upper/lower で実力を
+ * 判定しても分離にならないため。
+ *
+ * ハード制約ではなくスコアへの加算（ソフト）にしているのは、候補が少ないときに
+ * 自動的に緩んでほしいから。少人数セッションでは `MIN_ROSTER_FOR_SKILL_GAP` 未満で
+ * 無効になり、許容幅も人数に比例するので、人数が少ないほど緩くなる。
+ */
+function getSkillGapPenalty(
+  comboIds: string[],
+  baseRankById: Map<string, number>,
+  oneGameDelta: number
+): number {
+  const rosterSize = baseRankById.size;
+  if (rosterSize < MIN_ROSTER_FOR_SKILL_GAP) return 0;
+
+  const ranks: number[] = [];
+  for (const id of comboIds) {
+    const rank = baseRankById.get(id);
+    if (rank === undefined) return 0; // 序列に載っていない人がいたら判定しない
+    ranks.push(rank);
+  }
+
+  const gap = Math.max(...ranks) - Math.min(...ranks);
+  // 同じグループ相当（人数の 1/3）の幅までは許容する
+  const allowance = Math.floor(rosterSize / 3);
+  if (gap <= allowance) return 0;
+
+  // 超過分を 0-1 に正規化。全体幅いっぱいに離れているときが最大ペナルティ。
+  const excess = (gap - allowance) / Math.max(1, rosterSize - 1 - allowance);
+  return oneGameDelta * SKILL_GAP_WEIGHT * excess;
+}
+
 /**
  * セッション通算で同じ4人の組み合わせが繰り返される場合のペナルティ
  * 2回目までは許容、3回目以降は強いペナルティを加算
@@ -793,6 +839,7 @@ function selectBestFour(
   useStayDuration: boolean,
   allowUnbalanced?: boolean,
   lateBalance?: LateBalanceCtx,
+  baseRankById?: Map<string, number>,
 ): Player[] {
   if (candidates.length <= 4) return candidates;
 
@@ -829,7 +876,8 @@ function selectBestFour(
 
           const s = combo.reduce((sum, p) => sum + playerScore(p), 0)
             + getGenderPenalty(combo, oneGameDelta)
-            + getComboRepeatPenalty(ids, matchHistory, oneGameDelta);
+            + getComboRepeatPenalty(ids, matchHistory, oneGameDelta)
+            + (baseRankById ? getSkillGapPenalty(ids, baseRankById, oneGameDelta) : 0);
 
           if (s < bestScore) {
             bestScore = s;
@@ -1231,6 +1279,11 @@ export function assignCourts(
   const groupCount = totalCourtCount >= 3 ? 3 : 2;
   const playerOrder = applyStreakSwaps(buildInitialOrder(groupingPlayers), matchHistory, groupCount);
 
+  // 実力差ペナルティ用の序列（ハシゴ式で撹拌する前の、素の序列）
+  const baseRankById = new Map(
+    buildInitialOrder(groupingPlayers).map((id, index) => [id, index] as const)
+  );
+
   const assignments: CourtAssignment[] = [];
   const usedPlayers = new Set<string>();
 
@@ -1257,7 +1310,7 @@ export function assignCourts(
 
         const selected = selectBestFour(
           remaining, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance
+          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById
         );
 
         selected.forEach(p => usedPlayers.add(p.id));
@@ -1314,7 +1367,7 @@ export function assignCourts(
 
         const result = selectBestFour(
           candidates, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance
+          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById
         );
 
         const resultIds = result.map(p => p.id);
@@ -1340,7 +1393,7 @@ export function assignCourts(
         );
         selected = selectBestFour(
           allAvailable, matchHistory, groups3, totalCourtCount,
-          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance
+          practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById
         );
       }
 
@@ -1380,7 +1433,7 @@ export function assignCourts(
     // 制約を満たす4人を選択
     const selected = selectBestFour(
       candidatePool, matchHistory, groups3, totalCourtCount,
-      practiceStartTime, useStayDuration, allowUnbalanced, lateBalance
+      practiceStartTime, useStayDuration, allowUnbalanced, lateBalance, baseRankById
     );
 
     if (selected.length < 4) {

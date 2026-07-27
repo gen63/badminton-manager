@@ -300,8 +300,9 @@ describe('applyStreakSwaps', () => {
       matches
     );
     // 1勝目: D(3)が1つ上 → A,B,D,C,E,F
-    // 2連勝目: D(2)がstepSize=2つ上 → D,A,B,C,E,F
-    expect(order).toEqual(['D', 'A', 'B', 'C', 'E', 'F']);
+    // 2連勝目: D(2)がstepSize=2つ上を狙うが、元の序列(3)から離れてよいのは
+    // 1グループ分(stepSize=2)まで → index 1 で止まる（上位グループには入る）
+    expect(order).toEqual(['A', 'D', 'B', 'C', 'E', 'F']);
   });
 
   it('二連敗でceil(gs/2)ずつ下に移動', () => {
@@ -330,12 +331,12 @@ describe('applyStreakSwaps', () => {
       matches
     );
     // 1勝目: D(3)→1つ上 → A,B,D,C,E,F
-    // 2連勝目: D(2)→2つ上 → D,A,B,C,E,F
-    // 3勝目: D(0)→既にtop、変化なし
-    expect(order).toEqual(['D', 'A', 'B', 'C', 'E', 'F']);
+    // 2連勝目: D(2)→上限(元の序列3 - stepSize2 = 1)まで → A,D,B,C,E,F
+    // 3勝目: D(1)→上限に到達済みなので動かない
+    expect(order).toEqual(['A', 'D', 'B', 'C', 'E', 'F']);
   });
 
-  it('四連勝でも既にtopなら変化なし', () => {
+  it('四連勝でも上限に達したらそれ以上は上がらない', () => {
     const matches = [
       createMatch(['D', 'X'], ['S', 'R'], 21, 15), // 1試合目（古）
       createMatch(['D', 'X'], ['U', 'T'], 21, 15), // 2試合目
@@ -346,8 +347,8 @@ describe('applyStreakSwaps', () => {
       ['A', 'B', 'C', 'D', 'E', 'F'],
       matches
     );
-    // 1勝+2連勝でtopに到達、以降は変化なし
-    expect(order).toEqual(['D', 'A', 'B', 'C', 'E', 'F']);
+    // 1勝+2連勝で上限（元の序列から1グループ分上）に到達、以降は変化なし
+    expect(order).toEqual(['A', 'D', 'B', 'C', 'E', 'F']);
   });
 
   it('最上位での二連勝は変化なし', () => {
@@ -376,6 +377,27 @@ describe('applyStreakSwaps', () => {
     expect(order).toEqual(['A', 'B', 'C']);
   });
 
+  it('連勝を重ねても元の序列から1グループ分より上には行かない', () => {
+    // 9人3グループ（stepSize=3）。最下位 I が 6 連勝しても index 5 まで。
+    const order = applyStreakSwaps(
+      ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
+      Array.from({ length: 6 }, () => createMatch(['I', 'X'], ['Y', 'Z'], 21, 15))
+    );
+    expect(order.indexOf('I')).toBe(5); // 元の 8 から stepSize=3 上まで
+    // 上位グループ（0-2）には侵入しない
+    expect(order.slice(0, 3)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('連敗を重ねても元の序列から1グループ分より下には行かない', () => {
+    const order = applyStreakSwaps(
+      ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
+      Array.from({ length: 6 }, () => createMatch(['Y', 'Z'], ['A', 'X'], 21, 15))
+    );
+    expect(order.indexOf('A')).toBe(3); // 元の 0 から stepSize=3 下まで
+    // 下位グループ（6-8）には落ちない
+    expect(order.slice(6)).toEqual(['G', 'H', 'I']);
+  });
+
   it('勝ち→負けで上昇分を降下が相殺', () => {
     const matches = [
       createMatch(['D', 'X'], ['W', 'V'], 21, 15), // 1試合目: D勝ち（古）
@@ -388,6 +410,64 @@ describe('applyStreakSwaps', () => {
     // 1勝目: D(3)→1つ上 → A,B,D,C,E,F
     // 2試合目: D負け → 1つ下 → A,B,C,D,E,F（元に戻る）
     expect(order).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
+  });
+});
+
+describe('assignCourts - 実力差の分離', () => {
+  /** 序列 rank 順（rating 降順）に人数分作る。gamesPlayed で優先度を作れる。 */
+  const makeRoster = (count: number, fewerGames: number[]): Player[] =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `p${i}`,
+      name: `P${i}`,
+      rating: 1000 - i,
+      isResting: false,
+      // 試合数が少ない = 優先度が高い（-Infinity にならないよう 1 以上にする）
+      gamesPlayed: fewerGames.includes(i) ? 1 : 2,
+      lastPlayedAt: 0,
+      activatedAt: 0,
+    }));
+
+  it('人数が多いセッションでは、最上位と最下位が優先度で有利でも同じコートに入れない', () => {
+    // 12人。最上位(p0)と最下位(p11)だけ試合数が少ない = 本来なら最優先で選ばれる
+    const players = makeRoster(12, [0, 11]);
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: 0,
+      useStayDurationPriority: false,
+      allPlayers: players,
+    });
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB];
+    expect(ids).toHaveLength(4);
+    expect(ids.includes('p0') && ids.includes('p11')).toBe(false);
+  });
+
+  it('人数が少ないセッションでは実力差を考慮しない（優先度どおりに選ぶ）', () => {
+    // 8人（MIN_ROSTER_FOR_SKILL_GAP 未満）。同じ条件でも両極端が選ばれる
+    const players = makeRoster(8, [0, 7]);
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: 0,
+      useStayDurationPriority: false,
+      allPlayers: players,
+    });
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB];
+    expect(ids.includes('p0') && ids.includes('p7')).toBe(true);
+  });
+
+  it('実力が近ければ優先度の高い人がそのまま選ばれる', () => {
+    // 12人で、序列が隣接する 4 人だけ試合数が少ない → ペナルティ 0 で選ばれる
+    const players = makeRoster(12, [4, 5, 6, 7]);
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: 0,
+      useStayDurationPriority: false,
+      allPlayers: players,
+    });
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB].sort();
+    expect(ids).toEqual(['p4', 'p5', 'p6', 'p7']);
   });
 });
 
