@@ -11,8 +11,14 @@ import { sendMatchesToSheets } from '../lib/sheetsApi';
 import { updateSession } from '../services/sessionService';
 import { isMatchOfPlayer, computePlayerRecord } from '../lib/matchFilter';
 import type { PlayerRecord } from '../lib/matchFilter';
+import {
+  computePerformanceRatings,
+  findPerformance,
+  BASE_RATING,
+} from '../lib/performanceRating';
+import type { PlayerPerformance } from '../lib/performanceRating';
 import { useDevMode } from '../hooks/useDevMode';
-import { Copy, Trash2, Edit3, Clock, Upload, History, ChevronDown, ChevronUp, User, AlertTriangle } from 'lucide-react';
+import { Copy, Trash2, Edit3, Clock, Upload, History, ChevronDown, ChevronUp, User, AlertTriangle, BarChart3 } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
@@ -217,37 +223,175 @@ function MatchList({
   );
 }
 
+/** 期待勝利数との差を「+2.1 / -1.3」の形に整形する。 */
+function formatSigned(value: number): string {
+  return `${value > 0 ? '+' : value < 0 ? '−' : '±'}${Math.abs(value).toFixed(1)}`;
+}
+
 function PlayerRecordSummary({
   playerName,
   isSelf,
   record,
   showWinRate,
+  performance,
 }: {
   playerName: string | null;
   isSelf: boolean;
   record: PlayerRecord;
   // 勝率は作成者または開発モードのときのみ表示する
   showWinRate: boolean;
+  // 強さ指標（レート・偏差値など）は開発モードのときのみ。対象外なら null
+  performance: PlayerPerformance | null;
 }) {
   const label = isSelf ? '自分の成績' : `${playerName} さんの成績`;
   return (
     <div
-      className="rounded-xl px-4 py-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1"
+      className="rounded-xl px-4 py-3 space-y-2"
       style={{ backgroundColor: '#eef2ff', color: '#3730a3' }}
     >
-      <span className="text-sm font-medium">{label}</span>
-      <span className="text-sm">
-        <span className="text-base font-bold">{record.wins}</span>勝{' '}
-        <span className="text-base font-bold">{record.losses}</span>敗
-      </span>
-      {showWinRate && (
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+        <span className="text-sm font-medium">{label}</span>
         <span className="text-sm">
-          勝率{' '}
-          <span className="text-base font-bold">
-            {record.winRate === null ? '—' : record.winRate}
-          </span>
-          {record.winRate === null ? '' : '%'}
+          <span className="text-base font-bold">{record.wins}</span>勝{' '}
+          <span className="text-base font-bold">{record.losses}</span>敗
         </span>
+        {showWinRate && (
+          <span className="text-sm">
+            勝率{' '}
+            <span className="text-base font-bold">
+              {record.winRate === null ? '—' : record.winRate}
+            </span>
+            {record.winRate === null ? '' : '%'}
+          </span>
+        )}
+      </div>
+
+      {performance && (
+        <div className="border-t border-indigo-200 pt-2 space-y-1">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+            <span className="text-sm">
+              レート{' '}
+              <span className="text-base font-bold">{performance.rating}</span>
+            </span>
+            <span className="text-sm">
+              偏差値{' '}
+              <span className="text-base font-bold">
+                {performance.deviation.toFixed(1)}
+              </span>
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs opacity-90">
+            <span>相手平均 {performance.opponentRating}</span>
+            {performance.partnerRating !== null && (
+              <span>味方平均 {performance.partnerRating}</span>
+            )}
+            <span>
+              期待勝率 {performance.expectedWinRate ?? '—'}% →{' '}
+              {performance.winRate ?? '—'}%（
+              {formatSigned(performance.winsAboveExpected)}勝）
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 本日の強さランキング（開発モード限定）。
+ * 対戦相手・味方の強さを加味したレート順に並べる。単純な勝率順ではないため、
+ * 弱い相手にだけ勝った人は上位に来ない。
+ */
+function PerformanceRanking({
+  players,
+  ratedMatchCount,
+  currentUser,
+  selectedName,
+  onSelect,
+}: {
+  players: PlayerPerformance[];
+  ratedMatchCount: number;
+  currentUser: string | null;
+  selectedName: string | null;
+  onSelect: (name: string) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(true);
+
+  return (
+    <div className="space-y-2">
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        aria-expanded={!collapsed}
+        className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-colors"
+        style={{ backgroundColor: '#e0e7ff', color: '#3730a3' }}
+      >
+        <span className="flex items-center gap-2">
+          <BarChart3 size={16} />
+          強さランキング（{ratedMatchCount}試合から算出）
+        </span>
+        {collapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+      </button>
+
+      {!collapsed && (
+        <div className="space-y-1">
+          <p className="text-[11px] text-muted-foreground leading-snug px-1">
+            対戦相手と味方の強さを加味した本日限定の推定値です（平均 {BASE_RATING} /
+            偏差値 50）。試合数が少ない人ほど平均寄りになります。
+          </p>
+          {players.map((p, index) => {
+            const isSelected = p.name === selectedName;
+            return (
+              <button
+                key={p.name}
+                onClick={() => onSelect(p.name)}
+                className={`w-full text-left rounded-lg px-2 py-1.5 border transition-colors ${
+                  isSelected
+                    ? 'bg-indigo-50 border-indigo-300'
+                    : 'bg-card border-gray-100 hover:bg-gray-50 active:bg-gray-100'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
+                    {index + 1}
+                  </span>
+                  <span className="flex-1 min-w-0 truncate text-sm font-bold text-foreground">
+                    {p.name}
+                    {p.name === currentUser && (
+                      <span className="text-[10px] font-normal text-muted-foreground">
+                        （自分）
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-sm font-bold text-foreground flex-shrink-0">
+                    {p.rating}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground w-12 text-right flex-shrink-0">
+                    偏差 {p.deviation.toFixed(1)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 pl-7 text-[11px] text-muted-foreground">
+                  <span className="whitespace-nowrap">
+                    {p.wins}勝{p.losses}敗（{p.winRate}%）
+                  </span>
+                  <span className="whitespace-nowrap">
+                    相手平均 {p.opponentRating}
+                  </span>
+                  <span
+                    className={`whitespace-nowrap font-medium ${
+                      p.winsAboveExpected > 0
+                        ? 'text-emerald-600'
+                        : p.winsAboveExpected < 0
+                          ? 'text-orange-600'
+                          : ''
+                    }`}
+                  >
+                    期待比 {formatSigned(p.winsAboveExpected)}勝
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -267,6 +411,8 @@ export function HistoryPage() {
   const showWinRate = isCreator();
   const gasWebAppUrl = useSettingsStore((s) => s.gasWebAppUrl);
   const devMode = useDevMode();
+  // 強さ指標（レート・偏差値・ランキング）は開発モードのときのみ
+  const showPerformance = devMode;
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
 
@@ -351,6 +497,16 @@ export function HistoryPage() {
     if (!filterPlayerName) return null;
     return computePlayerRecord(matchHistory, filterPlayerName, players);
   }, [matchHistory, filterPlayerName, players]);
+
+  // 本日のパフォーマンス指標（レート・偏差値）。全試合を連立で解くため
+  // メンバー単位ではなくセッション全体で 1 回だけ計算する。
+  const performanceResult = useMemo(() => {
+    if (!showPerformance) return null;
+    return computePerformanceRatings(matchHistory, players);
+  }, [showPerformance, matchHistory, players]);
+  const playerPerformance = performanceResult
+    ? findPerformance(performanceResult, filterPlayerName)
+    : null;
 
   // 全試合に通し番号を振った後でフィルタを適用（番号は全体基準で安定）
   const { unscoredMatches, scoredMatches } = useMemo(() => {
@@ -577,6 +733,20 @@ export function HistoryPage() {
                   isSelf={filterPlayerName === currentUser}
                   record={playerRecord}
                   showWinRate={showWinRate}
+                  performance={playerPerformance}
+                />
+              )}
+
+              {/* 強さランキング（開発モード限定） */}
+              {performanceResult && performanceResult.players.length > 0 && (
+                <PerformanceRanking
+                  players={performanceResult.players}
+                  ratedMatchCount={performanceResult.ratedMatchCount}
+                  currentUser={currentUser}
+                  selectedName={filterPlayerName}
+                  onSelect={(name) =>
+                    setFilterPlayerName(name === filterPlayerName ? null : name)
+                  }
                 />
               )}
 
