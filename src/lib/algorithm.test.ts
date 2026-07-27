@@ -729,6 +729,118 @@ describe('formTeams - MIXペアリング', () => {
   });
 });
 
+describe('formTeams - パートナー/対戦相手の多様性（matchHistory）', () => {
+  const createPlayer = (id: string, name: string, rating: number): Player => ({
+    id, name, rating, gamesPlayed: 0, isResting: false, lastPlayedAt: 0, activatedAt: 0,
+  });
+
+  const createMatch = (teamA: [string, string], teamB: [string, string]): Match => ({
+    id: `match-${teamA.join('')}-${teamB.join('')}`,
+    courtId: 1,
+    teamA,
+    teamB,
+    scoreA: 21,
+    scoreB: 15,
+    winner: 'A',
+    startedAt: 0,
+    finishedAt: 0,
+  });
+
+  it('matchHistory省略時は従来通り1+4 vs 2+3を返す', () => {
+    const players = [
+      createPlayer('p1', 'P1', 2000),
+      createPlayer('p2', 'P2', 1800),
+      createPlayer('p3', 'P3', 1600),
+      createPlayer('p4', 'P4', 1400),
+    ];
+    const order = ['p1', 'p2', 'p3', 'p4'];
+    // 過去に p1+p4 vs p2+p3 を何度繰り返していても、matchHistory を渡さなければ
+    // 多様性ロジックは働かない（従来の呼び出し元との後方互換のため）
+    const result = formTeams(players, order);
+    expect(result.teamA).toEqual(['p1', 'p4']);
+    expect(result.teamB).toEqual(['p2', 'p3']);
+  });
+
+  it('序列に十分な余裕があれば、バランスを保ちつつ過去に組んだ回数が少ないペア分けを選ぶ', () => {
+    const players = [
+      createPlayer('p1', 'P1', 2000),
+      createPlayer('p2', 'P2', 1800),
+      createPlayer('p3', 'P3', 1600),
+      createPlayer('p4', 'P4', 1400),
+    ];
+    // playerOrder を12人分にしておくとバランス許容幅（人数/3=4）が広がり、
+    // 1+3 vs 2+4（バランス悪化幅2）も選択肢に入る
+    const order = ['p1', 'p2', 'p3', 'p4', 'x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'x8'];
+    // デフォルト（p1+p4 vs p2+p3）を過去に3回繰り返し済み
+    const matchHistory: Match[] = [
+      createMatch(['p1', 'p4'], ['p2', 'p3']),
+      createMatch(['p1', 'p4'], ['p2', 'p3']),
+      createMatch(['p1', 'p4'], ['p2', 'p3']),
+    ];
+    const result = formTeams(players, order, matchHistory);
+
+    // 1+3 vs 2+4（p1+p3 vs p2+p4）は過去に一度も組んでいないため、そちらを選ぶ
+    expect(result.teamA).toEqual(['p1', 'p3']);
+    expect(result.teamB).toEqual(['p2', 'p4']);
+  });
+
+  it('序列に余裕が無い（4人だけ）場合は、履歴が偏っていてもバランスを崩さずデフォルトのまま', () => {
+    const players = [
+      createPlayer('p1', 'P1', 2000),
+      createPlayer('p2', 'P2', 1800),
+      createPlayer('p3', 'P3', 1600),
+      createPlayer('p4', 'P4', 1400),
+    ];
+    // playerOrder が4人のみ → 許容幅 floor(4/3)=1 で、1+3 vs 2+4（悪化幅2）は
+    // 許容範囲を超えるため選べない
+    const order = ['p1', 'p2', 'p3', 'p4'];
+    const matchHistory: Match[] = [
+      createMatch(['p1', 'p4'], ['p2', 'p3']),
+      createMatch(['p1', 'p4'], ['p2', 'p3']),
+      createMatch(['p1', 'p4'], ['p2', 'p3']),
+    ];
+    const result = formTeams(players, order, matchHistory);
+
+    // バランス優先でデフォルトのまま
+    expect(result.teamA).toEqual(['p1', 'p4']);
+    expect(result.teamB).toEqual(['p2', 'p3']);
+  });
+});
+
+describe('assignCourts - パートナー/対戦相手重複ペナルティ（selectBestFour）', () => {
+  const createPlayer = (id: string, rating: number): Player => ({
+    id, name: id, rating, gamesPlayed: 1, isResting: false, lastPlayedAt: 0, activatedAt: 0,
+  });
+
+  it('優先度が同点でも、過去にパートナー/対戦相手として重複が少ない4人を選ぶ', () => {
+    // 6人（p0>p1>...>p5 のレーティング）。全員 gamesPlayed=1 で優先度は同点。
+    // 過去に p0+p1 vs p2+p3 の1試合のみがあり、p0-p1(パートナー), p2-p3(パートナー),
+    // p0-p2/p0-p3/p1-p2/p1-p3(対戦相手) の6ペア全てに履歴が付く。
+    // p4, p5 は未プレイなので、p4+p5 を含む組み合わせほど重複が少ない。
+    const players = [0, 1, 2, 3, 4, 5].map((i) => createPlayer(`p${i}`, 1000 - i));
+    const matchHistory: Match[] = [{
+      id: 'm1', courtId: 1, teamA: ['p0', 'p1'], teamB: ['p2', 'p3'],
+      scoreA: 21, scoreB: 15, winner: 'A', startedAt: 0, finishedAt: 0,
+    }];
+
+    const assignments = assignCourts(players, 1, matchHistory, {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: 0,
+      useStayDurationPriority: false,
+      allPlayers: players,
+    });
+
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB].sort();
+    // {p0,p1,p2,p3}（直近試合と4人中4人重複）は制約で除外される。
+    // 残る有効な組み合わせのうち、対戦相手ペナルティ(0.05)がパートナー
+    // ペナルティ(0.1)より軽いため、p0-p2 のような「対戦相手だった」ペアを含む
+    // {p0,p2,p4,p5} が最小コストになり選ばれる（{p0,p1,p4,p5} のような
+    // 「パートナーだった」ペアを含む組より優先される）。
+    expect(ids).toEqual(['p0', 'p2', 'p4', 'p5']);
+  });
+});
+
 describe('assignCourts - 性別ペナルティ', () => {
   const now = Date.now();
 
