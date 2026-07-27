@@ -42,7 +42,8 @@
 合計に重みを掛けてスコアに加算する。
 
 - `PARTNER_REPEAT_WEIGHT = 0.1` / `OPPONENT_REPEAT_WEIGHT = 0.05`（`oneGameDelta` 単位）
-- `PAIR_REPEAT_PENALTY_CAP = 0.3` で上限を設ける。6ペア合計に掛けるため終盤に青天井で
+- `PAIR_REPEAT_PENALTY_CAP` で上限を設ける（当初 0.3。レビュー後 0.2 に調整。
+  詳細は `2026-07-28-mix-preference.md`）。6ペア合計に掛けるため終盤に青天井で
   膨らみ、実力差ペナルティ（最大 2.0）と competing する規模になるのを防ぐ
 
 ## 効果（20シード平均、20人4コート60試合）

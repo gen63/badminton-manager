@@ -984,6 +984,84 @@ describe('assignCourts - 少数派性別1人のときの3-1ペナルティ無効
   });
 });
 
+describe('assignCourts - 少数派性別が少ないときのMIX優遇 (preferGenderMix)', () => {
+  const now = Date.now();
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const createGenderedPlayer = (
+    id: string, gender: 'M' | 'F', gamesPlayed: number
+  ): Player => ({
+    id, name: id, rating: 1500, gender, gamesPlayed,
+    isResting: false, lastPlayedAt: 0,
+    activatedAt: now - 60 * 60 * 1000,
+  });
+
+  it('少数派が少ないセッション（30%未満）ではMIX（2-2）が同性（4-0）より優先される', () => {
+    // 5M+2F=7人（少数派比率 2/7≈28.6% < 30% → preferGenderMix）。
+    // useStayDurationPriority: false なので oneGameDelta=1.0、優先度スコアは
+    // gamesPlayed * 0.4（GAMES_PLAYED_SCORE_UNIT）。
+    // 最良の4-0（m1,m2,m3 + m4かm5）: 0.4+0.4+0.8+1.2 = 2.8
+    // 最良のMIX（m1,m2,f1,f2）    : 0.4+0.4+0.8+0.8 = 2.4
+    // 差は 0.4 で GENDER_MIX_PENALTY(0.5) より小さいため、
+    // 修正前（MIXに常に+0.5）なら 2.4+0.5=2.9 > 2.8 で4-0が勝つが、
+    // 修正後（少数派が少ないときはMIXペナルティ0）なら 2.4 < 2.8 でMIXが勝つ。
+    const players: Player[] = [
+      createGenderedPlayer('m1', 'M', 1),
+      createGenderedPlayer('m2', 'M', 1),
+      createGenderedPlayer('m3', 'M', 2),
+      createGenderedPlayer('m4', 'M', 3),
+      createGenderedPlayer('m5', 'M', 3),
+      createGenderedPlayer('f1', 'F', 2),
+      createGenderedPlayer('f2', 'F', 2),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: now - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('f1')).toBe(true);
+    expect(picked.has('f2')).toBe(true);
+  });
+
+  it('男女が拮抗したセッション（30%以上）では従来どおり同性（4-0）がMIXより優先される', () => {
+    // 4M+2F=6人（少数派比率 2/6≈33.3% ≥ 30% → preferGenderMix にはならない）。
+    // 最良の4-0（m1,m2,m3,m4）: 0.4+0.4+0.8+1.2 = 2.8
+    // 最良のMIX（m1,m2,f1,f2）: 0.4+0.4+0.8+0.8+0.5(GENDER_MIX_PENALTY) = 2.9
+    // 2.8 < 2.9 なので、男女比が拮抗している場合は修正前と変わらず4-0が勝つ
+    // （3-1 は shouldAllowUnbalancedGender が false になりハード制約で弾かれる）。
+    const players: Player[] = [
+      createGenderedPlayer('m1', 'M', 1),
+      createGenderedPlayer('m2', 'M', 1),
+      createGenderedPlayer('m3', 'M', 2),
+      createGenderedPlayer('m4', 'M', 3),
+      createGenderedPlayer('f1', 'F', 2),
+      createGenderedPlayer('f2', 'F', 2),
+    ];
+
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: now - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+    });
+
+    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    expect(picked.has('f1')).toBe(false);
+    expect(picked.has('f2')).toBe(false);
+    expect(picked.has('m1')).toBe(true);
+    expect(picked.has('m2')).toBe(true);
+    expect(picked.has('m3')).toBe(true);
+    expect(picked.has('m4')).toBe(true);
+  });
+});
+
 describe('assignCourts (シングルス)', () => {
   const NOW = 1730000000000; // 固定の現在時刻
 
