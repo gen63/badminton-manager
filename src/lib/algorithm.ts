@@ -12,6 +12,38 @@ const COURT_PROBABILITIES_2: Record<'upper' | 'lower', number[]> = {
   lower: [0.30, 0.70],
 };
 
+// ===== 調整値（チューニング対象の定数はここに集約する）=====
+//
+// 優先度スコアは「低いほど先に出る」。ペナルティは全て `oneGameDelta`
+// （= 1 試合分のスコア差）を単位にしており、「何試合分待たせてでも避けるか」で
+// 強さを読める。強い順に: 性別3-1 / 同じ4人の繰り返し (3.0) > 実力差 (2.0) >
+// MIX (0.5)。
+
+/** 滞在時間の下限（分）。練習開始直後にスコアが極端にならないようにする */
+const MIN_STAY_MINUTES = 5;
+/** 滞在時間を使わないモードでの 1 試合あたりの素点 */
+const GAMES_PLAYED_SCORE_UNIT = 0.4;
+/** 性別 3-1 構成のペナルティ（制約でも弾かれるが、緩和時のために強め） */
+const GENDER_UNBALANCED_PENALTY = 3.0;
+/** MIX（2-2）のペナルティ。同性 4-0 より優先度を落とすための軽い値 */
+const GENDER_MIX_PENALTY = 0.5;
+/** 同じ 4 人の組み合わせが繰り返されたときのペナルティ */
+const COMBO_REPEAT_PENALTY = 3.0;
+/** 同じ 4 人を許容する回数（これを超えるとペナルティ） */
+const COMBO_REPEAT_ALLOWANCE = 2;
+/** 性別バランスで入れ替える際、待ち時間差がこの試合数未満なら入れ替えてよい */
+const GENDER_SWAP_FAIRNESS_LIMIT = 2;
+/** 平均よりこの試合数以上多い人は候補から外す（最大偏差制限） */
+const MAX_GAMES_ABOVE_AVERAGE = 3;
+/** 直近試合の重複判定で、各個人の何試合前まで遡るか */
+const RECENT_MATCH_LOOKBACK = 3;
+/** 直近試合と何人重複したら「似た試合」と見なすか */
+const RECENT_MATCH_OVERLAP_LIMIT = 3;
+/** 2 コート配置で直近重複を解消するためのスワップ試行回数 */
+const COURT_SWAP_ATTEMPTS = 2;
+/** 2 コート振り分けの確率に乗せるランダムノイズの幅（グループ間の行き来を作る） */
+const COURT_ASSIGN_NOISE = 1.8;
+
 /**
  * 練習後半の試合回数均等化 (lateBalanceMode) で使うコンテキスト。
  * 有効時、`maxGamesPlayed - p.gamesPlayed` の差分ペナルティを優先度スコアから
@@ -239,14 +271,14 @@ function hasSimilarRecentMatch(
   for (const playerId of fourPlayerIds) {
     let found = 0;
     for (let i = matchHistory.length - 1; i >= 0; i--) {
-      if (found >= 3) break;  // 直近3試合をチェック
+      if (found >= RECENT_MATCH_LOOKBACK) break;
       const match = matchHistory[i];
       const matchMembers = [...match.teamA, ...match.teamB];
       if (!matchMembers.includes(playerId)) continue;
       found++;
 
       const overlap = fourPlayerIds.filter(id => matchMembers.includes(id));
-      if (overlap.length >= 3) return true;
+      if (overlap.length >= RECENT_MATCH_OVERLAP_LIMIT) return true;
     }
   }
   return false;
@@ -425,7 +457,7 @@ function tryFixRecentMatch(
   court2: Player[],
   matchHistory: Match[]
 ): void {
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < COURT_SWAP_ATTEMPTS; attempt++) {
     const src = attempt === 0 ? court1 : court2;
     const dst = attempt === 0 ? court2 : court1;
 
@@ -464,7 +496,7 @@ function assign2CourtsHolistic(
   const avgGames = allGamesPlayed.reduce((sum, g) => sum + g, 0) / allGamesPlayed.length;
   
   let eligiblePlayers = activePlayers.filter(
-    p => p.gamesPlayed <= avgGames + 3
+    p => p.gamesPlayed <= avgGames + MAX_GAMES_ABOVE_AVERAGE
   );
   
   // 除外しすぎた場合はフォールバック（必要人数を確保できない）
@@ -513,10 +545,8 @@ function assign2CourtsHolistic(
           // フェアネスチェック: 除外候補が入替先より2試合分以上待っていたら除外しない
           const excludePriority = calculatePriorityScore(toExclude, practiceStartTime, useStayDuration, lateBalance);
           const replacePriority = calculatePriorityScore(nextMajority, practiceStartTime, useStayDuration, lateBalance);
-          const oneGameDelta = useStayDuration
-            ? 1 / Math.max((Date.now() - practiceStartTime) / (1000 * 60), 5)
-            : 1.0;
-          if (replacePriority - excludePriority < oneGameDelta * 2) {
+          const oneGameDelta = computeOneGameDelta(practiceStartTime, useStayDuration);
+          if (replacePriority - excludePriority < oneGameDelta * GENDER_SWAP_FAIRNESS_LIMIT) {
             selected = selected.filter(p => p.id !== toExclude.id);
             selected.push(nextMajority);
           }
@@ -586,7 +616,7 @@ function assign2CourtsHolistic(
       : COURT_PROBABILITIES_2.lower[0];  // 0.30
     return {
       player,
-      score: probC1 + Math.random() * 1.8,
+      score: probC1 + Math.random() * COURT_ASSIGN_NOISE,
     };
   });
   courtScores.sort((a, b) => b.score - a.score);
@@ -610,6 +640,22 @@ function assign2CourtsHolistic(
 }
 
 /**
+ * 「1 試合分」に相当する優先度スコアの差。各ペナルティの単位として使う。
+ *
+ * 滞在時間ベースのときは `calculatePriorityScore` の 1 試合分と正確に一致する。
+ * 滞在時間を使わないモードでは素点が `GAMES_PLAYED_SCORE_UNIT`(0.4) 刻みなので、
+ * ここで返す 1.0 は 2.5 試合分に相当する（＝ペナルティが相対的に強く効く）。
+ * 既存の挙動なのでそのままにしてあるが、調整するならこの差を踏まえること。
+ */
+function computeOneGameDelta(
+  practiceStartTime: number,
+  useStayDuration: boolean
+): number {
+  if (!useStayDuration) return 1.0;
+  return 1 / Math.max((Date.now() - practiceStartTime) / (1000 * 60), MIN_STAY_MINUTES);
+}
+
+/**
  * 滞在時間ベースの優先度を計算
  * 優先スコア = 試合回数 / max(滞在時間(分), 5)
  * スコアが低い人を優先
@@ -630,22 +676,20 @@ function calculatePriorityScore(
 
   let baseScore: number;
   if (!useStayDuration) {
-    baseScore = player.gamesPlayed * 0.4;
+    baseScore = player.gamesPlayed * GAMES_PLAYED_SCORE_UNIT;
   } else {
     const now = Date.now();
     // 滞在開始時刻 = max(練習開始日時, 休憩解除時刻)
     const stayStart = Math.max(practiceStartTime, player.activatedAt ?? now);
     // 滞在時間（分）、最低5分
-    const stayMinutes = Math.max((now - stayStart) / (1000 * 60), 5);
+    const stayMinutes = Math.max((now - stayStart) / (1000 * 60), MIN_STAY_MINUTES);
     baseScore = player.gamesPlayed / stayMinutes;
   }
 
   if (lateBalance?.enabled) {
     const gap = lateBalance.maxGamesPlayed - player.gamesPlayed;
     if (gap > 0) {
-      const oneGameDelta = useStayDuration
-        ? 1 / Math.max((Date.now() - practiceStartTime) / (1000 * 60), 5)
-        : 1.0;
+      const oneGameDelta = computeOneGameDelta(practiceStartTime, useStayDuration);
       baseScore -= gap * LATE_BALANCE_WEIGHT * oneGameDelta;
     }
   }
@@ -671,12 +715,12 @@ function getGenderPenalty(
   
   // 3-1構成 → 強ペナルティ（制約でも弾かれる）
   if (maleCount === 1 || maleCount === 3) {
-    return oneGameDelta * 3.0;
+    return oneGameDelta * GENDER_UNBALANCED_PENALTY;
   }
   
   // MIX（2-2）→ 軽いペナルティ（同性より優先度低め）
   if (maleCount === 2) {
-    return oneGameDelta * 0.5;
+    return oneGameDelta * GENDER_MIX_PENALTY;
   }
   
   // 同性（4-0 or 0-4）→ ペナルティなし（最優先）
@@ -740,7 +784,7 @@ function getComboRepeatPenalty(
     if (matchKey === key) count++;
   }
   // 3回目以降を強く回避（2回までは許容）
-  return count >= 2 ? oneGameDelta * 3 : 0;
+  return count >= COMBO_REPEAT_ALLOWANCE ? oneGameDelta * COMBO_REPEAT_PENALTY : 0;
 }
 
 /**
@@ -812,7 +856,7 @@ function selectMostUrgentGroup(
     const groupAvgGames = groupMembers.reduce((sum, p) => sum + p.gamesPlayed, 0) / groupMembers.length;
     
     // 最大偏差制限：平均より3試合以上多いグループは除外
-    if (groupAvgGames > avgGames + 3) {
+    if (groupAvgGames > avgGames + MAX_GAMES_ABOVE_AVERAGE) {
       continue;
     }
     
@@ -858,9 +902,7 @@ function selectBestFour(
   };
 
   // 性別ペナルティ用の基準値（1試合分のスコア差）
-  const oneGameDelta = useStayDuration
-    ? 1 / Math.max((Date.now() - practiceStartTime) / (1000 * 60), 5)
-    : 1.0;
+  const oneGameDelta = computeOneGameDelta(practiceStartTime, useStayDuration);
 
   let bestCombo: Player[] | null = null;
   let bestScore = Infinity;
@@ -1418,7 +1460,7 @@ export function assignCourts(
     let candidatePool = normalCandidates.filter(p => !usedPlayers.has(p.id));
     if (totalCourtCount === 1 && candidatePool.length >= 4) {
       const avgGames = candidatePool.reduce((sum, p) => sum + p.gamesPlayed, 0) / candidatePool.length;
-      const eligible = candidatePool.filter(p => p.gamesPlayed <= avgGames + 3);
+      const eligible = candidatePool.filter(p => p.gamesPlayed <= avgGames + MAX_GAMES_ABOVE_AVERAGE);
       if (eligible.length >= 4) {
         candidatePool = eligible;
       }
@@ -1636,7 +1678,7 @@ function assignCourtsSingles(
 
   // 最大偏差プレフィルタ: 平均より3試合以上多い人は除外（候補プールが必要数を割ったら緩和）
   const avgGames = activePlayers.reduce((sum, p) => sum + p.gamesPlayed, 0) / activePlayers.length;
-  let eligiblePlayers = activePlayers.filter(p => p.gamesPlayed <= avgGames + 3);
+  let eligiblePlayers = activePlayers.filter(p => p.gamesPlayed <= avgGames + MAX_GAMES_ABOVE_AVERAGE);
   if (eligiblePlayers.length < requiredPlayers) {
     eligiblePlayers = activePlayers;
   }
