@@ -1240,6 +1240,108 @@ describe('assignCourts - 2コート同時配置の少数派2-2修復 (改善2: r
   });
 });
 
+describe('assignCourts - 3コート以上の性別3-1をベンチ入れ替えで解消する (repairGenderParityWithBench)', () => {
+  // 男女がおおむね半々（少数派30%以上）の3コートセッションで、各コートが
+  // 自分のレーティング帯からしか選ばれないため、upperグループ4人が
+  // ちょうど3M1Fで固定され（選択の余地なし）3-1になるケース。
+  // upper(3M1F)とmiddle(2M2F)・lower(4M0F)のどちらの間でも、コート間の
+  // 人数（M人数の合計）が奇数になるため repairCourtConstraints の
+  // コート間スワップだけでは解消できない（数学的に不可能）。
+  // 待機列（このラウンドで選ばれなかった人）に F がいれば、
+  // repairGenderParityWithBench がベンチ入れ替えで解消する。
+  const mk = (id: string, gender: 'M' | 'F', rating: number, gamesPlayed: number): Player => ({
+    id, name: id, rating, gender, gamesPlayed,
+    isResting: false, lastPlayedAt: 0, activatedAt: 0,
+  });
+
+  it('待機列に2人以上いれば、コート間スワップで解消できない性別3-1を待機列との入れ替えで解消する', () => {
+    // 14人（F5人、35.7%≥30% → preferGenderMix=false）。
+    // upper: mu1,mu2,mu3(M) + f1(F) → 4人固定、選択の余地なく3M1Fで確定。
+    // middle: mm1,mm2(M) + f2,f3,f4,f5(F) の6人から4人選出。
+    //   優先度(gamesPlayed*0.4)が最小になるのは mm1,mm2,f2,f3（合計1.6+MIX0.5=2.1）
+    //   で、f4,f5(gamesPlayed=5)は待機に回る。
+    // lower: ml1-4(M) → 4人固定、4M0F。
+    // → upperの3-1は、middle/lowerいずれとの間でもM人数の合計が奇数
+    //   （3+2=5, 3+4=7）になり、コート間スワップだけでは解消不可能。
+    // 待機列の f4/f5（F）とベンチ入れ替えることで解消できるはず。
+    const players: Player[] = [
+      mk('mu1', 'M', 2000, 5), mk('mu2', 'M', 1990, 5), mk('mu3', 'M', 1980, 5), mk('f1', 'F', 1970, 5),
+      mk('mm1', 'M', 1900, 1), mk('mm2', 'M', 1890, 1), mk('f2', 'F', 1880, 1), mk('f3', 'F', 1870, 1),
+      mk('f4', 'F', 1860, 5), mk('f5', 'F', 1850, 5),
+      mk('ml1', 'M', 1800, 1), mk('ml2', 'M', 1790, 1), mk('ml3', 'M', 1780, 1), mk('ml4', 'M', 1770, 1),
+    ];
+
+    const assignments = assignCourts(players, 3, [], {
+      totalCourtCount: 3,
+      targetCourtIds: [1, 2, 3],
+      practiceStartTime: 0,
+      useStayDurationPriority: false,
+    });
+
+    // どのコートも性別3-1（男1女3 or 男3女1）になっていない
+    for (const a of assignments) {
+      const genders = [...a.teamA, ...a.teamB].map(id => players.find(p => p.id === id)!.gender);
+      const maleCount = genders.filter(g => g === 'M').length;
+      expect(maleCount === 1 || maleCount === 3).toBe(false);
+    }
+
+    // f1(upperの少数派)を含むコートに、待機列から呼び戻された f4 か f5 が
+    // 合流しているはず（mu1-3のうち1人がベンチに回る）
+    const f1Court = assignments.find(a => [...a.teamA, ...a.teamB].includes('f1'));
+    const f1Mates = [...f1Court!.teamA, ...f1Court!.teamB];
+    expect(f1Mates.includes('f4') || f1Mates.includes('f5')).toBe(true);
+  });
+
+  it('待機が1人以下のときはベンチ入れ替えを行わない（性別3-1が残る）', () => {
+    // 上のテストから待機側の f5 を削り13人にする（M8+F5→M8+F4=13人、
+    // F4/13≈30.8%≥30% → preferGenderMix=false のまま）。
+    // middleが6人→5人になり、選出後の待機は f4 の1人だけになる。
+    // 待機1人だと入れ替え方向が一方向にしか成立せずフェアネスが崩れるため
+    // （詳細は repairGenderParityWithBench コメント参照）、意図的に対象外にしている。
+    const players: Player[] = [
+      mk('mu1', 'M', 2000, 5), mk('mu2', 'M', 1990, 5), mk('mu3', 'M', 1980, 5), mk('f1', 'F', 1970, 5),
+      mk('mm1', 'M', 1900, 1), mk('mm2', 'M', 1890, 1), mk('f2', 'F', 1880, 1), mk('f3', 'F', 1870, 1),
+      mk('f4', 'F', 1860, 5),
+      mk('ml1', 'M', 1800, 1), mk('ml2', 'M', 1790, 1), mk('ml3', 'M', 1780, 1), mk('ml4', 'M', 1770, 1),
+    ];
+
+    const assignments = assignCourts(players, 3, [], {
+      totalCourtCount: 3,
+      targetCourtIds: [1, 2, 3],
+      practiceStartTime: 0,
+      useStayDurationPriority: false,
+    });
+
+    // f1を含むコートは3-1（男3女1）のまま修復されない
+    const f1Court = assignments.find(a => [...a.teamA, ...a.teamB].includes('f1'));
+    const genders = [...f1Court!.teamA, ...f1Court!.teamB].map(id => players.find(p => p.id === id)!.gender);
+    expect(genders.filter(g => g === 'M').length).toBe(3);
+  });
+
+  it('呼び戻す待機者がベンチに回す人より既に多く出場している場合は入れ替えない（フェアネス優先）', () => {
+    // 最初のテストと同じ構成だが、待機に回る f4/f5 の gamesPlayed を
+    // mu1-3 より大きくする（呼び戻すと呼び戻す側がベンチ側より多く出場した
+    // 状態になる）。この場合は入れ替えを行わず、性別3-1が残る。
+    const players: Player[] = [
+      mk('mu1', 'M', 2000, 1), mk('mu2', 'M', 1990, 1), mk('mu3', 'M', 1980, 1), mk('f1', 'F', 1970, 1),
+      mk('mm1', 'M', 1900, 1), mk('mm2', 'M', 1890, 1), mk('f2', 'F', 1880, 1), mk('f3', 'F', 1870, 1),
+      mk('f4', 'F', 1860, 10), mk('f5', 'F', 1850, 10),
+      mk('ml1', 'M', 1800, 1), mk('ml2', 'M', 1790, 1), mk('ml3', 'M', 1780, 1), mk('ml4', 'M', 1770, 1),
+    ];
+
+    const assignments = assignCourts(players, 3, [], {
+      totalCourtCount: 3,
+      targetCourtIds: [1, 2, 3],
+      practiceStartTime: 0,
+      useStayDurationPriority: false,
+    });
+
+    const f1Court = assignments.find(a => [...a.teamA, ...a.teamB].includes('f1'));
+    const genders = [...f1Court!.teamA, ...f1Court!.teamB].map(id => players.find(p => p.id === id)!.gender);
+    expect(genders.filter(g => g === 'M').length).toBe(3);
+  });
+});
+
 describe('assignCourts (シングルス)', () => {
   const NOW = 1730000000000; // 固定の現在時刻
 
