@@ -6,12 +6,6 @@ import { SessionError } from './errorHandler';
 
 type RatingGroup = 'upper' | 'middle' | 'lower';
 
-// 配置確率（2コート）
-const COURT_PROBABILITIES_2: Record<'upper' | 'lower', number[]> = {
-  upper: [0.70, 0.30], // C1, C2
-  lower: [0.30, 0.70],
-};
-
 // ===== 調整値（チューニング対象の定数はここに集約する）=====
 //
 // 優先度スコアは「低いほど先に出る」。ペナルティは全て `oneGameDelta`
@@ -95,8 +89,6 @@ const MAX_GAMES_ABOVE_AVERAGE = 3;
 const RECENT_MATCH_LOOKBACK = 3;
 /** 直近試合と何人重複したら「似た試合」と見なすか */
 const RECENT_MATCH_OVERLAP_LIMIT = 3;
-/** 2 コート振り分けの確率に乗せるランダムノイズの幅（グループ間の行き来を作る） */
-const COURT_ASSIGN_NOISE = 1.8;
 /**
  * 3コート以上で、自グループの残り人数が4人に満たないコートが他グループから
  * 補充する際、不足数ちょうどではなく selectBestFour に多少の選択の余地を
@@ -278,38 +270,6 @@ function groupPlayers3Court(
       groups.get('upper')!.add(id);
     } else if (index < upperSize + middleSize) {
       groups.get('middle')!.add(id);
-    } else {
-      groups.get('lower')!.add(id);
-    }
-  });
-
-  return groups;
-}
-
-/**
- * プレイヤーをストリーク調整済み序列でグループ分け（2コート用）
- * 2等分、端数は下位へ
- */
-function groupPlayers2Court(
-  players: Player[],
-  matchHistory: Match[]
-): Map<'upper' | 'lower', Set<string>> {
-  const initialOrder = buildInitialOrder(players);
-  const order = applyStreakSwaps(initialOrder, matchHistory, 2);
-
-  const activeIds = new Set(players.map(p => p.id));
-  const activeOrder = order.filter(id => activeIds.has(id));
-
-  const upperSize = Math.floor(activeOrder.length / 2);
-
-  const groups = new Map<'upper' | 'lower', Set<string>>([
-    ['upper', new Set()],
-    ['lower', new Set()],
-  ]);
-
-  activeOrder.forEach((id, index) => {
-    if (index < upperSize) {
-      groups.get('upper')!.add(id);
     } else {
       groups.get('lower')!.add(id);
     }
@@ -743,6 +703,124 @@ function repairScatteredMinorityPair2Court(
   }
 }
 
+/**
+ * `splitBestTwoCourts` で「上位×下位の同居」をハードに避けるための閾値。
+ * 判定基準の「上位3×下位3」に合わせて3人。ロースター全体が
+ * `MIN_ROSTER_FOR_SKILL_GAP` 未満の少人数では、選択の余地が無く混ざって
+ * 当然のため対象外にする（`getSkillGapPenalty` と同じ考え方）。
+ */
+const EXTREME_BAND = 3;
+
+/**
+ * 実力最上位グループと最下位グループが同じコートに同居していないか
+ * （3人ずつ・全体が MIN_ROSTER_FOR_SKILL_GAP 人以上のときだけ判定）。
+ * `splitBestTwoCourts` でハード制約として使う。
+ */
+function hasTopBottomExtremes(
+  comboIds: string[],
+  baseRankById: Map<string, number>,
+): boolean {
+  const rosterSize = baseRankById.size;
+  if (rosterSize < MIN_ROSTER_FOR_SKILL_GAP) return false;
+  let hasTop = false;
+  let hasBottom = false;
+  for (const id of comboIds) {
+    const rank = baseRankById.get(id);
+    if (rank === undefined) continue;
+    if (rank < EXTREME_BAND) hasTop = true;
+    if (rank >= rosterSize - EXTREME_BAND) hasBottom = true;
+  }
+  return hasTop && hasBottom;
+}
+
+/**
+ * 2コート同時配置で選出済みの8人を、2つの4人組へ分割する最良の組合せを
+ * 全探索で求める（8人から4人を選ぶ C(8,4)/2 = 35 通り）。
+ *
+ * 3コート以上の `selectBestFour` と同じペナルティ関数（実力差・性別・同一
+ * 組み合わせ重複・パートナー/対戦相手重複）を使い、2コート合計が最小になる
+ * 分割を選ぶ。`selectBestFour` は「候補プールから1コート分の4人を選ぶ」逐次的な
+ * 探索だが、2コート同時配置は8人全員の行き先が決まっているため、2コート分を
+ * 同時に評価してより良い分割を選べる。
+ *
+ * さらに `hasTopBottomExtremes` で「上位3人×下位3人が同じコートに入る」組合せを
+ * ハードに除外する（3コート以上の `hasIsolatedExtreme` に相当。8人全員の
+ * 行き先を同時に決められるため、2コートでも同様の直接排除が使える）。
+ * 除外後に有効な組合せが無ければ、コストのみで最良のものにフォールバックする。
+ *
+ * 性別の少数派を同じコートにまとめる（改善2 相当）挙動は、`getGenderPenalty`
+ * が 3-1 を強くペナルティ化し 2-2/4-0 を優遇することで自然に再現される
+ * （専用の強制まとめロジックを持たない）。
+ */
+function splitBestTwoCourts(
+  eight: Player[],
+  matchHistory: Match[],
+  baseRankById: Map<string, number>,
+  oneGameDelta: number,
+  genderPairImpossible: boolean,
+  preferGenderMix: boolean,
+  historyCounts: HistoryCounts,
+): { courtA: Player[]; courtB: Player[] } {
+  const n = eight.length;
+  const recentMatchPenalty = (ids: string[]): number =>
+    hasSimilarRecentMatch(ids, matchHistory) ? oneGameDelta * COMBO_REPEAT_PENALTY : 0;
+  const groupCost = (group: Player[]): number => {
+    const ids = group.map(p => p.id);
+    return (
+      getGenderPenalty(group, oneGameDelta, genderPairImpossible, preferGenderMix) +
+      getSkillGapPenalty(ids, baseRankById, oneGameDelta) +
+      getComboRepeatPenalty(ids, historyCounts.combo, oneGameDelta) +
+      getPairRepeatPenalty(ids, historyCounts.pair, oneGameDelta) +
+      recentMatchPenalty(ids)
+    );
+  };
+
+  let bestA: Player[] = eight.slice(0, 4);
+  let bestB: Player[] = eight.slice(4);
+  let bestScore = Infinity;
+  // ハード制約（上位3×下位3の同居禁止）を満たす組合せが見つかったかどうか。
+  // 見つかった場合はそれらの中でのみ最良を選ぶ。1件も無ければ制約を無視して
+  // コストのみで最良を選ぶ（全滅を避けるフォールバック）。
+  let bestValidScore = Infinity;
+  let bestValidA: Player[] | null = null;
+  let bestValidB: Player[] | null = null;
+
+  // eight[0] は常に groupA 側に固定し、(A, B) と (B, A) の重複探索を避ける。
+  for (let i = 1; i < n - 2; i++) {
+    for (let j = i + 1; j < n - 1; j++) {
+      for (let k = j + 1; k < n; k++) {
+        const idxA = new Set([0, i, j, k]);
+        const groupA: Player[] = [];
+        const groupB: Player[] = [];
+        for (let idx = 0; idx < n; idx++) {
+          (idxA.has(idx) ? groupA : groupB).push(eight[idx]);
+        }
+        const idsA = groupA.map(p => p.id);
+        const idsB = groupB.map(p => p.id);
+        const score = groupCost(groupA) + groupCost(groupB);
+
+        if (score < bestScore) {
+          bestScore = score;
+          bestA = groupA;
+          bestB = groupB;
+        }
+
+        const isValid = !hasTopBottomExtremes(idsA, baseRankById) && !hasTopBottomExtremes(idsB, baseRankById);
+        if (isValid && score < bestValidScore) {
+          bestValidScore = score;
+          bestValidA = groupA;
+          bestValidB = groupB;
+        }
+      }
+    }
+  }
+
+  if (bestValidA && bestValidB) {
+    return { courtA: bestValidA, courtB: bestValidB };
+  }
+  return { courtA: bestA, courtB: bestB };
+}
+
 /** 文字列から32bit整数のハッシュ値を計算する（FNV-1a） */
 function hashStringToSeed(str: string): number {
   let hash = 0x811c9dc5;
@@ -784,6 +862,7 @@ function assign2CourtsHolistic(
   lateBalance?: LateBalanceCtx,
   genderPairImpossible: boolean = false,
   historyCounts?: HistoryCounts,
+  preferGenderMix: boolean = false,
 ): CourtAssignment[] {
   // formTeams を2回（コートごとに）呼ぶため、集計済みなら使い回す
   const pairCounts = historyCounts?.pair;
@@ -860,11 +939,7 @@ function assign2CourtsHolistic(
     }
   }
 
-  // 3. 全アクティブプレイヤーでグループ分け（グローバル序列）
-  const groups = groupPlayers2Court(groupingPlayers, matchHistory);
-  const upperIds = groups.get('upper')!;
-
-  // 4. 選ばれたプレイヤーを序列順に並べ替え
+  // 3. 選ばれたプレイヤーを序列順に並べ替え
   const initialOrder = buildInitialOrder(groupingPlayers);
   const order = applyStreakSwaps(initialOrder, matchHistory, 2);
   const orderedSelected = order
@@ -876,88 +951,52 @@ function assign2CourtsHolistic(
   // の両方で使う。
   const baseRankById = new Map(initialOrder.map((id, index) => [id, index] as const));
 
-  // 5. 確率ベースのコート振り分け（性別考慮あり）
-  // 少数派の性別を同じコートにまとめてMIX配置を目指す
-  const finalFemaleCount = orderedSelected.filter(p => p.gender === 'F').length;
-  const finalMaleCount = orderedSelected.filter(p => p.gender === 'M').length;
-  const finalAllGendered = orderedSelected.every(p => p.gender === 'M' || p.gender === 'F');
-  // 少数派を特定（同数=4:4の場合はどちらでもMIXになるのでFを基準にグルーピング）
-  const finalMinorityGender: 'M' | 'F' | null = !finalAllGendered ? null
-    : finalFemaleCount <= finalMaleCount ? 'F' : 'M';
-  const finalMinorities = finalMinorityGender
-    ? orderedSelected.filter(p => p.gender === finalMinorityGender) : [];
-  const finalMajorities = finalMinorityGender
-    ? orderedSelected.filter(p => p.gender !== finalMinorityGender) : [];
+  // 4. 8人を2つの4人組に分割する（3コート以上の selectBestFour と同じペナルティ
+  // 関数＋上位×下位同居のハード排除を使う全探索。詳細は splitBestTwoCourts 参照）。
+  // 少数派を同じコートにまとめる挙動は getGenderPenalty の 3-1 ペナルティで
+  // 自然に再現される（専用の強制まとめロジックは持たない）。
+  const oneGameDelta = computeOneGameDelta(practiceStartTime, useStayDuration);
+  const counts = historyCounts ?? buildHistoryCounts(matchHistory);
+  const { courtA, courtB } = splitBestTwoCourts(
+    orderedSelected, matchHistory, baseRankById, oneGameDelta, genderPairImpossible, preferGenderMix, counts
+  );
 
-  // 少数派が2人以上いる場合、同じコートにまとめる
-  if (finalMinorityGender && finalMinorities.length >= 2) {
-    // 少数派2人 + 多数派上位2人 をupperコートに配置
-    const minoritiesForCourt = finalMinorities.slice(0, 2);
-    const majoritiesForMixCourt = finalMajorities.slice(0, 2);
-    const remainingMajorities = finalMajorities.slice(2);
-    const remainingMinorities = finalMinorities.slice(2);
+  // 5. 直近試合制約のチェック・修正
+  // options を渡し（groups3 なし）、実力差ガードだけを有効にする。3コート以上と
+  // 違い性別ハード制約は渡さない（gender 判定は selectBestFour/getGenderPenalty
+  // 側で既に扱っているため、ここで候補プールを渡すと不要な副作用が出ることを
+  // 実測で確認したため）。
+  repairCourtConstraints([courtA, courtB], matchHistory, baseRankById, {});
 
-    const upperCourt = [...minoritiesForCourt, ...majoritiesForMixCourt];
-    const lowerCourt = [...remainingMinorities, ...remainingMajorities];
-
-    // 6. 直近試合制約のチェック・修正
-    repairCourtConstraints([upperCourt, lowerCourt], matchHistory, baseRankById);
-
-    // 6.5 直近試合スワップで意図した2-2配置が崩れていないか確認し、崩れて
-    // いれば修復する（repairCourtConstraints より後に置く理由は関数コメント参照）
-    repairScatteredMinorityPair2Court(upperCourt, lowerCourt, finalMinorityGender, matchHistory, baseRankById);
-
-    // 7. コートID割り当て（小さいID = upperコート）
-    const sortedCourtIds = [...targetCourtIds].sort((a, b) => a - b);
-
-    // 8. チーム編成（序列ベースの最強+最弱ペアリング）
-    const upperTeams = formTeams(upperCourt, order, matchHistory, pairCounts);
-    const lowerTeams = formTeams(lowerCourt, order, matchHistory, pairCounts);
-
-    return [
-      { courtId: sortedCourtIds[0], teamA: upperTeams.teamA, teamB: upperTeams.teamB },
-      { courtId: sortedCourtIds[1], teamA: lowerTeams.teamA, teamB: lowerTeams.teamB },
-    ];
+  // 5.5 直近試合スワップで意図した性別まとめ（2-2 + 4-0）が崩れていないか
+  // 確認し、崩れていれば修復する（repairCourtConstraints より後に置く理由は
+  // 関数コメント参照）。同数(4:4)のときは minorityGender が定まらないため対象外。
+  const femaleCount = orderedSelected.filter(p => p.gender === 'F').length;
+  const maleCount = orderedSelected.filter(p => p.gender === 'M').length;
+  const minorityGender: 'M' | 'F' | null =
+    femaleCount < maleCount ? 'F' : maleCount < femaleCount ? 'M' : null;
+  if (minorityGender) {
+    repairScatteredMinorityPair2Court(courtA, courtB, minorityGender, matchHistory, baseRankById);
   }
 
-  // 少数派が0-1人の場合: 従来通りの確率ベース振り分け
-  // グループ確率 + ランダムノイズでスコアを付与し、上位4人をC1に配置
-  // upper(70%) / lower(30%) の確率に基づきつつ、ランダム性で行き来が発生
-  //
-  // ノイズは Math.random() ではなく、その時点のセッション状態（試合数・対象
-  // コートID・選出メンバーのID）から導出したシード付き乱数を使う。同じ状態
-  // からは必ず同じ結果になり、状態が変われば（ラウンドが進む、選出メンバーが
-  // 変わる等）別の乱数列になるため、再現性を保ったまま「行き来」の性質は維持する。
+  // 6. コートID割り当て。固定（小さいID=courtA）にすると実力帯で分割された
+  // 側が常に同じ物理コートに固定され回転（使ったコート数）が落ちるため、
+  // その場の状態から導出したシード付き乱数でどちらのコートIDに割り当てるか
+  // 決める（3コート以上は「最も待っているグループ」の選択順で自然に混ざるが、
+  // 2コートは常にA/B2値しかないため明示的に混ぜる必要がある）。
+  const sortedCourtIds = [...targetCourtIds].sort((a, b) => a - b);
   const noiseSeedKey =
     `${matchHistory.length}:${targetCourtIds.join(',')}:${orderedSelected.map(p => p.id).join(',')}`;
   const seededRandom = createSeededRandom(hashStringToSeed(noiseSeedKey));
-  const courtScores = orderedSelected.map(player => {
-    const isUpper = upperIds.has(player.id);
-    const probC1 = isUpper
-      ? COURT_PROBABILITIES_2.upper[0]   // 0.70
-      : COURT_PROBABILITIES_2.lower[0];  // 0.30
-    return {
-      player,
-      score: probC1 + seededRandom() * COURT_ASSIGN_NOISE,
-    };
-  });
-  courtScores.sort((a, b) => b.score - a.score);
-  const upperCourt = courtScores.slice(0, 4).map(cs => cs.player);
-  const lowerCourt = courtScores.slice(4).map(cs => cs.player);
+  const [firstCourt, secondCourt] = seededRandom() < 0.5 ? [courtA, courtB] : [courtB, courtA];
 
-  // 6. 直近試合制約のチェック・修正
-  repairCourtConstraints([upperCourt, lowerCourt], matchHistory, baseRankById);
-
-  // 7. コートID割り当て（小さいID = upperコート）
-  const sortedCourtIds = [...targetCourtIds].sort((a, b) => a - b);
-
-  // 8. チーム編成（序列ベースの最強+最弱ペアリング）
-  const upperTeams = formTeams(upperCourt, order, matchHistory, pairCounts);
-  const lowerTeams = formTeams(lowerCourt, order, matchHistory, pairCounts);
+  // 7. チーム編成（序列ベースの最強+最弱ペアリング）
+  const firstTeams = formTeams(firstCourt, order, matchHistory, pairCounts);
+  const secondTeams = formTeams(secondCourt, order, matchHistory, pairCounts);
 
   return [
-    { courtId: sortedCourtIds[0], teamA: upperTeams.teamA, teamB: upperTeams.teamB },
-    { courtId: sortedCourtIds[1], teamA: lowerTeams.teamA, teamB: lowerTeams.teamB },
+    { courtId: sortedCourtIds[0], teamA: firstTeams.teamA, teamB: firstTeams.teamB },
+    { courtId: sortedCourtIds[1], teamA: secondTeams.teamA, teamB: secondTeams.teamB },
   ];
 }
 
@@ -2065,7 +2104,7 @@ export function assignCourts(
 
   // 2コート同時配置の場合はホリスティック・アプローチを使用
   if (totalCourtCount === 2 && normalCourtCount === 2) {
-    const holistic = assign2CourtsHolistic(normalCandidates, normalCourtIds, matchHistory, practiceStartTime, groupingPlayers, useStayDuration, lateBalance, genderPairImpossible, historyCounts);
+    const holistic = assign2CourtsHolistic(normalCandidates, normalCourtIds, matchHistory, practiceStartTime, groupingPlayers, useStayDuration, lateBalance, genderPairImpossible, historyCounts, preferGenderMix);
     return [...reservationAssignments, ...holistic];
   }
 

@@ -678,6 +678,151 @@ describe('assignCourts - 2コートホリスティック配置', () => {
   });
 });
 
+describe('assignCourts - 2コート同時配置の実力分離 (selectBestFour と同じペナルティ関数を使った分割)', () => {
+  const now = Date.now();
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const createRatedPlayer = (
+    id: string,
+    name: string,
+    rating: number,
+    gamesPlayed: number = 0
+  ): Player => ({
+    id,
+    name,
+    gamesPlayed,
+    rating,
+    isResting: false,
+    lastPlayedAt: 0,
+    activatedAt: now - 60 * 60 * 1000,
+  });
+
+  const defaultOptions = {
+    totalCourtCount: 2,
+    targetCourtIds: [1, 2],
+    practiceStartTime: now - 60 * 60 * 1000,
+  };
+
+  it('14人（実力差ペナルティが効く人数）では、最上位3人と最下位3人が同じコートに入らない', () => {
+    // 上位3人・下位3人は gamesPlayed=0 で最優先、中間8人は待たされている扱いに
+    // して選出から漏れる余地を作らない（8人の必要人数のうち残り2枠を埋めるだけ）。
+    const players: Player[] = [
+      createRatedPlayer('top1', 'Top1', 2000, 0),
+      createRatedPlayer('top2', 'Top2', 1900, 0),
+      createRatedPlayer('top3', 'Top3', 1800, 0),
+      createRatedPlayer('mid1', 'Mid1', 1700, 5),
+      createRatedPlayer('mid2', 'Mid2', 1600, 5),
+      createRatedPlayer('mid3', 'Mid3', 1500, 5),
+      createRatedPlayer('mid4', 'Mid4', 1400, 5),
+      createRatedPlayer('mid5', 'Mid5', 1300, 5),
+      createRatedPlayer('mid6', 'Mid6', 1200, 5),
+      createRatedPlayer('mid7', 'Mid7', 1100, 5),
+      createRatedPlayer('mid8', 'Mid8', 1000, 5),
+      createRatedPlayer('bottom1', 'Bottom1', 900, 0),
+      createRatedPlayer('bottom2', 'Bottom2', 800, 0),
+      createRatedPlayer('bottom3', 'Bottom3', 700, 0),
+    ];
+    const topIds = new Set(['top1', 'top2', 'top3']);
+    const bottomIds = new Set(['bottom1', 'bottom2', 'bottom3']);
+
+    // ラウンドを進めて（試合履歴を伸ばして）複数のノイズシードで確認する
+    let history: Match[] = [];
+    for (let round = 0; round < 15; round++) {
+      const assignments = assignCourts(players, 2, history, defaultOptions);
+      expect(assignments).toHaveLength(2);
+
+      for (const a of assignments) {
+        const ids = [...a.teamA, ...a.teamB];
+        const hasTop = ids.some(id => topIds.has(id));
+        const hasBottom = ids.some(id => bottomIds.has(id));
+        expect(hasTop && hasBottom).toBe(false);
+      }
+
+      history = [
+        ...history,
+        ...assignments.map((a, i) => ({
+          id: `r${round}-${i}`,
+          courtId: a.courtId,
+          teamA: a.teamA,
+          teamB: a.teamB,
+          scoreA: 21,
+          scoreB: 15,
+          startedAt: 0,
+          finishedAt: 0,
+          winner: 'A' as const,
+        })),
+      ];
+    }
+  });
+
+  it('回転: 同じ実力帯の組が毎回同じ物理コートIDに固定されない', () => {
+    const players: Player[] = [
+      createRatedPlayer('top1', 'Top1', 2000, 0),
+      createRatedPlayer('top2', 'Top2', 1900, 0),
+      createRatedPlayer('top3', 'Top3', 1800, 0),
+      createRatedPlayer('top4', 'Top4', 1700, 0),
+      createRatedPlayer('bottom1', 'Bottom1', 900, 0),
+      createRatedPlayer('bottom2', 'Bottom2', 800, 0),
+      createRatedPlayer('bottom3', 'Bottom3', 700, 0),
+      createRatedPlayer('bottom4', 'Bottom4', 600, 0),
+    ];
+
+    let history: Match[] = [];
+    const topCourtIds = new Set<number>();
+    for (let round = 0; round < 15; round++) {
+      const assignments = assignCourts(players, 2, history, defaultOptions);
+      const topCourt = assignments.find(a => [...a.teamA, ...a.teamB].includes('top1'));
+      if (topCourt) topCourtIds.add(topCourt.courtId);
+
+      history = [
+        ...history,
+        ...assignments.map((a, i) => ({
+          id: `r${round}-${i}`,
+          courtId: a.courtId,
+          teamA: a.teamA,
+          teamB: a.teamB,
+          scoreA: 21,
+          scoreB: 15,
+          startedAt: 0,
+          finishedAt: 0,
+          winner: 'A' as const,
+        })),
+      ];
+    }
+
+    // 上位グループが常に同じ物理コートIDに固定されていない
+    // （固定されると「回転」＝1人が使うコート数の指標が落ちる）
+    expect(topCourtIds.size).toBe(2);
+  });
+
+  it('12人未満では実力差の分割ロジックがあっても正しく2コート・8人に配置できる（少人数セッションの回帰確認）', () => {
+    // MIN_ROSTER_FOR_SKILL_GAP(=12) 未満のロースターでは実力差ハード制約・
+    // ペナルティが無効化される（getSkillGapPenalty / hasTopBottomExtremes と
+    // 同じ閾値）。無効化されていても構造（2コート×4人）は壊れないことを確認する。
+    const players = [
+      createRatedPlayer('top1', 'Top1', 2000, 0),
+      createRatedPlayer('top2', 'Top2', 1900, 0),
+      createRatedPlayer('top3', 'Top3', 1800, 0),
+      createRatedPlayer('mid1', 'Mid1', 1500, 0),
+      createRatedPlayer('mid2', 'Mid2', 1400, 0),
+      createRatedPlayer('bottom1', 'Bottom1', 900, 0),
+      createRatedPlayer('bottom2', 'Bottom2', 800, 0),
+      createRatedPlayer('bottom3', 'Bottom3', 700, 0),
+    ];
+    const assignments = assignCourts(players, 2, [], defaultOptions);
+    expect(assignments).toHaveLength(2);
+    assignments.forEach(a => {
+      expect(a.teamA).toHaveLength(2);
+      expect(a.teamB).toHaveLength(2);
+    });
+    const allAssigned = assignments.flatMap(a => [...a.teamA, ...a.teamB]);
+    expect(new Set(allAssigned).size).toBe(8);
+  });
+});
+
 describe('formTeams - MIXペアリング', () => {
   const createGenderedPlayer = (
     id: string, name: string, rating: number, gender: 'M' | 'F'
