@@ -147,3 +147,4 @@
 - `2026-07-28-holistic-court-assignment.md` — 3コート以上の逐次貪欲配置の解消と2コート経路との統合
 - `2026-07-28-deterministic-court-noise.md` — 2コート振り分けの乱数を決定的にする（再現性の確保）
 - `2026-07-28-gender-parity-with-bench.md` — 3コートで人数が少ないときの 3-1 増加を抑える（待機者との入れ替え）
+- `2026-07-28-two-court-skill-separation.md` — 2コート同時配置の実力分離（同時配置推奨案は不採用）
