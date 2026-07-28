@@ -79,6 +79,16 @@ const OPPONENT_REPEAT_WEIGHT = 0.05;
 const PAIR_REPEAT_PENALTY_CAP = 0.2;
 /** 性別バランスで入れ替える際、待ち時間差がこの試合数未満なら入れ替えてよい */
 const GENDER_SWAP_FAIRNESS_LIMIT = 2;
+/**
+ * `repairGenderParityWithBench`（3コート以上）で、呼び戻す人（待機列から招集）の
+ * 累積試合数が、ベンチに回す人（今ラウンド外す）の累積試合数をこの値を超えて
+ * 上回っていたら入れ替えない（詳細は同関数コメント参照）。0（同数まで許容、
+ * それ以上多く出場した人を呼び戻すのは禁止）を採用。マイナス（呼び戻す人が
+ * 厳密に少ない場合のみ許可）に締めても改善効果がほぼ無くなる一方、0 より
+ * 緩めると（同関数の待機2人以上ガードと組み合わせても）試合数差が悪化する
+ * ケースがあったため、-1.5〜2 の範囲で試した中で 0 が最も安全だった。
+ */
+const GENDER_PARITY_BALANCE_TOLERANCE = 0;
 /** 平均よりこの試合数以上多い人は候補から外す（最大偏差制限） */
 const MAX_GAMES_ABOVE_AVERAGE = 3;
 /** 直近試合の重複判定で、各個人の何試合前まで遡るか */
@@ -1075,6 +1085,18 @@ function getGenderPenalty(
 const SKILL_GAP_WEIGHT = 2.0;
 /** この人数未満のセッションでは実力差を考慮しない（選択の余地が無く、混ざって当然） */
 const MIN_ROSTER_FOR_SKILL_GAP = 12;
+/**
+ * repairCourtConstraints・repairGenderParityWithBench で「性別3-1のみ」を
+ * 直すスワップに許す実力差ガードの緩め幅（getSkillGapPenalty と同じ
+ * oneGameDelta=1 換算、2コート合計の悪化量）。3コート・13〜16人のような
+ * 少人数では、各コートが自分の実力帯からしか選ばれないため性別調整の余地が
+ * ほぼ無く、実力差を一切悪化させないガードのままだと3-1修復のスワップ候補が
+ * ほぼ通らない（実測で確認済み。詳細は repairCourtConstraints 冒頭コメント参照）。
+ * 0/0.5/1.0/1.5/2.0/3.0/4.0/8.0 を比較した結果、2.0（＝ SKILL_GAP_WEIGHT
+ * 片コート分の最大ペナルティに相当）以上では効果が頭打ちになったため、
+ * 「無制限」ではなく意味のある上限として 2.0 を採用した。
+ */
+const GENDER_GAP_ALLOWANCE = SKILL_GAP_WEIGHT;
 
 /**
  * 実力が離れすぎた 4 人が同じコートに入るのを避けるためのペナルティ。
@@ -1407,11 +1429,14 @@ function repairCourtConstraints(
     candidatePoolForGenderCheck?: Player[];
   },
 ): void {
-  const isViolating = (ids: string[]): boolean =>
+  const isRecentOrIsolated = (ids: string[]): boolean =>
     hasSimilarRecentMatch(ids, matchHistory) ||
-    (!!options?.groups3 && hasIsolatedExtreme(ids, options.groups3)) ||
-    (!options?.allowUnbalanced && !!options?.candidatePoolForGenderCheck &&
-      hasUnbalancedGender(ids, options.candidatePoolForGenderCheck));
+    (!!options?.groups3 && hasIsolatedExtreme(ids, options.groups3));
+  const isGenderUnbalanced = (ids: string[]): boolean =>
+    !options?.allowUnbalanced && !!options?.candidatePoolForGenderCheck &&
+    hasUnbalancedGender(ids, options.candidatePoolForGenderCheck);
+  const isViolating = (ids: string[]): boolean =>
+    isRecentOrIsolated(ids) || isGenderUnbalanced(ids);
 
   // 実力差ガードは3コート以上（options 指定あり）のときだけ効かせる。2コートの
   // 直近試合修復（旧 tryFixRecentMatch）はこのガードを持たなかったため、ここで
@@ -1425,7 +1450,10 @@ function repairCourtConstraints(
   for (let ci = 0; ci < courts.length; ci++) {
     const court = courts[ci];
     if (!isViolating(court.map(p => p.id))) continue;
-
+    // 直近試合重複・上下孤立を伴わない「純粋な性別3-1」だけ実力差ガードを緩める
+    // （直近試合・上下孤立の修復は現行どおり厳格に保つ。GENDER_GAP_ALLOWANCE 参照）
+    const isPureGenderRepair =
+      isGenderUnbalanced(court.map(p => p.id)) && !isRecentOrIsolated(court.map(p => p.id));
     let fixedThisCourt = false;
     for (let cj = 0; cj < courts.length && !fixedThisCourt; cj++) {
       if (cj === ci) continue;
@@ -1443,7 +1471,11 @@ function repairCourtConstraints(
           const newCourtIds = court.map(p => p.id);
           const newOtherIds = other.map(p => p.id);
           const newGap = skillGapOf(newCourtIds) + skillGapOf(newOtherIds);
-          const gapOk = !enforceSkillGapGuard || newGap <= originalGap;
+          // 性別3-1のみを直すスワップは、実力差ガードを GENDER_GAP_ALLOWANCE
+          // 分だけ緩める（無制限には許さない）。直近試合重複・上下孤立の
+          // 修復はこれまでどおり悪化を一切許さない。
+          const allowance = isPureGenderRepair ? GENDER_GAP_ALLOWANCE : 0;
+          const gapOk = !enforceSkillGapGuard || newGap <= originalGap + allowance;
 
           if (!isViolating(newCourtIds) && !isViolating(newOtherIds) && gapOk) {
             fixedThisCourt = true;
@@ -1453,6 +1485,102 @@ function repairCourtConstraints(
         }
       }
     }
+  }
+}
+
+/**
+ * 3コート以上・男女がおおむね半々のセッション向け: `repairCourtConstraints`
+ * 後もなお性別3-1が残っているコートについて、待機列（このラウンド選ばれな
+ * かった人）とのベンチ入れ替えで解消を試みる。
+ *
+ * 背景: `repairCourtConstraints` のコート間スワップは、既に選ばれた12人の中で
+ * メンバーを動かすだけなので、選ばれた12人の中の性別内訳（合計の奇数/偶数）の
+ * パリティを変えられない。少数派人数が奇数（5人など）なら、コート間でどう
+ * 入れ替えても必ずどこか1コートは3-1のまま残る（実測で確認済み。実力差ガード
+ * をどれだけ緩めても解消しない）。待機列には選ばれなかった側の性別が余って
+ * いることが多く、そこと入れ替えることでパリティごと変えられる。
+ *
+ * 事前予測ではなく、実際に3-1が残ったコートに対してだけ後始末として行う
+ * （選出前に予測して先回りでベンチを決める方式も試したが、動的グループ選択の
+ * 実際の結果とズレて無関係なコートの分離まで悪化させることがあった。実測:
+ * 15人3コートで上位3×下位3が12.8%→16.1%、3-1が13.2%→16.1%に悪化。
+ * 後始末方式に切り替えて解消）。
+ *
+ * フェアネス: 呼び戻す待機者の `gamesPlayed` が、ベンチに回す人のそれを
+ * `GENDER_PARITY_BALANCE_TOLERANCE` 試合分より多く上回るなら入れ替えない
+ * （既に多く出場した人をさらに増やす入れ替えを防ぐ）。
+ * 実力差ガードは `GENDER_GAP_ALLOWANCE` まで緩める（`repairCourtConstraints`
+ * と同じ扱い。直近試合の重複・上下孤立は緩めない）。
+ * 少数派が少ない（`preferGenderMix`）セッションと `allowUnbalanced`
+ * （3-1をハード制約として許容するセッション）は対象外（前者は
+ * `repairLoneMinorityPairs` が専用の修復を担当するため、二重に手を入れると
+ * 過矯正になり得る。後者はそもそも3-1を許容する設定のため）。
+ */
+function repairGenderParityWithBench(
+  courtSelections: { courtId: number; selected: Player[] }[],
+  normalCandidates: Player[],
+  usedPlayers: Set<string>,
+  matchHistory: Match[],
+  groups3: Map<RatingGroup, Set<string>>,
+  baseRankById: Map<string, number>,
+  allowUnbalanced: boolean,
+  practiceStartTime: number,
+  useStayDuration: boolean,
+  lateBalance: LateBalanceCtx | undefined,
+): void {
+  if (allowUnbalanced) return;
+  const priorityOf = (p: Player) =>
+    calculatePriorityScore(p, practiceStartTime, useStayDuration, lateBalance);
+  const waiting = normalCandidates.filter(p => !usedPlayers.has(p.id));
+  // 待機が1人だけだと、その1人の性別方向にしか入れ替えられず一方向に偏る
+  // （実測: 13人3コート・待機1人で試合数差が -1.78 まで悪化）。待機2人以上の
+  // ときだけ行う（14人以上の3コートなら通常満たす）。
+  if (waiting.length < 2) return;
+
+  const skillGapOf = (ids: string[]): number => getSkillGapPenalty(ids, baseRankById, 1);
+
+  for (const court of courtSelections) {
+    const ids = court.selected.map(p => p.id);
+    if (!hasUnbalancedGender(ids, normalCandidates)) continue;
+
+    const maleCount = court.selected.filter(p => p.gender === 'M').length;
+    const excessGender: 'M' | 'F' = maleCount === 1 ? 'F' : 'M';
+    const deficitGender: 'M' | 'F' = excessGender === 'F' ? 'M' : 'F';
+
+    // 招集候補: 待機中の不足性別を優先度の高い順（待たされている順）に
+    const waitingDeficit = waiting
+      .filter(p => p.gender === deficitGender)
+      .sort((a, b) => priorityOf(a) - priorityOf(b));
+    if (waitingDeficit.length === 0) continue;
+    const toInclude = waitingDeficit[0];
+
+    // ベンチ候補: コート内の過多性別を優先度の低い順（既に出場が進んでいる順）に
+    // gamesPlayed === 0 は初回保証のため除外しない（呼び戻す側で保証済みなら可）
+    const excessOnCourt = court.selected
+      .filter(p => p.gender === excessGender && (p.gamesPlayed > 0 || toInclude.gamesPlayed === 0))
+      .sort((a, b) => priorityOf(b) - priorityOf(a));
+    if (excessOnCourt.length === 0) continue;
+    const toExclude = excessOnCourt[0];
+
+    // フェアネス: 呼び戻す人が既に多く出場しているなら入れ替えない
+    if (toInclude.gamesPlayed > toExclude.gamesPlayed + GENDER_PARITY_BALANCE_TOLERANCE) continue;
+
+    const newIds = ids.map(id => (id === toExclude.id ? toInclude.id : id));
+    if (hasSimilarRecentMatch(newIds, matchHistory)) continue;
+    if (hasIsolatedExtreme(newIds, groups3)) continue;
+    if (hasUnbalancedGender(newIds, normalCandidates)) continue; // 保険（通常は解消するはず）
+
+    // 実力差ガードは性別3-1の修復に限り GENDER_GAP_ALLOWANCE まで緩める
+    // （repairCourtConstraints と同じ考え方）
+    if (skillGapOf(newIds) > skillGapOf(ids) + GENDER_GAP_ALLOWANCE) continue;
+
+    const idx = court.selected.findIndex(p => p.id === toExclude.id);
+    court.selected[idx] = toInclude;
+    usedPlayers.delete(toExclude.id);
+    usedPlayers.add(toInclude.id);
+    const wIdx = waiting.findIndex(p => p.id === toInclude.id);
+    waiting.splice(wIdx, 1);
+    waiting.push(toExclude);
   }
 }
 
@@ -2077,6 +2205,17 @@ export function assignCourts(
       courtSelections.map(c => c.selected), matchHistory, baseRankById,
       { groups3, allowUnbalanced, candidatePoolForGenderCheck: normalCandidates }
     );
+
+    // 男女がおおむね半々のセッションで、上のコート間スワップでも性別3-1が
+    // 残っているコートがあれば、待機列とのベンチ入れ替えで解消を試みる
+    // （詳細は repairGenderParityWithBench 参照。少数派が少ないセッションは
+    // 直後の repairLoneMinorityPairs が別途担当するため対象外）。
+    if (!preferGenderMix) {
+      repairGenderParityWithBench(
+        courtSelections, normalCandidates, usedPlayers, matchHistory, groups3, baseRankById,
+        allowUnbalanced, practiceStartTime, useStayDuration, lateBalance
+      );
+    }
 
     // 少数派性別が少ないセッションでは、このラウンドの各コートの選出結果を
     // 見て、少数派がちょうど1人だけの（3-1になりかねない）コートが2つ以上
