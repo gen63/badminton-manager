@@ -537,20 +537,40 @@ describe('assignCourts - 2コートホリスティック配置', () => {
     expect(allAssigned).toContain('p5'); // ストリークのあるプレイヤーが配置される
   });
 
-  it('ランダム性のある配置が行われる', () => {
+  it('セッション状態（試合履歴）が変わるとランダム性のある配置が行われる', () => {
     const players = make8Players();
-    
-    // 同じ入力で複数回実行して、結果が異なることを確認
+
+    // コート振り分けのノイズは試合履歴の長さ等から導出したシード付き乱数になった
+    // ため、matchHistory が同じままでは常に同じ結果になる（決定性は下のテストで
+    // 確認）。ここではラウンドが進む＝試合履歴が伸びることでシードが変わり、
+    // 上位/下位グループの行き来が起きることを確認する。
     const results = [];
     for (let i = 0; i < 5; i++) {
-      const assignments = assignCourts(players, 2, [], defaultOptions);
+      const matches = Array.from({ length: i }, () =>
+        createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15)
+      );
+      const assignments = assignCourts(players, 2, matches, defaultOptions);
       const court1Players = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
       results.push([...court1Players].sort());
     }
-    
-    // 少なくとも1つは異なる結果があることを確認（ランダム性がある）
+
+    // 少なくとも1つは異なる結果があることを確認（状態依存のランダム性がある）
     const uniqueResults = new Set(results.map(r => r.join(',')));
     expect(uniqueResults.size).toBeGreaterThan(1);
+  });
+
+  it('同じ入力であれば assignCourts を複数回呼んでも必ず同じ結果になる（決定的シード）', () => {
+    const players = make8Players();
+    const matches = [
+      createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15),
+      createMatch(['p5', 'p6'], ['p7', 'p8'], 21, 18),
+    ];
+
+    const first = assignCourts(players, 2, matches, defaultOptions);
+    for (let i = 0; i < 10; i++) {
+      const assignments = assignCourts(players, 2, matches, defaultOptions);
+      expect(assignments).toEqual(first);
+    }
   });
 
   it('15人の場合、優先度の高い8人が選ばれる', () => {

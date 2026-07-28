@@ -733,6 +733,32 @@ function repairScatteredMinorityPair2Court(
   }
 }
 
+/** 文字列から32bit整数のハッシュ値を計算する（FNV-1a） */
+function hashStringToSeed(str: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+/**
+ * 32bit シードから [0, 1) の疑似乱数列を生成する（mulberry32）。
+ * `Math.random()` と同じ一様分布の値を返すが、同じシードなら常に同じ列になる。
+ * コート配置のランダムノイズを再現可能にするために使う（後述）。
+ */
+function createSeededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /**
  * 2コート同時配置（ホリスティック・アプローチ）
  * 優先スコア順で8人を選出 → 序列・確率ベースでC1/C2に振り分け
@@ -887,6 +913,14 @@ function assign2CourtsHolistic(
   // 少数派が0-1人の場合: 従来通りの確率ベース振り分け
   // グループ確率 + ランダムノイズでスコアを付与し、上位4人をC1に配置
   // upper(70%) / lower(30%) の確率に基づきつつ、ランダム性で行き来が発生
+  //
+  // ノイズは Math.random() ではなく、その時点のセッション状態（試合数・対象
+  // コートID・選出メンバーのID）から導出したシード付き乱数を使う。同じ状態
+  // からは必ず同じ結果になり、状態が変われば（ラウンドが進む、選出メンバーが
+  // 変わる等）別の乱数列になるため、再現性を保ったまま「行き来」の性質は維持する。
+  const noiseSeedKey =
+    `${matchHistory.length}:${targetCourtIds.join(',')}:${orderedSelected.map(p => p.id).join(',')}`;
+  const seededRandom = createSeededRandom(hashStringToSeed(noiseSeedKey));
   const courtScores = orderedSelected.map(player => {
     const isUpper = upperIds.has(player.id);
     const probC1 = isUpper
@@ -894,7 +928,7 @@ function assign2CourtsHolistic(
       : COURT_PROBABILITIES_2.lower[0];  // 0.30
     return {
       player,
-      score: probC1 + Math.random() * COURT_ASSIGN_NOISE,
+      score: probC1 + seededRandom() * COURT_ASSIGN_NOISE,
     };
   });
   courtScores.sort((a, b) => b.score - a.score);

@@ -145,3 +145,4 @@
 - `2026-07-28-mix-preference.md` — 少数派性別が少ないとき MIX（2-2）の試合を増やす + ペア重複ペナルティ上限の調整
 - `2026-07-29-minority-gender-followup.md` — 少数派性別の試合数差の縮小 + 2コート配置への MIX 修復の適用
 - `2026-07-28-holistic-court-assignment.md` — 3コート以上の逐次貪欲配置の解消と2コート経路との統合
+- `2026-07-28-deterministic-court-noise.md` — 2コート振り分けの乱数を決定的にする（再現性の確保）
