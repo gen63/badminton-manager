@@ -537,20 +537,40 @@ describe('assignCourts - 2コートホリスティック配置', () => {
     expect(allAssigned).toContain('p5'); // ストリークのあるプレイヤーが配置される
   });
 
-  it('ランダム性のある配置が行われる', () => {
+  it('セッション状態（試合履歴）が変わるとランダム性のある配置が行われる', () => {
     const players = make8Players();
-    
-    // 同じ入力で複数回実行して、結果が異なることを確認
+
+    // コート振り分けのノイズは試合履歴の長さ等から導出したシード付き乱数になった
+    // ため、matchHistory が同じままでは常に同じ結果になる（決定性は下のテストで
+    // 確認）。ここではラウンドが進む＝試合履歴が伸びることでシードが変わり、
+    // 上位/下位グループの行き来が起きることを確認する。
     const results = [];
     for (let i = 0; i < 5; i++) {
-      const assignments = assignCourts(players, 2, [], defaultOptions);
+      const matches = Array.from({ length: i }, () =>
+        createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15)
+      );
+      const assignments = assignCourts(players, 2, matches, defaultOptions);
       const court1Players = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
       results.push([...court1Players].sort());
     }
-    
-    // 少なくとも1つは異なる結果があることを確認（ランダム性がある）
+
+    // 少なくとも1つは異なる結果があることを確認（状態依存のランダム性がある）
     const uniqueResults = new Set(results.map(r => r.join(',')));
     expect(uniqueResults.size).toBeGreaterThan(1);
+  });
+
+  it('同じ入力であれば assignCourts を複数回呼んでも必ず同じ結果になる（決定的シード）', () => {
+    const players = make8Players();
+    const matches = [
+      createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15),
+      createMatch(['p5', 'p6'], ['p7', 'p8'], 21, 18),
+    ];
+
+    const first = assignCourts(players, 2, matches, defaultOptions);
+    for (let i = 0; i < 10; i++) {
+      const assignments = assignCourts(players, 2, matches, defaultOptions);
+      expect(assignments).toEqual(first);
+    }
   });
 
   it('15人の場合、優先度の高い8人が選ばれる', () => {
@@ -1059,6 +1079,164 @@ describe('assignCourts - 少数派性別が少ないときのMIX優遇 (preferGe
     expect(picked.has('m2')).toBe(true);
     expect(picked.has('m3')).toBe(true);
     expect(picked.has('m4')).toBe(true);
+  });
+});
+
+describe('assignCourts - ラウンド単位への一般化 (改善1: roundGenderPairImpossible)', () => {
+  const now = Date.now();
+
+  const mk = (id: string, gender: 'M' | 'F', rating: number, gamesPlayed: number): Player => ({
+    id, name: id, rating, gender, gamesPlayed,
+    isResting: false, lastPlayedAt: 0, activatedAt: now - 60 * 60 * 1000,
+  });
+
+  it('先のコートで少数派の片方が使われ、このラウンドの残りに少数派が1人だけになったコートでは、3-1ペナルティが弱まり自分のレーティング帯内で選ばれる', () => {
+    // 15人3コート（groupPlayers3Courtで upper/middle/lower が5人ずつに等分される）。
+    // 少数派(F)は2人（f1がupper、f2がlower）で、全体比 2/15≈13.3% < 30%
+    // → preferGenderMix=true、genderPairImpossible=false（少数派2人なのでセッション
+    //   全体では2-2を作れる余地がある）。
+    // upper: f1(gp=0、初回保証で必ず選ばれる) + mu1-4(gp=15)。
+    //   → court1はupperが最優先で選ばれ、f1を含む4人が確定する
+    //     （f1が使われるので、このラウンドの残り少数派はf2の1人だけになる）。
+    // middle: mm1-5(gp=20、平均試合数から外れ selectMostUrgentGroup の対象から
+    //   ほぼ外れる) → 最後に処理される。
+    // lower: f2(gp=5) + ml1-4(gp=10)。5人から4人を選ぶ実質的な選択がある。
+    //   セッション全体でみると genderPairImpossible=false なので、素の3-1ペナルティ
+    //   (3.0)なら「ml1-4の4-0」(合計16.0)が「f2+ml3人の3-1」(合計 2.0+12.0+3.0=17.0)
+    //   より優先されf2は外れるはずだが、この時点でf1は既に使用済みで少数派は
+    //   f2だけ → roundGenderPairImpossible=trueとなり弱めたペナルティ(3.0*0.35=1.05)
+    //   が適用され、f2を含む組(2.0+12.0+1.05=15.05)が4-0(16.0)より優先される。
+    const players: Player[] = [
+      mk('f1', 'F', 2000, 0),
+      mk('mu1', 'M', 1950, 15), mk('mu2', 'M', 1900, 15), mk('mu3', 'M', 1850, 15), mk('mu4', 'M', 1800, 15),
+      mk('mm1', 'M', 1500, 20), mk('mm2', 'M', 1450, 20), mk('mm3', 'M', 1400, 20), mk('mm4', 'M', 1350, 20), mk('mm5', 'M', 1300, 20),
+      mk('f2', 'F', 1000, 5),
+      mk('ml1', 'M', 950, 10), mk('ml2', 'M', 900, 10), mk('ml3', 'M', 850, 10), mk('ml4', 'M', 800, 10),
+    ];
+
+    const assignments = assignCourts(players, 3, [], {
+      totalCourtCount: 3,
+      targetCourtIds: [1, 2, 3],
+      practiceStartTime: now - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+    });
+
+    // f1 は upper グループ内（mu1-4）だけで組まれる
+    const f1Court = assignments.find(a => [...a.teamA, ...a.teamB].includes('f1'));
+    expect(f1Court).toBeDefined();
+    const f1Mates = [...f1Court!.teamA, ...f1Court!.teamB].filter(id => id !== 'f1');
+    expect(f1Mates.every(id => id.startsWith('mu'))).toBe(true);
+
+    // f2 は待たされて mm(middle) グループに紛れ込むのではなく、
+    // 自分のレーティング帯である lower グループ（ml1-4）内で選ばれる
+    const f2Court = assignments.find(a => [...a.teamA, ...a.teamB].includes('f2'));
+    expect(f2Court).toBeDefined();
+    const f2Mates = [...f2Court!.teamA, ...f2Court!.teamB].filter(id => id !== 'f2');
+    expect(f2Mates.every(id => id.startsWith('ml'))).toBe(true);
+  });
+});
+
+describe('assignCourts - 2コート同時配置の少数派2-2修復 (改善2: repairScatteredMinorityPair2Court)', () => {
+  // 12人2コート・少数派2人のシミュレーションで実際に発生した局面をそのまま
+  // 固定値として採用したテストケース。assign2CourtsHolistic は選出直後に
+  // 少数派2人を同じコートへ強制的にまとめるが、その後に呼ぶ
+  // tryFixRecentMatch（直近試合の重複回避のためのコート間スワップ）が
+  // 性別を考慮せず1人単位でスワップするため、まとめた2-2を1-1（3-1が2つ）に
+  // 崩してしまうことがある。repairScatteredMinorityPair2Court はこれを
+  // tryFixRecentMatch の後に検知し、直近試合制約・実力差を悪化させない
+  // 範囲で2-2に戻す。
+
+  it('tryFixRecentMatchで2-2が1-1に崩れても、直近試合制約と実力差を悪化させない入れ替えがあれば2-2に修復される', () => {
+    const players: Player[] = [
+      { id: 'p0', name: 'P0', rating: 1000, gender: 'F', gamesPlayed: 1, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p1', name: 'P1', rating: 999, gender: 'M', gamesPlayed: 2, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p2', name: 'P2', rating: 998, gender: 'M', gamesPlayed: 2, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p3', name: 'P3', rating: 997, gender: 'M', gamesPlayed: 2, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p4', name: 'P4', rating: 996, gender: 'F', gamesPlayed: 1, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p5', name: 'P5', rating: 995, gender: 'M', gamesPlayed: 2, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p6', name: 'P6', rating: 994, gender: 'M', gamesPlayed: 1, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p7', name: 'P7', rating: 993, gender: 'M', gamesPlayed: 1, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p8', name: 'P8', rating: 992, gender: 'M', gamesPlayed: 1, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p9', name: 'P9', rating: 991, gender: 'M', gamesPlayed: 1, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p10', name: 'P10', rating: 990, gender: 'M', gamesPlayed: 1, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p11', name: 'P11', rating: 989, gender: 'M', gamesPlayed: 1, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+    ];
+    const history: Match[] = [
+      { id: 'm0', courtId: 1, teamA: ['p0', 'p2'], teamB: ['p1', 'p4'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'B' },
+      { id: 'm1', courtId: 2, teamA: ['p3', 'p7'], teamB: ['p5', 'p6'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'B' },
+      { id: 'm2', courtId: 1, teamA: ['p1', 'p8'], teamB: ['p5', 'p3'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'A' },
+      { id: 'm3', courtId: 2, teamA: ['p2', 'p11'], teamB: ['p9', 'p10'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'B' },
+    ];
+
+    vi.spyOn(Date, 'now').mockReturnValue(2220000);
+    const assignments = assignCourts(players, 2, history, {
+      totalCourtCount: 2,
+      targetCourtIds: [1, 2],
+      practiceStartTime: 0,
+      useStayDurationPriority: true,
+      allPlayers: players,
+    });
+
+    // 修復前（tryFixRecentMatchのみ）は各コートに少数派(p0,p4)が1人ずつ散り、
+    // 2つとも3-1になっていた。修復後は2-2 + 4-0になっているはず。
+    const genderCounts = assignments.map(a => {
+      const ids = [...a.teamA, ...a.teamB];
+      return ids.filter(id => id === 'p0' || id === 'p4').length;
+    });
+    expect(genderCounts.sort()).toEqual([0, 2]);
+  });
+
+  it('入れ替えると直近試合の重複や実力差の悪化を招く場合は、1-1に崩れたままにする（無理に修復しない）', () => {
+    const players: Player[] = [
+      { id: 'p0', name: 'P0', rating: 1000, gender: 'M', gamesPlayed: 7, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p1', name: 'P1', rating: 999, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p2', name: 'P2', rating: 998, gender: 'F', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p3', name: 'P3', rating: 997, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p4', name: 'P4', rating: 996, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p5', name: 'P5', rating: 995, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p6', name: 'P6', rating: 994, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p7', name: 'P7', rating: 993, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p8', name: 'P8', rating: 992, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p9', name: 'P9', rating: 991, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p10', name: 'P10', rating: 990, gender: 'F', gamesPlayed: 5, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p11', name: 'P11', rating: 989, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+    ];
+    const history: Match[] = [
+      { id: 'm0', courtId: 1, teamA: ['p1', 'p6'], teamB: ['p4', 'p5'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'B' },
+      { id: 'm1', courtId: 2, teamA: ['p0', 'p7'], teamB: ['p2', 'p3'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'A' },
+      { id: 'm2', courtId: 1, teamA: ['p0', 'p10'], teamB: ['p1', 'p2'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'B' },
+      { id: 'm3', courtId: 2, teamA: ['p8', 'p11'], teamB: ['p9', 'p3'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'B' },
+      { id: 'm4', courtId: 1, teamA: ['p0', 'p9'], teamB: ['p5', 'p7'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'A' },
+      { id: 'm5', courtId: 2, teamA: ['p4', 'p11'], teamB: ['p6', 'p8'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'A' },
+      { id: 'm6', courtId: 1, teamA: ['p4', 'p10'], teamB: ['p2', 'p5'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'A' },
+      { id: 'm7', courtId: 2, teamA: ['p1', 'p6'], teamB: ['p3', 'p7'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'A' },
+      { id: 'm8', courtId: 1, teamA: ['p1', 'p10'], teamB: ['p0', 'p2'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'A' },
+      { id: 'm9', courtId: 2, teamA: ['p9', 'p8'], teamB: ['p3', 'p11'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'A' },
+      { id: 'm10', courtId: 1, teamA: ['p4', 'p8'], teamB: ['p0', 'p7'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'B' },
+      { id: 'm11', courtId: 2, teamA: ['p9', 'p11'], teamB: ['p6', 'p5'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'B' },
+      { id: 'm12', courtId: 1, teamA: ['p6', 'p2'], teamB: ['p10', 'p7'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'A' },
+      { id: 'm13', courtId: 2, teamA: ['p1', 'p3'], teamB: ['p4', 'p5'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'A' },
+      { id: 'm14', courtId: 1, teamA: ['p1', 'p2'], teamB: ['p0', 'p10'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'B' },
+      { id: 'm15', courtId: 2, teamA: ['p9', 'p11'], teamB: ['p3', 'p8'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'A' },
+      { id: 'm16', courtId: 1, teamA: ['p0', 'p4'], teamB: ['p6', 'p9'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'B' },
+      { id: 'm17', courtId: 2, teamA: ['p7', 'p8'], teamB: ['p11', 'p5'], scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner: 'A' },
+    ];
+
+    vi.spyOn(Date, 'now').mockReturnValue(7260000);
+    const assignments = assignCourts(players, 2, history, {
+      totalCourtCount: 2,
+      targetCourtIds: [1, 2],
+      practiceStartTime: 0,
+      useStayDurationPriority: true,
+      allPlayers: players,
+    });
+
+    // 少数派(p2,p10)は1-1に散ったまま（無理な入れ替えで修復されない）
+    const genderCounts = assignments.map(a => {
+      const ids = [...a.teamA, ...a.teamB];
+      return ids.filter(id => id === 'p2' || id === 'p10').length;
+    });
+    expect(genderCounts.sort()).toEqual([1, 1]);
   });
 });
 
