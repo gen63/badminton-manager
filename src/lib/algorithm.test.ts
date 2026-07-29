@@ -823,6 +823,124 @@ describe('assignCourts - 2コート同時配置の実力分離 (selectBestFour �
   });
 });
 
+describe('assignCourts - 2コート逐次配置（1コートずつ）の実力分離 (selectBestFour のハード制約)', () => {
+  const now = Date.now();
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const createRatedPlayer = (
+    id: string,
+    name: string,
+    rating: number,
+    gamesPlayed: number = 0
+  ): Player => ({
+    id,
+    name,
+    gamesPlayed,
+    rating,
+    isResting: false,
+    lastPlayedAt: 0,
+    activatedAt: now - 60 * 60 * 1000,
+  });
+
+  // targetCourtIds を1コートだけにすることで、片方のコートしか空いていない
+  // 「逐次配置」経路（selectBestFour を通る側）を通す。
+  const sequentialOptions = {
+    totalCourtCount: 2,
+    targetCourtIds: [1],
+    practiceStartTime: now - 60 * 60 * 1000,
+  };
+
+  it('16人（ロースター13人以上・band=2）: 上位2人と下位2人が同じコートに入らない', () => {
+    // rating 降順で rank0,1 が上位バンド、rank14,15 が下位バンド（16人なので
+    // skillGapHardBand=2）。1コートずつの逐次配置でも同居しないことを確認する。
+    const players: Player[] = Array.from({ length: 16 }, (_, i) =>
+      createRatedPlayer(`p${i}`, `P${i}`, 2000 - i * 50, 0)
+    );
+    const topIds = new Set(['p0', 'p1']);
+    const bottomIds = new Set(['p14', 'p15']);
+
+    let history: Match[] = [];
+    for (let round = 0; round < 15; round++) {
+      const assignments = assignCourts(players, 1, history, sequentialOptions);
+      expect(assignments).toHaveLength(1);
+
+      for (const a of assignments) {
+        const ids = [...a.teamA, ...a.teamB];
+        const hasTop = ids.some(id => topIds.has(id));
+        const hasBottom = ids.some(id => bottomIds.has(id));
+        expect(hasTop && hasBottom).toBe(false);
+      }
+
+      history = [
+        ...history,
+        ...assignments.map((a, i) => ({
+          id: `r${round}-${i}`,
+          courtId: a.courtId,
+          teamA: a.teamA,
+          teamB: a.teamB,
+          scoreA: 21,
+          scoreB: 15,
+          startedAt: 0,
+          finishedAt: 0,
+          winner: 'A' as const,
+        })),
+      ];
+    }
+  });
+
+  it('11人（MIN_ROSTER_FOR_SKILL_GAP 未満）ではハード制約が効かず、上位と下位が同じコートに入り得る', () => {
+    // 上位1人・下位1人・中間2人だけを gamesPlayed=0（最優先）にして、他7人は
+    // gamesPlayed=5 で優先度を大きく落とす。制約が無効なら、最優先の4人
+    // （上位1人＋下位1人を含む）がそのまま選ばれるはず。
+    const players: Player[] = [
+      createRatedPlayer('top1', 'Top1', 2000, 0),
+      createRatedPlayer('mid1', 'Mid1', 1500, 0),
+      createRatedPlayer('mid2', 'Mid2', 1400, 0),
+      createRatedPlayer('bottom1', 'Bottom1', 1000, 0),
+      createRatedPlayer('mid3', 'Mid3', 1800, 5),
+      createRatedPlayer('mid4', 'Mid4', 1700, 5),
+      createRatedPlayer('mid5', 'Mid5', 1600, 5),
+      createRatedPlayer('mid6', 'Mid6', 1300, 5),
+      createRatedPlayer('mid7', 'Mid7', 1200, 5),
+      createRatedPlayer('mid8', 'Mid8', 1100, 5),
+      createRatedPlayer('mid9', 'Mid9', 900, 5),
+    ];
+    const assignments = assignCourts(players, 1, [], sequentialOptions);
+    expect(assignments).toHaveLength(1);
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB];
+    expect(ids).toContain('top1');
+    expect(ids).toContain('bottom1');
+  });
+
+  it('ハード制約を満たす組が1つも無いときは例外にせず4人を選出する（フォールバック）', () => {
+    // ロースター13人（band=2: 上位2人・下位2人がハード制約の対象）。このラウンドで
+    // 実際に待機している候補は5人だけ（上位2人・下位2人・中間1人）で、他8人は
+    // 別コートでプレイ中という想定（allPlayers には含めるが players には含めない）。
+    // 5人中どの4人を選んでも上位・下位のどちらかが必ず残るため、上下同居を
+    // 完全に避ける組み合わせは存在しない。
+    const allPlayers: Player[] = Array.from({ length: 13 }, (_, i) =>
+      createRatedPlayer(`p${i}`, `P${i}`, 2000 - i * 100, 0)
+    );
+    const waitingIds = ['p0', 'p1', 'p11', 'p12', 'p6'];
+    const waitingPlayers = allPlayers.filter(p => waitingIds.includes(p.id));
+
+    const assignments = assignCourts(waitingPlayers, 1, [], {
+      ...sequentialOptions,
+      allPlayers,
+    });
+
+    expect(assignments).toHaveLength(1);
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB];
+    expect(ids).toHaveLength(4);
+    expect(new Set(ids).size).toBe(4);
+    // 選ばれた4人は全員、待機していた5人プールの中から選ばれている
+    ids.forEach(id => expect(waitingIds).toContain(id));
+  });
+});
+
 describe('formTeams - MIXペアリング', () => {
   const createGenderedPlayer = (
     id: string, name: string, rating: number, gender: 'M' | 'F'

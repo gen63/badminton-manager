@@ -712,6 +712,25 @@ function repairScatteredMinorityPair2Court(
 const EXTREME_BAND = 3;
 
 /**
+ * 2コートの**逐次配置**（`selectBestFour` で1コートずつ選出する経路）で使う
+ * バンド幅。同時配置の `EXTREME_BAND`（3人）より狭い。
+ *
+ * 逐次配置では制約が「人の選出そのもの」を弾くため、広いバンドは待たされている人を
+ * 飛ばして試合数の公平性を壊す。150シード計測での試合数幅の悪化:
+ * band=3 で +2.2、band=2 で +0.50〜+0.39、band=1 で +0.10（いずれも12人2コート）。
+ * 13人以上なら band=2 でも悪化が +0.3 未満に収まる。
+ * 詳細は docs/plans/2026-07-29-sequential-skill-separation.md
+ */
+const SEQUENTIAL_EXTREME_BAND = 2;
+
+/**
+ * ロースターが `MIN_ROSTER_FOR_SKILL_GAP` ちょうど（＝実力差を見る最小人数）の
+ * ときだけ使う、さらに狭いバンド幅。12人2コートは1ラウンドの待機が4人しかおらず、
+ * band=2 でも上位/下位バンドがロースターの1/3を占めて公平性を壊すため。
+ */
+const SEQUENTIAL_EXTREME_BAND_MIN_ROSTER = 1;
+
+/**
  * 実力最上位グループと最下位グループが同じコートに同居していないか
  * （3人ずつ・全体が MIN_ROSTER_FOR_SKILL_GAP 人以上のときだけ判定）。
  * `splitBestTwoCourts` でハード制約として使う。
@@ -719,6 +738,7 @@ const EXTREME_BAND = 3;
 function hasTopBottomExtremes(
   comboIds: string[],
   baseRankById: Map<string, number>,
+  band: number = EXTREME_BAND,
 ): boolean {
   const rosterSize = baseRankById.size;
   if (rosterSize < MIN_ROSTER_FOR_SKILL_GAP) return false;
@@ -727,8 +747,8 @@ function hasTopBottomExtremes(
   for (const id of comboIds) {
     const rank = baseRankById.get(id);
     if (rank === undefined) continue;
-    if (rank < EXTREME_BAND) hasTop = true;
-    if (rank >= rosterSize - EXTREME_BAND) hasBottom = true;
+    if (rank < band) hasTop = true;
+    if (rank >= rosterSize - band) hasBottom = true;
   }
   return hasTop && hasBottom;
 }
@@ -1380,12 +1400,37 @@ function selectBestFour(
   if (candidates.length <= 4) return candidates;
 
   // candidatesは優先スコア昇順でソート済みの前提
-  const isValid = (ids: string[]): boolean => {
+  //
+  // 上下の実力帯同居（hasTopBottomExtremes）だけは他のハード制約と切り離して
+  // 二段構えにする（`isValidBase` = 従来の制約。上下同居はこれに加えてループ内で
+  // 都度チェックする）。2コート同時配置の `splitBestTwoCourts` と同じ考え方: 優先度
+  // スコア上位を素朴に弾くと待たされている人を飛ばすことになるため、"ハード制約を
+  // 満たす組が1つも無い" ときに `candidates.slice(0, 4)` へ一気に落ちると、直近試合の
+  // 重複や性別構成といった他のハード制約まで巻き添えで緩んでしまう。そうならないよう
+  // 「上下同居を含め全部満たす組」→ 無ければ「上下同居だけ緩めた組」→ それも無ければ
+  // 最終フォールバックとして上位4人、の3段階にする。
+  const isValidBase = (ids: string[]): boolean => {
     if (hasSimilarRecentMatch(ids, matchHistory)) return false;
     if (totalCourtCount >= 3 && groups3 && hasIsolatedExtreme(ids, groups3)) return false;
     if (!allowUnbalanced && hasUnbalancedGender(ids, candidates)) return false;  // 性別構成チェック（条件付き）
     return true;
   };
+
+  // 2コートの逐次配置（1コートずつ選出するこの経路）でも、同時配置経路
+  // （`splitBestTwoCourts`）と同じ `hasTopBottomExtremes` で上位×下位の同居を
+  // ハードに弾く。3コート以上は `hasIsolatedExtreme`（`isValidBase` 側）が
+  // 既に同種の役割を担っているため対象外（挙動を変えない）。`baseRankById` が
+  // 無い呼び出しでは従来どおり判定しない。
+  //
+  // バンド幅は `splitBestTwoCourts`（同時配置）の 3 人固定とは異なり、人数に応じて
+  // 狭める（`SEQUENTIAL_EXTREME_BAND` / `SEQUENTIAL_EXTREME_BAND_MIN_ROSTER`）。
+  // 逐次配置は「候補プールから優先度順に 1 コート 4 人を選ぶ」経路のため、同時配置
+  // （8 人の行き先を同時に決め、コート間で動かすだけ）と違って制約が人の選出そのものを
+  // 弾き、待たされている人を飛ばしてしまう。
+  const hasSkillGapHardConstraint = totalCourtCount === 2 && !!baseRankById;
+  const skillGapHardBand = baseRankById && baseRankById.size <= MIN_ROSTER_FOR_SKILL_GAP
+    ? SEQUENTIAL_EXTREME_BAND_MIN_ROSTER
+    : SEQUENTIAL_EXTREME_BAND;
 
   const playerScore = (p: Player): number => {
     const base = calculatePriorityScore(p, practiceStartTime, useStayDuration, lateBalance);
@@ -1403,6 +1448,10 @@ function selectBestFour(
 
   let bestCombo: Player[] | null = null;
   let bestScore = Infinity;
+  // isValidBase のみを満たす（上下同居は許す）組の中での最良。上下同居を
+  // 弾いた結果 bestCombo が1件も見つからなかったときのフォールバック用。
+  let bestBaseCombo: Player[] | null = null;
+  let bestBaseScore = Infinity;
 
   const n = candidates.length;
   for (let i = 0; i < n - 3; i++) {
@@ -1411,13 +1460,20 @@ function selectBestFour(
         for (let l = k + 1; l < n; l++) {
           const combo = [candidates[i], candidates[j], candidates[k], candidates[l]];
           const ids = combo.map(p => p.id);
-          if (!isValid(ids)) continue;
+          if (!isValidBase(ids)) continue;
 
           const s = combo.reduce((sum, p) => sum + playerScore(p), 0)
             + getGenderPenalty(combo, oneGameDelta, genderPairImpossible, preferGenderMix, roundGenderPairImpossible)
             + getComboRepeatPenalty(ids, counts.combo, oneGameDelta)
             + getPairRepeatPenalty(ids, counts.pair, oneGameDelta)
             + (baseRankById ? getSkillGapPenalty(ids, baseRankById, oneGameDelta) : 0);
+
+          if (s < bestBaseScore) {
+            bestBaseScore = s;
+            bestBaseCombo = combo;
+          }
+
+          if (hasSkillGapHardConstraint && hasTopBottomExtremes(ids, baseRankById!, skillGapHardBand)) continue;
 
           if (s < bestScore) {
             bestScore = s;
@@ -1428,8 +1484,9 @@ function selectBestFour(
     }
   }
 
-  // 有効な組み合わせが見つからない場合は制約緩和（上位4人）
-  return bestCombo ?? candidates.slice(0, 4);
+  // 有効な組み合わせが見つからない場合は制約緩和（上下同居のみ許容 → それも
+  // 無ければ最終手段として上位4人）
+  return bestCombo ?? bestBaseCombo ?? candidates.slice(0, 4);
 }
 
 /**
