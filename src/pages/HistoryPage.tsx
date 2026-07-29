@@ -28,6 +28,32 @@ import type { Match } from '../types/match';
 
 const SHORT_MATCH_WARNING_MESSAGE = '試合時間が短すぎます（操作ミスの可能性）';
 
+/** チームの名前を1人ずつ描画し、絞り込み中のメンバーだけを強調する。 */
+function TeamNames({
+  playerIds,
+  getPlayerName,
+  highlightName,
+}: {
+  playerIds: string[];
+  getPlayerName: (id: string) => string;
+  highlightName: string | null;
+}) {
+  return (
+    <>
+      {playerIds.map((id, i) => {
+        const isHighlighted = getPlayerName(id) === highlightName;
+        const className = isHighlighted ? 'font-bold text-indigo-600' : undefined;
+        return (
+          <span key={`${id}-${i}`} className={className}>
+            {i > 0 && ' '}
+            {getPlayerName(id)}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
 function MatchCard({
   match,
   matchNumber,
@@ -37,6 +63,7 @@ function MatchCard({
   handleDelete,
   canDelete,
   onShortMatchWarning,
+  highlightName,
 }: {
   match: Match;
   matchNumber: number;
@@ -46,6 +73,7 @@ function MatchCard({
   handleDelete: (id: string) => void;
   canDelete: boolean;
   onShortMatchWarning: () => void;
+  highlightName: string | null;
 }) {
   const durationMs = match.finishedAt - match.startedAt;
   const duration = Math.round(durationMs / 60000);
@@ -69,12 +97,8 @@ function MatchCard({
       if (nameDiff !== 0) return nameDiff;
       return a.localeCompare(b);
     });
-  const leftNames = isMatchSingles
-    ? getPlayerName(leftTeam[0])
-    : sortPairForDisplay(leftTeam).map(getPlayerName).join(' ');
-  const rightNames = isMatchSingles
-    ? getPlayerName(rightTeam[0])
-    : sortPairForDisplay(rightTeam).map(getPlayerName).join(' ');
+  const leftIds = isMatchSingles ? [leftTeam[0]] : sortPairForDisplay(leftTeam);
+  const rightIds = isMatchSingles ? [rightTeam[0]] : sortPairForDisplay(rightTeam);
 
   return (
     <div
@@ -101,11 +125,11 @@ function MatchCard({
         <div className="flex-1 min-w-0 space-y-0.5">
           <div className="flex items-center text-sm gap-1.5 leading-tight">
             <span className="font-bold text-foreground truncate flex-1 min-w-0">
-              {leftNames}
+              <TeamNames playerIds={leftIds} getPlayerName={getPlayerName} highlightName={highlightName} />
             </span>
             <span className="text-muted-foreground font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
             <span className="text-muted-foreground truncate flex-1 min-w-0">
-              {rightNames}
+              <TeamNames playerIds={rightIds} getPlayerName={getPlayerName} highlightName={highlightName} />
             </span>
           </div>
 
@@ -161,6 +185,7 @@ function MatchList({
   scoredCollapsed,
   setScoredCollapsed,
   onShortMatchWarning,
+  highlightName,
 }: {
   unscoredMatches: { match: Match; matchNumber: number }[];
   scoredMatches: { match: Match; matchNumber: number }[];
@@ -172,6 +197,7 @@ function MatchList({
   scoredCollapsed: boolean;
   setScoredCollapsed: (v: boolean) => void;
   onShortMatchWarning: () => void;
+  highlightName: string | null;
 }) {
   return (
     <div className="space-y-2">
@@ -187,6 +213,7 @@ function MatchList({
           handleDelete={handleDelete}
           canDelete={canDelete}
           onShortMatchWarning={onShortMatchWarning}
+          highlightName={highlightName}
         />
       ))}
 
@@ -215,6 +242,7 @@ function MatchList({
               handleDelete={handleDelete}
               canDelete={canDelete}
               onShortMatchWarning={onShortMatchWarning}
+              highlightName={highlightName}
             />
           ))}
         </>
@@ -772,6 +800,7 @@ export function HistoryPage() {
                   scoredCollapsed={scoredCollapsed}
                   setScoredCollapsed={setScoredCollapsed}
                   onShortMatchWarning={handleShortMatchWarning}
+                  highlightName={filterActive ? filterPlayerName : null}
                 />
               )}
             </div>
