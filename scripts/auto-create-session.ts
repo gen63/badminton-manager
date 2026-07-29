@@ -62,6 +62,25 @@ interface MemberData {
   gender?: 'M' | 'F';
 }
 
+/**
+ * tmp シートの `ordering` を Player.rating に変換する。
+ *
+ * `ordering` の実体は GAS 側で Players シート D 列の **skill** をそのまま
+ * 書き出した値で（`docs/webhook.js` の `getDefaultOrderingMap_`）、
+ * **値が大きいほど強い**。1〜N の順位ではなくスコアなので小数も入る。
+ *
+ * `buildInitialOrder` は rating の降順（大きいほど上位）に並べるので、
+ * skill をそのまま rating として使えばよい。手入力側（`parsePlayerInput`）も
+ * 入力された数値をそのまま rating にしており、こちらと同じ向きになる。
+ *
+ * かつては `1000 - ordering` としていたが、これは「ordering=1 が最強」という
+ * 順位前提の実装で、実際のデータ（skill スコア）に対しては**序列を丸ごと
+ * 反転させていた**。
+ */
+function orderingToRating(ordering: number): number {
+  return ordering;
+}
+
 interface PlayerIssue {
   name: string;
   reason: string;
@@ -495,8 +514,7 @@ function buildSessionData(
   const players = event.participants.map((name) => {
     const member = memberMap.get(name);
     const gender = event.genders[name] || member?.gender;
-    // ordering=1（最強）→ rating=999（buildInitialOrderが降順ソートするため）
-    const rating = member?.ordering != null ? 1000 - member.ordering : undefined;
+    const rating = member?.ordering != null ? orderingToRating(member.ordering) : undefined;
     return {
       id: crypto.randomUUID(),
       name,
@@ -575,7 +593,7 @@ function computeRosterSync(
   const newPlayers: Player[] = toAdd.map((name) => {
     const member = memberMap.get(name);
     const gender = event.genders[name] || member?.gender;
-    const rating = member?.ordering != null ? 1000 - member.ordering : undefined;
+    const rating = member?.ordering != null ? orderingToRating(member.ordering) : undefined;
     return {
       id: crypto.randomUUID(),
       name,

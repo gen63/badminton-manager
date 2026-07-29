@@ -15,6 +15,8 @@ import {
   computeRosterDiff,
   computeRosterSync,
 } from './auto-create-session';
+import { buildInitialOrder } from '../src/lib/algorithm';
+import type { Player } from '../src/types/player';
 
 describe('parseEventTitle', () => {
   it('標準的なタイトルをパースできる', () => {
@@ -431,13 +433,38 @@ describe('buildSessionData', () => {
     expect(data.etomoEventId).toBe('123');
     expect(data.gameState.players).toHaveLength(2);
     expect(data.gameState.players[0].name).toBe('田中太郎');
-    expect(data.gameState.players[0].rating).toBe(999); // 1000 - 1
+    expect(data.gameState.players[0].rating).toBe(1); // skill をそのまま rating に
     expect(data.gameState.players[0].gender).toBe('M');
-    expect(data.gameState.players[1].rating).toBe(997); // 1000 - 3
+    expect(data.gameState.players[1].rating).toBe(3); // skill をそのまま rating に
     expect(data.gameState.players[0].isResting).toBe(true);
     expect(data.gameState.settings.practiceType).toBe('複');
     expect(data.gameState.settings.recordScores).toBe(true);
     expect(data.gameState.settings.continuousMatchMode).toBe(true);
+  });
+
+  it('skill が大きいメンバーほど buildInitialOrder で上位になる', () => {
+    // ordering は Players シート D 列の skill をそのまま渡した値で、
+    // 値が大きいほど強い（1〜N の順位ではないので小数も入る）。
+    // かつて rating = 1000 - ordering としており序列が反転していたため、
+    // 「強い順に並ぶこと」を実際の並べ替え関数で検証する。
+    const event = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '高松', note: '複',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: ['最弱', '最強', '中位'], genders: {},
+    };
+    const memberMap = new Map([
+      ['最弱', { ordering: 1, gender: 'M' as const }],
+      ['最強', { ordering: 37.68, gender: 'M' as const }],
+      ['中位', { ordering: 26.17, gender: 'F' as const }],
+    ]);
+
+    const data = buildSessionData(event, memberMap, new Date(2026, 3, 9));
+    const players = data.gameState.players as Player[];
+    const orderedNames = buildInitialOrder(players).map(
+      (id) => players.find((p) => p.id === id)!.name,
+    );
+    expect(orderedNames).toEqual(['最強', '中位', '最弱']);
   });
 
   it('シングルスのgameModeが正しい', () => {
@@ -625,7 +652,7 @@ describe('computeRosterSync', () => {
     expect(newPlayer?.gamesPlayed).toBe(0);
     expect(newPlayer?.lastPlayedAt).toBe(0);
     expect(newPlayer?.activatedAt).toBe(0);
-    expect(newPlayer?.rating).toBe(998); // 1000 - 2
+    expect(newPlayer?.rating).toBe(2); // skill をそのまま rating に
     // genders は event.genders が memberMap より優先される
     expect(newPlayer?.gender).toBe('F');
     expect(typeof newPlayer?.id).toBe('string');
