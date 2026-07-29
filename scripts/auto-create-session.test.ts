@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   parseEventTitle,
   parseEventList,
@@ -14,6 +14,7 @@ import {
   buildTmpSheetName,
   computeRosterDiff,
   computeRosterSync,
+  readTmpSheet,
 } from './auto-create-session';
 import { buildInitialOrder } from '../src/lib/algorithm';
 import type { Player } from '../src/types/player';
@@ -311,23 +312,23 @@ describe('findNextPracticeDate', () => {
 
 describe('checkPlayerIssues', () => {
   const memberMap = new Map([
-    ['田中太郎', { ordering: 1, gender: 'M' as const }],
-    ['佐藤花子', { ordering: 2, gender: 'F' as const }],
-    ['山田次郎', { ordering: undefined, gender: 'M' as const }],
+    ['田中太郎', { skill: 1, gender: 'M' as const }],
+    ['佐藤花子', { skill: 2, gender: 'F' as const }],
+    ['山田次郎', { skill: undefined, gender: 'M' as const }],
   ]);
 
-  it('全員序列があれば空配列', () => {
+  it('全員レーティングがあれば空配列', () => {
     expect(checkPlayerIssues(['田中太郎', '佐藤花子'], memberMap)).toEqual([]);
   });
 
   it('tmpシートに未登録の参加者を検出', () => {
     const issues = checkPlayerIssues(['未登録さん'], memberMap);
-    expect(issues).toEqual([{ name: '未登録さん', reason: '序列未設定' }]);
+    expect(issues).toEqual([{ name: '未登録さん', reason: 'レーティング未設定' }]);
   });
 
-  it('序列未設定を検出', () => {
+  it('レーティング未設定を検出', () => {
     const issues = checkPlayerIssues(['山田次郎'], memberMap);
-    expect(issues).toEqual([{ name: '山田次郎', reason: '序列未設定' }]);
+    expect(issues).toEqual([{ name: '山田次郎', reason: 'レーティング未設定' }]);
   });
 
   it('複数の問題を全て検出', () => {
@@ -412,7 +413,7 @@ describe('formatEventSummary', () => {
 });
 
 describe('buildSessionData', () => {
-  it('セッションデータを正しく構築する（序列→rating変換）', () => {
+  it('セッションデータを正しく構築する（skill→rating変換）', () => {
     const event = {
       eventId: '123', title: 'test', dateMonth: 4, dateDay: 9,
       startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
@@ -421,8 +422,8 @@ describe('buildSessionData', () => {
       genders: { '田中太郎': 'M' as const, '佐藤花子': 'F' as const },
     };
     const memberMap = new Map([
-      ['田中太郎', { ordering: 1, gender: 'M' as const }],
-      ['佐藤花子', { ordering: 3, gender: 'F' as const }],
+      ['田中太郎', { skill: 1, gender: 'M' as const }],
+      ['佐藤花子', { skill: 3, gender: 'F' as const }],
     ]);
     const date = new Date(2026, 3, 9);
 
@@ -443,10 +444,11 @@ describe('buildSessionData', () => {
   });
 
   it('skill が大きいメンバーほど buildInitialOrder で上位になる', () => {
-    // ordering は Players シート D 列の skill をそのまま渡した値で、
+    // skill は Players シート D 列の値をそのまま渡した値で、
     // 値が大きいほど強い（1〜N の順位ではないので小数も入る）。
-    // かつて rating = 1000 - ordering としており序列が反転していたため、
-    // 「強い順に並ぶこと」を実際の並べ替え関数で検証する。
+    // かつてワイヤ上のフィールド名が ordering で、rating = 1000 - ordering
+    // としており序列が反転していたため、「強い順に並ぶこと」を実際の
+    // 並べ替え関数で検証する。
     const event = {
       eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
       startTime: '18:30', endTime: '21:30', venue: '高松', note: '複',
@@ -454,9 +456,9 @@ describe('buildSessionData', () => {
       location: '', participants: ['最弱', '最強', '中位'], genders: {},
     };
     const memberMap = new Map([
-      ['最弱', { ordering: 1, gender: 'M' as const }],
-      ['最強', { ordering: 37.68, gender: 'M' as const }],
-      ['中位', { ordering: 26.17, gender: 'F' as const }],
+      ['最弱', { skill: 1, gender: 'M' as const }],
+      ['最強', { skill: 37.68, gender: 'M' as const }],
+      ['中位', { skill: 26.17, gender: 'F' as const }],
     ]);
 
     const data = buildSessionData(event, memberMap, new Date(2026, 3, 9));
@@ -489,7 +491,7 @@ describe('buildSessionData', () => {
     expect(data.gameState.settings.recordScores).toBe(false);
   });
 
-  it('序列未設定の参加者はrating無し、性別はE-tomoから取得', () => {
+  it('レーティング未設定の参加者はrating無し、性別はE-tomoから取得', () => {
     const event = {
       eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
       startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
@@ -639,7 +641,7 @@ describe('computeRosterSync', () => {
       reservations: [],
     };
     const event = { ...baseEvent, participants: ['田中太郎', '佐藤花子'], genders: { '佐藤花子': 'F' as const } };
-    const memberMap = new Map([['佐藤花子', { ordering: 2, gender: 'M' as const }]]);
+    const memberMap = new Map([['佐藤花子', { skill: 2, gender: 'M' as const }]]);
 
     const { state: nextState, added, removed } = computeRosterSync(state, event, memberMap);
 
@@ -757,5 +759,102 @@ describe('computeRosterSync', () => {
     const { added, removed } = computeRosterSync(state, event, new Map());
     expect(added).toEqual([]);
     expect(removed).toEqual([]);
+  });
+});
+
+// GAS が clasp push 前（旧キー ordering のみ）/ push 後（新キー skill）のどちらを
+// 返しても rating が正しく設定されることを検証する後方互換テスト。
+// 参照: docs/plans/2026-07-29-rating-vocabulary.md
+describe('readTmpSheet（新旧フィールド名の後方互換）', () => {
+  const originalUrl = process.env.GAS_WEB_APP_URL;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (originalUrl === undefined) {
+      delete process.env.GAS_WEB_APP_URL;
+    } else {
+      process.env.GAS_WEB_APP_URL = originalUrl;
+    }
+  });
+
+  it('GASが旧キー ordering のみを返す場合でもskillが正しく読める（push前）', async () => {
+    process.env.GAS_WEB_APP_URL = 'https://gas.example';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            status: 'ok',
+            participants: [
+              { eventId: '1', name: '田中太郎', gender: 'M', ordering: 37.68 },
+            ],
+          }),
+      }),
+    );
+
+    const memberMap = await readTmpSheet('tmp_0409');
+    expect(memberMap.get('田中太郎')).toEqual({ skill: 37.68, gender: 'M' });
+  });
+
+  it('GASが新キー skill のみを返す場合も正しく読める（push後）', async () => {
+    process.env.GAS_WEB_APP_URL = 'https://gas.example';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            status: 'ok',
+            participants: [
+              { eventId: '1', name: '田中太郎', gender: 'M', skill: 37.68, ordering: null },
+            ],
+          }),
+      }),
+    );
+
+    const memberMap = await readTmpSheet('tmp_0409');
+    expect(memberMap.get('田中太郎')).toEqual({ skill: 37.68, gender: 'M' });
+  });
+
+  it('GASが新旧両方のキーを返す場合はskill（新名称）を優先する', () => {
+    process.env.GAS_WEB_APP_URL = 'https://gas.example';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            status: 'ok',
+            participants: [
+              // 新旧で値が食い違っていても新名称(skill)を信頼する
+              { eventId: '1', name: '田中太郎', gender: 'M', skill: 37.68, ordering: 999 },
+            ],
+          }),
+      }),
+    );
+
+    return readTmpSheet('tmp_0409').then((memberMap) => {
+      expect(memberMap.get('田中太郎')?.skill).toBe(37.68);
+    });
+  });
+
+  it('skill/ordering どちらも無い場合はskillがundefinedになる（issue検出対象）', async () => {
+    process.env.GAS_WEB_APP_URL = 'https://gas.example';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            status: 'ok',
+            participants: [
+              { eventId: '1', name: '未登録さん', gender: '', ordering: null },
+            ],
+          }),
+      }),
+    );
+
+    const memberMap = await readTmpSheet('tmp_0409');
+    expect(memberMap.get('未登録さん')?.skill).toBeUndefined();
+    expect(checkPlayerIssues(['未登録さん'], memberMap)).toEqual([
+      { name: '未登録さん', reason: 'レーティング未設定' },
+    ]);
   });
 });
