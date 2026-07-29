@@ -81,7 +81,7 @@ function doPost(e) {
     if (data.action === 'createTmpSheet') {
       var result = createOrUpdateTmpSheet_(data.sheet, data.participants);
       return ContentService.createTextOutput(
-        JSON.stringify({ status: 'ok', created: result.created, missingOrdering: result.missingOrdering, deleted: result.deleted })
+        JSON.stringify({ status: 'ok', created: result.created, missingSkill: result.missingSkill, missingOrdering: result.missingOrdering, deleted: result.deleted })
       ).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -544,14 +544,21 @@ function errorResponse_(message) {
 
 // ============================================================
 // tmpシート操作（セッション自動作成用）
-// 列構成: [0]eventId [1]name [2]gender [3]ordering
+// 列構成: [0]eventId [1]name [2]gender [3]skill（旧名称 ordering。ヘッダのみ改名、
+// 既存シートの読み取りは位置ベース [i][3] なので実データ列は変わらない）
 // ============================================================
 
 /**
- * Playersシートからニックネーム→デフォルト序列のMapを返す
- * Players列D(index 3) = skill を序列として使用
+ * Playersシートからニックネーム→デフォルトレーティング(skill)のMapを返す
+ * Players列D(index 3) = skill。
+ *
+ * 注意: skill は値が大きいほど強い「レーティング」であり、1〜N の「順位」では
+ * ない。かつて変数名・シート列名を `ordering`（序列）と呼んでいたため、呼び出し
+ * 側（アプリ）が「1が最強の順位」と誤解し `1000 - ordering` に変換して序列を
+ * 丸ごと反転させるバグが発生した（詳細: docs/plans/2026-07-29-rating-vocabulary.md）。
+ * このバグの再発防止として `skill` に改名した。
  */
-function getDefaultOrderingMap_() {
+function getDefaultSkillMap_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SHEET_PLAYERS);
   if (!sheet) return {};
@@ -560,9 +567,9 @@ function getDefaultOrderingMap_() {
   var map = {};
   for (var i = 1; i < data.length; i++) {
     var name = String(data[i][0]).trim();
-    var ordering = data[i][3];
-    if (name && ordering) {
-      map[name] = ordering;
+    var skill = data[i][3];
+    if (name && skill) {
+      map[name] = skill;
     }
   }
   return map;
@@ -572,17 +579,19 @@ function getDefaultOrderingMap_() {
  * tmpシートを作成または更新する
  * - シートが無ければ新規作成
  * - 既存シートなら管理者の入力を保持し、新規参加者のみ追加
- * - Playersシートのデフォルト序列で自動補完
+ * - Playersシートのデフォルトレーティング(skill)で自動補完
  */
 function createOrUpdateTmpSheet_(sheetName, participants) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(sheetName);
-  var orderingMap = getDefaultOrderingMap_();
+  var skillMap = getDefaultSkillMap_();
   var isNew = !sheet;
 
   if (isNew) {
+    // ヘッダのみ 'ordering' → 'skill' に改名。既存シートの読み取りは位置ベース
+    // (data[i][3]) なので、この改名で既存シートが壊れることはない。
     sheet = ss.insertSheet(sheetName);
-    sheet.appendRow(['eventId', 'name', 'gender', 'ordering']);
+    sheet.appendRow(['eventId', 'name', 'gender', 'skill']);
     sheet.setFrozenRows(1);
   }
 
@@ -600,34 +609,36 @@ function createOrUpdateTmpSheet_(sheetName, participants) {
   participants.forEach(function(p) {
     var key = p.eventId + '::' + p.name;
     if (existingKeys[key]) return;
-    var defaultOrdering = orderingMap[p.name] || '';
-    newRows.push([p.eventId, p.name, p.gender || '', defaultOrdering]);
+    var defaultSkill = skillMap[p.name] || '';
+    newRows.push([p.eventId, p.name, p.gender || '', defaultSkill]);
   });
   if (newRows.length > 0) {
     sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, 4).setValues(newRows);
   }
 
-  // シート全体をスキャンして序列未設定を収集
+  // シート全体をスキャンしてレーティング未設定を収集
   var allData = sheet.getDataRange().getValues();
-  var missingOrdering = [];
+  var missingSkill = [];
   for (var i = 1; i < allData.length; i++) {
     if (!allData[i][3]) {
-      missingOrdering.push(allData[i][1]);
+      missingSkill.push(allData[i][1]);
     }
   }
 
   // 過去日の古い tmp シートを自動削除（タブ増殖の抑制）
   var deleted = cleanupOldTmpSheets_(ss, sheetName);
 
-  return { created: isNew, missingOrdering: missingOrdering, deleted: deleted };
+  // missingSkill が新名称、missingOrdering は後方互換用（同じ値）。
+  // アプリ側が新旧どちらのキーで読んでも動くよう、clasp push 完了まで両方返す。
+  return { created: isNew, missingSkill: missingSkill, missingOrdering: missingSkill, deleted: deleted };
 }
 
 /**
  * tmp_MMDD シートのうち、日付が「今日(JST)」より前のものを削除する。
- * - tmp シートの序列/性別はセッション作成時に Firestore へ読み込まれるため、
- *   イベントが過去になった tmp シートは破棄してよい。
+ * - tmp シートのレーティング(skill)/性別はセッション作成時に Firestore へ
+ *   読み込まれるため、イベントが過去になった tmp シートは破棄してよい。
  * - 当日・未来の予定シート、および今作成/更新したシート(keepSheetName)は残す
- *   ので、保留中（序列未入力・手動リラン待ち）の入力は消えない。
+ *   ので、保留中（レーティング未入力・手動リラン待ち）の入力は消えない。
  * @param {Spreadsheet} ss 対象スプレッドシート
  * @param {string} keepSheetName 削除対象から必ず除外するシート名
  * @return {string[]} 削除したシート名の配列
@@ -685,11 +696,15 @@ function readTmpSheet_(sheetName) {
   var data = sheet.getDataRange().getValues();
   var results = [];
   for (var i = 1; i < data.length; i++) {
+    var skillValue = data[i][3] ? Number(data[i][3]) : null;
     results.push({
       eventId: data[i][0],
       name: data[i][1],
       gender: data[i][2] || '',
-      ordering: data[i][3] ? Number(data[i][3]) : null
+      // skill が新名称、ordering は後方互換用（同じ値）。
+      // アプリ側が新旧どちらのキーで読んでも動くよう、clasp push 完了まで両方返す。
+      skill: skillValue,
+      ordering: skillValue
     });
   }
   return results;

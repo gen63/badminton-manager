@@ -58,27 +58,28 @@ interface EtomoEventDetail extends EtomoEvent {
 }
 
 interface MemberData {
-  ordering?: number;
+  skill?: number;
   gender?: 'M' | 'F';
 }
 
 /**
- * tmp シートの `ordering` を Player.rating に変換する。
+ * tmp シートの `skill` を Player.rating に変換する。
  *
- * `ordering` の実体は GAS 側で Players シート D 列の **skill** をそのまま
- * 書き出した値で（`docs/webhook.js` の `getDefaultOrderingMap_`）、
+ * `skill` の実体は GAS 側で Players シート D 列の **skill** をそのまま
+ * 書き出した値で（`docs/webhook.js` の `getDefaultSkillMap_`）、
  * **値が大きいほど強い**。1〜N の順位ではなくスコアなので小数も入る。
  *
  * `buildInitialOrder` は rating の降順（大きいほど上位）に並べるので、
  * skill をそのまま rating として使えばよい。手入力側（`parsePlayerInput`）も
  * 入力された数値をそのまま rating にしており、こちらと同じ向きになる。
  *
- * かつては `1000 - ordering` としていたが、これは「ordering=1 が最強」という
- * 順位前提の実装で、実際のデータ（skill スコア）に対しては**序列を丸ごと
- * 反転させていた**。
+ * かつてはワイヤ上のフィールド名が `ordering` で、それを「1が最強の順位」と
+ * 誤解して `1000 - ordering` としていた。これは実際のデータ（skill スコア）
+ * に対しては**序列を丸ごと反転させていた**。フィールド名を `skill` に改名し
+ * たのはこの再発防止のため（詳細: `docs/plans/2026-07-29-rating-vocabulary.md`）。
  */
-function orderingToRating(ordering: number): number {
-  return ordering;
+function skillToRating(skill: number): number {
+  return skill;
 }
 
 interface PlayerIssue {
@@ -90,7 +91,7 @@ interface PlayerIssue {
 // Phase A: E-tomoスクレイピング
 // ============================================================
 
-export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName, AUTO_SESSION_ADMINS, computeRosterDiff, computeRosterSync };
+export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName, AUTO_SESSION_ADMINS, computeRosterDiff, computeRosterSync, readTmpSheet };
 
 async function fetchEtomoPage(url: string): Promise<string | null> {
   try {
@@ -333,7 +334,7 @@ async function fetchEventDetails(
 }
 
 // ============================================================
-// Phase C: tmpシート経由で序列データを取得
+// Phase C: tmpシート経由でレーティングデータを取得
 // ============================================================
 
 function buildTmpSheetName(targetDate: Date): string {
@@ -371,7 +372,9 @@ async function createTmpSheet(
 
   console.log(`[DEBUG] POST response: status=${response.status}, url=${response.url}, redirected=${response.redirected}`);
   const text = await response.text();
-  let data: { status: string; created?: boolean; missingOrdering?: string[]; deleted?: string[] };
+  // missingSkill/missingOrdering: GAS は新旧両方のキーを返す（同じ値）。
+  // 新名称 ?? 旧名称 で読み、GAS 側が旧キーしか出していない期間（clasp push 前）にも対応する。
+  let data: { status: string; created?: boolean; missingSkill?: string[]; missingOrdering?: string[]; deleted?: string[] };
   try {
     data = JSON.parse(text);
   } catch {
@@ -383,11 +386,12 @@ async function createTmpSheet(
     throw new Error('GAS createTmpSheet returned error');
   }
 
-  console.log(`Tmp sheet "${sheetName}": ${data.created ? 'created' : 'updated'}, missing: ${data.missingOrdering?.length ?? 0}, deleted old: ${data.deleted?.length ?? 0}`);
+  const missing = data.missingSkill ?? data.missingOrdering;
+  console.log(`Tmp sheet "${sheetName}": ${data.created ? 'created' : 'updated'}, missing: ${missing?.length ?? 0}, deleted old: ${data.deleted?.length ?? 0}`);
   if (data.deleted && data.deleted.length > 0) {
     console.log(`  Deleted old tmp sheets: ${data.deleted.join(', ')}`);
   }
-  return data.missingOrdering ?? [];
+  return missing ?? [];
 }
 
 async function readTmpSheet(
@@ -404,7 +408,7 @@ async function readTmpSheet(
 
   const data = (await response.json()) as {
     status: string;
-    participants?: { eventId: string; name: string; gender: string; ordering: number | null }[];
+    participants?: { eventId: string; name: string; gender: string; skill?: number | null; ordering: number | null }[];
   };
 
   if (data.status === 'error' || !data.participants) {
@@ -414,8 +418,9 @@ async function readTmpSheet(
   const memberMap = new Map<string, MemberData>();
   for (const p of data.participants) {
     if (!p.name) continue;
+    // skill/ordering: GAS は新旧両方のキーを返す（同じ値）。新名称 ?? 旧名称 で読む。
     memberMap.set(p.name, {
-      ordering: p.ordering ?? undefined,
+      skill: (p.skill ?? p.ordering) ?? undefined,
       gender: p.gender === 'M' || p.gender === 'F' ? p.gender : undefined,
     });
   }
@@ -444,8 +449,8 @@ function checkPlayerIssues(
   const issues: PlayerIssue[] = [];
   for (const name of participants) {
     const member = memberMap.get(name);
-    if (!member || member.ordering == null) {
-      issues.push({ name, reason: '序列未設定' });
+    if (!member || member.skill == null) {
+      issues.push({ name, reason: 'レーティング未設定' });
     }
   }
   return issues;
@@ -514,7 +519,7 @@ function buildSessionData(
   const players = event.participants.map((name) => {
     const member = memberMap.get(name);
     const gender = event.genders[name] || member?.gender;
-    const rating = member?.ordering != null ? orderingToRating(member.ordering) : undefined;
+    const rating = member?.skill != null ? skillToRating(member.skill) : undefined;
     return {
       id: crypto.randomUUID(),
       name,
@@ -593,7 +598,7 @@ function computeRosterSync(
   const newPlayers: Player[] = toAdd.map((name) => {
     const member = memberMap.get(name);
     const gender = event.genders[name] || member?.gender;
-    const rating = member?.ordering != null ? orderingToRating(member.ordering) : undefined;
+    const rating = member?.skill != null ? skillToRating(member.skill) : undefined;
     return {
       id: crypto.randomUUID(),
       name,
@@ -789,10 +794,10 @@ async function notifySessionPending(
     '━━━━━━━━━━━━━━━━━━',
     summary,
     '',
-    '❓ **序列未設定:**',
+    '❓ **レーティング未設定:**',
     issueNames,
     '',
-    `📝 tmpシート「${tmpSheetName}」で序列を入力後、GitHub Actionsを手動実行してください`,
+    `📝 tmpシート「${tmpSheetName}」でレーティングを入力後、GitHub Actionsを手動実行してください`,
   ].join('\n');
 
   await sendDiscordMessage(message);
@@ -977,7 +982,7 @@ async function main() {
     console.log(`  ${event.title}: ${event.participants.length} participants`);
   }
 
-  // Phase C: tmpシート作成 → 序列データ読み取り
+  // Phase C: tmpシート作成 → レーティングデータ読み取り
   console.log('\n--- Phase C: tmpシート連携 ---');
   const tmpSheetName = buildTmpSheetName(targetDate);
   await createTmpSheet(tmpSheetName, eventsWithDetails);
