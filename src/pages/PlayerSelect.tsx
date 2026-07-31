@@ -13,6 +13,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 import { formatLastSeen, type LastSeenTone } from '../lib/lastSeen';
 import { sortPlayers, type PlayerSortMode } from '../lib/playerSort';
+import { countByGender, formatGenderBreakdown, genderLabel } from '../lib/genderBreakdown';
 import { formatTime } from '../lib/utils';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
@@ -28,6 +29,16 @@ const LAST_SEEN_TONE_CLASS: Record<LastSeenTone, string> = {
 
 /** 経過時間バッジの再評価間隔（相対時間表示なので `PresenceIndicator` より長め） */
 const LAST_SEEN_TICK_MS = 30_000;
+
+/**
+ * 性別バッジの表示色。男=青 / 女=ピンクは `PlayerEditModal`・`ReservationPage` と揃える。
+ * 未設定は「埋めてほしい」注意喚起なので amber（`LAST_SEEN_TONE_CLASS.stale` と同系）。
+ */
+const GENDER_BADGE_CLASS: Record<'M' | 'F' | 'unknown', string> = {
+  M: 'bg-blue-100 text-blue-700',
+  F: 'bg-pink-100 text-pink-700',
+  unknown: 'bg-amber-100 text-amber-700',
+};
 
 export function PlayerSelect() {
   const players = usePlayerStore((s) => s.players);
@@ -78,6 +89,9 @@ export function PlayerSelect() {
 
   // 参加者一覧のソート（非管理者は lastSeen が非表示のため常に 'games' 固定）
   const sortedPlayers = sortPlayers(players, isAdmin ? sortMode : 'games', lastSeen);
+
+  // 見出しに出す性別内訳（例: 13人：男8・女4・未設定1）
+  const genderBreakdown = countByGender(players);
 
   // タスク（会費・名簿）未完了 / 完了済みのグルーピング。アコーディオン自動展開の
   // 派生値（allComplete）が incompletePlayers.length を参照するため renderPlayerList
@@ -177,8 +191,17 @@ export function PlayerSelect() {
         className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm"
       >
         <div className="flex items-center gap-2">
-          {/* 名前 + 編集/削除 */}
+          {/* 性別 + 名前 + 編集/削除 */}
           <div className="flex-1 min-w-0 flex items-center gap-2">
+            {/* 性別バッジ。未設定を一目で見つけて編集モーダルで埋められるようにする */}
+            <span
+              aria-label={`性別${genderLabel(player.gender)}`}
+              className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] leading-none font-medium ${
+                GENDER_BADGE_CLASS[player.gender ?? 'unknown']
+              }`}
+            >
+              {genderLabel(player.gender)}
+            </span>
             <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
             {canEdit && (
               <button
@@ -304,7 +327,7 @@ export function PlayerSelect() {
           <h2 className="section-title mb-4">
             参加者一覧
             <span className="ml-2 text-sm font-normal text-muted-foreground">
-              ({players.length}人)
+              ({formatGenderBreakdown(genderBreakdown)})
             </span>
           </h2>
           {/* ソート切替（管理者のみ表示。非管理者には lastSeen の根拠データが見えないため） */}
