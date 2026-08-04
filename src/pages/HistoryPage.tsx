@@ -579,17 +579,22 @@ export function HistoryPage() {
   // フィルタ適用後の未入力有無で折り畳みを判定（自分視点に合わせる）
   const hasUnscored = unscoredMatches.length > 0;
   const [scoredCollapsed, setScoredCollapsed] = useState(() => hasUnscored);
-
-  useEffect(() => {
-    setScoredCollapsed(hasUnscored);
-  }, [hasUnscored]);
-
-  // 未入力アコーディオン: 通常は未入力があれば開いたまま、開発モードでは閉じたままがデフォルト
   const [unscoredCollapsed, setUnscoredCollapsed] = useState(() => devMode);
+  // フィルタ切り替えなどで hasUnscored が変わった直近の値を覚えておき、
+  // レンダー中に折り畳み状態を再判定する（Effect を使わない同期パターン）
+  const [prevHasUnscored, setPrevHasUnscored] = useState(hasUnscored);
+  // ランキングでの選択直後は、自動判定より「入力済みを開く」を優先する
+  const [skipScoredAutoCollapse, setSkipScoredAutoCollapse] = useState(false);
 
-  useEffect(() => {
+  if (skipScoredAutoCollapse) {
+    setSkipScoredAutoCollapse(false);
+  } else if (hasUnscored !== prevHasUnscored) {
+    setScoredCollapsed(hasUnscored);
+  }
+  if (hasUnscored !== prevHasUnscored) {
+    setPrevHasUnscored(hasUnscored);
     setUnscoredCollapsed(devMode);
-  }, [hasUnscored, devMode]);
+  }
 
   // 強さランキングを開いたときは、未入力・入力済みの試合一覧を畳んで見やすくする
   const [rankingCollapsed, setRankingCollapsed] = useState(true);
@@ -813,9 +818,12 @@ export function HistoryPage() {
                   ratedMatchCount={performanceResult.ratedMatchCount}
                   currentUser={currentUser}
                   selectedName={filterPlayerName}
-                  onSelect={(name) =>
-                    setFilterPlayerName(name === filterPlayerName ? null : name)
-                  }
+                  onSelect={(name) => {
+                    setFilterPlayerName(name === filterPlayerName ? null : name);
+                    setRankingCollapsed(true);
+                    setSkipScoredAutoCollapse(true);
+                    setScoredCollapsed(false);
+                  }}
                   collapsed={rankingCollapsed}
                   onToggle={handleToggleRanking}
                 />
