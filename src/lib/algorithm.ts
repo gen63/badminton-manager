@@ -731,6 +731,15 @@ const SEQUENTIAL_EXTREME_BAND = 2;
 const SEQUENTIAL_EXTREME_BAND_MIN_ROSTER = 1;
 
 /**
+ * 3コート以上の逐次配置で、バンド幅を `EXTREME_BAND`（3人）まで広げる最小人数。
+ * これ未満は `SEQUENTIAL_EXTREME_BAND`（2人）に留める。15人3コートで band=3 に
+ * すると上下バンドがロースターの 40% を占め、分離の改善に対して試合数幅の悪化
+ * （+0.26）が見合わないため。18人以上なら悪化は +0.1 未満に収まる。
+ * 計測: docs/plans/2026-08-04-skill-band-guard-and-diversity.md
+ */
+const WIDE_EXTREME_BAND_MIN_ROSTER = 18;
+
+/**
  * 実力最上位グループと最下位グループが同じコートに同居していないか
  * （3人ずつ・全体が MIN_ROSTER_FOR_SKILL_GAP 人以上のときだけ判定）。
  * `splitBestTwoCourts` でハード制約として使う。
@@ -1416,21 +1425,35 @@ function selectBestFour(
     return true;
   };
 
-  // 2コートの逐次配置（1コートずつ選出するこの経路）でも、同時配置経路
+  // 逐次配置（1コートずつ選出するこの経路）でも、同時配置経路
   // （`splitBestTwoCourts`）と同じ `hasTopBottomExtremes` で上位×下位の同居を
-  // ハードに弾く。3コート以上は `hasIsolatedExtreme`（`isValidBase` 側）が
-  // 既に同種の役割を担っているため対象外（挙動を変えない）。`baseRankById` が
-  // 無い呼び出しでは従来どおり判定しない。
+  // ハードに弾く。`baseRankById` が無い呼び出しでは従来どおり判定しない。
+  //
+  // 3コート以上でも適用する。`isValidBase` 側の `hasIsolatedExtreme` は
+  // `groupPlayers3Court` の出力＝**ハシゴ式（`applyStreakSwaps`）適用後**の序列で
+  // 判定するため、勝利で上位グループへ移動した下位者は「上位の人」として扱われ、
+  // 上位×下位の同居を検出できない。素の序列（`baseRankById`）で見る
+  // `hasTopBottomExtremes` はハシゴ式の出力に依存しないので、この抜けを塞ぐ。
+  // ソフトな `getSkillGapPenalty` も素の序列で見るが、グループ内の全候補が同程度の
+  // ペナルティを負うため順位づけに差がつかず、単独では機能しない。
+  // 詳細: docs/plans/2026-08-04-skill-band-guard-and-diversity.md
   //
   // バンド幅は `splitBestTwoCourts`（同時配置）の 3 人固定とは異なり、人数に応じて
   // 狭める（`SEQUENTIAL_EXTREME_BAND` / `SEQUENTIAL_EXTREME_BAND_MIN_ROSTER`）。
   // 逐次配置は「候補プールから優先度順に 1 コート 4 人を選ぶ」経路のため、同時配置
   // （8 人の行き先を同時に決め、コート間で動かすだけ）と違って制約が人の選出そのものを
   // 弾き、待たされている人を飛ばしてしまう。
-  const hasSkillGapHardConstraint = totalCourtCount === 2 && !!baseRankById;
-  const skillGapHardBand = baseRankById && baseRankById.size <= MIN_ROSTER_FOR_SKILL_GAP
-    ? SEQUENTIAL_EXTREME_BAND_MIN_ROSTER
-    : SEQUENTIAL_EXTREME_BAND;
+  const hasSkillGapHardConstraint = !!baseRankById;
+  const skillGapHardBand = ((): number => {
+    if (!baseRankById) return SEQUENTIAL_EXTREME_BAND;
+    const rosterSize = baseRankById.size;
+    if (rosterSize <= MIN_ROSTER_FOR_SKILL_GAP) return SEQUENTIAL_EXTREME_BAND_MIN_ROSTER;
+    // 3コート以上かつ十分な人数なら、同時配置と同じ 3 人幅まで広げる。バンドが
+    // ロースターに占める割合が小さいほど、待機者を飛ばす副作用なしに分離を強められる
+    // （15人で band=3 は上下で全体の 40% を占め、試合数幅が目に見えて悪化する）。
+    if (totalCourtCount >= 3 && rosterSize >= WIDE_EXTREME_BAND_MIN_ROSTER) return EXTREME_BAND;
+    return SEQUENTIAL_EXTREME_BAND;
+  })();
 
   const playerScore = (p: Player): number => {
     const base = calculatePriorityScore(p, practiceStartTime, useStayDuration, lateBalance);

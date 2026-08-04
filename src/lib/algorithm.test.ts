@@ -941,6 +941,147 @@ describe('assignCourts - 2コート逐次配置（1コートずつ）の実力�
   });
 });
 
+describe('assignCourts - 3コート以上の逐次配置の実力分離 (hasTopBottomExtremes)', () => {
+  const now = Date.now();
+
+  const createRatedPlayer = (id: string, rating: number): Player => ({
+    id,
+    name: id.toUpperCase(),
+    gamesPlayed: 0,
+    rating,
+    isResting: false,
+    lastPlayedAt: 0,
+    activatedAt: now - 60 * 60 * 1000,
+  });
+
+  /**
+   * 「弱いチームが必ず勝つ」ラウンドを回しながら、各試合が上位バンドと下位バンドを
+   * 同居させていないことを検証する。
+   *
+   * 弱い側を勝たせるのは `applyStreakSwaps`（ハシゴ式）のドリフトを**双方向に最大化**
+   * するため。上位者は連敗して沈み、下位者は連勝して上がるので、両者が中位グループで
+   * 出会う。2026-08-04 の実セッションで起きたのがこれで、序列20位のメンバーが
+   * 1・2・4位と同じコートに4回入った（`maxDrift = stepSize = 7` なので 18→11 と
+   * 0→7 で中位グループに合流する）。
+   *
+   * ドリフト後の序列で判定する `hasIsolatedExtreme` は全員を「中位の人」として扱うため
+   * この同居を検出できない。素の序列で見る `hasTopBottomExtremes` が3コート以上でも
+   * 効いていないと、このテストは落ちる。
+   */
+  const expectNoTopBottomMix = (
+    players: Player[],
+    topIds: Set<string>,
+    bottomIds: Set<string>,
+    rounds: number
+  ): void => {
+    const ratingById = new Map(players.map(p => [p.id, p.rating ?? 0]));
+    const state = players.map(p => ({ ...p }));
+    let history: Match[] = [];
+
+    for (let round = 0; round < rounds; round++) {
+      const assignments = assignCourts(state, 3, history, {
+        totalCourtCount: 3,
+        targetCourtIds: [1, 2, 3],
+        practiceStartTime: now - 60 * 60 * 1000,
+      });
+      expect(assignments).toHaveLength(3);
+
+      for (const a of assignments) {
+        const ids = [...a.teamA, ...a.teamB];
+        const hasTop = ids.some(id => topIds.has(id));
+        const hasBottom = ids.some(id => bottomIds.has(id));
+        // 失敗時にどのラウンドの誰が同居したか分かるようにメッセージへ含める
+        expect(
+          hasTop && hasBottom,
+          `round ${round}: 上位と下位が同居 [${ids.join(', ')}]`
+        ).toBe(false);
+      }
+
+      const sum = (ids: readonly string[]) =>
+        ids.reduce((s, id) => s + (ratingById.get(id) ?? 0), 0);
+
+      history = [
+        ...history,
+        ...assignments.map((a, i) => ({
+          id: `r${round}-${i}`,
+          courtId: a.courtId,
+          teamA: a.teamA,
+          teamB: a.teamB,
+          scoreA: 21,
+          scoreB: 15,
+          startedAt: 0,
+          finishedAt: 0,
+          // レート合計が低い（弱い）側を勝たせる
+          winner: sum(a.teamA) < sum(a.teamB) ? ('A' as const) : ('B' as const),
+        })),
+      ];
+
+      // production と同じく、出場者の試合数を進めて次ラウンドの優先度を動かす
+      const played = new Set(assignments.flatMap(a => [...a.teamA, ...a.teamB]));
+      for (const p of state) {
+        if (played.has(p.id)) p.gamesPlayed += 1;
+      }
+    }
+  };
+
+  it('21人3コート（band=3）: 連勝で序列が上がった最下位者でも上位3人と同じコートに入らない', () => {
+    // 21人なので WIDE_EXTREME_BAND_MIN_ROSTER(=18) 以上 → band=3。
+    // p20（最下位）を毎回勝たせてハシゴ式で上位グループへ押し上げる。
+    const players = Array.from({ length: 21 }, (_, i) =>
+      createRatedPlayer(`p${i}`, 2000 - i * 50)
+    );
+    expectNoTopBottomMix(
+      players,
+      new Set(['p0', 'p1', 'p2']),
+      new Set(['p18', 'p19', 'p20']),
+      50
+    );
+  });
+
+  it('15人3コート（待機3人）ではフォールバックが働き、上下同居を許してでも3コート配置を続ける', () => {
+    // 12人が同時に出場するため待機は3人しかなく、上下同居を完全に避ける組み合わせが
+    // 存在しないラウンドが出る。そのとき `selectBestFour` の3段階フォールバックが
+    // 上下同居の制約だけを緩めるので、例外にならず配置は続く（待機者を飛ばさない）。
+    // ハード制約が「候補が枯れたら緩む」設計であることを固定するテスト。
+    const players = Array.from({ length: 15 }, (_, i) =>
+      createRatedPlayer(`p${i}`, 2000 - i * 50)
+    );
+    const state = players.map(p => ({ ...p }));
+    let history: Match[] = [];
+
+    for (let round = 0; round < 15; round++) {
+      const assignments = assignCourts(state, 3, history, {
+        totalCourtCount: 3,
+        targetCourtIds: [1, 2, 3],
+        practiceStartTime: now - 60 * 60 * 1000,
+      });
+      // 例外を投げず、毎ラウンド3コート12人を配置しきる
+      expect(assignments).toHaveLength(3);
+      const ids = assignments.flatMap(a => [...a.teamA, ...a.teamB]);
+      expect(new Set(ids).size).toBe(12);
+
+      history = [
+        ...history,
+        ...assignments.map((a, i) => ({
+          id: `r${round}-${i}`,
+          courtId: a.courtId,
+          teamA: a.teamA,
+          teamB: a.teamB,
+          scoreA: 21,
+          scoreB: 15,
+          startedAt: 0,
+          finishedAt: 0,
+          winner: 'A' as const,
+        })),
+      ];
+      const played = new Set(ids);
+      for (const p of state) {
+        if (played.has(p.id)) p.gamesPlayed += 1;
+      }
+    }
+  });
+});
+
 describe('formTeams - MIXペアリング', () => {
   const createGenderedPlayer = (
     id: string, name: string, rating: number, gender: 'M' | 'F'
