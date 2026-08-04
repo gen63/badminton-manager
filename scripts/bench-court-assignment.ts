@@ -102,14 +102,27 @@ function teamWins(
   return rng() < pA;
 }
 
+/**
+ * 指標は docs/plans/2026-08-05-pairing-goals-and-rewrite.md の「やりたいこと（6個）」に
+ * 1目的1指標で対応させる。手段（帯分割やハシゴ式）の達成度ではなく目的を測る。
+ */
 interface RunResult {
-  separation: number;      // 真の上位3人×下位3人が同コートに入った試合の割合
-  trueGap: number;         // 4人の trueRank の最大−最小の平均
-  gamesSpread: number;     // 最多試合数 − 最少試合数
-  rotation: number;        // 1人あたりの経験コート数の平均
-  distinctMates: number;   // 1人あたりの異なる共演相手数の平均
-  maxMateShare: number;    // 「最も多く顔を合わせた相手」が自分の試合に占める割合の平均
-  maxPairRepeat: number;   // 同一ペア（味方）の最大再演回数
+  // 目的1: 出場機会が均等
+  gamesSpread: number;     // 最多試合数 − 最少試合数（低いほど良い）
+  // 目的2: 待ち時間が偏らない
+  maxIdle: number;         // 自分が出ていない間に行われた試合数の最大（低いほど良い）
+  // 目的3: 大きく実力の離れたメンバーを同居させない
+  wideGapRate: number;     // trueRank の幅が閾値以上だった試合の割合（低いほど良い）
+  trueGap: number;         // 4人の trueRank の最大−最小の平均（低いほど良い）
+  // 目的4: 競る試合になる
+  closeness: number;       // |真の勝率 − 0.5| の平均（低いほど競っている）
+  // 目的5: 性別構成が偏らない
+  genderSkewRate: number;  // 3-1 になった試合の割合（低いほど良い）
+  // 目的6: 顔ぶれが繰り返されない
+  maxMateShare: number;    // 最多相手が自分の試合に占める割合の平均（低いほど良い）
+  distinctMates: number;   // 1人あたりの異なる共演相手数の平均（高いほど良い）
+  // 参考
+  rotation: number;
   matches: number;
 }
 
@@ -199,30 +212,48 @@ function runOnce(
     }
   }
 
-  // ---- 集計（すべて trueRank 基準）----
-  const topCut = 3;
-  const bottomStart = n - 3;
-  let extremeMatches = 0;
+  // ---- 集計（実力の評価はすべて trueRank 基準）----
+  // 目的3 の閾値。plan で採用した B 案（順位差が全体の 2/3 以上なら「大きく離れている」）
+  const wideGapThreshold = Math.ceil((n * 2) / 3);
+
+  let wideGapMatches = 0;
   let gapSum = 0;
+  let closenessSum = 0;
+  let genderSkewMatches = 0;
   const courtsSeen = new Map<string, Set<number>>();
   const matesSeen = new Map<string, Set<string>>();
   // 「誰と何回顔を合わせたか」。最多相手の占有率（体感の "また同じ人" ）に使う
   const mateCounts = new Map<string, Map<string, number>>();
-  const pairCount = new Map<string, number>();
+  // 出場した試合のインデックス。待ち時間（目的2）の算出に使う
+  const appearances = new Map<string, number[]>();
   for (const p of players) {
     courtsSeen.set(p.id, new Set());
     matesSeen.set(p.id, new Set());
     mateCounts.set(p.id, new Map());
+    appearances.set(p.id, []);
   }
 
-  for (const m of history) {
+  const strength = (t: BenchPlayer[]) => t.reduce((s, p) => s + (n - 1 - p.trueRank), 0);
+
+  history.forEach((m, matchIndex) => {
     const ids = [...m.teamA, ...m.teamB];
     const ranks = ids.map(id => byId.get(id)!.trueRank);
-    if (ranks.some(r => r < topCut) && ranks.some(r => r >= bottomStart)) extremeMatches++;
-    gapSum += Math.max(...ranks) - Math.min(...ranks);
+    const gap = Math.max(...ranks) - Math.min(...ranks);
+    gapSum += gap;
+    if (gap >= wideGapThreshold) wideGapMatches++;
+
+    // 目的4: 真の実力から見た勝率が 0.5 からどれだけ離れているか
+    const diff = strength(m.teamA.map(id => byId.get(id)!)) -
+      strength(m.teamB.map(id => byId.get(id)!));
+    closenessSum += Math.abs(1 / (1 + Math.pow(10, -diff / 8)) - 0.5);
+
+    // 目的5: 3-1 の性別構成
+    const femaleCount = ids.filter(id => byId.get(id)!.gender === 'F').length;
+    if (femaleCount === 1 || femaleCount === 3) genderSkewMatches++;
 
     for (const id of ids) {
       courtsSeen.get(id)!.add(m.courtId);
+      appearances.get(id)!.push(matchIndex);
       const counts = mateCounts.get(id)!;
       for (const other of ids) {
         if (other === id) continue;
@@ -230,16 +261,21 @@ function runOnce(
         counts.set(other, (counts.get(other) ?? 0) + 1);
       }
     }
-    for (const team of [m.teamA, m.teamB]) {
-      const key = [...team].sort().join('|');
-      pairCount.set(key, (pairCount.get(key) ?? 0) + 1);
+  });
+
+  // 目的2: 自分が出ていない間に行われた試合数の最大（セッション末尾の待ちも数える）
+  let maxIdle = 0;
+  for (const p of players) {
+    const idxs = appearances.get(p.id)!;
+    let prev = -1;
+    for (const idx of idxs) {
+      maxIdle = Math.max(maxIdle, idx - prev - 1);
+      prev = idx;
     }
+    maxIdle = Math.max(maxIdle, history.length - prev - 1);
   }
 
-  const games = players.map(p => p.gamesPlayed);
-  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-
-  // 試合をした人だけを対象に「最多相手 / 自分の試合数」を平均する
+  // 目的6: 試合をした人だけを対象に「最多相手 / 自分の試合数」を平均する
   const shares = players
     .filter(p => p.gamesPlayed > 0)
     .map(p => {
@@ -247,14 +283,19 @@ function runOnce(
       return counts.length ? Math.max(...counts) / p.gamesPlayed : 0;
     });
 
+  const games = players.map(p => p.gamesPlayed);
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+
   return {
-    separation: history.length ? extremeMatches / history.length : 0,
-    trueGap: history.length ? gapSum / history.length : 0,
     gamesSpread: Math.max(...games) - Math.min(...games),
-    rotation: mean(players.map(p => courtsSeen.get(p.id)!.size)),
-    distinctMates: mean(players.map(p => matesSeen.get(p.id)!.size)),
+    maxIdle,
+    wideGapRate: history.length ? wideGapMatches / history.length : 0,
+    trueGap: history.length ? gapSum / history.length : 0,
+    closeness: history.length ? closenessSum / history.length : 0,
+    genderSkewRate: history.length ? genderSkewMatches / history.length : 0,
     maxMateShare: shares.length ? mean(shares) : 0,
-    maxPairRepeat: Math.max(0, ...pairCount.values()),
+    distinctMates: mean(players.map(p => matesSeen.get(p.id)!.size)),
+    rotation: mean(players.map(p => courtsSeen.get(p.id)!.size)),
     matches: history.length,
   };
 }
@@ -272,10 +313,14 @@ const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
   });
 
 console.log(`SEEDS=${SEEDS} ROUNDS=${ROUNDS} NOISE=${NOISES.join(',')}`);
+console.log('  指標は docs/plans/2026-08-05-pairing-goals-and-rewrite.md の目的1〜6に対応');
+console.log('  幅広%=目的3 競り度=目的4 3-1%=目的5 占有率%/共演=目的6 試合数幅=目的1 待ち=目的2');
+console.log('  （共演のみ高いほど良い。他はすべて低いほど良い）');
+console.log('');
 console.log(
-  '  条件      NOISE  分離%   真実力差  試合数幅  回転     共演人数  占有率%  ペア最大  試合数'
+  '  条件      NOISE  幅広%  競り度  3-1%  占有率%  共演   試合数幅  待ち'
 );
-console.log('  ' + '-'.repeat(85));
+console.log('  ' + '-'.repeat(72));
 
 for (const { n, courtCount } of CONDITIONS) {
   for (const noise of NOISES) {
@@ -293,14 +338,13 @@ for (const { n, courtCount } of CONDITIONS) {
 
     console.log(
       `  ${`${n}人${courtCount}C`.padEnd(9)} ${String(noise).padStart(5)}  ` +
-        `${(avg(r => r.separation) * 100).toFixed(1).padStart(5)}  ` +
-        `${avg(r => r.trueGap).toFixed(2).padStart(8)}  ` +
+        `${(avg(r => r.wideGapRate) * 100).toFixed(1).padStart(5)}  ` +
+        `${(avg(r => r.closeness) * 100).toFixed(1).padStart(6)}  ` +
+        `${(avg(r => r.genderSkewRate) * 100).toFixed(1).padStart(4)}  ` +
+        `${(avg(r => r.maxMateShare) * 100).toFixed(1).padStart(7)}  ` +
+        `${avg(r => r.distinctMates).toFixed(2).padStart(5)}  ` +
         `${avg(r => r.gamesSpread).toFixed(2).padStart(8)}  ` +
-        `${avg(r => r.rotation).toFixed(2)}/${courtCount}  ` +
-        `${avg(r => r.distinctMates).toFixed(2).padStart(8)}  ` +
-        `${(avg(r => r.maxMateShare) * 100).toFixed(1).padStart(6)}  ` +
-        `${avg(r => r.maxPairRepeat).toFixed(2).padStart(8)}  ` +
-        `${avg(r => r.matches).toFixed(0).padStart(6)}`
+        `${avg(r => r.maxIdle).toFixed(2).padStart(4)}`
     );
   }
   console.log('');

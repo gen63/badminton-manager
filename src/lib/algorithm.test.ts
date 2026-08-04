@@ -853,42 +853,30 @@ describe('assignCourts - 2コート逐次配置（1コートずつ）の実力�
     practiceStartTime: now - 60 * 60 * 1000,
   };
 
-  it('16人（ロースター13人以上・band=2）: 上位2人と下位2人が同じコートに入らない', () => {
-    // rating 降順で rank0,1 が上位バンド、rank14,15 が下位バンド（16人なので
-    // skillGapHardBand=2）。1コートずつの逐次配置でも同居しないことを確認する。
-    const players: Player[] = Array.from({ length: 16 }, (_, i) =>
-      createRatedPlayer(`p${i}`, `P${i}`, 2000 - i * 50, 0)
+  it('16人: 優先度が高くても、順位差が閾値以上になる組み合わせは選ばれない', () => {
+    // 16人なので閾値は ceil(16 * 2/3) = 11。
+    // このラウンドの待機は p0,p1,p2,p7,p12 の5人だけ（他11人は別コートでプレイ中）。
+    // 5人から4人を選ぶ組は5通りで、p12 を含むものは必ず順位差が11以上になり弾かれる。
+    //   {p0,p1,p2,p7}=7 / {p0,p1,p2,p12}=12 / {p0,p1,p7,p12}=12
+    //   {p0,p2,p7,p12}=12 / {p1,p2,p7,p12}=11
+    // p12 だけ gamesPlayed=0（最優先）にしてあるので、制約が無ければ必ず選ばれる。
+    // バンド方式（上位N人×下位N人だけ禁止）では p1×p12 のような「片方が端でない」
+    // 組を弾けないため、このテストは順位差方式でしか通らない。
+    const allPlayers: Player[] = Array.from({ length: 16 }, (_, i) =>
+      createRatedPlayer(`p${i}`, `P${i}`, 2000 - i * 50, i === 12 ? 0 : 5)
     );
-    const topIds = new Set(['p0', 'p1']);
-    const bottomIds = new Set(['p14', 'p15']);
+    const waitingIds = ['p0', 'p1', 'p2', 'p7', 'p12'];
+    const waiting = allPlayers.filter(p => waitingIds.includes(p.id));
 
-    let history: Match[] = [];
-    for (let round = 0; round < 15; round++) {
-      const assignments = assignCourts(players, 1, history, sequentialOptions);
-      expect(assignments).toHaveLength(1);
+    const assignments = assignCourts(waiting, 1, [], {
+      ...sequentialOptions,
+      allPlayers,
+    });
 
-      for (const a of assignments) {
-        const ids = [...a.teamA, ...a.teamB];
-        const hasTop = ids.some(id => topIds.has(id));
-        const hasBottom = ids.some(id => bottomIds.has(id));
-        expect(hasTop && hasBottom).toBe(false);
-      }
-
-      history = [
-        ...history,
-        ...assignments.map((a, i) => ({
-          id: `r${round}-${i}`,
-          courtId: a.courtId,
-          teamA: a.teamA,
-          teamB: a.teamB,
-          scoreA: 21,
-          scoreB: 15,
-          startedAt: 0,
-          finishedAt: 0,
-          winner: 'A' as const,
-        })),
-      ];
-    }
+    expect(assignments).toHaveLength(1);
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB].sort();
+    expect(ids, `順位差の制約を無視して p12 が選ばれた [${ids.join(', ')}]`)
+      .toEqual(['p0', 'p1', 'p2', 'p7']);
   });
 
   it('11人（MIN_ROSTER_FOR_SKILL_GAP 未満）ではハード制約が効かず、上位と下位が同じコートに入り得る', () => {
@@ -1044,7 +1032,7 @@ describe('assignCourts - 3コート以上の逐次配置の実力分離 (hasTopB
     ).toBeLessThanOrEqual(maxViolations);
   };
 
-  it('21人3コート（band=3）: 序列が上下にドリフトしても上位3人×下位3人の同居がほぼ起きない', () => {
+  it('21人3コート: 序列が上下にドリフトしても、順位が大きく離れた同居がほぼ起きない', () => {
     // 21人なので WIDE_EXTREME_BAND_MIN_ROSTER(=18) 以上 → band=3。
     // p20（最下位）を毎回勝たせてハシゴ式で上位グループへ押し上げる。
     const players = Array.from({ length: 21 }, (_, i) =>
@@ -1689,7 +1677,7 @@ describe('assignCourts - 2コート同時配置の少数派2-2修復 (改善2: r
     expect(genderCounts.sort()).toEqual([0, 2]);
   });
 
-  it('入れ替えると直近試合の重複や実力差の悪化を招く場合は、1-1に崩れたままにする（無理に修復しない）', () => {
+  it('ロースター12人では順位差のハード制約が無く、少数派2-2への修復が成立する', () => {
     const players: Player[] = [
       { id: 'p0', name: 'P0', rating: 1000, gender: 'M', gamesPlayed: 7, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
       { id: 'p1', name: 'P1', rating: 999, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
@@ -1734,12 +1722,18 @@ describe('assignCourts - 2コート同時配置の少数派2-2修復 (改善2: r
       allPlayers: players,
     });
 
-    // 少数派(p2,p10)は1-1に散ったまま（無理な入れ替えで修復されない）
+    // 少数派(p2,p10)が同じコートに集まる（2-2 が作れる）。
+    //
+    // 以前は実力差のハード制約（バンド方式、12人でも適用）が入れ替えを阻んで
+    // 1-1 のままだったが、目的3 のハード制約は `WIDE_RANK_SPAN_MIN_ROSTER`(14) 未満の
+    // 少人数には掛からなくなったため、修復が通るようになった。
+    // bench でも 12人2コートの 3-1 率は 11.4% → 4.6% に改善している
+    // （docs/plans/2026-08-05-pairing-goals-and-rewrite.md）。
     const genderCounts = assignments.map(a => {
       const ids = [...a.teamA, ...a.teamB];
       return ids.filter(id => id === 'p2' || id === 'p10').length;
     });
-    expect(genderCounts.sort()).toEqual([1, 1]);
+    expect(genderCounts.sort()).toEqual([0, 2]);
   });
 });
 
