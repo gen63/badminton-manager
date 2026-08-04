@@ -942,7 +942,17 @@ describe('assignCourts - 2コート逐次配置（1コートずつ）の実力�
 });
 
 describe('assignCourts - 3コート以上の逐次配置の実力分離 (hasTopBottomExtremes)', () => {
-  const now = Date.now();
+  // 優先度スコアは Date.now() と practiceStartTime の差（滞在時間）に依存するため、
+  // 固定しないとテスト実行の実時間でラウンド途中の選出が変わりフレークする。
+  const now = 10_000_000;
+
+  beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   const createRatedPlayer = (id: string, rating: number): Player => ({
     id,
