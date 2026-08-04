@@ -355,19 +355,21 @@ function PerformanceRanking({
   currentUser,
   selectedName,
   onSelect,
+  collapsed,
+  onToggle,
 }: {
   players: PlayerPerformance[];
   ratedMatchCount: number;
   currentUser: string | null;
   selectedName: string | null;
   onSelect: (name: string) => void;
+  collapsed: boolean;
+  onToggle: () => void;
 }) {
-  const [collapsed, setCollapsed] = useState(true);
-
   return (
     <div className="space-y-2">
       <button
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={onToggle}
         aria-expanded={!collapsed}
         className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-colors"
         style={{ backgroundColor: '#e0e7ff', color: '#3730a3' }}
@@ -589,6 +591,19 @@ export function HistoryPage() {
     setUnscoredCollapsed(devMode);
   }, [hasUnscored, devMode]);
 
+  // 強さランキングを開いたときは、未入力・入力済みの試合一覧を畳んで見やすくする
+  const [rankingCollapsed, setRankingCollapsed] = useState(true);
+  const handleToggleRanking = () => {
+    setRankingCollapsed((prev) => {
+      const next = !prev;
+      if (!next) {
+        setUnscoredCollapsed(true);
+        setScoredCollapsed(true);
+      }
+      return next;
+    });
+  };
+
   if (!session) {
     return <Navigate to="/" replace />;
   }
@@ -801,6 +816,8 @@ export function HistoryPage() {
                   onSelect={(name) =>
                     setFilterPlayerName(name === filterPlayerName ? null : name)
                   }
+                  collapsed={rankingCollapsed}
+                  onToggle={handleToggleRanking}
                 />
               )}
 
