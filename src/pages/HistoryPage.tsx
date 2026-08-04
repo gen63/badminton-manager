@@ -182,6 +182,8 @@ function MatchList({
   handleEdit,
   handleDelete,
   canDelete,
+  unscoredCollapsed,
+  setUnscoredCollapsed,
   scoredCollapsed,
   setScoredCollapsed,
   onShortMatchWarning,
@@ -194,6 +196,8 @@ function MatchList({
   handleEdit: (id: string) => void;
   handleDelete: (id: string) => void;
   canDelete: boolean;
+  unscoredCollapsed: boolean;
+  setUnscoredCollapsed: (v: boolean) => void;
   scoredCollapsed: boolean;
   setScoredCollapsed: (v: boolean) => void;
   onShortMatchWarning: () => void;
@@ -201,21 +205,36 @@ function MatchList({
 }) {
   return (
     <div className="space-y-2">
-      {/* 未入力の試合（常に表示） */}
-      {unscoredMatches.map(({ match, matchNumber }) => (
-        <MatchCard
-          key={match.id}
-          match={match}
-          matchNumber={matchNumber}
-          getPlayerName={getPlayerName}
-          getPlayerRating={getPlayerRating}
-          handleEdit={handleEdit}
-          handleDelete={handleDelete}
-          canDelete={canDelete}
-          onShortMatchWarning={onShortMatchWarning}
-          highlightName={highlightName}
-        />
-      ))}
+      {/* 未入力の試合（折りたたみ可能。件数バッジは閉じていても常に表示） */}
+      {unscoredMatches.length > 0 && (
+        <>
+          <button
+            onClick={() => setUnscoredCollapsed(!unscoredCollapsed)}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-bold transition-colors"
+            style={{
+              backgroundColor: '#ffedd5',
+              color: '#c2410c',
+            }}
+          >
+            <span>未入力（{unscoredMatches.length}件）</span>
+            {unscoredCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+          </button>
+          {!unscoredCollapsed && unscoredMatches.map(({ match, matchNumber }) => (
+            <MatchCard
+              key={match.id}
+              match={match}
+              matchNumber={matchNumber}
+              getPlayerName={getPlayerName}
+              getPlayerRating={getPlayerRating}
+              handleEdit={handleEdit}
+              handleDelete={handleDelete}
+              canDelete={canDelete}
+              onShortMatchWarning={onShortMatchWarning}
+              highlightName={highlightName}
+            />
+          ))}
+        </>
+      )}
 
       {/* 入力済みの試合（折りたたみ可能） */}
       {scoredMatches.length > 0 && (
@@ -563,6 +582,13 @@ export function HistoryPage() {
     setScoredCollapsed(hasUnscored);
   }, [hasUnscored]);
 
+  // 未入力アコーディオン: 通常は未入力があれば開いたまま、開発モードでは閉じたままがデフォルト
+  const [unscoredCollapsed, setUnscoredCollapsed] = useState(() => devMode);
+
+  useEffect(() => {
+    setUnscoredCollapsed(devMode);
+  }, [hasUnscored, devMode]);
+
   if (!session) {
     return <Navigate to="/" replace />;
   }
@@ -797,6 +823,8 @@ export function HistoryPage() {
                   handleEdit={handleEdit}
                   handleDelete={handleDelete}
                   canDelete={canDelete}
+                  unscoredCollapsed={unscoredCollapsed}
+                  setUnscoredCollapsed={setUnscoredCollapsed}
                   scoredCollapsed={scoredCollapsed}
                   setScoredCollapsed={setScoredCollapsed}
                   onShortMatchWarning={handleShortMatchWarning}
