@@ -32,6 +32,15 @@ import { assignCourts } from '../src/lib/algorithm';
 import type { Player } from '../src/types/player';
 import type { Match } from '../src/types/match';
 
+/**
+ * 擬似時計。`calculatePriorityScore` / `computeOneGameDelta` は滞在時間の算出に
+ * `Date.now()` を直接呼ぶため、実時刻のままだと同じシードでも実行ごとに結果が
+ * 微妙にぶれる（優先度スコアとペナルティが僅差のとき順位が入れ替わる）。
+ * シミュレーション上の時刻を返すよう差し替えて、計測を完全に決定的にする。
+ */
+let simClock = 0;
+Date.now = () => simClock;
+
 // ---- 決定的乱数 (mulberry32) ----
 function makeRng(seed: number): () => number {
   let a = seed >>> 0;
@@ -133,6 +142,7 @@ function runOnce(
       id => courtBusyUntil.get(id)! <= earliest + MIXED_WINDOW_MS
     );
     now = Math.max(now, ...freeIds.map(id => courtBusyUntil.get(id)!));
+    simClock = now; // 滞在時間が「練習開始(0)からの経過」になるよう擬似時計を進める
 
     for (const id of freeIds) courtOccupants.delete(id);
 
