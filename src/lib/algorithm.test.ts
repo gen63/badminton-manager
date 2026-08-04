@@ -1988,11 +1988,11 @@ describe('assignCourts (シングルス)', () => {
     expect(picked.has('b')).toBe(false);
   });
 
-  it('レーティング近接: 他条件が拮抗時に近いレーティングが選ばれる', () => {
+  it('序列近接: 他条件が拮抗時に序列の近い同士が選ばれる', () => {
     // 全員 gamesPlayed=1, lastPlayedAt=古い (=ペナルティ無し), 未対戦
-    // 候補プールは a(1400), b(1500), c(1550), d(1700)
-    // 最適は b-c (差50) と a-d (差300) で合計350、あるいは a-b と c-d (差100+150=250)
-    // 期待: a-b, c-d ペアの方が rating diff 合計が小さいので選ばれる
+    // 候補プールは a(1400), b(1500), c(1550), d(1700) → 序列は d, c, b, a（順位 0..3）
+    // 順位差の合計は a-b + c-d = 1+1 = 2、b-c + a-d = 1+3 = 4
+    // 期待: 合計の小さい a-b, c-d が選ばれる
     const players = [
       createSinglesPlayer('a', { rating: 1400, gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
       createSinglesPlayer('b', { rating: 1500, gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
@@ -2010,6 +2010,34 @@ describe('assignCourts (シングルス)', () => {
 
     const pairs = assignments.map(a => [a.teamA[0], a.teamB[0]].sort().join('-')).sort();
     expect(pairs).toEqual(['a-b', 'c-d']);
+  });
+
+  it('レート未設定の人がタイブレークのせいでベンチに回されない', () => {
+    // 旧実装は未設定レートを 1500 に正規化してレート差を取っていた。このクラブの
+    // レートは 15〜37 なので差が約 1470 になり、重み 0.02 でもコスト 29.4 と
+    // 総当たり1対戦(10)を超える。結果、レート未設定の人を含むペアが一律に高コスト
+    // になり、候補が余っているとその人だけ出場から外れていた。
+    // 順位差なら buildInitialOrder が未設定者を中位へ挿入するので、この歪みは出ない。
+    const players = [
+      createSinglesPlayer('p0', { rating: 37, gamesPlayed: 2, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      createSinglesPlayer('p1', { rating: 30, gamesPlayed: 2, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      createSinglesPlayer('p2', { rating: 24, gamesPlayed: 2, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      createSinglesPlayer('p3', { rating: 19, gamesPlayed: 2, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      // ヘルパーは rating:1500 を既定にするので、明示的に undefined を渡して未設定にする
+      createSinglesPlayer('u', { rating: undefined, gamesPlayed: 2, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+    ];
+
+    const assignments = assignCourts(players, 2, [], {
+      totalCourtCount: 2,
+      targetCourtIds: [1, 2],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      allPlayers: players,
+      gameMode: 'singles',
+    });
+
+    const playing = assignments.flatMap(a => [a.teamA[0], a.teamB[0]]);
+    expect(playing).toHaveLength(4);
+    expect(playing, `レート未設定の u が外された [${playing.join(', ')}]`).toContain('u');
   });
 
   it('gamesPlayed=0 の初回保証: 試合多い人より優先', () => {

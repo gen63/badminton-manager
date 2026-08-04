@@ -2477,15 +2477,28 @@ export function sortWaitingPlayers(
   );
 }
 
-// シングルスペア評価のソフト重み（優先度: 連続回避 > 総当たり > 試合数均等 > レーティング）
+// シングルスペア評価のソフト重み（優先度: 連続回避 > 総当たり > 試合数均等 > 序列差）
 // W_RECENCY を最強に設定: 直前プレイ者を含むペアは、過去対戦のあるペアよりも避けるべき。
 // minRest=0 時の最大ペナルティ 500 で、実用範囲の balance 差 (~6 試合 → 300) と
 // RR 差 (~4 対戦 → 40) を上回る。2 分以上休めばペナルティ 0 になり、その後は
-// 試合数均等 (1 試合=50) → 総当たり (1 対戦=10) → レーティング (W=0.02) の順に効く。
+// 試合数均等 (1 試合=50) → 総当たり (1 対戦=10) → 序列差 (W=0.02) の順に効く。
 const SINGLES_WEIGHT_RECENCY = 500;
 const SINGLES_WEIGHT_BALANCE = 50;
 const SINGLES_WEIGHT_ROUNDROBIN = 10;
-const SINGLES_WEIGHT_RATING = 0.02;
+/**
+ * 序列差（順位の差）の重み。**レート差ではなく順位差**を使う。
+ *
+ * `player.rating` は人が付けた序列決定用の値で、**間隔が校正されていない**
+ * （`docs/plans/2026-07-29-rating-vocabulary.md` で `ordering` → `skill` に改名した
+ * とおり、順序を決めるための道具）。差を距離として扱うと、実力が突出して低い人が
+ * 1人いるだけでその人絡みのコストだけ跳ね上がる。ダブルス側は `baseRankById`
+ * （順位）で一貫しているので、シングルスも順位差に揃える。
+ *
+ * 21人なら順位差の最大は 20 で、旧実装のレート差の実効範囲（実データで最大 21.67）と
+ * ほぼ同スケールのため重みは 0.02 のまま据え置いた（最大 0.4、総当たり1対戦=10 の
+ * 25分の1でタイブレークとしてのみ効く）。
+ */
+const SINGLES_WEIGHT_RANK_GAP = 0.02;
 // 直前プレイ判定の閾値（分）。これ未満ならペナルティが線形に最大値へ近づく
 const SINGLES_REST_THRESHOLD_MIN = 2;
 
@@ -2495,13 +2508,14 @@ const SINGLES_REST_THRESHOLD_MIN = 2;
  * - 連続回避ペナルティ (W_RECENCY=500、直前プレイ側がいるペアに最大ペナルティ)
  * - 試合数合計 (gamesPlayed合計 * W_BALANCE)
  * - 総当たり (matchCount * W_ROUNDROBIN)
- * - レーティング差 (タイブレーク)
+ * - 序列差 (タイブレーク。レート差ではなく順位差)
  */
 function computeSinglesPairCost(
   a: Player,
   b: Player,
   matchCount: number,
   now: number,
+  rankById: Map<string, number>,
 ): number {
   const totalGames = a.gamesPlayed + b.gamesPlayed;
 
@@ -2513,17 +2527,18 @@ function computeSinglesPairCost(
     ? (SINGLES_REST_THRESHOLD_MIN - minRest) / SINGLES_REST_THRESHOLD_MIN
     : 0;
 
-  // 未設定 (undefined) または 0 は unrated 扱いで 1500 に正規化
-  // （buildInitialOrder の挙動に合わせ、unrated にペナルティが付かないようにする）
-  const ratingA = (a.rating ?? 0) > 0 ? a.rating! : 1500;
-  const ratingB = (b.rating ?? 0) > 0 ? b.rating! : 1500;
-  const ratingDiff = Math.abs(ratingA - ratingB);
+  // 序列（buildInitialOrder の並び）での順位差。unrated は buildInitialOrder が
+  // middle の開始位置へ挿入するので、そのまま順位として扱えばよい。
+  // 序列に載っていない人がいた場合はタイブレークを効かせない（0 扱い）。
+  const rankA = rankById.get(a.id);
+  const rankB = rankById.get(b.id);
+  const rankGap = rankA === undefined || rankB === undefined ? 0 : Math.abs(rankA - rankB);
 
   return (
     SINGLES_WEIGHT_RECENCY * recencyPenalty +
     SINGLES_WEIGHT_BALANCE * totalGames +
     SINGLES_WEIGHT_ROUNDROBIN * matchCount +
-    SINGLES_WEIGHT_RATING * ratingDiff
+    SINGLES_WEIGHT_RANK_GAP * rankGap
   );
 }
 
@@ -2538,6 +2553,7 @@ function findBestSinglesPairing(
   pairCount: number,
   getMatchCount: (id1: string, id2: string) => number,
   now: number,
+  rankById: Map<string, number>,
 ): Player[][] | null {
   if (pairCount === 0) return [];
   if (candidates.length < pairCount * 2) return null;
@@ -2565,7 +2581,7 @@ function findBestSinglesPairing(
     for (let i = 1; i < remaining.length; i++) {
       const partner = remaining[i];
       const cost = computeSinglesPairCost(
-        first, partner, getMatchCount(first.id, partner.id), now
+        first, partner, getMatchCount(first.id, partner.id), now, rankById
       );
       const next: Player[] = [];
       for (let k = 1; k < remaining.length; k++) {
@@ -2642,10 +2658,16 @@ function assignCourtsSingles(
   const candidateCount = Math.min(eligiblePlayers.length, requiredPlayers + 4);
   const candidates = prioritySorted.slice(0, candidateCount);
 
+  // 序列（順位）を作る。ダブルス側の baseRankById と同じく buildInitialOrder を使い、
+  // レートは順序を決めるためだけに参照する。
+  const rankById = new Map(
+    buildInitialOrder(activePlayers).map((id, index) => [id, index] as const)
+  );
+
   // 全列挙でコスト合計最小のペアリングを選択
   const now = Date.now();
   const pairing = findBestSinglesPairing(
-    candidates, targetCourtIds.length, getMatchCount, now
+    candidates, targetCourtIds.length, getMatchCount, now, rankById
   );
 
   if (!pairing) {
