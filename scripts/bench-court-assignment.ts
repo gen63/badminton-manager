@@ -108,6 +108,7 @@ interface RunResult {
   gamesSpread: number;     // 最多試合数 − 最少試合数
   rotation: number;        // 1人あたりの経験コート数の平均
   distinctMates: number;   // 1人あたりの異なる共演相手数の平均
+  maxMateShare: number;    // 「最も多く顔を合わせた相手」が自分の試合に占める割合の平均
   maxPairRepeat: number;   // 同一ペア（味方）の最大再演回数
   matches: number;
 }
@@ -205,10 +206,13 @@ function runOnce(
   let gapSum = 0;
   const courtsSeen = new Map<string, Set<number>>();
   const matesSeen = new Map<string, Set<string>>();
+  // 「誰と何回顔を合わせたか」。最多相手の占有率（体感の "また同じ人" ）に使う
+  const mateCounts = new Map<string, Map<string, number>>();
   const pairCount = new Map<string, number>();
   for (const p of players) {
     courtsSeen.set(p.id, new Set());
     matesSeen.set(p.id, new Set());
+    mateCounts.set(p.id, new Map());
   }
 
   for (const m of history) {
@@ -219,7 +223,12 @@ function runOnce(
 
     for (const id of ids) {
       courtsSeen.get(id)!.add(m.courtId);
-      for (const other of ids) if (other !== id) matesSeen.get(id)!.add(other);
+      const counts = mateCounts.get(id)!;
+      for (const other of ids) {
+        if (other === id) continue;
+        matesSeen.get(id)!.add(other);
+        counts.set(other, (counts.get(other) ?? 0) + 1);
+      }
     }
     for (const team of [m.teamA, m.teamB]) {
       const key = [...team].sort().join('|');
@@ -230,12 +239,21 @@ function runOnce(
   const games = players.map(p => p.gamesPlayed);
   const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
+  // 試合をした人だけを対象に「最多相手 / 自分の試合数」を平均する
+  const shares = players
+    .filter(p => p.gamesPlayed > 0)
+    .map(p => {
+      const counts = [...mateCounts.get(p.id)!.values()];
+      return counts.length ? Math.max(...counts) / p.gamesPlayed : 0;
+    });
+
   return {
     separation: history.length ? extremeMatches / history.length : 0,
     trueGap: history.length ? gapSum / history.length : 0,
     gamesSpread: Math.max(...games) - Math.min(...games),
     rotation: mean(players.map(p => courtsSeen.get(p.id)!.size)),
     distinctMates: mean(players.map(p => matesSeen.get(p.id)!.size)),
+    maxMateShare: shares.length ? mean(shares) : 0,
     maxPairRepeat: Math.max(0, ...pairCount.values()),
     matches: history.length,
   };
@@ -255,9 +273,9 @@ const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
 
 console.log(`SEEDS=${SEEDS} ROUNDS=${ROUNDS} NOISE=${NOISES.join(',')}`);
 console.log(
-  '  条件      NOISE  分離%   真実力差  試合数幅  回転     共演人数  ペア最大  試合数'
+  '  条件      NOISE  分離%   真実力差  試合数幅  回転     共演人数  占有率%  ペア最大  試合数'
 );
-console.log('  ' + '-'.repeat(76));
+console.log('  ' + '-'.repeat(85));
 
 for (const { n, courtCount } of CONDITIONS) {
   for (const noise of NOISES) {
@@ -280,6 +298,7 @@ for (const { n, courtCount } of CONDITIONS) {
         `${avg(r => r.gamesSpread).toFixed(2).padStart(8)}  ` +
         `${avg(r => r.rotation).toFixed(2)}/${courtCount}  ` +
         `${avg(r => r.distinctMates).toFixed(2).padStart(8)}  ` +
+        `${(avg(r => r.maxMateShare) * 100).toFixed(1).padStart(6)}  ` +
         `${avg(r => r.maxPairRepeat).toFixed(2).padStart(8)}  ` +
         `${avg(r => r.matches).toFixed(0).padStart(6)}`
     );
