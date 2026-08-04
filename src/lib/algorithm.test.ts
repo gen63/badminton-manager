@@ -941,6 +941,169 @@ describe('assignCourts - 2コート逐次配置（1コートずつ）の実力�
   });
 });
 
+describe('assignCourts - 3コート以上の逐次配置の実力分離 (hasTopBottomExtremes)', () => {
+  // 優先度スコアは Date.now() と practiceStartTime の差（滞在時間）に依存するため、
+  // 固定しないとテスト実行の実時間でラウンド途中の選出が変わりフレークする。
+  const now = 10_000_000;
+
+  beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const createRatedPlayer = (id: string, rating: number): Player => ({
+    id,
+    name: id.toUpperCase(),
+    gamesPlayed: 0,
+    rating,
+    isResting: false,
+    lastPlayedAt: 0,
+    activatedAt: now - 60 * 60 * 1000,
+  });
+
+  /**
+   * 「弱いチームが必ず勝つ」ラウンドを回しながら、各試合が上位バンドと下位バンドを
+   * 同居させていないことを検証する。
+   *
+   * 弱い側を勝たせるのは `applyStreakSwaps`（ハシゴ式）のドリフトを**双方向に最大化**
+   * するため。上位者は連敗して沈み、下位者は連勝して上がるので、両者が中位グループで
+   * 出会う。2026-08-04 の実セッションで起きたのがこれで、序列20位のメンバーが
+   * 1・2・4位と同じコートに4回入った（`maxDrift = stepSize = 7` なので 18→11 と
+   * 0→7 で中位グループに合流する）。
+   *
+   * ドリフト後の序列で判定する `hasIsolatedExtreme` は全員を「中位の人」として扱うため
+   * この同居を検出できない。素の序列で見る `hasTopBottomExtremes` が3コート以上でも
+   * 効いていないと、このテストは落ちる。
+   *
+   * 同居数の上限で判定するのは、`selectBestFour` の3段階フォールバックがあるため
+   * 0 を保証できないから。候補が枯れたラウンドでは上下同居の制約だけが緩む（これは
+   * 待機者を飛ばさないための設計）。現状は 150 試合中 2 件で、ガードを外すと 8 件になる。
+   */
+  const expectTopBottomMixAtMost = (
+    players: Player[],
+    topIds: Set<string>,
+    bottomIds: Set<string>,
+    rounds: number,
+    maxViolations: number
+  ): void => {
+    const ratingById = new Map(players.map(p => [p.id, p.rating ?? 0]));
+    const state = players.map(p => ({ ...p }));
+    let history: Match[] = [];
+    const violations: string[] = [];
+
+    for (let round = 0; round < rounds; round++) {
+      const assignments = assignCourts(state, 3, history, {
+        totalCourtCount: 3,
+        targetCourtIds: [1, 2, 3],
+        practiceStartTime: now - 60 * 60 * 1000,
+      });
+      expect(assignments).toHaveLength(3);
+
+      for (const a of assignments) {
+        const ids = [...a.teamA, ...a.teamB];
+        const hasTop = ids.some(id => topIds.has(id));
+        const hasBottom = ids.some(id => bottomIds.has(id));
+        if (hasTop && hasBottom) {
+          violations.push(`round ${round}: [${ids.join(', ')}]`);
+        }
+      }
+
+      const sum = (ids: readonly string[]) =>
+        ids.reduce((s, id) => s + (ratingById.get(id) ?? 0), 0);
+
+      history = [
+        ...history,
+        ...assignments.map((a, i) => ({
+          id: `r${round}-${i}`,
+          courtId: a.courtId,
+          teamA: a.teamA,
+          teamB: a.teamB,
+          scoreA: 21,
+          scoreB: 15,
+          startedAt: 0,
+          finishedAt: 0,
+          // レート合計が低い（弱い）側を勝たせる
+          winner: sum(a.teamA) < sum(a.teamB) ? ('A' as const) : ('B' as const),
+        })),
+      ];
+
+      // production と同じく、出場者の試合数を進めて次ラウンドの優先度を動かす
+      const played = new Set(assignments.flatMap(a => [...a.teamA, ...a.teamB]));
+      for (const p of state) {
+        if (played.has(p.id)) p.gamesPlayed += 1;
+      }
+    }
+
+    // 失敗時にどのラウンドの誰が同居したか分かるようにメッセージへ含める
+    expect(
+      violations.length,
+      `上位×下位の同居が ${violations.length} 件:\n${violations.join('\n')}`
+    ).toBeLessThanOrEqual(maxViolations);
+  };
+
+  it('21人3コート（band=3）: 序列が上下にドリフトしても上位3人×下位3人の同居がほぼ起きない', () => {
+    // 21人なので WIDE_EXTREME_BAND_MIN_ROSTER(=18) 以上 → band=3。
+    // p20（最下位）を毎回勝たせてハシゴ式で上位グループへ押し上げる。
+    const players = Array.from({ length: 21 }, (_, i) =>
+      createRatedPlayer(`p${i}`, 2000 - i * 50)
+    );
+    // 50ラウンド=150試合。ガードを外すと8件に増える
+    expectTopBottomMixAtMost(
+      players,
+      new Set(['p0', 'p1', 'p2']),
+      new Set(['p18', 'p19', 'p20']),
+      50,
+      3
+    );
+  });
+
+  it('15人3コート（待機3人）ではフォールバックが働き、上下同居を許してでも3コート配置を続ける', () => {
+    // 12人が同時に出場するため待機は3人しかなく、上下同居を完全に避ける組み合わせが
+    // 存在しないラウンドが出る。そのとき `selectBestFour` の3段階フォールバックが
+    // 上下同居の制約だけを緩めるので、例外にならず配置は続く（待機者を飛ばさない）。
+    // ハード制約が「候補が枯れたら緩む」設計であることを固定するテスト。
+    const players = Array.from({ length: 15 }, (_, i) =>
+      createRatedPlayer(`p${i}`, 2000 - i * 50)
+    );
+    const state = players.map(p => ({ ...p }));
+    let history: Match[] = [];
+
+    for (let round = 0; round < 15; round++) {
+      const assignments = assignCourts(state, 3, history, {
+        totalCourtCount: 3,
+        targetCourtIds: [1, 2, 3],
+        practiceStartTime: now - 60 * 60 * 1000,
+      });
+      // 例外を投げず、毎ラウンド3コート12人を配置しきる
+      expect(assignments).toHaveLength(3);
+      const ids = assignments.flatMap(a => [...a.teamA, ...a.teamB]);
+      expect(new Set(ids).size).toBe(12);
+
+      history = [
+        ...history,
+        ...assignments.map((a, i) => ({
+          id: `r${round}-${i}`,
+          courtId: a.courtId,
+          teamA: a.teamA,
+          teamB: a.teamB,
+          scoreA: 21,
+          scoreB: 15,
+          startedAt: 0,
+          finishedAt: 0,
+          winner: 'A' as const,
+        })),
+      ];
+      const played = new Set(ids);
+      for (const p of state) {
+        if (played.has(p.id)) p.gamesPlayed += 1;
+      }
+    }
+  });
+});
+
 describe('formTeams - MIXペアリング', () => {
   const createGenderedPlayer = (
     id: string, name: string, rating: number, gender: 'M' | 'F'
@@ -1121,6 +1284,83 @@ describe('assignCourts - パートナー/対戦相手重複ペナルティ（sel
     // {p0,p2,p4,p5} が最小コストになり選ばれる（{p0,p1,p4,p5} のような
     // 「パートナーだった」ペアを含む組より優先される）。
     expect(ids).toEqual(['p0', 'p2', 'p4', 'p5']);
+  });
+});
+
+describe('assignCourts - 特定の1人への偏りのペナルティ（集中度）', () => {
+  const NOW = 10_000_000;
+
+  beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const createPlayer = (id: string, rating: number): Player => ({
+    id,
+    name: id,
+    rating,
+    gamesPlayed: 6,
+    isResting: false,
+    lastPlayedAt: 0,
+    activatedAt: NOW - 60 * 60 * 1000,
+  });
+
+  it('合計ベースのペナルティが上限に張り付く場面でも、突出して多く組んだペアを避ける', () => {
+    // 合計ベースの getPairRepeatPenalty は6ペアの回数を合計して上限で頭打ちにするため、
+    // 「1人と6回」と「3ペアが2回ずつ」が同じ評価になる。集中度ペナルティはそのうち
+    // 前者だけを叩く。
+    //
+    // 待機5人（p0〜p4）から4人を選ぶ。履歴は:
+    //   - p0-p1 が6回パートナー（集中。最多ペア=6回）
+    //   - p2/p3/p4 は互いに2回ずつ（分散。合計は同程度だが最多ペア=2回）
+    // 集中度ペナルティが無いと p0+p1 を含む組がそのまま選ばれてしまう。
+    const allPlayers = Array.from({ length: 12 }, (_, i) =>
+      createPlayer(`p${i}`, 1500 - i * 2)
+    );
+    const waitingIds = ['p0', 'p1', 'p2', 'p3', 'p4'];
+    const waiting = allPlayers.filter(p => waitingIds.includes(p.id));
+
+    const history: Match[] = [];
+    const add = (teamA: [string, string], teamB: [string, string]): void => {
+      history.push({
+        id: `h${history.length}`,
+        courtId: 1,
+        teamA,
+        teamB,
+        scoreA: 21,
+        scoreB: 15,
+        winner: 'A',
+        startedAt: 0,
+        finishedAt: 0,
+      });
+    };
+    // 対戦相手は毎回変えて、対戦相手側の重複が効かないようにする
+    const outsiders: [string, string][] = [
+      ['p5', 'p6'], ['p7', 'p8'], ['p9', 'p10'],
+      ['p11', 'p5'], ['p6', 'p7'], ['p8', 'p9'],
+    ];
+    for (const opp of outsiders) add(['p0', 'p1'], opp);
+    for (const pair of [['p2', 'p3'], ['p2', 'p4'], ['p3', 'p4']] as [string, string][]) {
+      for (const opp of [['p5', 'p7'], ['p9', 'p11']] as [string, string][]) add(pair, opp);
+    }
+
+    const assignments = assignCourts(waiting, 1, history, {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      allPlayers,
+    });
+
+    expect(assignments).toHaveLength(1);
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB];
+    // 6回組んだ p0 と p1 が再び同じコートに入らない
+    expect(
+      ids.includes('p0') && ids.includes('p1'),
+      `6回組んだ p0-p1 が再選出された [${ids.join(', ')}]`
+    ).toBe(false);
   });
 });
 
@@ -1748,11 +1988,11 @@ describe('assignCourts (シングルス)', () => {
     expect(picked.has('b')).toBe(false);
   });
 
-  it('レーティング近接: 他条件が拮抗時に近いレーティングが選ばれる', () => {
+  it('序列近接: 他条件が拮抗時に序列の近い同士が選ばれる', () => {
     // 全員 gamesPlayed=1, lastPlayedAt=古い (=ペナルティ無し), 未対戦
-    // 候補プールは a(1400), b(1500), c(1550), d(1700)
-    // 最適は b-c (差50) と a-d (差300) で合計350、あるいは a-b と c-d (差100+150=250)
-    // 期待: a-b, c-d ペアの方が rating diff 合計が小さいので選ばれる
+    // 候補プールは a(1400), b(1500), c(1550), d(1700) → 序列は d, c, b, a（順位 0..3）
+    // 順位差の合計は a-b + c-d = 1+1 = 2、b-c + a-d = 1+3 = 4
+    // 期待: 合計の小さい a-b, c-d が選ばれる
     const players = [
       createSinglesPlayer('a', { rating: 1400, gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
       createSinglesPlayer('b', { rating: 1500, gamesPlayed: 1, lastPlayedAt: NOW - 60 * 60 * 1000 }),
@@ -1770,6 +2010,34 @@ describe('assignCourts (シングルス)', () => {
 
     const pairs = assignments.map(a => [a.teamA[0], a.teamB[0]].sort().join('-')).sort();
     expect(pairs).toEqual(['a-b', 'c-d']);
+  });
+
+  it('レート未設定の人がタイブレークのせいでベンチに回されない', () => {
+    // 旧実装は未設定レートを 1500 に正規化してレート差を取っていた。このクラブの
+    // レートは 15〜37 なので差が約 1470 になり、重み 0.02 でもコスト 29.4 と
+    // 総当たり1対戦(10)を超える。結果、レート未設定の人を含むペアが一律に高コスト
+    // になり、候補が余っているとその人だけ出場から外れていた。
+    // 順位差なら buildInitialOrder が未設定者を中位へ挿入するので、この歪みは出ない。
+    const players = [
+      createSinglesPlayer('p0', { rating: 37, gamesPlayed: 2, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      createSinglesPlayer('p1', { rating: 30, gamesPlayed: 2, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      createSinglesPlayer('p2', { rating: 24, gamesPlayed: 2, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      createSinglesPlayer('p3', { rating: 19, gamesPlayed: 2, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+      // ヘルパーは rating:1500 を既定にするので、明示的に undefined を渡して未設定にする
+      createSinglesPlayer('u', { rating: undefined, gamesPlayed: 2, lastPlayedAt: NOW - 30 * 60 * 1000 }),
+    ];
+
+    const assignments = assignCourts(players, 2, [], {
+      totalCourtCount: 2,
+      targetCourtIds: [1, 2],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      allPlayers: players,
+      gameMode: 'singles',
+    });
+
+    const playing = assignments.flatMap(a => [a.teamA[0], a.teamB[0]]);
+    expect(playing).toHaveLength(4);
+    expect(playing, `レート未設定の u が外された [${playing.join(', ')}]`).toContain('u');
   });
 
   it('gamesPlayed=0 の初回保証: 試合多い人より優先', () => {

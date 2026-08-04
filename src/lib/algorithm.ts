@@ -64,13 +64,53 @@ const OPPONENT_REPEAT_WEIGHT = 0.05;
  * 上限を置くことで「同条件なら重複の少ない組を選ぶ」程度の役割に留める。
  *
  * 導入時は 0.3 だったが、21人3コートの実力分離（上位3×下位3が同じコートに
- * 入る割合、SEEDS=80）が 2.3% → 2.7% に悪化していた。0.3/0.2/0.15/0.1 を
- * 比較した結果、0.2 が上位3×下位3を 2.1%（元の 2.3% 相当まで回復）にしつつ、
- * パートナー多様性（reach.ts の近い実力同士の未共演率）も 31%（0.3 のときと
- * 同じ）を維持できたため 0.2 を採用した。0.15/0.1 はさらに分離を狙ったが
- * 上位3×下位3 が 2.2%/2.6% と逆に悪化し、未共演率も 33% に悪化したため見送った。
+ * 入る割合、SEEDS=80）が 2.3% → 2.7% に悪化したため 0.2 まで下げていた。
+ *
+ * その後 0.6 に引き上げた。上記の「上げると分離が悪化する」制約は、3コート以上に
+ * 素の序列でのハード制約（`hasTopBottomExtremes`）が無く、この上限が実質的に
+ * 分離の最後の砦になっていたことに由来する。ハード制約を入れた
+ * （docs/plans/2026-08-04-skill-band-guard-and-diversity.md）ことで多様性側に
+ * 余裕ができ、0.2/0.4/0.6/0.8 を比較して 0.6 を採用した:
+ * - 共演人数（1人あたりの異なる共演相手数）は 0.6 で頭打ちになる
+ *   （21人3コート NOISE=0 で 13.23 → 13.32 → 13.52 → 13.54）
+ * - 分離の悪化は 0.6 までは +0.3pt 以内に収まる
+ *
+ * ハード制約（層1）→ 実力差ペナルティ `SKILL_GAP_WEIGHT` = 2.0（層2）→ この上限
+ * （層3）の順で効かせる設計なので、**2.0 を超えないこと**が上限値の制約になる。
+ *
+ * この定数は1回の選出では挙動が変わらない（0.2 と 0.6 で同じ4人が選ばれる）
+ * 統計的なノブで、効果はセッション全体の集計に現れる。回帰の検出は
+ * `scripts/bench-court-assignment.ts` が担う。
  */
-const PAIR_REPEAT_PENALTY_CAP = 0.2;
+const PAIR_REPEAT_PENALTY_CAP = 0.6;
+/**
+ * 「特定の1人に偏っている」ことへのペナルティの重み（oneGameDelta 単位）。
+ *
+ * `PAIR_REPEAT_PENALTY_CAP` の方は6ペアの回数を**合計**して上限を掛けるため、
+ * 「1人と4回、他5ペアは0回」と「6ペアが均等に0〜1回」が同じ評価になってしまう。
+ * 避けたいのは前者だけなので、6ペアのうち**最も顔を合わせている**ペアの回数に
+ * 対して別枠でペナルティを掛ける。均等に散っている組には加算されない。
+ *
+ * 実データ（2026-08-04、21人44試合）では21人中19人で「最多相手の回数」が
+ * 共演相手に均等配分した場合の上限を超えていた（美玖×あすか 6回 / 均等なら3回、
+ * げん×りょーや 4回 / 均等なら2回）。合計ベースの上限をいくら上げても、また
+ * 未共演ペアに段差を付けても、この偏りは検出できない
+ * （docs/plans/2026-08-04-skill-band-guard-and-diversity.md の変更3・4）。
+ *
+ * 順位もレートも使わず履歴だけで決まるため、手動レートの間隔が校正されていない
+ * ことに影響されない。
+ */
+const PAIR_CONCENTRATION_WEIGHT = 0.1;
+/**
+ * 集中度ペナルティの上限。`PAIR_REPEAT_PENALTY_CAP` とは別枠で加算されるため、
+ * 層3の合計は最大 0.6 + 0.6 = 1.2 で `SKILL_GAP_WEIGHT`(2.0) を越えない。
+ *
+ * `WEIGHT = 0.1` との組で 6 回目の共演まで効き続ける。0.4 にすると 4 回で飽和し、
+ * 実データにあった「美玖×あすか 6回」の 5・6 回目が無料になってしまう。
+ * bench 上も 0.4 → 0.6 で分離のコストは増えず占有率だけ僅かに下がった
+ * （21人3コート NOISE=0: 45.3% → 45.2%）。
+ */
+const PAIR_CONCENTRATION_CAP = 0.6;
 /** 性別バランスで入れ替える際、待ち時間差がこの試合数未満なら入れ替えてよい */
 const GENDER_SWAP_FAIRNESS_LIMIT = 2;
 /**
@@ -731,6 +771,15 @@ const SEQUENTIAL_EXTREME_BAND = 2;
 const SEQUENTIAL_EXTREME_BAND_MIN_ROSTER = 1;
 
 /**
+ * 3コート以上の逐次配置で、バンド幅を `EXTREME_BAND`（3人）まで広げる最小人数。
+ * これ未満は `SEQUENTIAL_EXTREME_BAND`（2人）に留める。15人3コートで band=3 に
+ * すると上下バンドがロースターの 40% を占め、分離の改善に対して試合数幅の悪化
+ * （+0.26）が見合わないため。18人以上なら悪化は +0.1 未満に収まる。
+ * 計測: docs/plans/2026-08-04-skill-band-guard-and-diversity.md
+ */
+const WIDE_EXTREME_BAND_MIN_ROSTER = 18;
+
+/**
  * 実力最上位グループと最下位グループが同じコートに同居していないか
  * （3人ずつ・全体が MIN_ROSTER_FOR_SKILL_GAP 人以上のときだけ判定）。
  * `splitBestTwoCourts` でハード制約として使う。
@@ -1284,15 +1333,25 @@ function getPairRepeatPenalty(
 ): number {
   let partnerTotal = 0;
   let opponentTotal = 0;
+  // 6ペアのうち最も顔を合わせている回数（パートナー・対戦相手を区別せず合算）
+  let maxEncounters = 0;
   for (let i = 0; i < comboIds.length; i++) {
     for (let j = i + 1; j < comboIds.length; j++) {
       const key = pairKey(comboIds[i], comboIds[j]);
-      partnerTotal += pairCounts.partner.get(key) ?? 0;
-      opponentTotal += pairCounts.opponent.get(key) ?? 0;
+      const partnerCount = pairCounts.partner.get(key) ?? 0;
+      const opponentCount = pairCounts.opponent.get(key) ?? 0;
+      partnerTotal += partnerCount;
+      opponentTotal += opponentCount;
+      const encounters = partnerCount + opponentCount;
+      if (encounters > maxEncounters) maxEncounters = encounters;
     }
   }
   const raw = PARTNER_REPEAT_WEIGHT * partnerTotal + OPPONENT_REPEAT_WEIGHT * opponentTotal;
-  return oneGameDelta * Math.min(raw, PAIR_REPEAT_PENALTY_CAP);
+  // 合計ベースの重複ペナルティと、特定の1人への偏りのペナルティを別枠で加算する
+  return oneGameDelta * (
+    Math.min(raw, PAIR_REPEAT_PENALTY_CAP) +
+    Math.min(PAIR_CONCENTRATION_WEIGHT * maxEncounters, PAIR_CONCENTRATION_CAP)
+  );
 }
 
 /**
@@ -1416,21 +1475,35 @@ function selectBestFour(
     return true;
   };
 
-  // 2コートの逐次配置（1コートずつ選出するこの経路）でも、同時配置経路
+  // 逐次配置（1コートずつ選出するこの経路）でも、同時配置経路
   // （`splitBestTwoCourts`）と同じ `hasTopBottomExtremes` で上位×下位の同居を
-  // ハードに弾く。3コート以上は `hasIsolatedExtreme`（`isValidBase` 側）が
-  // 既に同種の役割を担っているため対象外（挙動を変えない）。`baseRankById` が
-  // 無い呼び出しでは従来どおり判定しない。
+  // ハードに弾く。`baseRankById` が無い呼び出しでは従来どおり判定しない。
+  //
+  // 3コート以上でも適用する。`isValidBase` 側の `hasIsolatedExtreme` は
+  // `groupPlayers3Court` の出力＝**ハシゴ式（`applyStreakSwaps`）適用後**の序列で
+  // 判定するため、勝利で上位グループへ移動した下位者は「上位の人」として扱われ、
+  // 上位×下位の同居を検出できない。素の序列（`baseRankById`）で見る
+  // `hasTopBottomExtremes` はハシゴ式の出力に依存しないので、この抜けを塞ぐ。
+  // ソフトな `getSkillGapPenalty` も素の序列で見るが、グループ内の全候補が同程度の
+  // ペナルティを負うため順位づけに差がつかず、単独では機能しない。
+  // 詳細: docs/plans/2026-08-04-skill-band-guard-and-diversity.md
   //
   // バンド幅は `splitBestTwoCourts`（同時配置）の 3 人固定とは異なり、人数に応じて
   // 狭める（`SEQUENTIAL_EXTREME_BAND` / `SEQUENTIAL_EXTREME_BAND_MIN_ROSTER`）。
   // 逐次配置は「候補プールから優先度順に 1 コート 4 人を選ぶ」経路のため、同時配置
   // （8 人の行き先を同時に決め、コート間で動かすだけ）と違って制約が人の選出そのものを
   // 弾き、待たされている人を飛ばしてしまう。
-  const hasSkillGapHardConstraint = totalCourtCount === 2 && !!baseRankById;
-  const skillGapHardBand = baseRankById && baseRankById.size <= MIN_ROSTER_FOR_SKILL_GAP
-    ? SEQUENTIAL_EXTREME_BAND_MIN_ROSTER
-    : SEQUENTIAL_EXTREME_BAND;
+  const hasSkillGapHardConstraint = !!baseRankById;
+  const skillGapHardBand = ((): number => {
+    if (!baseRankById) return SEQUENTIAL_EXTREME_BAND;
+    const rosterSize = baseRankById.size;
+    if (rosterSize <= MIN_ROSTER_FOR_SKILL_GAP) return SEQUENTIAL_EXTREME_BAND_MIN_ROSTER;
+    // 3コート以上かつ十分な人数なら、同時配置と同じ 3 人幅まで広げる。バンドが
+    // ロースターに占める割合が小さいほど、待機者を飛ばす副作用なしに分離を強められる
+    // （15人で band=3 は上下で全体の 40% を占め、試合数幅が目に見えて悪化する）。
+    if (totalCourtCount >= 3 && rosterSize >= WIDE_EXTREME_BAND_MIN_ROSTER) return EXTREME_BAND;
+    return SEQUENTIAL_EXTREME_BAND;
+  })();
 
   const playerScore = (p: Player): number => {
     const base = calculatePriorityScore(p, practiceStartTime, useStayDuration, lateBalance);
@@ -2404,15 +2477,28 @@ export function sortWaitingPlayers(
   );
 }
 
-// シングルスペア評価のソフト重み（優先度: 連続回避 > 総当たり > 試合数均等 > レーティング）
+// シングルスペア評価のソフト重み（優先度: 連続回避 > 総当たり > 試合数均等 > 序列差）
 // W_RECENCY を最強に設定: 直前プレイ者を含むペアは、過去対戦のあるペアよりも避けるべき。
 // minRest=0 時の最大ペナルティ 500 で、実用範囲の balance 差 (~6 試合 → 300) と
 // RR 差 (~4 対戦 → 40) を上回る。2 分以上休めばペナルティ 0 になり、その後は
-// 試合数均等 (1 試合=50) → 総当たり (1 対戦=10) → レーティング (W=0.02) の順に効く。
+// 試合数均等 (1 試合=50) → 総当たり (1 対戦=10) → 序列差 (W=0.02) の順に効く。
 const SINGLES_WEIGHT_RECENCY = 500;
 const SINGLES_WEIGHT_BALANCE = 50;
 const SINGLES_WEIGHT_ROUNDROBIN = 10;
-const SINGLES_WEIGHT_RATING = 0.02;
+/**
+ * 序列差（順位の差）の重み。**レート差ではなく順位差**を使う。
+ *
+ * `player.rating` は人が付けた序列決定用の値で、**間隔が校正されていない**
+ * （`docs/plans/2026-07-29-rating-vocabulary.md` で `ordering` → `skill` に改名した
+ * とおり、順序を決めるための道具）。差を距離として扱うと、実力が突出して低い人が
+ * 1人いるだけでその人絡みのコストだけ跳ね上がる。ダブルス側は `baseRankById`
+ * （順位）で一貫しているので、シングルスも順位差に揃える。
+ *
+ * 21人なら順位差の最大は 20 で、旧実装のレート差の実効範囲（実データで最大 21.67）と
+ * ほぼ同スケールのため重みは 0.02 のまま据え置いた（最大 0.4、総当たり1対戦=10 の
+ * 25分の1でタイブレークとしてのみ効く）。
+ */
+const SINGLES_WEIGHT_RANK_GAP = 0.02;
 // 直前プレイ判定の閾値（分）。これ未満ならペナルティが線形に最大値へ近づく
 const SINGLES_REST_THRESHOLD_MIN = 2;
 
@@ -2422,13 +2508,14 @@ const SINGLES_REST_THRESHOLD_MIN = 2;
  * - 連続回避ペナルティ (W_RECENCY=500、直前プレイ側がいるペアに最大ペナルティ)
  * - 試合数合計 (gamesPlayed合計 * W_BALANCE)
  * - 総当たり (matchCount * W_ROUNDROBIN)
- * - レーティング差 (タイブレーク)
+ * - 序列差 (タイブレーク。レート差ではなく順位差)
  */
 function computeSinglesPairCost(
   a: Player,
   b: Player,
   matchCount: number,
   now: number,
+  rankById: Map<string, number>,
 ): number {
   const totalGames = a.gamesPlayed + b.gamesPlayed;
 
@@ -2440,17 +2527,18 @@ function computeSinglesPairCost(
     ? (SINGLES_REST_THRESHOLD_MIN - minRest) / SINGLES_REST_THRESHOLD_MIN
     : 0;
 
-  // 未設定 (undefined) または 0 は unrated 扱いで 1500 に正規化
-  // （buildInitialOrder の挙動に合わせ、unrated にペナルティが付かないようにする）
-  const ratingA = (a.rating ?? 0) > 0 ? a.rating! : 1500;
-  const ratingB = (b.rating ?? 0) > 0 ? b.rating! : 1500;
-  const ratingDiff = Math.abs(ratingA - ratingB);
+  // 序列（buildInitialOrder の並び）での順位差。unrated は buildInitialOrder が
+  // middle の開始位置へ挿入するので、そのまま順位として扱えばよい。
+  // 序列に載っていない人がいた場合はタイブレークを効かせない（0 扱い）。
+  const rankA = rankById.get(a.id);
+  const rankB = rankById.get(b.id);
+  const rankGap = rankA === undefined || rankB === undefined ? 0 : Math.abs(rankA - rankB);
 
   return (
     SINGLES_WEIGHT_RECENCY * recencyPenalty +
     SINGLES_WEIGHT_BALANCE * totalGames +
     SINGLES_WEIGHT_ROUNDROBIN * matchCount +
-    SINGLES_WEIGHT_RATING * ratingDiff
+    SINGLES_WEIGHT_RANK_GAP * rankGap
   );
 }
 
@@ -2465,6 +2553,7 @@ function findBestSinglesPairing(
   pairCount: number,
   getMatchCount: (id1: string, id2: string) => number,
   now: number,
+  rankById: Map<string, number>,
 ): Player[][] | null {
   if (pairCount === 0) return [];
   if (candidates.length < pairCount * 2) return null;
@@ -2492,7 +2581,7 @@ function findBestSinglesPairing(
     for (let i = 1; i < remaining.length; i++) {
       const partner = remaining[i];
       const cost = computeSinglesPairCost(
-        first, partner, getMatchCount(first.id, partner.id), now
+        first, partner, getMatchCount(first.id, partner.id), now, rankById
       );
       const next: Player[] = [];
       for (let k = 1; k < remaining.length; k++) {
@@ -2569,10 +2658,16 @@ function assignCourtsSingles(
   const candidateCount = Math.min(eligiblePlayers.length, requiredPlayers + 4);
   const candidates = prioritySorted.slice(0, candidateCount);
 
+  // 序列（順位）を作る。ダブルス側の baseRankById と同じく buildInitialOrder を使い、
+  // レートは順序を決めるためだけに参照する。
+  const rankById = new Map(
+    buildInitialOrder(activePlayers).map((id, index) => [id, index] as const)
+  );
+
   // 全列挙でコスト合計最小のペアリングを選択
   const now = Date.now();
   const pairing = findBestSinglesPairing(
-    candidates, targetCourtIds.length, getMatchCount, now
+    candidates, targetCourtIds.length, getMatchCount, now, rankById
   );
 
   if (!pairing) {
