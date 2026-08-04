@@ -1287,6 +1287,83 @@ describe('assignCourts - パートナー/対戦相手重複ペナルティ（sel
   });
 });
 
+describe('assignCourts - 特定の1人への偏りのペナルティ（集中度）', () => {
+  const NOW = 10_000_000;
+
+  beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const createPlayer = (id: string, rating: number): Player => ({
+    id,
+    name: id,
+    rating,
+    gamesPlayed: 6,
+    isResting: false,
+    lastPlayedAt: 0,
+    activatedAt: NOW - 60 * 60 * 1000,
+  });
+
+  it('合計ベースのペナルティが上限に張り付く場面でも、突出して多く組んだペアを避ける', () => {
+    // 合計ベースの getPairRepeatPenalty は6ペアの回数を合計して上限で頭打ちにするため、
+    // 「1人と6回」と「3ペアが2回ずつ」が同じ評価になる。集中度ペナルティはそのうち
+    // 前者だけを叩く。
+    //
+    // 待機5人（p0〜p4）から4人を選ぶ。履歴は:
+    //   - p0-p1 が6回パートナー（集中。最多ペア=6回）
+    //   - p2/p3/p4 は互いに2回ずつ（分散。合計は同程度だが最多ペア=2回）
+    // 集中度ペナルティが無いと p0+p1 を含む組がそのまま選ばれてしまう。
+    const allPlayers = Array.from({ length: 12 }, (_, i) =>
+      createPlayer(`p${i}`, 1500 - i * 2)
+    );
+    const waitingIds = ['p0', 'p1', 'p2', 'p3', 'p4'];
+    const waiting = allPlayers.filter(p => waitingIds.includes(p.id));
+
+    const history: Match[] = [];
+    const add = (teamA: [string, string], teamB: [string, string]): void => {
+      history.push({
+        id: `h${history.length}`,
+        courtId: 1,
+        teamA,
+        teamB,
+        scoreA: 21,
+        scoreB: 15,
+        winner: 'A',
+        startedAt: 0,
+        finishedAt: 0,
+      });
+    };
+    // 対戦相手は毎回変えて、対戦相手側の重複が効かないようにする
+    const outsiders: [string, string][] = [
+      ['p5', 'p6'], ['p7', 'p8'], ['p9', 'p10'],
+      ['p11', 'p5'], ['p6', 'p7'], ['p8', 'p9'],
+    ];
+    for (const opp of outsiders) add(['p0', 'p1'], opp);
+    for (const pair of [['p2', 'p3'], ['p2', 'p4'], ['p3', 'p4']] as [string, string][]) {
+      for (const opp of [['p5', 'p7'], ['p9', 'p11']] as [string, string][]) add(pair, opp);
+    }
+
+    const assignments = assignCourts(waiting, 1, history, {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: NOW - 60 * 60 * 1000,
+      allPlayers,
+    });
+
+    expect(assignments).toHaveLength(1);
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB];
+    // 6回組んだ p0 と p1 が再び同じコートに入らない
+    expect(
+      ids.includes('p0') && ids.includes('p1'),
+      `6回組んだ p0-p1 が再選出された [${ids.join(', ')}]`
+    ).toBe(false);
+  });
+});
+
 describe('assignCourts - 性別ペナルティ', () => {
   const now = Date.now();
 

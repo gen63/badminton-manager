@@ -83,6 +83,34 @@ const OPPONENT_REPEAT_WEIGHT = 0.05;
  * `scripts/bench-court-assignment.ts` が担う。
  */
 const PAIR_REPEAT_PENALTY_CAP = 0.6;
+/**
+ * 「特定の1人に偏っている」ことへのペナルティの重み（oneGameDelta 単位）。
+ *
+ * `PAIR_REPEAT_PENALTY_CAP` の方は6ペアの回数を**合計**して上限を掛けるため、
+ * 「1人と4回、他5ペアは0回」と「6ペアが均等に0〜1回」が同じ評価になってしまう。
+ * 避けたいのは前者だけなので、6ペアのうち**最も顔を合わせている**ペアの回数に
+ * 対して別枠でペナルティを掛ける。均等に散っている組には加算されない。
+ *
+ * 実データ（2026-08-04、21人44試合）では21人中19人で「最多相手の回数」が
+ * 共演相手に均等配分した場合の上限を超えていた（美玖×あすか 6回 / 均等なら3回、
+ * げん×りょーや 4回 / 均等なら2回）。合計ベースの上限をいくら上げても、また
+ * 未共演ペアに段差を付けても、この偏りは検出できない
+ * （docs/plans/2026-08-04-skill-band-guard-and-diversity.md の変更3・4）。
+ *
+ * 順位もレートも使わず履歴だけで決まるため、手動レートの間隔が校正されていない
+ * ことに影響されない。
+ */
+const PAIR_CONCENTRATION_WEIGHT = 0.1;
+/**
+ * 集中度ペナルティの上限。`PAIR_REPEAT_PENALTY_CAP` とは別枠で加算されるため、
+ * 層3の合計は最大 0.6 + 0.6 = 1.2 で `SKILL_GAP_WEIGHT`(2.0) を越えない。
+ *
+ * `WEIGHT = 0.1` との組で 6 回目の共演まで効き続ける。0.4 にすると 4 回で飽和し、
+ * 実データにあった「美玖×あすか 6回」の 5・6 回目が無料になってしまう。
+ * bench 上も 0.4 → 0.6 で分離のコストは増えず占有率だけ僅かに下がった
+ * （21人3コート NOISE=0: 45.3% → 45.2%）。
+ */
+const PAIR_CONCENTRATION_CAP = 0.6;
 /** 性別バランスで入れ替える際、待ち時間差がこの試合数未満なら入れ替えてよい */
 const GENDER_SWAP_FAIRNESS_LIMIT = 2;
 /**
@@ -1305,15 +1333,25 @@ function getPairRepeatPenalty(
 ): number {
   let partnerTotal = 0;
   let opponentTotal = 0;
+  // 6ペアのうち最も顔を合わせている回数（パートナー・対戦相手を区別せず合算）
+  let maxEncounters = 0;
   for (let i = 0; i < comboIds.length; i++) {
     for (let j = i + 1; j < comboIds.length; j++) {
       const key = pairKey(comboIds[i], comboIds[j]);
-      partnerTotal += pairCounts.partner.get(key) ?? 0;
-      opponentTotal += pairCounts.opponent.get(key) ?? 0;
+      const partnerCount = pairCounts.partner.get(key) ?? 0;
+      const opponentCount = pairCounts.opponent.get(key) ?? 0;
+      partnerTotal += partnerCount;
+      opponentTotal += opponentCount;
+      const encounters = partnerCount + opponentCount;
+      if (encounters > maxEncounters) maxEncounters = encounters;
     }
   }
   const raw = PARTNER_REPEAT_WEIGHT * partnerTotal + OPPONENT_REPEAT_WEIGHT * opponentTotal;
-  return oneGameDelta * Math.min(raw, PAIR_REPEAT_PENALTY_CAP);
+  // 合計ベースの重複ペナルティと、特定の1人への偏りのペナルティを別枠で加算する
+  return oneGameDelta * (
+    Math.min(raw, PAIR_REPEAT_PENALTY_CAP) +
+    Math.min(PAIR_CONCENTRATION_WEIGHT * maxEncounters, PAIR_CONCENTRATION_CAP)
+  );
 }
 
 /**
