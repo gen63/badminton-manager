@@ -119,10 +119,18 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     candidates.map(p => [p.id, p.gender] as const)
   );
 
-  // 1. 優先度順にソート（決定的タイブレーク: プレイヤーID辞書順）
+  // 1. 優先度順にソート。
+  //
+  // 同点は**実力順位**で割る。滞在時間ベースの優先度は同時進行のラウンドで同点に
+  // なりやすく、ここを ID の辞書順にすると実力順位と無関係な並びになって、
+  // 「両端だけを選ぶ」ような歪んだ選出が起きる。既存エンジンはタイブレークを持たず
+  // 入力順（＝序列順）で安定ソートされるので、実質的に順位順で割っており、
+  // それに揃える。ID は順位が引き分けたときの最終手段としてのみ使う。
   const sortedCandidates = [...candidates].sort((a, b) => {
     const diff = priorityScoreOf(a) - priorityScoreOf(b);
     if (diff !== 0) return diff;
+    const rankDiff = (rankById.get(a.id) ?? 0) - (rankById.get(b.id) ?? 0);
+    if (rankDiff !== 0) return rankDiff;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 
