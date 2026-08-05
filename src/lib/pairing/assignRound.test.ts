@@ -1,0 +1,261 @@
+import { describe, it, expect } from 'vitest';
+import { assignRoundByObjective } from './assignRound';
+import { computeObjectiveTerms, type CourtPlacement, type PairCounts } from './objective';
+import type { Player } from '../../types/player';
+
+function makePlayer(id: string, overrides: Partial<Player> = {}): Player {
+  return {
+    id,
+    name: id,
+    gamesPlayed: 0,
+    rating: 1500,
+    isResting: false,
+    lastPlayedAt: 0,
+    activatedAt: 0,
+    ...overrides,
+  };
+}
+
+function pairKey(a: string, b: string): string {
+  return [a, b].sort().join(',');
+}
+
+function emptyPairCounts(): PairCounts {
+  return { partner: new Map(), opponent: new Map() };
+}
+
+/** priorityScoreOf: id の数字部分をそのままスコアに使う（p0 が最優先） */
+function priorityScoreOf(p: Player): number {
+  return Number(p.id.replace('p', ''));
+}
+
+function rankByIdFrom(ids: string[]): Map<string, number> {
+  return new Map(ids.map((id, index) => [id, index]));
+}
+
+describe('assignRoundByObjective', () => {
+  it('4人×コート数が必ず配置される', () => {
+    const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2, 3],
+      rankById,
+      rosterSize: 12,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+    });
+
+    expect(result).toHaveLength(3);
+    const allIds = result.flatMap(c => [...c.teamA, ...c.teamB]);
+    expect(new Set(allIds).size).toBe(12); // 重複なし
+    expect(result.map(c => c.courtId).sort()).toEqual([1, 2, 3]);
+  });
+
+  it('同じ入力で必ず同じ出力（決定性）', () => {
+    const candidates = Array.from({ length: 16 }, (_, i) =>
+      makePlayer(`p${i}`, { gender: i % 3 === 0 ? 'F' : 'M' })
+    );
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+    const pairCounts: PairCounts = {
+      partner: new Map([[pairKey('p0', 'p1'), 2]]),
+      opponent: new Map([[pairKey('p2', 'p3'), 1]]),
+    };
+
+    const run = () =>
+      assignRoundByObjective({
+        candidates,
+        courtIds: [1, 2, 3, 4],
+        rankById,
+        rosterSize: 16,
+        priorityScoreOf,
+        pairCounts,
+        pairKeyOf: pairKey,
+        isRecentDuplicate: (ids) => ids.includes('p5') && ids.includes('p6'),
+        wideSpanThreshold: Math.ceil(16 * (2 / 3)),
+        preferGenderMix: false,
+      });
+
+    const a = run();
+    const b = run();
+    expect(a).toEqual(b);
+  });
+
+  it('ハード制約（順位差）を満たす解があるとき、それが選ばれる', () => {
+    // 16人・4コート。優先度順に並べると素直な初期解では順位差が大きい
+    // 組み合わせが生じうるが、閾値を満たす解が必ず存在する人数構成にしてある。
+    const candidates = Array.from({ length: 16 }, (_, i) => makePlayer(`p${i}`));
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+    const wideSpanThreshold = Math.ceil(16 * (2 / 3)); // 11
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2, 3, 4],
+      rankById,
+      rosterSize: 16,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold,
+      preferGenderMix: false,
+    });
+
+    for (const court of result) {
+      const ids = [...court.teamA, ...court.teamB];
+      const ranks = ids.map(id => rankById.get(id)!);
+      const gap = Math.max(...ranks) - Math.min(...ranks);
+      expect(gap).toBeLessThan(wideSpanThreshold);
+    }
+  });
+
+  it('ハード制約（直近重複）を満たす解があるとき、それが選ばれる', () => {
+    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+    // p0,p1,p2,p3 の組み合わせだけを直近重複として禁止する
+    const forbidden = new Set(['p0', 'p1', 'p2', 'p3']);
+    const isRecentDuplicate = (ids: string[]): boolean =>
+      ids.every(id => forbidden.has(id));
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 8,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+    });
+
+    for (const court of result) {
+      const ids = [...court.teamA, ...court.teamB];
+      expect(isRecentDuplicate(ids)).toBe(false);
+    }
+  });
+
+  it('解が存在しないとき例外を投げず、違反最小の解を返す', () => {
+    // 4人しかいないので、全員を1コートに入れざるを得ない。順位差の閾値を極端に
+    // 小さくして、どんな組み合わせでも必ず違反するようにする。
+    const candidates = Array.from({ length: 4 }, (_, i) => makePlayer(`p${i}`));
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+
+    expect(() =>
+      assignRoundByObjective({
+        candidates,
+        courtIds: [1],
+        rankById,
+        rosterSize: 4,
+        priorityScoreOf,
+        pairCounts: emptyPairCounts(),
+        pairKeyOf: pairKey,
+        isRecentDuplicate: () => false,
+        wideSpanThreshold: 1, // 順位差1以上で違反 → 4人いる限り必ず違反する
+        preferGenderMix: false,
+      })
+    ).not.toThrow();
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1],
+      rankById,
+      rosterSize: 4,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: 1,
+      preferGenderMix: false,
+    });
+
+    expect(result).toHaveLength(1);
+    const ids = [...result[0].teamA, ...result[0].teamB];
+    expect(new Set(ids).size).toBe(4);
+  });
+
+  it('全員が直近重複として禁止されていても例外を投げず配置する', () => {
+    const candidates = Array.from({ length: 4 }, (_, i) => makePlayer(`p${i}`));
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1],
+      rankById,
+      rosterSize: 4,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => true, // どの組も必ず違反
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(new Set([...result[0].teamA, ...result[0].teamB]).size).toBe(4);
+  });
+});
+
+describe('computeObjectiveTerms（0〜1に収まること）', () => {
+  it('通常の入力ですべての項が0〜1に収まる', () => {
+    const ids = Array.from({ length: 12 }, (_, i) => `p${i}`);
+    const rankById = rankByIdFrom(ids);
+    const priorityRankById = rankByIdFrom(ids);
+    const genderById = new Map<string, 'M' | 'F' | undefined>(
+      ids.map((id, i) => [id, i % 2 === 0 ? 'M' : 'F'] as const)
+    );
+    const courts: CourtPlacement[] = [
+      { courtId: 1, teamA: ['p0', 'p1'], teamB: ['p2', 'p3'] },
+      { courtId: 2, teamA: ['p4', 'p5'], teamB: ['p6', 'p7'] },
+      { courtId: 3, teamA: ['p8', 'p9'], teamB: ['p10', 'p11'] },
+    ];
+    const pairCounts: PairCounts = {
+      partner: new Map([[pairKey('p0', 'p1'), 20]]), // 極端な値でもクランプされる
+      opponent: new Map([[pairKey('p2', 'p3'), 20]]),
+    };
+
+    const terms = computeObjectiveTerms({
+      courts,
+      benchIds: [],
+      priorityRankById,
+      candidateCount: ids.length,
+      rankById,
+      rosterSize: ids.length,
+      genderById,
+      preferGenderMix: false,
+      pairCounts,
+      pairKeyOf: pairKey,
+    });
+
+    for (const [key, value] of Object.entries(terms)) {
+      expect(value, `${key} は 0〜1 の範囲`).toBeGreaterThanOrEqual(0);
+      expect(value, `${key} は 0〜1 の範囲`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('空コート・空控えでも0〜1に収まる（0除算しない）', () => {
+    const terms = computeObjectiveTerms({
+      courts: [],
+      benchIds: [],
+      priorityRankById: new Map(),
+      candidateCount: 0,
+      rankById: new Map(),
+      rosterSize: 0,
+      genderById: new Map(),
+      preferGenderMix: false,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+    });
+
+    for (const value of Object.values(terms)) {
+      expect(Number.isFinite(value)).toBe(true);
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThanOrEqual(1);
+    }
+  });
+});
