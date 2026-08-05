@@ -146,22 +146,67 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   const selected = sortedCandidates.slice(0, neededCount);
   const bench = sortedCandidates.slice(neededCount).map(p => p.id).sort();
 
-  // 2. 初期解: 優先度順の先頭 4×コート数人を、実力順位で昇順ソートしてから
-  // 先頭ブロックから順にコートへ割り当てる（各コートの順位幅を最小化し、
-  // 初期解の時点でハード制約を満たすようにする）。
-  const rankSortedSelected = [...selected].sort((a, b) => {
-    const rankA = rankById.get(a.id) ?? 0;
-    const rankB = rankById.get(b.id) ?? 0;
-    if (rankA !== rankB) return rankA - rankB;
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
-  const initialCourts: CourtState[] = usedCourtIds.map((courtId, courtIndex) => {
-    const four = rankSortedSelected.slice(courtIndex * 4, courtIndex * 4 + 4);
-    return {
-      courtId,
-      slots: [four[0].id, four[1].id, four[2].id, four[3].id] as CourtState['slots'],
-    };
-  });
+  // 2. 初期解の構築。
+  //
+  // `wideSpanThreshold` が null（14人未満で制約なし）の場合は、優先度順の先頭
+  // 4×コート数人を実力順位で昇順ソートしてから先頭ブロックから順にコートへ
+  // 割り当てる（各コートの順位幅を最小化する）。
+  //
+  // 制約がある場合は、コートを1面ずつ「制約を満たすように」貪欲に埋める:
+  // まだ選ばれていない候補のうち最も優先度が高い人を1人目に置き、残り3人は
+  // 優先度順に見て「そのコートに入れても順位差の制約を破らない」人を先頭から
+  // 採る。足りない場合は制約を無視して優先度順に埋める（局所探索が後で改善する）。
+  let initialCourts: CourtState[];
+  if (wideSpanThreshold === null) {
+    const rankSortedSelected = [...selected].sort((a, b) => {
+      const rankA = rankById.get(a.id) ?? 0;
+      const rankB = rankById.get(b.id) ?? 0;
+      if (rankA !== rankB) return rankA - rankB;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+    initialCourts = usedCourtIds.map((courtId, courtIndex) => {
+      const four = rankSortedSelected.slice(courtIndex * 4, courtIndex * 4 + 4);
+      return {
+        courtId,
+        slots: [four[0].id, four[1].id, four[2].id, four[3].id] as CourtState['slots'],
+      };
+    });
+  } else {
+    const threshold = wideSpanThreshold;
+    const pool = [...sortedCandidates]; // 優先度順。消費した人を都度取り除く。
+    initialCourts = usedCourtIds.map(courtId => {
+      const chosenIndices: number[] = [0];
+      const courtRanks: number[] = [rankById.get(pool[0].id) ?? 0];
+
+      // 制約を満たす範囲で優先度順に3人追加。
+      for (let i = 1; i < pool.length && chosenIndices.length < 4; i++) {
+        const rank = rankById.get(pool[i].id) ?? 0;
+        const gap = Math.max(...courtRanks, rank) - Math.min(...courtRanks, rank);
+        if (gap < threshold) {
+          chosenIndices.push(i);
+          courtRanks.push(rank);
+        }
+      }
+
+      // 制約を満たす人が足りない場合、優先度順に残りを埋める。
+      for (let i = 1; i < pool.length && chosenIndices.length < 4; i++) {
+        if (!chosenIndices.includes(i)) {
+          chosenIndices.push(i);
+        }
+      }
+
+      chosenIndices.sort((a, b) => a - b);
+      const four = chosenIndices.map(i => pool[i]);
+      for (let k = chosenIndices.length - 1; k >= 0; k--) {
+        pool.splice(chosenIndices[k], 1);
+      }
+
+      return {
+        courtId,
+        slots: [four[0].id, four[1].id, four[2].id, four[3].id] as CourtState['slots'],
+      };
+    });
+  }
 
   let state: SearchState = { courts: initialCourts, bench };
 
