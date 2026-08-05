@@ -29,14 +29,24 @@ export interface ObjectiveWeights {
   variety: number;
 }
 
-/** 優先順位（質 > 多様性 > 公平性）をそのまま重みにした既定値 */
+/**
+ * 優先順位（質 > 多様性 > 公平性）をそのまま重みにした既定値。
+ *
+ * 公平性（fairness / waiting）は bench で 0.3 / 0.15 / 0.10 / 0.05 / 0 を比較して 0.15。
+ * 0.3 → 0.15 は質・多様性の**両方**が改善する（21人3コート NOISE=0 で
+ * 競り度 4.0→3.5、3-1 1.2%→0.8%、占有率 46.5%→45.8%、共演 13.12→13.17）ので、
+ * どちらも公平性より上位である以上ここまでは下げてよい。
+ * 0.15 → 0.10 は質・多様性の差が誤差の範囲に収まる一方、試合数幅が 2.95→3.25、
+ * 待ちが 12.64→13.16 と単調に悪化するだけなので採らない。
+ * 計測: docs/plans/2026-08-05-pairing-goals-and-rewrite.md
+ */
 export const DEFAULT_WEIGHTS: ObjectiveWeights = {
   skillGap: 1.0,
   competitive: 1.0,
   gender: 0.8, // 質
   variety: 0.5, // 多様性
-  fairness: 0.3,
-  waiting: 0.3, // 公平性
+  fairness: 0.15,
+  waiting: 0.15, // 公平性
 };
 
 /** パートナー/対戦相手の回数集計（呼び出し側の HistoryCounts.pair と同じ形） */
