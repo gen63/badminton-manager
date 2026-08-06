@@ -144,7 +144,6 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   const usedCourtIds = courtIds.slice(0, usableCourtCount);
 
   const selected = sortedCandidates.slice(0, neededCount);
-  const bench = sortedCandidates.slice(neededCount).map(p => p.id).sort();
 
   // 2. 初期解の構築。
   //
@@ -179,13 +178,20 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       const courtRanks: number[] = [rankById.get(pool[0].id) ?? 0];
 
       // 制約を満たす範囲で優先度順に3人追加。
+      //
+      // 4人目は直近試合の重複（`isRecentDuplicate`）も避ける。局所探索の近傍は
+      // 「出場者⇔控えの1人スワップ」しか無いため、4人中2人を同時に入れ替えないと
+      // 直らない重複は初期解から抜け出せない。順位差と同じく初期解の段階で避ける。
       for (let i = 1; i < pool.length && chosenIndices.length < 4; i++) {
         const rank = rankById.get(pool[i].id) ?? 0;
         const gap = Math.max(...courtRanks, rank) - Math.min(...courtRanks, rank);
-        if (gap < threshold) {
-          chosenIndices.push(i);
-          courtRanks.push(rank);
+        if (gap >= threshold) continue;
+        if (chosenIndices.length === 3) {
+          const members = [...chosenIndices.map(k => pool[k].id), pool[i].id];
+          if (isRecentDuplicate(members)) continue;
         }
+        chosenIndices.push(i);
+        courtRanks.push(rank);
       }
 
       // 制約を満たす人が足りない場合、優先度順に残りを埋める。
@@ -207,6 +213,78 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       };
     });
   }
+
+  // 初期解の直近試合重複を、未配置の候補との1人入れ替えで解消する。
+  //
+  // 局所探索の近傍は「出場者⇔控えの1人スワップ」だけなので、4人中2人を同時に
+  // 入れ替えないと直らない重複は初期解から抜け出せない（辞書式評価は違反を
+  // 増やさないが、減らせない手しか無ければその場に留まる）。順位差の制約と同じく
+  // 初期解の段階で潰しておく。順位差の制約を新たに破る入れ替えは採らない。
+  {
+    const placed = new Set<string>();
+    for (const court of initialCourts) for (const id of court.slots) placed.add(id);
+    const spare = sortedCandidates.filter(p => !placed.has(p.id));
+
+    for (const court of initialCourts) {
+      if (!isRecentDuplicate(courtMembers(court))) continue;
+      const acceptable = (trial: CourtState['slots']): boolean => {
+        if (isRecentDuplicate([...trial])) return false;
+        if (wideSpanThreshold === null) return true;
+        const ranks = trial.map(id => rankById.get(id) ?? 0);
+        return Math.max(...ranks) - Math.min(...ranks) < wideSpanThreshold;
+      };
+      const apply = (trial: CourtState['slots'], slots: number[], picks: number[]): void => {
+        const removed = slots.map(slot => sortedCandidates.find(p => p.id === court.slots[slot])!);
+        court.slots = trial;
+        // 外した人は次のコートの入れ替え候補として控えに戻す
+        picks.forEach((s, k) => { spare[s] = removed[k]; });
+      };
+
+      let fixed = false;
+      // まず1人入れ替え。優先度の低い出場者から試す（公平性への影響を小さくするため）
+      for (let slot = 3; slot >= 0 && !fixed; slot--) {
+        for (let s = 0; s < spare.length && !fixed; s++) {
+          const trial = [...court.slots] as CourtState['slots'];
+          trial[slot] = spare[s].id;
+          if (!acceptable(trial)) continue;
+          apply(trial, [slot], [s]);
+          fixed = true;
+        }
+      }
+      // 1人では直らない場合に2人同時。直近試合と完全に一致する4人は、1人だけ
+      // 外しても残り3人が一致して overlap>=3 のままなので、2人同時でしか解けない。
+      for (let a = 0; a < 4 && !fixed; a++) {
+        for (let b = a + 1; b < 4 && !fixed; b++) {
+          for (let s = 0; s < spare.length && !fixed; s++) {
+            for (let t = s + 1; t < spare.length && !fixed; t++) {
+              const trial = [...court.slots] as CourtState['slots'];
+              trial[a] = spare[s].id;
+              trial[b] = spare[t].id;
+              if (!acceptable(trial)) continue;
+              apply(trial, [a, b], [s, t]);
+              fixed = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 控えは「実際にコートへ配置されなかった人」から求める。
+  //
+  // `sortedCandidates.slice(neededCount)` のように静的に決めてはいけない。
+  // 順位差の制約がある分岐では優先度順の先頭 neededCount 人がそのまま出場するとは
+  // 限らず（制約を満たす人を後ろから拾う）、コートに出た人が控えにも残ってしまう。
+  // その状態で「出場者⇔控え」のスワップが走ると**同一人物が1試合に重複し、
+  // 別の1人が消える**（実測で全試合の10.5%が破損した）。
+  const placedIds = new Set<string>();
+  for (const court of initialCourts) {
+    for (const id of court.slots) placedIds.add(id);
+  }
+  const bench = sortedCandidates
+    .filter(p => !placedIds.has(p.id))
+    .map(p => p.id)
+    .sort();
 
   let state: SearchState = { courts: initialCourts, bench };
 

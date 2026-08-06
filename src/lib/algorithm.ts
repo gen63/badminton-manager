@@ -2230,7 +2230,7 @@ export function assignCourts(
   // docs/plans/2026-08-05-pairing-goals-and-rewrite.md の新設計を別モジュールとして
   // 並走させる。既存の selectBestFour / applyStreakSwaps / groupPlayers3Court /
   // 修復パス群には一切触れない。
-  if (options?.useObjectiveEngine) {
+  if (options?.useObjectiveEngine ?? true) {
     const objectiveBaseRankById = new Map(
       buildInitialOrder(groupingPlayers).map((id, index) => [id, index] as const)
     );
