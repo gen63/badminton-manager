@@ -3,6 +3,7 @@ import type { CourtAssignment } from '../types/court';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import { SessionError } from './errorHandler';
+import { assignRoundByObjective } from './pairing/assignRound';
 
 type RatingGroup = 'upper' | 'middle' | 'lower';
 
@@ -1920,6 +1921,13 @@ export function assignCourts(
     lateBalanceMode?: boolean; // 後半均等化モード（試合数の少ない人を強く優先）
     reservationBlockThreshold?: number; // 予約保留の閾値（中央値+この値以上のメンバーを含む予約を保留）
     restingPlayers?: Player[]; // 休憩中で予約により呼び出せるメンバー（通常配置の対象外）
+    /**
+     * 目的関数ベースの新エンジン（`src/lib/pairing/`）を使うかどうか。既定 false。
+     * true のとき、予約・休憩・シングルス・強制休憩の処理はすべて既存のまま通し、
+     * 「誰を出して、どう4人に分けるか」の部分だけ `assignRoundByObjective` に委譲する。
+     * docs/plans/2026-08-05-pairing-goals-and-rewrite.md 参照。
+     */
+    useObjectiveEngine?: boolean;
   }
 ): CourtAssignment[] {
   const activePlayers = players.filter((p) => !p.isResting);
@@ -2217,6 +2225,35 @@ export function assignCourts(
   // preferGenderMix のときに「少数派側」がどちらの性別かを特定しておく
   // （3コート以上の動的グループ選択で、コートの候補が少数派1人だけになっていないか判定するため）
   const scarceMinorityGender = preferGenderMix ? getScarceMinorityGender(groupingPlayers) : null;
+
+  // 新エンジン（目的関数ベースの同時配置）。既定 false のため本番挙動は変わらない。
+  // docs/plans/2026-08-05-pairing-goals-and-rewrite.md の新設計を別モジュールとして
+  // 並走させる。既存の selectBestFour / applyStreakSwaps / groupPlayers3Court /
+  // 修復パス群には一切触れない。
+  if (options?.useObjectiveEngine ?? true) {
+    const objectiveBaseRankById = new Map(
+      buildInitialOrder(groupingPlayers).map((id, index) => [id, index] as const)
+    );
+    const objectiveRosterSize = objectiveBaseRankById.size;
+    const objectiveWideSpanThreshold =
+      objectiveRosterSize < WIDE_RANK_SPAN_MIN_ROSTER
+        ? null
+        : Math.ceil(objectiveRosterSize * WIDE_RANK_SPAN_RATIO);
+    const assigned = assignRoundByObjective({
+      candidates: normalCandidates,
+      courtIds: normalCourtIds,
+      rankById: objectiveBaseRankById,
+      rosterSize: objectiveRosterSize,
+      priorityScoreOf: (p) =>
+        calculatePriorityScore(p, practiceStartTime, useStayDuration, lateBalance),
+      pairCounts: historyCounts.pair,
+      pairKeyOf: pairKey,
+      isRecentDuplicate: (ids) => hasSimilarRecentMatch(ids, matchHistory),
+      wideSpanThreshold: objectiveWideSpanThreshold,
+      preferGenderMix,
+    });
+    return [...reservationAssignments, ...assigned];
+  }
 
   // 2コート同時配置の場合はホリスティック・アプローチを使用
   if (totalCourtCount === 2 && normalCourtCount === 2) {

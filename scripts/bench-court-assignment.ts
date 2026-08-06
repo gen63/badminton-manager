@@ -128,6 +128,9 @@ interface RunResult {
 
 const MIXED_WINDOW_MS = 60_000; // これ以内に終わるコートは同時配置扱い
 
+// ENGINE=objective で src/lib/pairing/assignRound.ts の新エンジンを使う。既定は既存エンジン。
+const USE_OBJECTIVE_ENGINE = process.env.ENGINE === 'objective';
+
 function runOnce(
   n: number,
   courtCount: number,
@@ -177,6 +180,7 @@ function runOnce(
         practiceStartTime: 0,
         allPlayers: players,
         useStayDurationPriority: true,
+        useObjectiveEngine: USE_OBJECTIVE_ENGINE,
       });
     } catch {
       // insufficient-players など。計測不能な条件として捨てる
@@ -312,7 +316,7 @@ const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
     return { n, courtCount: c };
   });
 
-console.log(`SEEDS=${SEEDS} ROUNDS=${ROUNDS} NOISE=${NOISES.join(',')}`);
+console.log(`SEEDS=${SEEDS} ROUNDS=${ROUNDS} NOISE=${NOISES.join(',')} ENGINE=${USE_OBJECTIVE_ENGINE ? 'objective' : 'legacy'}`);
 console.log('  指標は docs/plans/2026-08-05-pairing-goals-and-rewrite.md の目的1〜6に対応');
 console.log('  幅広%=目的3 競り度=目的4 3-1%=目的5 占有率%/共演=目的6 試合数幅=目的1 待ち=目的2');
 console.log('  （共演のみ高いほど良い。他はすべて低いほど良い）');

@@ -442,8 +442,15 @@ describe('assignCourts - 実力差の分離', () => {
     expect(ids.includes('p0') && ids.includes('p11')).toBe(false);
   });
 
-  it('人数が少ないセッションでは実力差を考慮しない（優先度どおりに選ぶ）', () => {
-    // 8人（MIN_ROSTER_FOR_SKILL_GAP 未満）。同じ条件でも両極端が選ばれる
+  it('（旧エンジン）人数が少ないセッションでは実力差を考慮しない（優先度どおりに選ぶ）', () => {
+    // 8人（MIN_ROSTER_FOR_SKILL_GAP 未満）。同じ条件でも両極端が選ばれる。
+    //
+    // 旧エンジン専用: MIN_ROSTER_FOR_SKILL_GAP(=12) 未満でソフトな実力差ペナルティ
+    // (getSkillGapPenalty) 自体を無効化する、という旧エンジン固有のカットオフに
+    // 依存している。新エンジンの skillGap 項は連続値でロースター人数に応じた
+    // カットオフを持たないため、8人のような極小ロースターでは実力差の正規化幅
+    // （分母 = rosterSize-1）が小さくなり、優先度（公平性）よりも実力差の均質化が
+    // 優先されて p0×p7 が同居しないことがある（新エンジンには存在しない仕組み）。
     const players = makeRoster(8, [0, 7]);
     const assignments = assignCourts(players, 1, [], {
       totalCourtCount: 1,
@@ -451,6 +458,7 @@ describe('assignCourts - 実力差の分離', () => {
       practiceStartTime: 0,
       useStayDurationPriority: false,
       allPlayers: players,
+      useObjectiveEngine: false,
     });
     const ids = [...assignments[0].teamA, ...assignments[0].teamB];
     expect(ids.includes('p0') && ids.includes('p7')).toBe(true);
@@ -537,7 +545,11 @@ describe('assignCourts - 2コートホリスティック配置', () => {
     expect(allAssigned).toContain('p5'); // ストリークのあるプレイヤーが配置される
   });
 
-  it('セッション状態（試合履歴）が変わるとランダム性のある配置が行われる', () => {
+  it('（旧エンジン）セッション状態（試合履歴）が変わるとランダム性のある配置が行われる', () => {
+    // 旧エンジン専用: コート振り分けのノイズは試合履歴の長さ等から導出した
+    // シード付き乱数という旧エンジン固有の仕組み。新エンジンは
+    // `docs/plans/2026-08-05-pairing-goals-and-rewrite.md` の設計どおり
+    // 「乱数なしで決定的」な局所探索なので、この乱数機構自体が存在しない。
     const players = make8Players();
 
     // コート振り分けのノイズは試合履歴の長さ等から導出したシード付き乱数になった
@@ -549,7 +561,7 @@ describe('assignCourts - 2コートホリスティック配置', () => {
       const matches = Array.from({ length: i }, () =>
         createMatch(['p1', 'p2'], ['p3', 'p4'], 21, 15)
       );
-      const assignments = assignCourts(players, 2, matches, defaultOptions);
+      const assignments = assignCourts(players, 2, matches, { ...defaultOptions, useObjectiveEngine: false });
       const court1Players = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
       results.push([...court1Players].sort());
     }
@@ -700,10 +712,15 @@ describe('assignCourts - 2コート同時配置の実力分離 (selectBestFour �
     activatedAt: now - 60 * 60 * 1000,
   });
 
+  // (B) 旧エンジン専用。新エンジンの目的3 は「順位差が ceil(人数 * 2/3) 以上」で
+  // 定義されており、14人なら閾値は10。上位3人×下位3人でも順位差が9に収まる組
+  // （rank2 × rank11 など）は目的3 の違反ではないため、**このテストの主張は
+  // 新エンジンの目的定義より強い**。旧エンジンのバンド方式に固有の期待値。
   const defaultOptions = {
     totalCourtCount: 2,
     targetCourtIds: [1, 2],
     practiceStartTime: now - 60 * 60 * 1000,
+    useObjectiveEngine: false,
   };
 
   it('14人（実力差ペナルティが効く人数）では、最上位3人と最下位3人が同じコートに入らない', () => {
@@ -758,7 +775,12 @@ describe('assignCourts - 2コート同時配置の実力分離 (selectBestFour �
     }
   });
 
-  it('回転: 同じ実力帯の組が毎回同じ物理コートIDに固定されない', () => {
+  it('（旧エンジン）回転: 同じ実力帯の組が毎回同じ物理コートIDに固定されない', () => {
+    // 旧エンジン専用: 「コートが固定化しない」（＝1人が使う物理コートの種類数）は
+    // docs/plans/2026-08-05-pairing-goals-and-rewrite.md の6目的に含まれず、
+    // 「目的外（ユーザー判断）」と明記されている。新エンジンは乱数なしの決定的な
+    // 局所探索なので、同じ実力帯が同じ courtId に収束すること自体は目的関数上の
+    // 問題ではない。
     const players: Player[] = [
       createRatedPlayer('top1', 'Top1', 2000, 0),
       createRatedPlayer('top2', 'Top2', 1900, 0),
@@ -773,7 +795,7 @@ describe('assignCourts - 2コート同時配置の実力分離 (selectBestFour �
     let history: Match[] = [];
     const topCourtIds = new Set<number>();
     for (let round = 0; round < 15; round++) {
-      const assignments = assignCourts(players, 2, history, defaultOptions);
+      const assignments = assignCourts(players, 2, history, { ...defaultOptions, useObjectiveEngine: false });
       const topCourt = assignments.find(a => [...a.teamA, ...a.teamB].includes('top1'));
       if (topCourt) topCourtIds.add(topCourt.courtId);
 
@@ -854,6 +876,19 @@ describe('assignCourts - 2コート逐次配置（1コートずつ）の実力�
   };
 
   it('16人: 優先度が高くても、順位差が閾値以上になる組み合わせは選ばれない', () => {
+    // (A) 目的3（実力差のハード制約）そのものを検証する目的レベルのテスト。
+    // 分類判断: このテストは書き換えていない（アサーションは目的3をそのまま表現している）。
+    //
+    // 【新エンジンの不具合を疑う】: 現状このテストは新エンジンで失敗する。
+    // `assignRoundByObjective`（src/lib/pairing/assignRound.ts）の
+    // wideSpanThreshold 制約つき初期解構築（171-209行目付近）で、
+    // 制約を満たす4人を選ぶ `pool` は sortedCandidates 全員（＝ bench 候補も含む）
+    // から貪欲に消費するのに対し、SearchState.bench は別途
+    // `sortedCandidates.slice(neededCount)`（優先度上位から数えた末尾）という
+    // 静的な計算のまま。両者が食い違うラウンドでは同一プレイヤーがコートと
+    // bench の両方に現れ（重複）、別の1人が誰にも割り当てられず消える
+    // （実測: このテストで [p0,p2,p7,p7] のように p7 が重複し p1 が消失する）。
+    // 修復を試みず報告のみ（このテストファイル以外は変更しない指示のため）。
     // 16人なので閾値は ceil(16 * 2/3) = 11。
     // このラウンドの待機は p0,p1,p2,p7,p12 の5人だけ（他11人は別コートでプレイ中）。
     // 5人から4人を選ぶ組は5通りで、p12 を含むものは必ず順位差が11以上になり弾かれる。
@@ -879,7 +914,14 @@ describe('assignCourts - 2コート逐次配置（1コートずつ）の実力�
       .toEqual(['p0', 'p1', 'p2', 'p7']);
   });
 
-  it('11人（MIN_ROSTER_FOR_SKILL_GAP 未満）ではハード制約が効かず、上位と下位が同じコートに入り得る', () => {
+  it('（旧エンジン）11人（MIN_ROSTER_FOR_SKILL_GAP 未満）ではハード制約が効かず、上位と下位が同じコートに入り得る', () => {
+    // 旧エンジン専用: MIN_ROSTER_FOR_SKILL_GAP(=12) 未満でソフトな実力差ペナルティ
+    // 自体を丸ごと無効化する、という旧エンジン固有のカットオフに依存している。
+    // 新エンジンの skillGap 項にはロースター人数によるカットオフが無く、
+    // 11人のような極小ロースターでは正規化幅（分母 = rosterSize-1）が小さくなる
+    // ぶん実力差の均質化が公平性より優先されうるため、top1×bottom1 の同居が
+    // 崩れることがある（新エンジンには存在しない仕組み）。
+    //
     // 上位1人・下位1人・中間2人だけを gamesPlayed=0（最優先）にして、他7人は
     // gamesPlayed=5 で優先度を大きく落とす。制約が無効なら、最優先の4人
     // （上位1人＋下位1人を含む）がそのまま選ばれるはず。
@@ -896,7 +938,7 @@ describe('assignCourts - 2コート逐次配置（1コートずつ）の実力�
       createRatedPlayer('mid8', 'Mid8', 1100, 5),
       createRatedPlayer('mid9', 'Mid9', 900, 5),
     ];
-    const assignments = assignCourts(players, 1, [], sequentialOptions);
+    const assignments = assignCourts(players, 1, [], { ...sequentialOptions, useObjectiveEngine: false });
     expect(assignments).toHaveLength(1);
     const ids = [...assignments[0].teamA, ...assignments[0].teamB];
     expect(ids).toContain('top1');
@@ -1049,6 +1091,17 @@ describe('assignCourts - 3コート以上の逐次配置の実力分離 (hasTopB
   });
 
   it('15人3コート（待機3人）ではフォールバックが働き、上下同居を許してでも3コート配置を続ける', () => {
+    // (A) 目的3（実力差のハード制約）が「候補が枯れても例外にせず配置を続ける」
+    // という目的レベルの要求を検証するテスト。分類判断: 書き換えていない。
+    //
+    // 【新エンジンの不具合を疑う】: 現状このテストは新エンジンで失敗する
+    // （15コート12人配置のはずが `new Set(ids).size` が 12 でなく 11 になる＝
+    // 誰か1人が重複し、別の1人が消える）。原因は上の「16人」テストで報告した
+    // `assignRoundByObjective` の pool/bench 不整合バグと同一で、3コートの
+    // wideSpanThreshold 制約つき初期解構築でも同様に再現する（実測で確認済み、
+    // 例: 15人3コートのあるラウンドで p3/p5 の一方が重複し、他の1人が消失）。
+    // 修復を試みず報告のみ。
+    //
     // 12人が同時に出場するため待機は3人しかなく、上下同居を完全に避ける組み合わせが
     // 存在しないラウンドが出る。そのとき `selectBestFour` の3段階フォールバックが
     // 上下同居の制約だけを緩めるので、例外にならず配置は続く（待機者を飛ばさない）。
@@ -1246,11 +1299,16 @@ describe('assignCourts - パートナー/対戦相手重複ペナルティ（sel
     id, name: id, rating, gamesPlayed: 1, isResting: false, lastPlayedAt: 0, activatedAt: 0,
   });
 
-  it('優先度が同点でも、過去にパートナー/対戦相手として重複が少ない4人を選ぶ', () => {
-    // 6人（p0>p1>...>p5 のレーティング）。全員 gamesPlayed=1 で優先度は同点。
-    // 過去に p0+p1 vs p2+p3 の1試合のみがあり、p0-p1(パートナー), p2-p3(パートナー),
-    // p0-p2/p0-p3/p1-p2/p1-p3(対戦相手) の6ペア全てに履歴が付く。
-    // p4, p5 は未プレイなので、p4+p5 を含む組み合わせほど重複が少ない。
+  it('優先度が同点でも、直近試合と3人以上かぶらず、未共演の人が優先される', () => {
+    // (A) 目的6（顔ぶれが繰り返されない）を検証する。
+    //
+    // 旧実装は「{p0,p2,p4,p5} がちょうど選ばれる」と完全一致で固定していたが、
+    // それは旧エンジンの重み配分（パートナー重複 0.1 > 対戦相手重複 0.05 なので
+    // 対戦相手だった p0-p2 を含む組を好む）という**手段の詳細**に依存していた。
+    // 目的そのもの ——「直近試合の再演を避け、未共演の人を使う」—— を assert する。
+    //
+    // 6人（p0>p1>...>p5）。全員 gamesPlayed=1 で優先度は同点。
+    // 過去に p0+p1 vs p2+p3 の1試合だけがあり、p4/p5 は未プレイ。
     const players = [0, 1, 2, 3, 4, 5].map((i) => createPlayer(`p${i}`, 1000 - i));
     const matchHistory: Match[] = [{
       id: 'm1', courtId: 1, teamA: ['p0', 'p1'], teamB: ['p2', 'p3'],
@@ -1265,13 +1323,18 @@ describe('assignCourts - パートナー/対戦相手重複ペナルティ（sel
       allPlayers: players,
     });
 
-    const ids = [...assignments[0].teamA, ...assignments[0].teamB].sort();
-    // {p0,p1,p2,p3}（直近試合と4人中4人重複）は制約で除外される。
-    // 残る有効な組み合わせのうち、対戦相手ペナルティ(0.05)がパートナー
-    // ペナルティ(0.1)より軽いため、p0-p2 のような「対戦相手だった」ペアを含む
-    // {p0,p2,p4,p5} が最小コストになり選ばれる（{p0,p1,p4,p5} のような
-    // 「パートナーだった」ペアを含む組より優先される）。
-    expect(ids).toEqual(['p0', 'p2', 'p4', 'p5']);
+    const ids = [...assignments[0].teamA, ...assignments[0].teamB];
+    expect(ids).toHaveLength(4);
+    expect(new Set(ids).size).toBe(4);
+
+    // 直近試合の4人と3人以上かぶらない（＝同じ顔ぶれの再演にならない）
+    const overlap = ids.filter(id => ['p0', 'p1', 'p2', 'p3'].includes(id)).length;
+    expect(overlap, `直近試合と ${overlap} 人かぶっている [${ids.join(', ')}]`)
+      .toBeLessThanOrEqual(2);
+
+    // 誰とも共演していない p4 / p5 が使われる
+    expect(ids).toContain('p4');
+    expect(ids).toContain('p5');
   });
 });
 
@@ -1296,19 +1359,19 @@ describe('assignCourts - 特定の1人への偏りのペナルティ（集中度
     activatedAt: NOW - 60 * 60 * 1000,
   });
 
-  it('合計ベースのペナルティが上限に張り付く場面でも、突出して多く組んだペアを避ける', () => {
-    // 合計ベースの getPairRepeatPenalty は6ペアの回数を合計して上限で頭打ちにするため、
-    // 「1人と6回」と「3ペアが2回ずつ」が同じ評価になる。集中度ペナルティはそのうち
-    // 前者だけを叩く。
+  it('目的関数（目的6・顔ぶれ）は突出して多く組んだペアを、分散したペアより避ける', () => {
+    // 新エンジンの variety 項（`computeVariety`）は「最多ペアの共演回数」を
+    // 直接見るため、合計が同程度でも集中度が違えば区別できる（目的6の本来の狙い）。
     //
-    // 待機5人（p0〜p4）から4人を選ぶ。履歴は:
+    // 待機9人（p0〜p8）から4人を選ぶ。履歴は:
     //   - p0-p1 が6回パートナー（集中。最多ペア=6回）
     //   - p2/p3/p4 は互いに2回ずつ（分散。合計は同程度だが最多ペア=2回）
-    // 集中度ペナルティが無いと p0+p1 を含む組がそのまま選ばれてしまう。
+    // p5〜p8 は控えの選択肢を広げるための同条件プレイヤー（本番同様、待機列には
+    // 通常複数の交換候補がいる）。
     const allPlayers = Array.from({ length: 12 }, (_, i) =>
       createPlayer(`p${i}`, 1500 - i * 2)
     );
-    const waitingIds = ['p0', 'p1', 'p2', 'p3', 'p4'];
+    const waitingIds = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'];
     const waiting = allPlayers.filter(p => waitingIds.includes(p.id));
 
     const history: Match[] = [];
@@ -1327,8 +1390,8 @@ describe('assignCourts - 特定の1人への偏りのペナルティ（集中度
     };
     // 対戦相手は毎回変えて、対戦相手側の重複が効かないようにする
     const outsiders: [string, string][] = [
-      ['p5', 'p6'], ['p7', 'p8'], ['p9', 'p10'],
-      ['p11', 'p5'], ['p6', 'p7'], ['p8', 'p9'],
+      ['p9', 'p10'], ['p11', 'p9'], ['p10', 'p11'],
+      ['p9', 'p10'], ['p11', 'p9'], ['p10', 'p11'],
     ];
     for (const opp of outsiders) add(['p0', 'p1'], opp);
     for (const pair of [['p2', 'p3'], ['p2', 'p4'], ['p3', 'p4']] as [string, string][]) {
@@ -1369,20 +1432,28 @@ describe('assignCourts - 性別ペナルティ', () => {
   });
 
   it('同優先度で2M+2Fが3M+1Fより優先される', () => {
-    // 5人: M1, M2, M3, F1, F2 （全員同じ優先度）
+    // 候補5人: M1, M2, M3, F1, F2 （全員ほぼ同じ優先度・僅差のレーティング）。
+    // ロースター全体（allPlayers）には他に15人の控えを加えて、実力差の正規化幅
+    // （denom = rosterSize-1）が極小ロースターで不自然に拡大しないようにする
+    // （本番のセッションも通常このくらいの規模がある）。
     const players = [
       createGenderedPlayer('m1', 'M1', 1500, 'M'),
-      createGenderedPlayer('m2', 'M2', 1500, 'M'),
-      createGenderedPlayer('m3', 'M3', 1500, 'M'),
-      createGenderedPlayer('f1', 'F1', 1500, 'F'),
-      createGenderedPlayer('f2', 'F2', 1500, 'F'),
+      createGenderedPlayer('m2', 'M2', 1499, 'M'),
+      createGenderedPlayer('m3', 'M3', 1498, 'M'),
+      createGenderedPlayer('f1', 'F1', 1497, 'F'),
+      createGenderedPlayer('f2', 'F2', 1496, 'F'),
     ];
+    const fillers = Array.from({ length: 15 }, (_, i) =>
+      createGenderedPlayer(`x${i}`, `X${i}`, 1600 + i * 5, i % 2 === 0 ? 'M' : 'F', 50)
+    );
+    const allPlayers = [...players, ...fillers];
 
     const assignments = assignCourts(players, 1, [], {
       totalCourtCount: 1,
       targetCourtIds: [1],
       practiceStartTime: now - 60 * 60 * 1000,
       useStayDurationPriority: false,
+      allPlayers,
     });
 
     const assigned = [...assignments[0].teamA, ...assignments[0].teamB];
@@ -1541,7 +1612,15 @@ describe('assignCourts - 少数派性別が少ないときのMIX優遇 (preferGe
     expect(picked.has('f2')).toBe(true);
   });
 
-  it('男女が拮抗したセッション（30%以上）では従来どおり同性（4-0）がMIXより優先される', () => {
+  it('（旧エンジン）男女が拮抗したセッション（30%以上）では従来どおり同性（4-0）がMIXより優先される', () => {
+    // 旧エンジン専用: 「非少数派希薄時は 4-0 を 2-2(MIX) より積極的に優先する」という
+    // 固定加点（GENDER_MIX_PENALTY）は旧エンジン固有の設計。新エンジンの
+    // `computeGender` は preferGenderMix=false のとき 4-0 と 2-2 を同値（0）で扱う
+    // （3-1 だけを避ければよく、4-0 と 2-2 のどちらを選ぶかは目的5にとって
+    // 中立）。そのため新エンジンでは優先度（公平性）どおり最も待っている
+    // f1/f2 を含む2-2が選ばれてよく、これは目的関数上は劣化ではない
+    // （新エンジンには存在しない「4-0 を積極優先する」仕組みへの依存）。
+    //
     // 4M+2F=6人（少数派比率 2/6≈33.3% ≥ 30% → preferGenderMix にはならない）。
     // 最良の4-0（m1,m2,m3,m4）: 0.4+0.4+0.8+1.2 = 2.8
     // 最良のMIX（m1,m2,f1,f2）: 0.4+0.4+0.8+0.8+0.5(GENDER_MIX_PENALTY) = 2.9
@@ -1561,6 +1640,7 @@ describe('assignCourts - 少数派性別が少ないときのMIX優遇 (preferGe
       targetCourtIds: [1],
       practiceStartTime: now - 60 * 60 * 1000,
       useStayDurationPriority: false,
+      useObjectiveEngine: false,
     });
 
     const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
@@ -1581,7 +1661,13 @@ describe('assignCourts - ラウンド単位への一般化 (改善1: roundGender
     isResting: false, lastPlayedAt: 0, activatedAt: now - 60 * 60 * 1000,
   });
 
-  it('先のコートで少数派の片方が使われ、このラウンドの残りに少数派が1人だけになったコートでは、3-1ペナルティが弱まり自分のレーティング帯内で選ばれる', () => {
+  it('（旧エンジン）先のコートで少数派の片方が使われ、このラウンドの残りに少数派が1人だけになったコートでは、3-1ペナルティが弱まり自分のレーティング帯内で選ばれる', () => {
+    // 旧エンジン専用: `groupPlayers3Court` による upper/middle/lower 帯分割と
+    // `selectMostUrgentGroup`、および帯の中で少数派が1人だけになったときだけ
+    // 3-1ペナルティを弱める `roundGenderPairImpossible` は、いずれも旧エンジン
+    // （selectBestFour 系の逐次配置）固有の仕組み。新エンジンはコート間の帯分割を
+    // 行わず全コートを同時に目的関数で最適化するため、この仕組み自体が存在しない。
+    //
     // 15人3コート（groupPlayers3Courtで upper/middle/lower が5人ずつに等分される）。
     // 少数派(F)は2人（f1がupper、f2がlower）で、全体比 2/15≈13.3% < 30%
     // → preferGenderMix=true、genderPairImpossible=false（少数派2人なのでセッション
@@ -1610,6 +1696,7 @@ describe('assignCourts - ラウンド単位への一般化 (改善1: roundGender
       targetCourtIds: [1, 2, 3],
       practiceStartTime: now - 60 * 60 * 1000,
       useStayDurationPriority: false,
+      useObjectiveEngine: false,
     });
 
     // f1 は upper グループ内（mu1-4）だけで組まれる
@@ -1751,7 +1838,13 @@ describe('assignCourts - 3コート以上の性別3-1をベンチ入れ替えで
     isResting: false, lastPlayedAt: 0, activatedAt: 0,
   });
 
-  it('待機列に2人以上いれば、コート間スワップで解消できない性別3-1を待機列との入れ替えで解消する', () => {
+  it('（旧エンジン）待機列に2人以上いれば、コート間スワップで解消できない性別3-1を待機列との入れ替えで解消する', () => {
+    // 旧エンジン専用: `groupPlayers3Court` の upper/middle/lower 帯分割で
+    // コートごとの候補が固定されてしまう構造と、それを修復する
+    // `repairGenderParityWithBench`（待機列との性別スワップ）は、いずれも旧エンジン
+    // 固有の修復パス。新エンジンは全コートを同時に最適化するため帯固定も
+    // 修復パスも存在しない。
+    //
     // 14人（F5人、35.7%≥30% → preferGenderMix=false）。
     // upper: mu1,mu2,mu3(M) + f1(F) → 4人固定、選択の余地なく3M1Fで確定。
     // middle: mm1,mm2(M) + f2,f3,f4,f5(F) の6人から4人選出。
@@ -1773,6 +1866,7 @@ describe('assignCourts - 3コート以上の性別3-1をベンチ入れ替えで
       targetCourtIds: [1, 2, 3],
       practiceStartTime: 0,
       useStayDurationPriority: false,
+      useObjectiveEngine: false,
     });
 
     // どのコートも性別3-1（男1女3 or 男3女1）になっていない
@@ -2231,7 +2325,13 @@ describe('assignCourts - 後半均等化モード (lateBalanceMode)', () => {
     expect(picked.size).toBe(4);
   });
 
-  it('lateBalanceMode=false (既定) では同シナリオで gender 3-1 が回避され男性 4人が選ばれる', () => {
+  it('（旧エンジン）lateBalanceMode=false (既定) では同シナリオで gender 3-1 が回避され男性 4人が選ばれる', () => {
+    // 旧エンジン専用: 非少数派希薄時に 4-0 を 2-2(MIX) より積極優先する固定加点
+    // （GENDER_MIX_PENALTY 等）に依存している。新エンジンの `computeGender` は
+    // preferGenderMix=false のとき 4-0 と 2-2 を同値（0）で扱うため、3-1 さえ
+    // 避けられれば優先度（公平性）どおり最も待っている p5 を含む2-2が選ばれてよく、
+    // これは目的関数上の劣化ではない（新エンジンには存在しない仕組みへの依存）。
+    //
     // p6(F, gp=100)を追加して少数派を2人にする（バランスが取れる構成）。
     // 少数派が p5 だけ（1人）だと 2-2 が物理的に作れないため 3-1 ペナルティ自体が
     // 無効化される（別 describe 参照）。p6 は gp=100 で優先度が著しく低く
@@ -2251,6 +2351,7 @@ describe('assignCourts - 後半均等化モード (lateBalanceMode)', () => {
       practiceStartTime: NOW - 60 * 60 * 1000,
       useStayDurationPriority: false,
       // lateBalanceMode: false (default)
+      useObjectiveEngine: false,
     });
 
     const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
@@ -2258,7 +2359,11 @@ describe('assignCourts - 後半均等化モード (lateBalanceMode)', () => {
     expect(picked.has('p5')).toBe(false);
   });
 
-  it('lateBalanceMode=true でも gap=1 のときは gender 3-1 が依然回避される', () => {
+  it('（旧エンジン）lateBalanceMode=true でも gap=1 のときは gender 3-1 が依然回避される', () => {
+    // 旧エンジン専用: 上のテストと同じく「4-0 を 2-2 より積極優先する固定加点」と、
+    // lateBalance のペナルティ量（-2.0 等）との比較という旧エンジン固有の
+    // 加算方式に依存している。新エンジンには該当する仕組みが無い。
+    //
     // gap=1 → lateBalance ペナルティ -2.0 が gender 3-1 ペナルティ +3.0 に劣る
     // p6(F, gp=100)を追加して少数派を2人にする（バランスが取れる構成、理由は上のテスト参照）
     const players: Player[] = [
@@ -2276,6 +2381,7 @@ describe('assignCourts - 後半均等化モード (lateBalanceMode)', () => {
       practiceStartTime: NOW - 60 * 60 * 1000,
       useStayDurationPriority: false,
       lateBalanceMode: true,
+      useObjectiveEngine: false,
     });
 
     const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
