@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { assignRoundByObjective } from './assignRound';
-import { computeObjectiveTerms, type CourtPlacement, type PairCounts } from './objective';
+import {
+  computeMixSplit,
+  computeObjectiveTerms,
+  type CourtPlacement,
+  type PairCounts,
+} from './objective';
 import type { Player } from '../../types/player';
 
 function makePlayer(id: string, overrides: Partial<Player> = {}): Player {
@@ -257,5 +262,85 @@ describe('computeObjectiveTerms（0〜1に収まること）', () => {
       expect(value).toBeGreaterThanOrEqual(0);
       expect(value).toBeLessThanOrEqual(1);
     }
+  });
+});
+
+describe('computeMixSplit', () => {
+  const court = (
+    teamA: [string, string],
+    teamB: [string, string]
+  ): CourtPlacement => ({ courtId: 1, teamA, teamB });
+
+  /** m0/m1 が男性、f0/f1 が女性 */
+  const genders = new Map<string, 'M' | 'F' | undefined>([
+    ['m0', 'M'],
+    ['m1', 'M'],
+    ['f0', 'F'],
+    ['f1', 'F'],
+    ['x0', undefined],
+  ]);
+
+  it('2-2 を男男 vs 女女に分けたら 1.0', () => {
+    expect(computeMixSplit([court(['m0', 'm1'], ['f0', 'f1'])], genders)).toBe(1);
+    expect(computeMixSplit([court(['f0', 'f1'], ['m0', 'm1'])], genders)).toBe(1);
+  });
+
+  it('2-2 を MIX×MIX に分けたら 0', () => {
+    expect(computeMixSplit([court(['m0', 'f0'], ['m1', 'f1'])], genders)).toBe(0);
+    expect(computeMixSplit([court(['f0', 'm1'], ['m0', 'f1'])], genders)).toBe(0);
+  });
+
+  it('2-2 以外のコートは判定しない', () => {
+    const fourMale = new Map<string, 'M' | 'F' | undefined>([
+      ['m0', 'M'],
+      ['m1', 'M'],
+      ['m2', 'M'],
+      ['m3', 'M'],
+    ]);
+    expect(computeMixSplit([court(['m0', 'm1'], ['m2', 'm3'])], fourMale)).toBe(0);
+
+    const threeOne = new Map<string, 'M' | 'F' | undefined>([
+      ['m0', 'M'],
+      ['m1', 'M'],
+      ['m2', 'M'],
+      ['f0', 'F'],
+    ]);
+    expect(computeMixSplit([court(['m0', 'm1'], ['m2', 'f0'])], threeOne)).toBe(0);
+  });
+
+  it('性別未設定がいるコートは判定しない', () => {
+    expect(computeMixSplit([court(['m0', 'm1'], ['f0', 'x0'])], genders)).toBe(0);
+  });
+});
+
+describe('assignRoundByObjective の性別チーム分け', () => {
+  it('2M2F のコートは男女戦（男男 vs 女女）にせず MIX×MIX に分ける', () => {
+    // 実力順を M, F, F, M にすると competitive（順位和の差）は
+    // 男男 vs 女女（0+3 vs 1+2 = 差0）を最良とし、MIX は最良でも差2。
+    // mixSplit が無ければ男女戦が選ばれる配置。
+    const candidates = [
+      makePlayer('m0', { gender: 'M' }),
+      makePlayer('f0', { gender: 'F' }),
+      makePlayer('f1', { gender: 'F' }),
+      makePlayer('m1', { gender: 'M' }),
+    ];
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1],
+      rankById: rankByIdFrom(['m0', 'f0', 'f1', 'm1']),
+      rosterSize: 4,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+    });
+
+    expect(result).toHaveLength(1);
+    const genderOf = new Map(candidates.map(p => [p.id, p.gender]));
+    const malesInA = result[0].teamA.filter(id => genderOf.get(id) === 'M').length;
+    expect(malesInA).toBe(1); // 各チームが男女1人ずつ = MIX×MIX
   });
 });

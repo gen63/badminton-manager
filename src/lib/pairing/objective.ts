@@ -25,9 +25,19 @@ export interface ObjectiveWeights {
   competitive: number;
   /** 目的5: 性別構成が偏らない */
   gender: number;
+  /** 目的5b: 2-2 のコートを男男 vs 女女（男女戦）に分けない */
+  mixSplit: number;
   /** 目的6: 顔ぶれが繰り返されない */
   variety: number;
 }
+
+/**
+ * `mixSplit` の重み。2-2 のコートは原則 MIX×MIX に分ける（旧エンジンの
+ * `splitIntoTeams` はこれをハード制約にしていた）。ここではソフト制約にして、
+ * 少数派性別が偏った日など逃げ道が要る場面で破綻しないようにしている。
+ * 値は bench で決定（`docs/plans/2026-08-05-pairing-goals-and-rewrite.md`）。
+ */
+const MIX_SPLIT_WEIGHT = 1.0;
 
 /**
  * 優先順位（質 > 多様性 > 公平性）を反映した既定値。
@@ -52,6 +62,9 @@ export interface ObjectiveWeights {
  * 3. `variety` **2.6**: 1.2 では「6回組んだペアを再選出しない」という目的6 の
  *    基本的なケース（`algorithm.test.ts` の集中度テスト）を落とす。集計上の
  *    占有率は良くても、偏りそのものを外すのは筋が悪いので上げた
+ * 4. `mixSplit` **1.0**: 後から追加（→ `MIX_SPLIT_WEIGHT`）。0.5 でも男女戦は
+ *    0.1〜0.2% まで下がるが 0 にはならず、1.0 で全条件 0.0%。0.5 → 1.0 の
+ *    追加コストは無い（競り度・占有率・試合数幅とも誤差範囲）
  *
  * 結果、**質・多様性の全指標で既存エンジンを上回り**、劣るのは試合数幅のみ
  * （21人3コートで 2.16 vs 1.41）。
@@ -59,7 +72,8 @@ export interface ObjectiveWeights {
 export const DEFAULT_WEIGHTS: ObjectiveWeights = {
   skillGap: 1.0,
   competitive: 1.0,
-  gender: 1.6, // 質
+  gender: 1.6,
+  mixSplit: MIX_SPLIT_WEIGHT, // 質
   variety: 2.6, // 多様性
   fairness: 1.5,
   waiting: 1.5, // 公平性
@@ -201,6 +215,31 @@ export function computeGender(
 }
 
 /**
+ * 目的5b: mixSplit — 2-2 のコートが「男男 vs 女女」に分かれていたら 1.0、
+ * MIX×MIX なら 0 の平均。2-2 以外（4-0 / 3-1 / 性別未設定を含む）は判定しない。
+ *
+ * `gender` はコート4人の男女**構成**しか見ないため、2-2 に整えたあとの
+ * チーム分けは `competitive` / `variety` だけで決まってしまう。この項がないと
+ * 男女戦が全試合の 15〜17% で発生する（旧エンジンは 0%）。
+ */
+export function computeMixSplit(
+  courts: CourtPlacement[],
+  genderById: Map<string, 'M' | 'F' | undefined>
+): number {
+  if (courts.length === 0) return 0;
+  const sum = courts.reduce((s, court) => {
+    const genders = courtMembers(court).map(id => genderById.get(id));
+    if (genders.some(g => g !== 'M' && g !== 'F')) return s; // 未設定がいれば判定しない
+    if (genders.filter(g => g === 'M').length !== 2) return s; // 2-2 のみ対象
+    const maleInA =
+      (genderById.get(court.teamA[0]) === 'M' ? 1 : 0) +
+      (genderById.get(court.teamA[1]) === 'M' ? 1 : 0);
+    return s + (maleInA === 1 ? 0 : 1);
+  }, 0);
+  return clamp01(sum / courts.length);
+}
+
+/**
  * 目的6: variety — 各コートで
  * `0.6 * min(1, 最多ペアの共演回数 / 4) + 0.4 * min(1, 6ペアの共演回数合計 / 12)` の平均。
  * 「共演回数」はパートナー回数 + 対戦相手回数。
@@ -241,6 +280,7 @@ export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
     skillGap: computeSkillGap(input.courts, input.rankById, input.rosterSize),
     competitive: computeCompetitive(input.courts, input.rankById, input.rosterSize),
     gender: computeGender(input.courts, input.genderById, input.preferGenderMix),
+    mixSplit: computeMixSplit(input.courts, input.genderById),
     variety: computeVariety(input.courts, input.pairCounts, input.pairKeyOf),
   };
 }
@@ -256,6 +296,7 @@ export function weightedObjective(
     terms.skillGap * weights.skillGap +
     terms.competitive * weights.competitive +
     terms.gender * weights.gender +
+    terms.mixSplit * weights.mixSplit +
     terms.variety * weights.variety
   );
 }
