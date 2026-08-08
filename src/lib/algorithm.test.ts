@@ -1883,12 +1883,15 @@ describe('assignCourts - 3コート以上の性別3-1をベンチ入れ替えで
     expect(f1Mates.includes('f4') || f1Mates.includes('f5')).toBe(true);
   });
 
-  it('待機が1人以下のときはベンチ入れ替えを行わない（性別3-1が残る）', () => {
+  it('（旧エンジン）待機が1人以下のときはベンチ入れ替えを行わない（性別3-1が残る）', () => {
     // 上のテストから待機側の f5 を削り13人にする（M8+F5→M8+F4=13人、
     // F4/13≈30.8%≥30% → preferGenderMix=false のまま）。
     // middleが6人→5人になり、選出後の待機は f4 の1人だけになる。
     // 待機1人だと入れ替え方向が一方向にしか成立せずフェアネスが崩れるため
     // （詳細は repairGenderParityWithBench コメント参照）、意図的に対象外にしている。
+    //
+    // 新エンジンはこの制限を持たず 2-2 まで解消する（`normalizeSplit` 導入後に
+    // 到達するようになった）ため、旧エンジン固定で検証する。
     const players: Player[] = [
       mk('mu1', 'M', 2000, 5), mk('mu2', 'M', 1990, 5), mk('mu3', 'M', 1980, 5), mk('f1', 'F', 1970, 5),
       mk('mm1', 'M', 1900, 1), mk('mm2', 'M', 1890, 1), mk('f2', 'F', 1880, 1), mk('f3', 'F', 1870, 1),
@@ -1901,6 +1904,7 @@ describe('assignCourts - 3コート以上の性別3-1をベンチ入れ替えで
       targetCourtIds: [1, 2, 3],
       practiceStartTime: 0,
       useStayDurationPriority: false,
+      useObjectiveEngine: false,
     });
 
     // f1を含むコートは3-1（男3女1）のまま修復されない

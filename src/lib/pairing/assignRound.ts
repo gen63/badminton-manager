@@ -286,7 +286,62 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     .map(p => p.id)
     .sort();
 
-  let state: SearchState = { courts: initialCourts, bench };
+  // 2b. チーム分けの正規化。
+  //
+  // 目的関数のうちチーム分け（4人をどう2対2に割るか）に依存するのは
+  // `competitive` と `mixSplit` の2つだけで、どちらもコートごとの寄与の平均。
+  // つまり**各コートを独立に最適化すれば全体最適**になるので、探索状態には
+  // 「誰がどのコートか」だけを持たせ、分け方は毎回ここで導出する。
+  //
+  // これを局所探索に任せると、最急降下では「入れ替え → 分け直し」の2手を
+  // またげず、途中の悪い分け方に阻まれて入れ替え自体が却下される
+  // （実測: 少数派2人を同じコートに集める修復が 3-1×2 のまま止まった）。
+  const splitCost = (slots: CourtState['slots']): number => {
+    const rankOf = (id: string): number => rankById.get(id) ?? 0;
+    const diff = Math.abs(
+      rankOf(slots[0]) + rankOf(slots[1]) - rankOf(slots[2]) - rankOf(slots[3])
+    );
+    const competitive = (diff / Math.max(1, rosterSize - 1)) * weights.competitive;
+
+    const genders = slots.map(id => genderById.get(id));
+    const allGendered = genders.every(g => g === 'M' || g === 'F');
+    const isTwoTwo = allGendered && genders.filter(g => g === 'M').length === 2;
+    const maleInA = (genders[0] === 'M' ? 1 : 0) + (genders[1] === 'M' ? 1 : 0);
+    const mixSplit = isTwoTwo && maleInA !== 1 ? weights.mixSplit : 0;
+
+    return competitive + mixSplit;
+  };
+
+  /** コート4人を、コスト最小の分け方に並べ替える（同点は実力順で決定的に選ぶ） */
+  const normalizeSplit = (slots: CourtState['slots']): CourtState['slots'] => {
+    const [a, b, c, d] = [...slots].sort((x, y) => {
+      const rankDiff = (rankById.get(x) ?? 0) - (rankById.get(y) ?? 0);
+      if (rankDiff !== 0) return rankDiff;
+      return x < y ? -1 : x > y ? 1 : 0;
+    });
+    const options: CourtState['slots'][] = [
+      [a, d, b, c],
+      [a, c, b, d],
+      [a, b, c, d],
+    ];
+    let best = options[0];
+    let bestCost = splitCost(best);
+    for (const option of options.slice(1)) {
+      const cost = splitCost(option);
+      if (cost < bestCost) {
+        best = option;
+        bestCost = cost;
+      }
+    }
+    return best;
+  };
+
+  const normalizeState = (s: SearchState): SearchState => {
+    for (const court of s.courts) court.slots = normalizeSplit(court.slots);
+    return s;
+  };
+
+  let state: SearchState = normalizeState({ courts: initialCourts, bench });
 
   const evaluate = (s: SearchState): Evaluation => {
     let violations = 0;
@@ -334,7 +389,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
             const tmp = courtI.slots[slotI];
             courtI.slots[slotI] = courtJ.slots[slotJ];
             courtJ.slots[slotJ] = tmp;
-            yield next;
+            yield normalizeState(next);
           }
         }
       }
@@ -351,26 +406,13 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
           nc.slots[slot] = benchId;
           next.bench[benchIndex] = outgoing;
           next.bench.sort();
-          yield next;
+          yield normalizeState(next);
         }
       }
     }
 
-    // (c) 1つのコート内のチーム分けを変更（4人を2対2に分ける方法は3通り。
-    // 現在の分け方以外の2通りを近傍として提示する）
-    for (const court of courtsSorted) {
-      const [s0, s1, s2, s3] = court.slots;
-      const alternatives: CourtState['slots'][] = [
-        [s0, s2, s1, s3],
-        [s0, s3, s1, s2],
-      ];
-      for (const alt of alternatives) {
-        const next = cloneState(s);
-        const nc = next.courts.find(c => c.courtId === court.courtId)!;
-        nc.slots = alt;
-        yield next;
-      }
-    }
+    // チーム分けを変更するだけの近傍は不要。`normalizeState` が全ての近傍で
+    // 各コートを最適な分け方に揃えるため、探索の途中でも分け方は常に最適。
   }
 
   // 4. 局所探索（最急降下）。改善が無くなるか MAX_ITERATIONS 回で終了。
