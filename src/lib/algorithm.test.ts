@@ -2329,6 +2329,50 @@ describe('assignCourts - 後半均等化モード (lateBalanceMode)', () => {
     expect(picked.size).toBe(4);
   });
 
+  it('待機時間優先モードではスコア減算を行わない（密度の順番が保たれる）', () => {
+    // 9人・2コート（必要8人・余剰1人）。余剰1人だと公平性の窓は不発になるので、
+    // ベンチ1枠を誰が引くかはスコア減算の有無だけで決まる。
+    //
+    // L(遅参加): 試合数2 / 滞在30分  → 密度 0.067（最も高い＝最も優先度が低い）
+    // 他8人:     試合数6 / 滞在120分 → 密度 0.050
+    //
+    // 密度で見れば L が最下位だが、回数で見れば L は gap=4 で最優先。
+    // 減算が効いていると L がコートに入り、密度で最優先の人が弾かれてしまう
+    // （修正前は実際に p6 がベンチに回った）。
+    const START = NOW - 120 * 60 * 1000;
+    const players: Player[] = Array.from({ length: 9 }, (_, i) => {
+      const late = i === 8;
+      return {
+        id: late ? 'L' : `p${i}`,
+        name: late ? 'L' : `P${i}`,
+        gender: i % 2 === 0 ? ('M' as const) : ('F' as const),
+        rating: 40 - i,
+        gamesPlayed: late ? 2 : 6,
+        isResting: false,
+        lastPlayedAt: 0,
+        activatedAt: late ? NOW - 30 * 60 * 1000 : START,
+        operationStatus: { payment: true, roster: true, checkin: true },
+        opsCompletedAt: late ? NOW - 30 * 60 * 1000 : START,
+      };
+    });
+
+    const benchOf = (lateBalanceMode: boolean): string[] => {
+      const assignments = assignCourts(players, 2, [], {
+        totalCourtCount: 2,
+        targetCourtIds: [1, 2],
+        practiceStartTime: START,
+        allPlayers: players,
+        useStayDurationPriority: true,
+        lateBalanceMode,
+      });
+      const picked = new Set(assignments.flatMap(c => [...c.teamA, ...c.teamB]));
+      return players.filter(p => !picked.has(p.id)).map(p => p.id);
+    };
+
+    expect(benchOf(false)).toEqual(['L']);
+    expect(benchOf(true)).toEqual(['L']);
+  });
+
   it('（旧エンジン）lateBalanceMode=false (既定) では同シナリオで gender 3-1 が回避され男性 4人が選ばれる', () => {
     // 旧エンジン専用: 非少数派希薄時に 4-0 を 2-2(MIX) より積極優先する固定加点
     // （GENDER_MIX_PENALTY 等）に依存している。新エンジンの `computeGender` は
