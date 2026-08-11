@@ -122,6 +122,8 @@ export interface ObjectiveInput {
   preferGenderMix: boolean;
   pairCounts: PairCounts;
   pairKeyOf: (a: string, b: string) => string;
+  /** 各候補が「同じコートに入れる相手」の人数。variety の閾値スケールに使う */
+  reachableCountById: Map<string, number>;
 }
 
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
@@ -261,28 +263,51 @@ export function computeMixSplit(
  * 目的6: variety — 各コートで
  * `0.6 * min(1, 最多ペアの共演回数 / 4) + 0.4 * min(1, 6ペアの共演回数合計 / 12)` の平均。
  * 「共演回数」はパートナー回数 + 対戦相手回数。
+ *
+ * 共演回数は**その2人が組める相手数**で割ってから閾値に当てる（`scaleOf`）。
  */
 export function computeVariety(
   courts: CourtPlacement[],
   pairCounts: PairCounts,
-  pairKeyOf: (a: string, b: string) => string
+  pairKeyOf: (a: string, b: string) => string,
+  reachableCountById: Map<string, number>
 ): number {
   if (courts.length === 0) return 0;
   const together = (a: string, b: string): number => {
     const key = pairKeyOf(a, b);
     return (pairCounts.partner.get(key) ?? 0) + (pairCounts.opponent.get(key) ?? 0);
   };
+
+  // 閾値のスケール。序列の端の人は同居できる相手が片側にしかおらず、組める相手数が
+  // 中央の半分程度しかない。同じ回数を回しても共演回数が早く飽和するため、絶対値の
+  // 閾値のままだと「避けようのない繰り返し」を罰することになり、端の人ほど
+  // ベンチに残されてしまう（実測: 端は中央より 0.7〜0.9 試合少なかった）。
+  const reachable = [...reachableCountById.values()].filter(v => v > 0);
+  const avgReachable = reachable.length
+    ? reachable.reduce((a, b) => a + b, 0) / reachable.length
+    : 0;
+  const scaleOf = (a: string, b: string): number => {
+    if (avgReachable <= 0) return 1;
+    const ra = reachableCountById.get(a) ?? avgReachable;
+    const rb = reachableCountById.get(b) ?? avgReachable;
+    const min = Math.min(ra, rb);
+    if (min <= 0) return 1;
+    return Math.max(1, avgReachable / min);
+  };
+
   const sum = courts.reduce((s, court) => {
     const members = courtMembers(court);
-    const pairSums: number[] = [];
+    let maxRatio = 0;
+    let totalRatio = 0;
     for (let i = 0; i < members.length; i++) {
       for (let j = i + 1; j < members.length; j++) {
-        pairSums.push(together(members[i], members[j]));
+        const scale = scaleOf(members[i], members[j]);
+        const ratio = together(members[i], members[j]) / scale;
+        if (ratio > maxRatio) maxRatio = ratio;
+        totalRatio += ratio;
       }
     }
-    const maxPair = pairSums.length ? Math.max(...pairSums) : 0;
-    const total = pairSums.reduce((a, b) => a + b, 0);
-    const term = 0.6 * Math.min(1, maxPair / 4) + 0.4 * Math.min(1, total / 12);
+    const term = 0.6 * Math.min(1, maxRatio / 4) + 0.4 * Math.min(1, totalRatio / 12);
     return s + term;
   }, 0);
   return clamp01(sum / courts.length);
@@ -299,7 +324,12 @@ export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
     competitive: computeCompetitive(input.courts, input.rankById, input.rosterSize),
     gender: computeGender(input.courts, input.genderById, input.preferGenderMix),
     mixSplit: computeMixSplit(input.courts, input.genderById),
-    variety: computeVariety(input.courts, input.pairCounts, input.pairKeyOf),
+    variety: computeVariety(
+      input.courts,
+      input.pairCounts,
+      input.pairKeyOf,
+      input.reachableCountById
+    ),
   };
 }
 

@@ -145,6 +145,18 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   });
 
   const candidateCount = sortedCandidates.length;
+
+  // 各候補が「同じコートに入れる相手」の人数。variety の閾値スケールに使う。
+  const reachableCountById = new Map<string, number>(
+    candidates.map(p => {
+      if (wideSpanThreshold === null) return [p.id, candidates.length - 1] as const;
+      const rank = rankById.get(p.id) ?? 0;
+      const count = candidates.filter(
+        q => q.id !== p.id && Math.abs((rankById.get(q.id) ?? 0) - rank) < wideSpanThreshold
+      ).length;
+      return [p.id, count] as const;
+    })
+  );
   const priorityRankById = new Map<string, number>(
     sortedCandidates.map((p, index) => [p.id, index] as const)
   );
@@ -393,6 +405,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       preferGenderMix,
       pairCounts,
       pairKeyOf,
+      reachableCountById,
     });
     return { violations, objective: weightedObjective(terms, weights) };
   };

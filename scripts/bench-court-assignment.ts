@@ -414,7 +414,8 @@ for (const { n, courtCount } of CONDITIONS) {
         `${(avg(r => r.maxMateShare) * 100).toFixed(1).padStart(7)}  ` +
         `${avg(r => r.distinctMates).toFixed(2).padStart(5)}  ` +
         `${avg(r => r.gamesSpread).toFixed(2).padStart(8)}  ` +
-        `${avg(r => r.maxIdle).toFixed(2).padStart(4)}`
+        `${avg(r => r.maxIdle).toFixed(2).padStart(4)}` +
+        (LATE_JOIN > 0 ? `   ${avg(r => r.lateRatio).toFixed(2)}倍` : '')
     );
   }
   console.log('');

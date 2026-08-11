@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { assignRoundByObjective } from './assignRound';
 import {
   computeMixSplit,
+  computeVariety,
   computeObjectiveTerms,
   type CourtPlacement,
   type PairCounts,
@@ -235,6 +236,7 @@ describe('computeObjectiveTerms（0〜1に収まること）', () => {
       preferGenderMix: false,
       pairCounts,
       pairKeyOf: pairKey,
+      reachableCountById: new Map(ids.map(id => [id, ids.length - 1])),
     });
 
     for (const [key, value] of Object.entries(terms)) {
@@ -255,6 +257,7 @@ describe('computeObjectiveTerms（0〜1に収まること）', () => {
       preferGenderMix: false,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
+      reachableCountById: new Map(),
     });
 
     for (const value of Object.values(terms)) {
@@ -397,5 +400,41 @@ describe('公平性の窓（優先度順から離れすぎない）', () => {
     });
     expect(result).toHaveLength(2);
     expect(new Set(result.flatMap(c => [...c.teamA, ...c.teamB])).size).toBe(8);
+  });
+});
+
+describe('computeVariety の閾値スケール', () => {
+  const courts: CourtPlacement[] = [
+    { courtId: 1, teamA: ['a0', 'a1'], teamB: ['a2', 'a3'] },
+  ];
+  const counts = (n: number): PairCounts => {
+    const partner = new Map<string, number>();
+    const ids = ['a0', 'a1', 'a2', 'a3'];
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) partner.set(pairKey(ids[i], ids[j]), n);
+    }
+    return { partner, opponent: new Map() };
+  };
+
+  it('組める相手が少ない人の共演回数は割り引いて評価する', () => {
+    // 全員が同じ回数（2回）共演している状況。
+    // 組める相手が平均並み（20人）なら満点のペナルティ、
+    // 平均の半分（10人）しかいない人が混じるなら半分に割り引かれる。
+    const average = new Map(['a0', 'a1', 'a2', 'a3'].map(id => [id, 20]));
+    const narrow = new Map(average);
+    narrow.set('a0', 10);
+
+    const wide = computeVariety(courts, counts(2), pairKey, average);
+    const narrowed = computeVariety(courts, counts(2), pairKey, narrow);
+
+    expect(narrowed).toBeLessThan(wide);
+  });
+
+  it('全員の相手数が同じならスケールは掛からない', () => {
+    const same = new Map(['a0', 'a1', 'a2', 'a3'].map(id => [id, 8]));
+    const other = new Map(['a0', 'a1', 'a2', 'a3'].map(id => [id, 30]));
+    expect(computeVariety(courts, counts(3), pairKey, same)).toBe(
+      computeVariety(courts, counts(3), pairKey, other)
+    );
   });
 });
