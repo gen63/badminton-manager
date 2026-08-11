@@ -55,6 +55,8 @@ function makeRng(seed: number): () => number {
 interface BenchPlayer extends Player {
   /** 真の実力順位。0 が最強。評価は常にこちらを使う */
   trueRank: number;
+  /** 遅参加の到着時刻（0 = 最初から在席）。LATE_JOIN で設定 */
+  joinAt: number;
 }
 
 /**
@@ -83,6 +85,7 @@ function makeRoster(n: number, noise: number, rng: () => number): BenchPlayer[] 
       lastPlayedAt: 0,
       activatedAt: 0,
       trueRank: entry.trueRank,
+      joinAt: 0,
     });
   });
   return players;
@@ -118,6 +121,10 @@ interface RunResult {
   closeness: number;       // |真の勝率 − 0.5| の平均（低いほど競っている）
   // 目的5: 性別構成が偏らない
   genderSkewRate: number;  // 3-1 になった試合の割合（低いほど良い）
+  mvfRate: number;         // 目的5b: 男女戦（男男 vs 女女）の割合
+  gamesByTrueRank: number[]; // 実力順位ごとの試合数（序列の端が損をしていないか）
+  lateRatio: number;       // 遅参加者の「在席比例に対する倍率」（1.0 が理想）
+  earlyRatio: number;      // 最初から居る人の同上
   // 目的6: 顔ぶれが繰り返されない
   maxMateShare: number;    // 最多相手が自分の試合に占める割合の平均（低いほど良い）
   distinctMates: number;   // 1人あたりの異なる共演相手数の平均（高いほど良い）
@@ -148,6 +155,19 @@ function runOnce(
   const courtIds = Array.from({ length: courtCount }, (_, i) => i + 1);
   for (const id of courtIds) courtBusyUntil.set(id, 0);
 
+  // 遅参加: 序列の中央付近から LATE_JOIN 人を、練習の 40% 経過時点で合流させる。
+  // 本番と同じ経路（isResting を解除し activatedAt に到着時刻を入れる）を再現する。
+  if (LATE_JOIN > 0) {
+    const joinAt = Math.floor(rounds * 8 * 60_000 * 0.4);
+    const mid = Math.floor(players.length / 2);
+    for (let k = 0; k < LATE_JOIN; k++) {
+      const p = players[(mid + k) % players.length];
+      p.isResting = true;
+      p.joinAt = joinAt;
+      p.activatedAt = joinAt;
+    }
+  }
+
   const targetMatches = rounds * courtCount;
   let now = 0;
   let matchSeq = 0;
@@ -163,10 +183,14 @@ function runOnce(
 
     for (const id of freeIds) courtOccupants.delete(id);
 
+    for (const p of players) {
+      if (p.isResting && now >= p.joinAt) p.isResting = false;
+    }
+
     const busyPlayerIds = new Set<string>();
     for (const ids of courtOccupants.values()) for (const id of ids) busyPlayerIds.add(id);
 
-    const waiting = players.filter(p => !busyPlayerIds.has(p.id));
+    const waiting = players.filter(p => !busyPlayerIds.has(p.id) && !p.isResting);
     if (waiting.length < 4 * freeIds.length) {
       // このベンチは全員が常時待機できる人数で回すため、通常ここには来ない
       if (waiting.length < 4) break;
@@ -224,6 +248,9 @@ function runOnce(
   let gapSum = 0;
   let closenessSum = 0;
   let genderSkewMatches = 0;
+  let twoTwoMatches = 0;
+  let mvfMatches = 0;
+  const gamesByTrueRank = new Array(n).fill(0);
   const courtsSeen = new Map<string, Set<number>>();
   const matesSeen = new Map<string, Set<string>>();
   // 「誰と何回顔を合わせたか」。最多相手の占有率（体感の "また同じ人" ）に使う
@@ -255,7 +282,15 @@ function runOnce(
     const femaleCount = ids.filter(id => byId.get(id)!.gender === 'F').length;
     if (femaleCount === 1 || femaleCount === 3) genderSkewMatches++;
 
+    // 目的5b: 2-2 のうち「男男 vs 女女」（男女戦）になった試合
+    if (femaleCount === 2) {
+      twoTwoMatches++;
+      const femaleInA = m.teamA.filter(id => byId.get(id)!.gender === 'F').length;
+      if (femaleInA !== 1) mvfMatches++;
+    }
+
     for (const id of ids) {
+      gamesByTrueRank[byId.get(id)!.trueRank]++;
       courtsSeen.get(id)!.add(m.courtId);
       appearances.get(id)!.push(matchIndex);
       const counts = mateCounts.get(id)!;
@@ -287,6 +322,17 @@ function runOnce(
       return counts.length ? Math.max(...counts) / p.gamesPlayed : 0;
     });
 
+  // 在席時間に比例した期待試合数との比。遅参加者が時間比例より多く出ていないか。
+  const expected = new Map<string, number>(players.map(p => [p.id, 0]));
+  for (const m of history) {
+    const present = players.filter(p => m.startedAt >= p.joinAt);
+    for (const p of present) expected.set(p.id, expected.get(p.id)! + 4 / present.length);
+  }
+  const ratioOf = (p: BenchPlayer) => p.gamesPlayed / Math.max(expected.get(p.id)!, 1e-9);
+  const meanOf = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  const lateRatios = players.filter(p => p.joinAt > 0).map(ratioOf);
+  const earlyRatios = players.filter(p => p.joinAt === 0).map(ratioOf);
+
   const games = players.map(p => p.gamesPlayed);
   const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
@@ -297,6 +343,10 @@ function runOnce(
     trueGap: history.length ? gapSum / history.length : 0,
     closeness: history.length ? closenessSum / history.length : 0,
     genderSkewRate: history.length ? genderSkewMatches / history.length : 0,
+    mvfRate: history.length ? mvfMatches / history.length : 0,
+    gamesByTrueRank,
+    lateRatio: meanOf(lateRatios),
+    earlyRatio: meanOf(earlyRatios),
     maxMateShare: shares.length ? mean(shares) : 0,
     distinctMates: mean(players.map(p => matesSeen.get(p.id)!.size)),
     rotation: mean(players.map(p => courtsSeen.get(p.id)!.size)),
@@ -307,6 +357,8 @@ function runOnce(
 // ---- 実行 ----
 const SEEDS = Number(process.env.SEEDS ?? 150);
 const ROUNDS = Number(process.env.ROUNDS ?? 15);
+/** 遅参加させる人数（0 = 全員最初から在席）。例: LATE_JOIN=3 */
+const LATE_JOIN = Number(process.env.LATE_JOIN ?? 0);
 const NOISES = (process.env.NOISE ?? '0,4,8').split(',').map(Number);
 const DEFAULT_CONDITIONS = '13x2,14x2,16x2,15x3,18x3,21x3';
 const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
@@ -318,11 +370,14 @@ const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
 
 console.log(`SEEDS=${SEEDS} ROUNDS=${ROUNDS} NOISE=${NOISES.join(',')} ENGINE=${USE_OBJECTIVE_ENGINE ? 'objective' : 'legacy'}`);
 console.log('  指標は docs/plans/2026-08-05-pairing-goals-and-rewrite.md の目的1〜6に対応');
-console.log('  幅広%=目的3 競り度=目的4 3-1%=目的5 占有率%/共演=目的6 試合数幅=目的1 待ち=目的2');
+console.log('  幅広%=目的3 競り度=目的4 3-1%=目的5 男女戦%=目的5b 占有率%/共演=目的6 試合数幅=目的1 待ち=目的2');
+console.log('  端中=序列の端1/3と中央1/3の平均試合数の差（負なら端が損をしている）');
+if (LATE_JOIN > 0) console.log('  遅参加=在席時間に比例した期待値に対する倍率（1.00 が理想）');
 console.log('  （共演のみ高いほど良い。他はすべて低いほど良い）');
 console.log('');
 console.log(
-  '  条件      NOISE  幅広%  競り度  3-1%  占有率%  共演   試合数幅  待ち'
+  '  条件      NOISE  幅広%  競り度  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち' +
+    (LATE_JOIN > 0 ? '  遅参加' : '')
 );
 console.log('  ' + '-'.repeat(72));
 
@@ -345,6 +400,17 @@ for (const { n, courtCount } of CONDITIONS) {
         `${(avg(r => r.wideGapRate) * 100).toFixed(1).padStart(5)}  ` +
         `${(avg(r => r.closeness) * 100).toFixed(1).padStart(6)}  ` +
         `${(avg(r => r.genderSkewRate) * 100).toFixed(1).padStart(4)}  ` +
+        `${(avg(r => r.mvfRate) * 100).toFixed(1).padStart(5)}  ` +
+        (() => {
+          const len = results[0].gamesByTrueRank.length;
+          const per = Array.from({ length: len }, (_, i) =>
+            results.reduce((s, r) => s + r.gamesByTrueRank[i], 0) / results.length);
+          const mid = (len - 1) / 2;
+          const pick = (edge: boolean) =>
+            per.filter((_, i) => (Math.abs(i - mid) >= len / 3) === edge);
+          const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
+          return `${(mean(pick(true)) - mean(pick(false))).toFixed(2).padStart(6)}  `;
+        })() +
         `${(avg(r => r.maxMateShare) * 100).toFixed(1).padStart(7)}  ` +
         `${avg(r => r.distinctMates).toFixed(2).padStart(5)}  ` +
         `${avg(r => r.gamesSpread).toFixed(2).padStart(8)}  ` +

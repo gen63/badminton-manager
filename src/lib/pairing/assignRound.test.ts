@@ -344,3 +344,58 @@ describe('assignRoundByObjective の性別チーム分け', () => {
     expect(malesInA).toBe(1); // 各チームが男女1人ずつ = MIX×MIX
   });
 });
+
+describe('公平性の窓（優先度順から離れすぎない）', () => {
+  it('質を優先しても、優先度が大きく後ろの人は出場させない', () => {
+    // 12人1コート。priorityScoreOf は id の数字（p0 が最優先）。
+    // 必要人数 4 / 余剰 8 → 窓は 4 + ceil(8 * 0.7) = 10 番目まで。p10 以降は出せない。
+    const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
+
+    // 実力順位を仕込む。優先度どおりの p0〜p3 だと p3 だけ実力が離れていて
+    // skillGap も competitive も最悪。p10 を入れれば両方一気に解消する
+    // （p4〜p9 は p3 と同格なので、窓の中の入れ替えでは解消できない）。
+    const rankById = new Map<string, number>([
+      ['p0', 0], ['p1', 1], ['p2', 2],
+      ['p3', 11], ['p4', 11], ['p5', 11], ['p6', 11],
+      ['p7', 11], ['p8', 11], ['p9', 11],
+      ['p10', 3], ['p11', 12],
+    ]);
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1],
+      rankById,
+      rosterSize: 13,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+    });
+
+    const chosen = [...result[0].teamA, ...result[0].teamB].map(id =>
+      Number(id.replace('p', ''))
+    );
+    // 窓が無ければ p10 が呼ばれる状況。窓があるので 10 番目以降は出せない。
+    expect(Math.max(...chosen)).toBeLessThan(10);
+  });
+
+  it('候補が必要人数ちょうどなら窓は誰も弾かない', () => {
+    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById: rankByIdFrom(candidates.map(p => p.id)),
+      rosterSize: 8,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+    });
+    expect(result).toHaveLength(2);
+    expect(new Set(result.flatMap(c => [...c.teamA, ...c.teamB])).size).toBe(8);
+  });
+});
