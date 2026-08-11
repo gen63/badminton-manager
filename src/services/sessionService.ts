@@ -40,6 +40,16 @@ export interface SyncSettings {
   /** 練習後半に試合回数の偏りを均等化するモード。 */
   lateBalanceMode?: boolean;
   /**
+   * 配置の優先度モード。true = 待機時間（滞在時間）優先、false = 試合回数優先。
+   * **未設定は `true` 扱い**（`assignCourts` の `?? true` / `settingsStore` の初期値と
+   * 一致させる。`continuousMatchMode` の `?? false` とは既定が異なる）。
+   *
+   * セッション全体の配置挙動を決めるので端末ローカルではなく Firestore に持つ。
+   * 端末ごとに違うと「試合終了を押した人の設定で連続配置のモードが変わる」ため。
+   * 詳細: docs/plans/2026-08-11-stay-duration-mode-not-applied.md
+   */
+  useStayDurationPriority?: boolean;
+  /**
    * 予約メンバーの試合数が「中央値 + この値」以上のとき、その予約全体を保留する閾値。
    * 試合数の多い人が予約で順番を飛ばし続けるのを防ぐフェアネス制限。未設定時は 2。
    */

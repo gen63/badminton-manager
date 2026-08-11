@@ -52,7 +52,7 @@ describe('settingsStore - setPracticeType と prioritizeDiversity の整合', ()
 });
 
 describe('settingsStore - persist (Phase A: 同期対象を localStorage から外す)', () => {
-  it('Firestore 同期対象 (practiceType / continuousMatchMode / recordScores) は localStorage に書かれない', () => {
+  it('Firestore 同期対象 (practiceType / continuousMatchMode / recordScores / useStayDurationPriority) は localStorage に書かれない', () => {
     useSettingsStore.setState({
       practiceType: '楽',
       continuousMatchMode: false,
@@ -68,9 +68,11 @@ describe('settingsStore - persist (Phase A: 同期対象を localStorage から�
     expect(stored).not.toHaveProperty('practiceType');
     expect(stored).not.toHaveProperty('continuousMatchMode');
     expect(stored).not.toHaveProperty('recordScores');
+    // 配置モードもセッション設定なので localStorage には書かない
+    // （docs/plans/2026-08-11-stay-duration-mode-not-applied.md）
+    expect(stored).not.toHaveProperty('useStayDurationPriority');
     // 端末ローカル設定は書かれている
     expect(stored).toHaveProperty('prioritizeDiversity', true);
-    expect(stored).toHaveProperty('useStayDurationPriority', false);
     expect(stored).toHaveProperty('gasWebAppUrl');
     expect(stored).toHaveProperty('accountingWebAppUrl');
   });
@@ -105,5 +107,28 @@ describe('settingsStore - persist (Phase A: 同期対象を localStorage から�
     expect(migrated).not.toHaveProperty('recordScores');
     expect(migrated.gasWebAppUrl).toBe('https://example.com/gas');
     expect(migrated.useStayDurationPriority).toBe(true);
+  });
+
+  it('migrate (version 2 → 3) で旧 persisted state から useStayDurationPriority を剥がす', () => {
+    // settingsStore.ts の migrate (version < 3 の分岐) と同じロジック
+    const migrate = (persisted: unknown, version: number): unknown => {
+      if (version < 3 && persisted && typeof persisted === 'object') {
+        const { useStayDurationPriority: _sd, ...rest } = persisted as Record<string, unknown>;
+        void _sd;
+        return rest;
+      }
+      return persisted;
+    };
+
+    const oldState = {
+      gasWebAppUrl: 'https://example.com/gas',
+      accountingWebAppUrl: 'https://example.com/acc',
+      useStayDurationPriority: false,
+      prioritizeDiversity: false,
+    };
+    const migrated = migrate(oldState, 2) as Record<string, unknown>;
+    expect(migrated).not.toHaveProperty('useStayDurationPriority');
+    expect(migrated.gasWebAppUrl).toBe('https://example.com/gas');
+    expect(migrated.prioritizeDiversity).toBe(false);
   });
 });

@@ -96,6 +96,17 @@ export function computeFinishAndContinue(
     lateBalanceMode?: boolean;
     reservationBlockThreshold?: number;
     /**
+     * 練習開始日時（`sessions/{id}.config.practiceStartTime`）。
+     *
+     * **待機時間優先モードには必須**。未指定だと `assignCourts` が `Date.now()` に
+     * フォールバックし、`resolveStayStart` の `max(practiceStartTime, ...)` が常に
+     * now を返して全員の滞在時間が下限 5 分に潰れる。優先スコアが
+     * `gamesPlayed / 5` になり、試合回数モードと順序が一致してしまう
+     * （＝待機時間モードが no-op になる）。
+     * 詳細: docs/plans/2026-08-11-stay-duration-mode-not-applied.md
+     */
+    practiceStartTime?: number;
+    /**
      * true のとき、連続モードが ON でもこの 1 回の自動配置を抑止する
      * （15 分超過の自動終了用）。`continuousMatchMode` 設定自体は変えない。
      */
@@ -221,6 +232,9 @@ export function computeFinishAndContinue(
         assignments = assignCourts(waitingPlayers, 1, updatedMatchHistory, {
           targetCourtIds: [courtId],
           totalCourtCount: updatedCourts.length,
+          // 待機時間優先モードの滞在時間算出に必須（省略すると now にフォールバック
+          // して全員の滞在時間が下限 5 分に潰れ、モードが効かなくなる）
+          practiceStartTime: options.practiceStartTime,
           // 全アクティブプレイヤー (他コートでプレイ中の高 gamesPlayed 含む) を渡す。
           // lateBalance の maxGamesPlayed 算出に必要。これが無いと待機者だけから
           // max を取ってしまい、後半均等化ペナルティが過小評価される。

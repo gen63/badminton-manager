@@ -576,3 +576,109 @@ describe('computeFinishAndContinue', () => {
     });
   });
 });
+
+/**
+ * 連続配置経路に `practiceStartTime` が渡ることの回帰テスト。
+ *
+ * 渡さないと `assignCourts` が `Date.now()` にフォールバックし、
+ * `resolveStayStart` の `max(practiceStartTime, ...)` が常に now を返して
+ * 全員の滞在時間が下限 5 分に潰れる。優先スコアが `gamesPlayed / 5` になり、
+ * 待機時間優先モードが試合回数優先モードと同じ順序になってしまう（no-op 化）。
+ * docs/plans/2026-08-11-stay-duration-mode-not-applied.md
+ */
+describe('computeFinishAndContinue: practiceStartTime と待機時間優先モード', () => {
+  const MIN = 60_000;
+
+  /**
+   * 「長く居るが試合数も多い人」vs「来たばかりで試合数は少ない人」を作る。
+   * - 待機時間優先: 滞在の長い OLD が優先される（8/120 < 3/20）
+   * - 試合回数優先: 試合数の少ない NEW が優先される
+   */
+  function makeDivergentState(now: number, practiceStartTime: number): GameState {
+    const players: Player[] = [];
+    // コート上の 4 人（試合終了後は待機に戻る）
+    for (let i = 0; i < 4; i++) {
+      players.push(
+        makePlayer(`ON${i}`, {
+          rating: 30 - i,
+          gamesPlayed: 8,
+          activatedAt: practiceStartTime,
+          operationStatus: { payment: true, roster: true, checkin: true },
+          opsCompletedAt: practiceStartTime,
+        }),
+      );
+    }
+    // 開始から居る 8 人（試合数 8）
+    for (let i = 0; i < 8; i++) {
+      players.push(
+        makePlayer(`OLD${i}`, {
+          rating: 20 - i,
+          gamesPlayed: 8,
+          activatedAt: practiceStartTime,
+          operationStatus: { payment: true, roster: true, checkin: true },
+          opsCompletedAt: practiceStartTime,
+        }),
+      );
+    }
+    // 20 分前に来た 4 人（試合数 3）
+    for (let i = 0; i < 4; i++) {
+      players.push(
+        makePlayer(`NEW${i}`, {
+          rating: 16 - i,
+          gamesPlayed: 3,
+          activatedAt: now - 20 * MIN,
+          operationStatus: { payment: true, roster: true, checkin: true },
+          opsCompletedAt: now - 20 * MIN,
+        }),
+      );
+    }
+    return {
+      players,
+      courts: [
+        makeCourt(1, {
+          teamA: ['ON0', 'ON1'],
+          teamB: ['ON2', 'ON3'],
+          isPlaying: true,
+          startedAt: now - 10 * MIN,
+        }),
+      ],
+      matchHistory: [],
+      reservations: [],
+    };
+  }
+
+  function nextMembers(useStayDurationPriority: boolean, practiceStartTime?: number): string[] {
+    const now = Date.now();
+    const state = makeDivergentState(now, now - 120 * MIN);
+    const result = computeFinishAndContinue(state, 1, {
+      ...defaultOptions,
+      continuousMatchMode: true,
+      useStayDurationPriority,
+      practiceStartTime,
+    });
+    const court = result.newState.courts.find(c => c.id === 1)!;
+    return [...court.teamA, ...court.teamB].filter(id => id);
+  }
+
+  it('practiceStartTime を渡すと待機時間優先モードで滞在の長いメンバーが選ばれる', () => {
+    const now = Date.now();
+    const members = nextMembers(true, now - 120 * MIN);
+    expect(members).toHaveLength(4);
+    // 滞在 120 分・8 試合 (0.067) < 滞在 20 分・3 試合 (0.15) なので OLD が優先
+    expect(members.every(id => id.startsWith('OLD'))).toBe(true);
+  });
+
+  it('試合回数優先モードでは試合数の少ないメンバーが選ばれる', () => {
+    const now = Date.now();
+    const members = nextMembers(false, now - 120 * MIN);
+    expect(members).toHaveLength(4);
+    expect(members.every(id => id.startsWith('NEW'))).toBe(true);
+  });
+
+  it('practiceStartTime を渡さないと両モードが同じ結果になる（退行検知）', () => {
+    // このテストが落ちる = practiceStartTime 無しでもモード差が出るようになった、
+    // つまり滞在時間が下限に潰れる前提が変わったということ。上 2 つの
+    // テストと合わせて「practiceStartTime を渡す実装」を担保する。
+    expect(nextMembers(true)).toEqual(nextMembers(false));
+  });
+});
