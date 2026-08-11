@@ -91,19 +91,93 @@ interface PlayerIssue {
 // Phase A: E-tomoスクレイピング
 // ============================================================
 
-export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName, AUTO_SESSION_ADMINS, computeRosterDiff, computeRosterSync, readTmpSheet };
+export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName, AUTO_SESSION_ADMINS, computeRosterDiff, computeRosterSync, readTmpSheet, fetchWithRetry, fetchEventDetails, describeError };
 
-async function fetchEtomoPage(url: string): Promise<string | null> {
+// ============================================================
+// リトライ付き fetch
+// ============================================================
+
+/**
+ * 一過性のネットワーク障害を吸収するための再試行間隔（ms）。
+ *
+ * E-ToMo (`system.hawai-an.com`) は数分間だけ接続不能になることがあり、
+ * 単発の fetch では undici の接続タイムアウト（既定10秒）で即死していた。
+ * 実際 2026-06-29 / 07-06 / 08-10 の定期実行が `UND_ERR_CONNECT_TIMEOUT` で
+ * 失敗し、いずれも後から手動で再実行すると成功している。
+ *
+ * 待機の合計は約76秒。ワークフローの `timeout-minutes` はこれを見込んで設定する。
+ */
+const RETRY_DELAYS_MS = [3000, 8000, 20000, 45000];
+
+/** 1回の試行に許す最大時間。接続タイムアウト（undici 既定10秒）より長くとる。 */
+const REQUEST_TIMEOUT_MS = 30000;
+
+/** 再試行する価値のある HTTP ステータス（一過性のサーバー側事情） */
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+/** ネストした `cause`（undici は実体をここに入れる）まで含めてエラーを1行にする */
+function describeError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = (error as { cause?: unknown }).cause;
+  return cause instanceof Error ? `${error.message}: ${cause.message}` : error.message;
+}
+
+/**
+ * 一過性の失敗（接続タイムアウト・5xx など）を指数バックオフで再試行する fetch。
+ *
+ * 4xx など再試行しても変わらない応答はそのまま返し、判断は呼び出し側に委ねる。
+ * 全試行が失敗した場合のみ throw する。
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit = {},
+  label = 'fetch',
+  delaysMs: number[] = RETRY_DELAYS_MS,
+): Promise<Response> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
+    if (attempt > 0) {
+      const wait = delaysMs[attempt - 1];
+      console.warn(
+        `[retry] ${label}: ${describeError(lastError)} — ${wait}ms 後に再試行 (${attempt + 1}/${delaysMs.length + 1})`,
+      );
+      await sleep(wait);
+    }
+
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        ...init,
+      });
+      if (!response.ok && isRetryableStatus(response.status)) {
+        lastError = new Error(`HTTP ${response.status}`);
+        continue;
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(
+    `${label}: ${delaysMs.length + 1}回試行して失敗しました (${describeError(lastError)})`,
+  );
+}
+
+async function fetchEtomoPage(url: string, label = 'E-ToMo'): Promise<string | null> {
   try {
-    const response = await fetch(url);
+    const response = await fetchWithRetry(url, {}, label);
     if (!response.ok) {
-      console.error('E-ToMo fetch error:', response.status);
+      console.error(`${label} fetch error: HTTP ${response.status}`);
       return null;
     }
     const buffer = Buffer.from(await response.arrayBuffer());
     return iconv.decode(buffer, 'Shift_JIS');
   } catch (error) {
-    console.error('E-ToMo fetch error:', error);
+    console.error(`${label} fetch error:`, describeError(error));
     return null;
   }
 }
@@ -303,34 +377,44 @@ function parseEventDetail(
   return result;
 }
 
+/**
+ * 各イベントの詳細（参加者名・性別）を取得する。
+ *
+ * 取得に失敗したイベントは `failed` に分離して返し、`details` には含めない。
+ * かつては失敗時に `participants: []` のダミーを返していたが、これは
+ * 「参加者0名」と区別が付かず、新規なら空セッションを作成し、既存セッションが
+ * あればロースター同期で**全員を削除**してしまう。取得できなかったことは
+ * 「誰も居ない」ことではないので、黙って先へ進めてはならない。
+ */
 async function fetchEventDetails(
   events: EtomoEvent[],
   listUrl: string,
-): Promise<EtomoEventDetail[]> {
-  const results: EtomoEventDetail[] = [];
+): Promise<{ details: EtomoEventDetail[]; failed: EtomoEvent[] }> {
+  const details: EtomoEventDetail[] = [];
+  const failed: EtomoEvent[] = [];
 
   for (let i = 0; i < events.length; i++) {
     if (i > 0) await sleep(500);
 
     const event = events[i];
     const detailUrl = buildEventDetailUrl(listUrl, event.eventId);
-    const detailHtml = await fetchEtomoPage(detailUrl);
+    const detailHtml = await fetchEtomoPage(detailUrl, `E-ToMo detail ${event.eventId}`);
 
     if (detailHtml) {
       const detail = parseEventDetail(detailHtml);
-      results.push({
+      details.push({
         ...event,
         location: detail.location,
         participants: detail.participants,
         genders: detail.genders,
       });
     } else {
-      console.warn(`Failed to fetch detail for event ${event.eventId}`);
-      results.push({ ...event, location: '', participants: [], genders: {} });
+      console.error(`Failed to fetch detail for event ${event.eventId} (${event.title}) — skipping`);
+      failed.push(event);
     }
   }
 
-  return results;
+  return { details, failed };
 }
 
 // ============================================================
@@ -363,12 +447,11 @@ async function createTmpSheet(
 
   // GAS Web AppのPOSTは302リダイレクトを返す → redirect:'follow'で自動追従
   const payload = JSON.stringify({ action: 'createTmpSheet', sheet: sheetName, participants });
-  const response = await fetch(url, {
-    method: 'POST',
-    body: payload,
-    redirect: 'follow',
-    signal: AbortSignal.timeout(30000),
-  });
+  const response = await fetchWithRetry(
+    url,
+    { method: 'POST', body: payload, redirect: 'follow' },
+    'GAS createTmpSheet',
+  );
 
   console.log(`[DEBUG] POST response: status=${response.status}, url=${response.url}, redirected=${response.redirected}`);
   const text = await response.text();
@@ -404,7 +487,7 @@ async function readTmpSheet(
   }
 
   const readUrl = `${url}?action=readTmpSheet&sheet=${encodeURIComponent(sheetName)}`;
-  const response = await fetch(readUrl, { signal: AbortSignal.timeout(30000) });
+  const response = await fetchWithRetry(readUrl, {}, 'GAS readTmpSheet');
 
   const data = (await response.json()) as {
     status: string;
@@ -755,11 +838,15 @@ async function sendDiscordMessage(content: string): Promise<void> {
     return;
   }
 
-  await fetch(webhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
-  });
+  await fetchWithRetry(
+    webhookUrl,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    },
+    'Discord webhook',
+  );
 }
 
 const SESSION_BASE_URL = 'https://gen63.github.io/badminton-manager/session';
@@ -798,6 +885,61 @@ async function notifySessionPending(
     issueNames,
     '',
     `📝 tmpシート「${tmpSheetName}」でレーティングを入力後、GitHub Actionsを手動実行してください`,
+  ].join('\n');
+
+  await sendDiscordMessage(message);
+}
+
+/**
+ * 実行そのものが失敗したことを Discord に流す。
+ * これが無いと GitHub Actions の失敗メールしか手掛かりが無く、
+ * 誰も気づかないまま練習当日を迎えてしまう。
+ */
+async function notifyFatalError(error: unknown): Promise<void> {
+  const message = [
+    '❌ **セッション自動作成に失敗**',
+    '━━━━━━━━━━━━━━━━━━',
+    `エラー: ${describeError(error)}`,
+    '',
+    'E-ToMo / スプレッドシートへの接続が不安定な可能性があります。',
+    'GitHub Actions の「Auto Create Session」を手動で再実行してください。',
+  ].join('\n');
+
+  await sendDiscordMessage(message);
+}
+
+/** 一部イベントの詳細取得だけが失敗したときの警告（そのイベントは未処理のまま） */
+async function notifyDetailFetchFailed(
+  failed: EtomoEvent[],
+  targetDate: Date,
+): Promise<void> {
+  const dayName = DAY_NAMES[targetDate.getDay()];
+  const message = [
+    '⚠️ **イベント詳細の取得に失敗（未処理）**',
+    '━━━━━━━━━━━━━━━━━━',
+    `${targetDate.getMonth() + 1}/${targetDate.getDate()}(${dayName})`,
+    '',
+    failed.map((e) => `  • ${e.title}`).join('\n'),
+    '',
+    '参加者リストを取得できなかったため、このイベントは作成・同期していません。',
+    'GitHub Actions の「Auto Create Session」を手動で再実行してください。',
+  ].join('\n');
+
+  await sendDiscordMessage(message);
+}
+
+/** 参加者0名で既存セッションの同期をスキップしたときの警告 */
+async function notifyEmptyRosterSkipped(
+  event: EtomoEventDetail,
+  targetDate: Date,
+): Promise<void> {
+  const summary = formatEventSummary(event, targetDate);
+  const message = [
+    '⚠️ **出欠同期をスキップ（参加者0名）**',
+    '━━━━━━━━━━━━━━━━━━',
+    summary,
+    '',
+    'E-ToMo の出席予定が0名でした。誤ってメンバー全員を削除しないよう同期を見送りました。',
   ].join('\n');
 
   await sendDiscordMessage(message);
@@ -886,6 +1028,13 @@ async function processEvents(
 
       const existingSessionId = createdSessions.get(event.eventId);
       if (existingSessionId) {
+        // 参加者0名での同期は既存メンバーを全員削除してしまう。E-ToMo 側の
+        // 一時的な不具合と本当に0名の区別が付かない以上、同期は見送る。
+        if (event.participants.length === 0) {
+          console.warn(`  -> Participants list is empty, skipping roster sync (${existingSessionId})`);
+          await notifyEmptyRosterSkipped(event, targetDate);
+          continue;
+        }
         console.log(`  -> Already created (${existingSessionId}), syncing roster`);
         const { added, removed } = await syncSessionRoster(db, existingSessionId, event, memberMap);
         if (added.length > 0 || removed.length > 0) {
@@ -976,10 +1125,23 @@ async function main() {
 
   // Phase B: イベント詳細取得（参加者名 + 性別）
   console.log('\n--- Phase B: イベント詳細取得 ---');
-  const eventsWithDetails = await fetchEventDetails(targetEvents, etomoUrl);
+  const { details: eventsWithDetails, failed: failedEvents } = await fetchEventDetails(
+    targetEvents,
+    etomoUrl,
+  );
 
   for (const event of eventsWithDetails) {
     console.log(`  ${event.title}: ${event.participants.length} participants`);
+  }
+
+  if (failedEvents.length > 0) {
+    console.error(`Failed to fetch details for ${failedEvents.length} event(s)`);
+    await notifyDetailFetchFailed(failedEvents, targetDate);
+  }
+
+  // 全滅した場合は成功扱いにせず、ジョブを失敗させて再実行を促す
+  if (eventsWithDetails.length === 0) {
+    throw new Error('対象イベントの詳細取得に全て失敗しました');
   }
 
   // Phase C: tmpシート作成 → レーティングデータ読み取り
@@ -1000,8 +1162,14 @@ const isDirectRun = process.argv[1]?.includes('auto-create-session') &&
   !process.argv[1]?.includes('.test.');
 
 if (isDirectRun) {
-  main().catch((error) => {
+  main().catch(async (error) => {
     console.error('Fatal error:', error);
+    // 通知に失敗しても終了コードは 1 のままにする
+    try {
+      await notifyFatalError(error);
+    } catch (notifyError) {
+      console.error('Failed to send failure notification:', describeError(notifyError));
+    }
     process.exit(1);
   });
 }
