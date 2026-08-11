@@ -1973,8 +1973,19 @@ export function assignCourts(
 
   // 後半均等化モード: maxGamesPlayed は全アクティブプレイヤー（他コート中含む）から
   // 算出することで、待機者一覧の変動に左右されず一貫した「最大値」を得る。
+  //
+  // **待機時間優先モードではスコア減算を行わない。** 減算は「最大試合数 − 自分の
+  // 試合数」を引く＝**回数**を揃える動きだが、待機時間優先は「試合数 ÷ 滞在分数」＝
+  // **密度**を揃えるモードで、目的が正面から矛盾する。併用すると遅参加者が終盤の
+  // コートを占有した（在席比例に対する倍率が 1.20 → 1.52）。
+  //
+  // 待機時間優先モードでの後半均等化は、新エンジン側の「公平性の窓を狭める」
+  // （`LATE_BALANCE_WINDOW_RATIO`）だけで実現する。窓はそのモード自身の優先度順を
+  // 締めるだけなので、密度の公平を強めることになりモードの定義と矛盾しない。
+  // 計測: docs/plans/2026-08-05-pairing-goals-and-rewrite.md
   const lateBalance = ((): LateBalanceCtx | undefined => {
     if (!options?.lateBalanceMode) return undefined;
+    if (useStayDuration) return undefined;
     const pool = options.allPlayers ?? activePlayers;
     if (pool.length === 0) return undefined;
     const maxGames = pool.reduce((max, p) => Math.max(max, p.gamesPlayed), 0);
@@ -2277,6 +2288,7 @@ export function assignCourts(
       isRecentDuplicate: (ids) => hasSimilarRecentMatch(ids, matchHistory),
       wideSpanThreshold: objectiveWideSpanThreshold,
       preferGenderMix,
+      lateBalanceMode: options?.lateBalanceMode ?? false,
     });
     return [...reservationAssignments, ...assigned];
   }

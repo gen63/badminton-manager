@@ -438,3 +438,46 @@ describe('computeVariety の閾値スケール', () => {
     );
   });
 });
+
+describe('後半均等化モード（公平性の窓を狭める）', () => {
+  /** 16人・2コート。必要8人・余剰8人なので、通常は14位まで、後半均等化なら11位まで許可 */
+  const setup = (lateBalanceMode: boolean) => {
+    const candidates = Array.from({ length: 16 }, (_, i) =>
+      makePlayer(`p${i}`, { gender: i % 2 === 0 ? 'M' : 'F', gamesPlayed: i })
+    );
+    // 実力順位を優先度順とずらし、質の最適化が窓の外の人を選びたくなるようにする
+    const rankById = new Map(candidates.map((p, i) => [p.id, (i * 7) % 16]));
+    return assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 16,
+      priorityScoreOf: p => p.gamesPlayed,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+      lateBalanceMode,
+    });
+  };
+  const priorityOf = (result: ReturnType<typeof setup>) =>
+    result.flatMap(c => [...c.teamA, ...c.teamB]).map(id => Number(id.slice(1)));
+
+  it('通常は質のために優先度順を飛ばす（窓 0.7 = 14位まで）', () => {
+    const picked = priorityOf(setup(false));
+    expect(Math.max(...picked)).toBeGreaterThan(7); // 上位8人ちょうどではない
+    expect(Math.max(...picked)).toBeLessThan(14); // ただし窓の外は選ばない
+  });
+
+  it('後半均等化 ON では窓が狭まり、優先度順に近づく（窓 0.3 = 11位まで）', () => {
+    const picked = priorityOf(setup(true));
+    expect(Math.max(...picked)).toBeLessThan(11);
+  });
+
+  it('ON のほうが選出が優先度順に近い', () => {
+    expect(Math.max(...priorityOf(setup(true)))).toBeLessThan(
+      Math.max(...priorityOf(setup(false)))
+    );
+  });
+});

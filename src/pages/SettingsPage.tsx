@@ -407,8 +407,10 @@ export function SettingsPage() {
               </div>
               <p className="text-[10px] text-muted-foreground mt-1">
                 {lateBalanceMode
-                  ? '試合数の少ない人を強く優先します'
-                  : '回数優先モードの場合、練習開始から90分経過で自動的にONになります'}
+                  ? useStayDurationPriority
+                    ? '滞在時間あたりの試合数のバラつきを抑えます（組み合わせの質より順番を優先）'
+                    : '試合数のバラつきを抑えます（組み合わせの質より順番を優先）'
+                  : '練習開始から120分経過で自動的にONになります'}
               </p>
             </div>
 

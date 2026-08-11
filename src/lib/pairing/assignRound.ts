@@ -37,6 +37,8 @@ export interface AssignRoundParams {
   /** 順位差のハード制約。null なら制約なし（14人未満） */
   wideSpanThreshold: number | null;
   preferGenderMix: boolean;
+  /** 後半均等化モード。公平性の窓を狭めて優先度順に近づける */
+  lateBalanceMode?: boolean;
   weights?: Partial<ObjectiveWeights>;
 }
 
@@ -52,6 +54,16 @@ const MAX_ITERATIONS = 200;
  * 遅参加の過剰が最も酷い 14人2コート / 18人3コートで効かなかった。
  */
 const FAIRNESS_WINDOW_RATIO = 0.7;
+
+/**
+ * 後半均等化モードのときの窓の緩み。通常より狭くして優先度順に近づける。
+ *
+ * 「試合数のバラつきをゼロにする」のではなく「減らす」オプションなので 0 にはしない。
+ * bench（SEEDS=60 NOISE=0）で 0.7 → 0.3 にすると試合数幅が 21人3C で 1.33 → 1.05、
+ * 16人2C で 2.00 → 1.25 に縮み、代償は 3-1 が +1.7〜2.0pt 程度。0.2 以下は幅が
+ * ほとんど縮まらないのに 3-1 だけ悪化し、0 では 3-1 が 8% まで崩れる。
+ */
+const LATE_BALANCE_WINDOW_RATIO = 0.3;
 
 /** コート1つ分の内部状態。slots = [teamA0, teamA1, teamB0, teamB1] */
 interface CourtState {
@@ -121,6 +133,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     isRecentDuplicate,
     wideSpanThreshold,
     preferGenderMix,
+    lateBalanceMode = false,
   } = params;
 
   const weights: ObjectiveWeights = { ...DEFAULT_WEIGHTS, ...params.weights };
@@ -386,7 +399,8 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     // 新エンジンは fairness を重み付きの一項目にしたため、質の項に押し負けて
     // 出遅れている人を飛ばしてしまう。質の最適化は窓の中だけで行わせる。
     const surplus = candidateCount - neededCount;
-    const windowLimit = neededCount + Math.ceil(surplus * FAIRNESS_WINDOW_RATIO);
+    const ratio = lateBalanceMode ? LATE_BALANCE_WINDOW_RATIO : FAIRNESS_WINDOW_RATIO;
+    const windowLimit = neededCount + Math.ceil(surplus * ratio);
     if (windowLimit < candidateCount) {
       for (const court of s.courts) {
         for (const id of courtMembers(court)) {

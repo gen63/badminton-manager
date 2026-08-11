@@ -185,28 +185,37 @@ export function MainPage() {
     updatePaymentBadge(isPaid, amount);
   }, [session, currentUser, players]);
 
-  // 後半均等化の自動オン: 回数優先モードで「練習開始 + 90 分の節目を跨ぐ瞬間」に
-  // 1 度だけ ON にする。発火済みかどうかは Firestore の `lateBalanceAutoFired`
-  // フラグで判定し、画面遷移 / 再マウント / PWA 再起動を跨いでも 1 セッション
-  // 1 度きりを保証する。
+  // 後半均等化の自動オン: 「練習開始 + 120 分の節目を跨ぐ瞬間」に 1 度だけ ON に
+  // する。発火済みかどうかは Firestore の `lateBalanceAutoFired` フラグで判定し、
+  // 画面遷移 / 再マウント / PWA 再起動を跨いでも 1 セッション 1 度きりを保証する。
   //
-  // - 90 分到達前: setTimeout で残り時間後に発火
-  // - 90 分到達済み & 未発火: マウント直後に即発火 (PWA 再起動などで setTimeout が
+  // - 120 分到達前: setTimeout で残り時間後に発火
+  // - 120 分到達済み & 未発火: マウント直後に即発火 (PWA 再起動などで setTimeout が
   //   消失した状態からの復帰に対応)
   // - 既に発火済み: 何もしない。ユーザーが手動 OFF にした後の意図を尊重する
+  //
+  // **120 分の根拠**: 3時間練習・ウォームアップ30分・最後15分休憩を想定すると
+  // ゲーム練習は 135 分。bench で発火タイミングを振ると 70% 地点（ゲーム開始から
+  // 95 分 ≒ 練習開始から 125 分）が最も効率が良かった。それより早く点けても
+  // 試合数幅は縮まらず 3-1 だけ悪化し、90% まで遅らせると追いつく時間が足りない。
+  // 旧仕様の 90 分はゲーム時間の 44% 地点で、30 分ほど早すぎた。
+  // 計測: docs/plans/2026-08-05-pairing-goals-and-rewrite.md
+  //
+  // **待機時間優先モードでも自動オンする**。後半均等化は「公平性の窓を狭める」
+  // 方式に作り直され、そのモード自身の優先度順（回数優先なら試合数順、待機時間
+  // 優先なら密度順）を締めるだけになったので、どちらのモードでも意味を持つ。
   useEffect(() => {
     if (!session?.id) return;
-    if (useStayDurationPriority) return; // 待機時間優先モードでは自動オンしない
     if (lateBalanceAutoFired) return; // 既に発火済み (手動 OFF 後の再オン抑止も兼ねる)
 
     const practiceStart = session.config.practiceStartTime;
     if (!practiceStart) return;
 
-    const AUTO_ON_MS = 90 * 60 * 1000;
+    const AUTO_ON_MS = 120 * 60 * 1000;
     const delay = practiceStart + AUTO_ON_MS - Date.now();
 
     if (delay <= 0) {
-      // 90 分は既に過ぎているが未発火 (PWA 再起動・遅参加など)。今発火する。
+      // 120 分は既に過ぎているが未発火 (PWA 再起動・遅参加など)。今発火する。
       void writer.markLateBalanceAutoFired();
       return;
     }
@@ -215,7 +224,7 @@ export function MainPage() {
       void writer.markLateBalanceAutoFired();
     }, delay);
     return () => clearTimeout(timeoutId);
-  }, [session?.id, session?.config.practiceStartTime, useStayDurationPriority, lateBalanceAutoFired, writer]);
+  }, [session?.id, session?.config.practiceStartTime, lateBalanceAutoFired, writer]);
 
   // 15 分を超えた試合を自動終了する。連続モードが ON でも、自動終了したコートには
   // 次の試合を自動配置しない（skipContinuous=true）。終了は startedAt をべき等キーと
