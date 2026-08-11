@@ -21,7 +21,9 @@ on:
 jobs:
   create-session:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # E-ToMo/GAS への fetch はリトライ込みで1回あたり最大約2分待つ。
+    # 対象イベントが複数あっても収まるよう余裕を持たせる。
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4

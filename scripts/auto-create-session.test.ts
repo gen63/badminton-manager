@@ -15,7 +15,11 @@ import {
   computeRosterDiff,
   computeRosterSync,
   readTmpSheet,
+  fetchWithRetry,
+  fetchEventDetails,
+  describeError,
 } from './auto-create-session';
+import iconv from 'iconv-lite';
 import { buildInitialOrder } from '../src/lib/algorithm';
 import type { Player } from '../src/types/player';
 
@@ -856,5 +860,177 @@ describe('readTmpSheet（新旧フィールド名の後方互換）', () => {
     expect(checkPlayerIssues(['未登録さん'], memberMap)).toEqual([
       { name: '未登録さん', reason: 'レーティング未設定' },
     ]);
+  });
+});
+
+// E-ToMo (system.hawai-an.com) は数分だけ接続不能になることがあり、単発の fetch
+// だと undici の接続タイムアウト（既定10秒）で定期実行がまるごと落ちていた。
+// 参照: docs/plans/2026-08-11-auto-session-retry.md
+describe('fetchWithRetry', () => {
+  // テストではバックオフを待たない
+  const NO_WAIT = [0, 0];
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const okResponse = () => ({ ok: true, status: 200 });
+
+  it('接続タイムアウト後の再試行で成功すればレスポンスを返す', async () => {
+    const connectTimeout = Object.assign(new TypeError('fetch failed'), {
+      cause: new Error('Connect Timeout Error'),
+    });
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(connectTimeout)
+      .mockResolvedValueOnce(okResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await fetchWithRetry('https://example.test', {}, 'test', NO_WAIT);
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('全試行が失敗したら原因付きで throw する', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValue(
+        Object.assign(new TypeError('fetch failed'), {
+          cause: new Error('Connect Timeout Error'),
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      fetchWithRetry('https://example.test', {}, 'E-ToMo', NO_WAIT),
+    ).rejects.toThrow(/E-ToMo: 3回試行して失敗しました.*Connect Timeout Error/);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('5xx は再試行する', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      .mockResolvedValueOnce(okResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await fetchWithRetry('https://example.test', {}, 'test', NO_WAIT);
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('4xx は再試行せずそのまま返す（呼び出し側が判断する）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 404 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await fetchWithRetry('https://example.test', {}, 'test', NO_WAIT);
+
+    expect(response.status).toBe(404);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('呼び出し側の init（method/body）を保ったままリトライする', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(okResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchWithRetry(
+      'https://example.test',
+      { method: 'POST', body: '{"a":1}' },
+      'test',
+      NO_WAIT,
+    );
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'https://example.test',
+      expect.objectContaining({ method: 'POST', body: '{"a":1}' }),
+    );
+  });
+});
+
+describe('describeError', () => {
+  it('undici の cause を含めて1行にまとめる', () => {
+    const error = Object.assign(new TypeError('fetch failed'), {
+      cause: new Error('Connect Timeout Error (attempted address: system.hawai-an.com:443)'),
+    });
+    expect(describeError(error)).toBe(
+      'fetch failed: Connect Timeout Error (attempted address: system.hawai-an.com:443)',
+    );
+  });
+});
+
+// 詳細取得の失敗を「参加者0名」として扱うと、新規なら空セッションを作成し、
+// 既存セッションがあればロースター同期で全員を削除してしまう。
+describe('fetchEventDetails（詳細取得の失敗を参加者0名と混同しない）', () => {
+  const NO_WAIT_ENV = 'https://etomo.test/event_info.php?token=x';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const detailHtml = (name: string) =>
+    [
+      '場所：千川館体育館',
+      '人数：1/12',
+      '出席予定メンバー',
+      '<div>header</div>',
+      `<div><font color="#000080"><b>${name}</b></font></div>`,
+    ].join('\n');
+
+  /** E-ToMo は Shift_JIS を返すので arrayBuffer で応答する */
+  const sjisResponse = (html: string) => ({
+    ok: true,
+    status: 200,
+    arrayBuffer: async () => {
+      const buf = iconv.encode(html, 'Shift_JIS');
+      return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    },
+  });
+
+  const event = (eventId: string, title: string) => ({
+    eventId,
+    title,
+    dateMonth: 4,
+    dateDay: 9,
+    startTime: '18:30',
+    endTime: '21:30',
+    venue: '千川館',
+    note: '複',
+    participantCount: 1,
+    capacity: 20,
+    waitlistCount: 0,
+  });
+
+  it('取得できたイベントだけ details に入り、失敗したイベントは failed に分離される', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('event_id=OK')) return Promise.resolve(sjisResponse(detailHtml('田中太郎')));
+      return Promise.reject(new TypeError('fetch failed'));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    // リトライのバックオフ（最大76秒）とイベント間 sleep を実時間で待たない
+    vi.useFakeTimers();
+    try {
+      const pending = fetchEventDetails(
+        [event('OK', '4/9(水)18:30〜21:30@千川館.複'), event('NG', '4/9(水)9:00〜12:00@高松.複')],
+        NO_WAIT_ENV,
+      );
+      await vi.runAllTimersAsync();
+      const { details, failed } = await pending;
+
+      expect(details).toHaveLength(1);
+      expect(details[0].eventId).toBe('OK');
+      expect(details[0].participants).toEqual(['田中太郎']);
+
+      // 失敗したイベントは participants: [] のダミーではなく failed に入る
+      expect(failed.map((e) => e.eventId)).toEqual(['NG']);
+      expect(details.some((d) => d.eventId === 'NG')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

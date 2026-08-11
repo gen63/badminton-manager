@@ -155,3 +155,4 @@
 - `2026-07-29-history-member-highlight.md` — 履歴画面で絞り込み中のメンバー名を試合カード内で強調（indigo 太字）
 - `2026-08-04-skill-band-guard-and-diversity.md` — 3コートで素の序列の上位×下位同居ガード（`hasTopBottomExtremes`）が2コート限定で効いておらず、ハシゴ式で上がった下位者が上位帯に混ざる問題の修正 + 帯内の多様性強化。実アルゴリズムを叩く bench をリポジトリに常設
 - `2026-08-11-stay-start-at-ops-complete.md` — 滞在時間優先モードの滞在開始時刻を「休憩解除(activatedAt)」から「名簿＋会費の両方完了時刻(`opsCompletedAt`)」へ変更。未完了メンバーは滞在時間ゼロ扱い
+- `2026-08-11-auto-session-retry.md` — オートセッション自動作成が時々失敗する問題の対策: E-ToMo/GAS/Discord への fetch を指数バックオフでリトライ + 失敗時の Discord 通知。併せて詳細取得失敗を「参加者0名」と誤認して空セッション作成・登録メンバー全員削除を起こす経路を封じる
