@@ -2821,3 +2821,96 @@ describe('getCallableReservationRestingIds', () => {
     expect(result).toEqual(new Set(['r1', 'r2', 'r3', 'r4']));
   });
 });
+
+describe('sortWaitingPlayers - 滞在時間モードの起点（opsCompletedAt）', () => {
+  // docs/plans/2026-08-11-stay-start-at-ops-complete.md
+  const NOW = 20_000_000;
+  const practiceStartTime = NOW - 6 * 60 * 60 * 1000; // 6時間前（どのケースでも起点より前）
+
+  const makeOpsPlayer = (
+    id: string,
+    gamesPlayed: number,
+    overrides: Partial<Player> = {},
+  ): Player => ({
+    id,
+    name: id,
+    gamesPlayed,
+    isResting: false,
+    lastPlayedAt: 0,
+    activatedAt: 0,
+    operationStatus: { payment: true, roster: true, checkin: false },
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+  });
+
+  const sort = (players: Player[]) =>
+    sortWaitingPlayers(players, {
+      emptyCourtIds: [],
+      totalCourtCount: 1,
+      matchHistory: [],
+      allActivePlayers: players,
+      practiceStartTime,
+      useStayDuration: true,
+    });
+
+  it('同じ gamesPlayed なら opsCompletedAt が古い（滞在が長い）人が優先される', () => {
+    const players = [
+      makeOpsPlayer('a', 4, { opsCompletedAt: NOW - 60 * 60 * 1000 }), // 60分前完了
+      makeOpsPlayer('b', 4, { opsCompletedAt: NOW - 10 * 60 * 1000 }), // 10分前完了
+    ];
+    const sorted = sort(players);
+    expect(sorted.map(p => p.id)).toEqual(['a', 'b']);
+  });
+
+  it('activatedAt が古くても opsCompletedAt が新しければ優先されない（起点が opsCompletedAt に変わったことの確認）', () => {
+    const players = [
+      // activatedAt は古い（5時間前）が、会費・名簿の完了は5分前 → 滞在は短い扱い
+      makeOpsPlayer('a', 4, {
+        activatedAt: NOW - 5 * 60 * 60 * 1000,
+        opsCompletedAt: NOW - 5 * 60 * 1000,
+      }),
+      // activatedAt は新しい（30分前）が、完了は40分前 → 滞在は長い扱い
+      makeOpsPlayer('b', 4, {
+        activatedAt: NOW - 30 * 60 * 1000,
+        opsCompletedAt: NOW - 40 * 60 * 1000,
+      }),
+    ];
+    const sorted = sort(players);
+    // activatedAt だけを見れば a が古参で優先されるはずだが、opsCompletedAt 基準では b が優先される
+    expect(sorted.map(p => p.id)).toEqual(['b', 'a']);
+  });
+
+  it('会費・名簿どちらか未完了かつ gamesPlayed > 0 のメンバーは、完了済みで滞在の長い同回数メンバーより後回しになる', () => {
+    const players = [
+      makeOpsPlayer('unresolved', 3, {
+        operationStatus: { payment: false, roster: true, checkin: false },
+      }),
+      makeOpsPlayer('resolved', 3, { opsCompletedAt: NOW - 60 * 60 * 1000 }),
+    ];
+    const sorted = sort(players);
+    expect(sorted.map(p => p.id)).toEqual(['resolved', 'unresolved']);
+  });
+
+  it('opsCompletedAt 未設定 & 両方完了（既存セッション互換）は従来どおり activatedAt 起点で動く', () => {
+    const players = [
+      makeOpsPlayer('a', 2, { activatedAt: NOW - 50 * 60 * 1000 }), // opsCompletedAt なし
+      makeOpsPlayer('b', 2, { activatedAt: NOW - 10 * 60 * 1000 }), // opsCompletedAt なし
+    ];
+    const sorted = sort(players);
+    expect(sorted.map(p => p.id)).toEqual(['a', 'b']);
+  });
+
+  it('gamesPlayed === 0 は会費・名簿未完了でも最優先（初回保証）が維持される', () => {
+    const players = [
+      makeOpsPlayer('resolvedLongStay', 5, { opsCompletedAt: NOW - 120 * 60 * 1000 }),
+      makeOpsPlayer('unresolvedFirstTime', 0, {
+        operationStatus: { payment: false, roster: false, checkin: false },
+      }),
+    ];
+    const sorted = sort(players);
+    expect(sorted[0].id).toBe('unresolvedFirstTime');
+  });
+});

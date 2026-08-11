@@ -16,4 +16,5 @@ export interface Player {
   paymentTimestamp?: number; // 支払い実行時刻（Unix timestamp）
   paymentOperatorName?: string; // 支払い操作を実行した人（currentUser、未選択時は undefined）
   forcedRestAt?: number; // 会費・名簿未対応による強制休憩を実施・通知した時刻（Unix timestamp、未実施は undefined）
+  opsCompletedAt?: number; // 会費・名簿が両方完了になった時刻（Unix timestamp、未完了は undefined、一度セットしたら不変）
 }

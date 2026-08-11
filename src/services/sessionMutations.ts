@@ -139,6 +139,21 @@ const DEFAULT_OP_STATUS: NonNullable<Player['operationStatus']> = {
   checkin: false,
 };
 
+/**
+ * 会費・名簿が両方完了になった時刻を set-once でセットする。
+ * `opsCompletedAt` は滞在時間モードの優先度算出の起点として使われるため、
+ * 一度セットしたら誤操作（OFF→ON し直し等）で上書き・リセットしない。
+ */
+function withOpsCompletedAt(
+  prev: Player,
+  nextStatus: NonNullable<Player['operationStatus']>,
+  now: number,
+): Pick<Player, 'opsCompletedAt'> | Record<string, never> {
+  if (prev.opsCompletedAt !== undefined) return {};
+  if (!nextStatus.payment || !nextStatus.roster) return {};
+  return { opsCompletedAt: now };
+}
+
 export function computeAddPlayers(
   state: GameState,
   inputs: PlayerInput[],
@@ -260,11 +275,12 @@ export function computeToggleOperationStatus(
     players: state.players.map((p) => {
       if (p.id !== playerId) return p;
       const current = p.operationStatus ?? DEFAULT_OP_STATUS;
-      const newValue = !current[field];
+      const nextStatus = { ...current, [field]: !current[field] };
       const updates: Partial<Player> = {
-        operationStatus: { ...current, [field]: newValue },
+        operationStatus: nextStatus,
+        ...withOpsCompletedAt(p, nextStatus, now),
       };
-      if (field === 'payment' && newValue) {
+      if (field === 'payment' && nextStatus.payment) {
         updates.paymentTimestamp = now;
         updates.paymentOperatorName = operatorName;
       }
@@ -294,9 +310,11 @@ export function computeApplyPayment(
       if (p.id !== playerId) return p;
       const current = p.operationStatus ?? DEFAULT_OP_STATUS;
       const wasPaid = current.payment;
+      const nextStatus = { ...current, payment: true };
       const updates: Partial<Player> = {
         paymentAmount: amount,
-        operationStatus: { ...current, payment: true },
+        operationStatus: nextStatus,
+        ...withOpsCompletedAt(p, nextStatus, now),
       };
       if (!wasPaid) {
         updates.paymentTimestamp = now;

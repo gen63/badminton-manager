@@ -392,6 +392,65 @@ describe('sessionMutations - players', () => {
     });
   });
 
+  describe('opsCompletedAt（会費・名簿両方完了時刻、set-once）', () => {
+    it('名簿 ON → 会費 ON の順で、2回目（会費）の操作時刻に opsCompletedAt がセットされる', () => {
+      const state = baseState({
+        players: [makePlayer('a', { operationStatus: { payment: false, roster: false, checkin: false } })],
+      });
+      const rosterDone = computeToggleOperationStatus(state, 'a', 'roster', 1000);
+      expect(rosterDone.players[0].opsCompletedAt).toBeUndefined();
+
+      const paymentDone = computeToggleOperationStatus(rosterDone, 'a', 'payment', 2000);
+      expect(paymentDone.players[0].opsCompletedAt).toBe(2000);
+    });
+
+    it('片方だけ ON では opsCompletedAt は undefined のまま', () => {
+      const state = baseState({
+        players: [makePlayer('a', { operationStatus: { payment: false, roster: false, checkin: false } })],
+      });
+      const next = computeToggleOperationStatus(state, 'a', 'payment', 1000);
+      expect(next.players[0].operationStatus?.payment).toBe(true);
+      expect(next.players[0].opsCompletedAt).toBeUndefined();
+    });
+
+    it('両方完了後にどちらかを OFF→ON し直しても opsCompletedAt は変わらない（set-once）', () => {
+      const state = baseState({
+        players: [makePlayer('a', { operationStatus: { payment: false, roster: false, checkin: false } })],
+      });
+      const rosterDone = computeToggleOperationStatus(state, 'a', 'roster', 1000);
+      const bothDone = computeToggleOperationStatus(rosterDone, 'a', 'payment', 2000);
+      expect(bothDone.players[0].opsCompletedAt).toBe(2000);
+
+      const paymentOff = computeToggleOperationStatus(bothDone, 'a', 'payment', 3000);
+      expect(paymentOff.players[0].opsCompletedAt).toBe(2000);
+
+      const paymentOnAgain = computeToggleOperationStatus(paymentOff, 'a', 'payment', 4000);
+      expect(paymentOnAgain.players[0].opsCompletedAt).toBe(2000);
+    });
+
+    it('computeApplyPayment 経由でも（名簿済みなら）opsCompletedAt がセットされる', () => {
+      const state = baseState({
+        players: [makePlayer('a', { operationStatus: { payment: false, roster: true, checkin: false } })],
+      });
+      const next = computeApplyPayment(state, 'a', 800, 5000);
+      expect(next.players[0].operationStatus?.payment).toBe(true);
+      expect(next.players[0].opsCompletedAt).toBe(5000);
+    });
+
+    it('金額修正（既に payment=true）では opsCompletedAt が上書きされない', () => {
+      const state = baseState({
+        players: [makePlayer('a', {
+          operationStatus: { payment: true, roster: true, checkin: false },
+          paymentAmount: 1200,
+          opsCompletedAt: 1000,
+        })],
+      });
+      const next = computeApplyPayment(state, 'a', 1000, 9999);
+      expect(next.players[0].paymentAmount).toBe(1000);
+      expect(next.players[0].opsCompletedAt).toBe(1000);
+    });
+  });
+
   describe('computeIncrementGamesPlayed', () => {
     it('指定 ID 群の gamesPlayed を +1、lastPlayedAt 更新', () => {
       const state = baseState({
