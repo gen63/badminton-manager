@@ -154,3 +154,4 @@
 - `2026-07-29-rating-vocabulary.md` — 自動セッション作成の序列反転バグの再発防止: 外部境界（GAS ↔ アプリ）のフィールド名を `ordering` → `skill`/レーティングに改名 + 新旧キー後方互換
 - `2026-07-29-history-member-highlight.md` — 履歴画面で絞り込み中のメンバー名を試合カード内で強調（indigo 太字）
 - `2026-08-04-skill-band-guard-and-diversity.md` — 3コートで素の序列の上位×下位同居ガード（`hasTopBottomExtremes`）が2コート限定で効いておらず、ハシゴ式で上がった下位者が上位帯に混ざる問題の修正 + 帯内の多様性強化。実アルゴリズムを叩く bench をリポジトリに常設
+- `2026-08-11-stay-start-at-ops-complete.md` — 滞在時間優先モードの滞在開始時刻を「休憩解除(activatedAt)」から「名簿＋会費の両方完了時刻(`opsCompletedAt`)」へ変更。未完了メンバーは滞在時間ゼロ扱い

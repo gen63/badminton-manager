@@ -1082,6 +1082,33 @@ function computeOneGameDelta(
 }
 
 /**
+ * 滞在時間モードでの「滞在開始時刻」を決定する。
+ *
+ * 会費・名簿が未対応のまま滞在時間だけが積み上がり、対応済みの人より
+ * 優先されてしまう不公平を避けるため、起点は「休憩解除時刻」ではなく
+ * 「会費・名簿が両方完了した時刻」を基準にする。3ケース:
+ *
+ * 1. 会費・名簿とも完了 & `opsCompletedAt` あり
+ *    → `max(practiceStartTime, opsCompletedAt)`
+ * 2. 会費・名簿とも完了 & `opsCompletedAt` なし（このフィールド追加前に
+ *    完了した既存セッション互換）→ `max(practiceStartTime, activatedAt ?? now)`（従来どおり）
+ * 3. 会費・名簿のどちらか未完了
+ *    → `now`（＝滞在時間ゼロ扱い。下限5分ペナルティが効く）
+ *
+ * 詳細: docs/plans/2026-08-11-stay-start-at-ops-complete.md
+ */
+function resolveStayStart(player: Player, practiceStartTime: number, now: number): number {
+  const opsComplete = player.operationStatus?.payment === true && player.operationStatus?.roster === true;
+  if (!opsComplete) {
+    return now;
+  }
+  if (player.opsCompletedAt !== undefined) {
+    return Math.max(practiceStartTime, player.opsCompletedAt);
+  }
+  return Math.max(practiceStartTime, player.activatedAt ?? now);
+}
+
+/**
  * 滞在時間ベースの優先度を計算
  * 優先スコア = 試合回数 / max(滞在時間(分), 5)
  * スコアが低い人を優先
@@ -1105,8 +1132,7 @@ function calculatePriorityScore(
     baseScore = player.gamesPlayed * GAMES_PLAYED_SCORE_UNIT;
   } else {
     const now = Date.now();
-    // 滞在開始時刻 = max(練習開始日時, 休憩解除時刻)
-    const stayStart = Math.max(practiceStartTime, player.activatedAt ?? now);
+    const stayStart = resolveStayStart(player, practiceStartTime, now);
     // 滞在時間（分）、最低5分
     const stayMinutes = Math.max((now - stayStart) / (1000 * 60), MIN_STAY_MINUTES);
     baseScore = player.gamesPlayed / stayMinutes;
