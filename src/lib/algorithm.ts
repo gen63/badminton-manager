@@ -2277,6 +2277,7 @@ export function assignCourts(
       isRecentDuplicate: (ids) => hasSimilarRecentMatch(ids, matchHistory),
       wideSpanThreshold: objectiveWideSpanThreshold,
       preferGenderMix,
+      lateBalanceMode: options?.lateBalanceMode ?? false,
     });
     return [...reservationAssignments, ...assigned];
   }
