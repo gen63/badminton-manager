@@ -84,6 +84,11 @@ function makeRoster(n: number, noise: number, rng: () => number): BenchPlayer[] 
       gamesPlayed: 0,
       lastPlayedAt: 0,
       activatedAt: 0,
+      // #292 以降、滞在時間の起点は「会費・名簿の両方が完了した時刻」。
+      // 未完了だと滞在時間ゼロ扱い（下限5分）になり、滞在時間モードが実質
+      // 無効になってしまうため、ベンチでは全員完了済みとして扱う。
+      operationStatus: { payment: true, roster: true, checkin: true },
+      opsCompletedAt: 0,
       trueRank: entry.trueRank,
       joinAt: 0,
     });
@@ -165,6 +170,7 @@ function runOnce(
       p.isResting = true;
       p.joinAt = joinAt;
       p.activatedAt = joinAt;
+      p.opsCompletedAt = joinAt;
     }
   }
 
