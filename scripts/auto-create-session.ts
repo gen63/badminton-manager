@@ -641,6 +641,9 @@ function buildSessionData(
         practiceType: event.note as '単' | '複' | '楽',
         recordScores: event.note !== '楽',
         continuousMatchMode: true,
+        // 配置モードはセッション設定（既定は待機時間優先）。明示して端末ローカルの
+        // 値に依存しないようにする。
+        useStayDurationPriority: true,
       },
     },
   };

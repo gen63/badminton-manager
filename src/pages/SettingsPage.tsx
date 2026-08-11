@@ -35,7 +35,6 @@ export function SettingsPage() {
   const userIsCreator = isCreator();
   const players = usePlayerStore((s) => s.players);
   const useStayDurationPriority = useSettingsStore((s) => s.useStayDurationPriority);
-  const setUseStayDurationPriority = useSettingsStore((s) => s.setUseStayDurationPriority);
   const recordScores = useSettingsStore((s) => s.recordScores);
   const prioritizeDiversity = useSettingsStore((s) => s.prioritizeDiversity);
   const setPrioritizeDiversity = useSettingsStore((s) => s.setPrioritizeDiversity);
@@ -274,7 +273,7 @@ export function SettingsPage() {
               <label className="text-xs font-semibold text-gray-700 mb-1.5 block">配置モード</label>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setUseStayDurationPriority(true)}
+                  onClick={() => void writer.setUseStayDurationPriority(true)}
                   className={`flex-1 select-button text-xs px-2 ${
                     useStayDurationPriority
                       ? 'select-button-active'
@@ -285,7 +284,7 @@ export function SettingsPage() {
                   待機時間
                 </button>
                 <button
-                  onClick={() => setUseStayDurationPriority(false)}
+                  onClick={() => void writer.setUseStayDurationPriority(false)}
                   className={`flex-1 select-button text-xs px-2 ${
                     !useStayDurationPriority
                       ? 'select-button-active'

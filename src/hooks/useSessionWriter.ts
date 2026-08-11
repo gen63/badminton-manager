@@ -245,6 +245,14 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  const setUseStayDurationPriority = useCallback(
+    (value: boolean) =>
+      handle('setUseStayDurationPriority', (sid) =>
+        sm.setUseStayDurationPriority(sid, value),
+      ),
+    [handle],
+  );
+
   const markLateBalanceAutoFired = useCallback(
     () => handle('markLateBalanceAutoFired', (sid) => sm.markLateBalanceAutoFired(sid)),
     [handle],
@@ -296,6 +304,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setContinuousMatchMode,
       setPracticeType,
       setLateBalanceMode,
+      setUseStayDurationPriority,
       markLateBalanceAutoFired,
       setReservationBlockThreshold,
     }),
@@ -333,6 +342,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setContinuousMatchMode,
       setPracticeType,
       setLateBalanceMode,
+      setUseStayDurationPriority,
       markLateBalanceAutoFired,
       setReservationBlockThreshold,
     ],

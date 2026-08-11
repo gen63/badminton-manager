@@ -142,13 +142,16 @@ export function SessionCreate() {
         id: i + 1,
         ...EMPTY_COURT_STATE,
       }));
-      const { recordScores, continuousMatchMode, practiceType } = useSettingsStore.getState();
+      const { recordScores, continuousMatchMode, practiceType, useStayDurationPriority } =
+        useSettingsStore.getState();
       const initialGameState = {
         players: initialPlayers,
         courts: initialCourts,
         matchHistory: [],
         reservations: [],
-        settings: { recordScores, continuousMatchMode, practiceType },
+        // useStayDurationPriority はセッション設定。作成前は writer が使えないので
+        // 画面上の選択（メモリ上の settingsStore）をここで初期 settings に焼き込む。
+        settings: { recordScores, continuousMatchMode, practiceType, useStayDurationPriority },
       };
 
       // デフォルト周知事項（appConfig/global）があれば周知事項として同梱する。

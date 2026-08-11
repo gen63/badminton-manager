@@ -816,6 +816,16 @@ describe('sessionMutations - settings', () => {
     const next = computeSetSetting(state, 'recordScores', false);
     expect(next.settings).toEqual({ recordScores: false });
   });
+
+  it('computeSetSetting: useStayDurationPriority を他の設定を壊さずに更新する', () => {
+    const state = baseState({ settings: { recordScores: true, continuousMatchMode: true } });
+    const next = computeSetSetting(state, 'useStayDurationPriority', false);
+    expect(next.settings).toEqual({
+      recordScores: true,
+      continuousMatchMode: true,
+      useStayDurationPriority: false,
+    });
+  });
 });
 
 describe('sessionMutations - markLateBalanceAutoFired', () => {

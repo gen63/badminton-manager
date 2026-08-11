@@ -63,7 +63,12 @@ export const useSettingsStore = create<SettingsState>()(
       // 不具合 (例: 単→ダブルス意図のセッションでも singles フローが走る) を
       // 原理的に消す。`useFirebaseSync` 側のフォールバックは旧セッション保険
       // として残す。
-      version: 2,
+      //
+      // version 3: `useStayDurationPriority` も Firestore 同期へ移した。配置モードは
+      // セッション全体の挙動を決めるため、端末ごとに違うと「試合終了を押した人の
+      // 設定で連続配置のモードが変わる」ことになる。
+      // docs/plans/2026-08-11-stay-duration-mode-not-applied.md
+      version: 3,
       migrate: (persisted, version) => {
         let state = persisted;
         if (version < 1 && state && typeof state === 'object') {
@@ -81,12 +86,18 @@ export const useSettingsStore = create<SettingsState>()(
           void _acc;
           state = rest;
         }
+        if (version < 3 && state && typeof state === 'object') {
+          // 旧 version で localStorage に書かれていた useStayDurationPriority を剥がす。
+          // Firestore がソースになるので、持ち越して別セッションに drift させない。
+          const { useStayDurationPriority: _sd, ...rest } = state as Record<string, unknown>;
+          void _sd;
+          state = rest;
+        }
         return state;
       },
       partialize: (state) => ({
         gasWebAppUrl: state.gasWebAppUrl,
         accountingWebAppUrl: state.accountingWebAppUrl,
-        useStayDurationPriority: state.useStayDurationPriority,
         prioritizeDiversity: state.prioritizeDiversity,
       }),
       onRehydrateStorage: () => (state) => {

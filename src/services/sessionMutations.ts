@@ -1000,6 +1000,12 @@ export function setLateBalanceMode(sessionId: string, value: boolean) {
   return mutateGameState(sessionId, (s) => computeSetSetting(s, 'lateBalanceMode', value));
 }
 
+export function setUseStayDurationPriority(sessionId: string, value: boolean) {
+  return mutateGameState(sessionId, (s) =>
+    computeSetSetting(s, 'useStayDurationPriority', value),
+  );
+}
+
 export function setReservationBlockThreshold(sessionId: string, value: number) {
   return mutateGameState(sessionId, (s) => computeSetSetting(s, 'reservationBlockThreshold', value));
 }
@@ -1367,7 +1373,8 @@ export interface FinishGameOptions {
  * `gameStore.finishGame`（楽観更新版）と区別するため、composite であることを
  * 明示する名前にしている。
  *
- * 設定（continuousMatchMode / practiceType）はリモート状態を優先採用する。
+ * 設定（continuousMatchMode / practiceType / useStayDurationPriority）と
+ * 練習開始日時（config.practiceStartTime）はリモート状態を優先採用する。
  */
 export async function finishMatchAndContinue(
   sessionId: string,
@@ -1408,14 +1415,21 @@ export async function finishMatchAndContinue(
 
       const remoteSettings = remote.settings;
       const gameMode = gameModeFromPracticeType(remoteSettings?.practiceType);
+      // 練習開始日時はセッション設定。同じ snapshot から読めるので追加 read は不要。
+      // 待機時間優先モードの滞在時間算出に必須（欠損時のみ従来どおり now 相当）。
+      const remoteConfig = snap.data().config as { practiceStartTime?: number } | undefined;
       const computed = computeFinishAndContinue(remote, courtId, {
         continuousMatchMode: remoteSettings?.continuousMatchMode ?? false,
-        useStayDurationPriority: options.useStayDurationPriority,
+        // 配置モードはセッション設定を優先。リモート未設定の旧セッションのみ、
+        // 呼び出し側（端末ローカル設定）の値にフォールバックする。
+        useStayDurationPriority:
+          remoteSettings?.useStayDurationPriority ?? options.useStayDurationPriority,
         prioritizeDiversity: options.prioritizeDiversity,
         gameMode,
         matchId: options.matchId,
         lateBalanceMode: remoteSettings?.lateBalanceMode ?? false,
         reservationBlockThreshold: remoteSettings?.reservationBlockThreshold,
+        practiceStartTime: remoteConfig?.practiceStartTime,
         skipContinuous: options.skipContinuous,
       });
 

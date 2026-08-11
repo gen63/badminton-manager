@@ -265,6 +265,12 @@ export function useFirebaseSync() {
           if (remoteContinuous !== s.continuousMatchMode) {
             s.setContinuousMatchMode(remoteContinuous);
           }
+          // useStayDurationPriority は未設定なら **true** 扱い（旧セッション互換。
+          // assignCourts の `?? true` / settingsStore の初期値と揃える）。
+          const remoteStayDuration = gameState.settings.useStayDurationPriority ?? true;
+          if (remoteStayDuration !== s.useStayDurationPriority) {
+            s.setUseStayDurationPriority(remoteStayDuration);
+          }
           // lateBalanceMode は未設定なら false 扱い（旧セッション互換）
           const remoteLateBalance = gameState.settings.lateBalanceMode ?? false;
           if (remoteLateBalance !== s.lateBalanceMode) {
