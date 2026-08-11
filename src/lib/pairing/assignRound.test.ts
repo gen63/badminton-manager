@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { assignRoundByObjective } from './assignRound';
 import {
   computeMixSplit,
+  computeVariety,
   computeObjectiveTerms,
   type CourtPlacement,
   type PairCounts,
@@ -235,6 +236,7 @@ describe('computeObjectiveTerms（0〜1に収まること）', () => {
       preferGenderMix: false,
       pairCounts,
       pairKeyOf: pairKey,
+      reachableCountById: new Map(ids.map(id => [id, ids.length - 1])),
     });
 
     for (const [key, value] of Object.entries(terms)) {
@@ -255,6 +257,7 @@ describe('computeObjectiveTerms（0〜1に収まること）', () => {
       preferGenderMix: false,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
+      reachableCountById: new Map(),
     });
 
     for (const value of Object.values(terms)) {
@@ -342,5 +345,96 @@ describe('assignRoundByObjective の性別チーム分け', () => {
     const genderOf = new Map(candidates.map(p => [p.id, p.gender]));
     const malesInA = result[0].teamA.filter(id => genderOf.get(id) === 'M').length;
     expect(malesInA).toBe(1); // 各チームが男女1人ずつ = MIX×MIX
+  });
+});
+
+describe('公平性の窓（優先度順から離れすぎない）', () => {
+  it('質を優先しても、優先度が大きく後ろの人は出場させない', () => {
+    // 12人1コート。priorityScoreOf は id の数字（p0 が最優先）。
+    // 必要人数 4 / 余剰 8 → 窓は 4 + ceil(8 * 0.7) = 10 番目まで。p10 以降は出せない。
+    const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
+
+    // 実力順位を仕込む。優先度どおりの p0〜p3 だと p3 だけ実力が離れていて
+    // skillGap も competitive も最悪。p10 を入れれば両方一気に解消する
+    // （p4〜p9 は p3 と同格なので、窓の中の入れ替えでは解消できない）。
+    const rankById = new Map<string, number>([
+      ['p0', 0], ['p1', 1], ['p2', 2],
+      ['p3', 11], ['p4', 11], ['p5', 11], ['p6', 11],
+      ['p7', 11], ['p8', 11], ['p9', 11],
+      ['p10', 3], ['p11', 12],
+    ]);
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1],
+      rankById,
+      rosterSize: 13,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+    });
+
+    const chosen = [...result[0].teamA, ...result[0].teamB].map(id =>
+      Number(id.replace('p', ''))
+    );
+    // 窓が無ければ p10 が呼ばれる状況。窓があるので 10 番目以降は出せない。
+    expect(Math.max(...chosen)).toBeLessThan(10);
+  });
+
+  it('候補が必要人数ちょうどなら窓は誰も弾かない', () => {
+    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById: rankByIdFrom(candidates.map(p => p.id)),
+      rosterSize: 8,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+    });
+    expect(result).toHaveLength(2);
+    expect(new Set(result.flatMap(c => [...c.teamA, ...c.teamB])).size).toBe(8);
+  });
+});
+
+describe('computeVariety の閾値スケール', () => {
+  const courts: CourtPlacement[] = [
+    { courtId: 1, teamA: ['a0', 'a1'], teamB: ['a2', 'a3'] },
+  ];
+  const counts = (n: number): PairCounts => {
+    const partner = new Map<string, number>();
+    const ids = ['a0', 'a1', 'a2', 'a3'];
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) partner.set(pairKey(ids[i], ids[j]), n);
+    }
+    return { partner, opponent: new Map() };
+  };
+
+  it('組める相手が少ない人の共演回数は割り引いて評価する', () => {
+    // 全員が同じ回数（2回）共演している状況。
+    // 組める相手が平均並み（20人）なら満点のペナルティ、
+    // 平均の半分（10人）しかいない人が混じるなら半分に割り引かれる。
+    const average = new Map(['a0', 'a1', 'a2', 'a3'].map(id => [id, 20]));
+    const narrow = new Map(average);
+    narrow.set('a0', 10);
+
+    const wide = computeVariety(courts, counts(2), pairKey, average);
+    const narrowed = computeVariety(courts, counts(2), pairKey, narrow);
+
+    expect(narrowed).toBeLessThan(wide);
+  });
+
+  it('全員の相手数が同じならスケールは掛からない', () => {
+    const same = new Map(['a0', 'a1', 'a2', 'a3'].map(id => [id, 8]));
+    const other = new Map(['a0', 'a1', 'a2', 'a3'].map(id => [id, 30]));
+    expect(computeVariety(courts, counts(3), pairKey, same)).toBe(
+      computeVariety(courts, counts(3), pairKey, other)
+    );
   });
 });

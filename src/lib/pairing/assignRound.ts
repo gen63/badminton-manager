@@ -43,6 +43,16 @@ export interface AssignRoundParams {
 /** 局所探索の反復上限 */
 const MAX_ITERATIONS = 200;
 
+/**
+ * 公平性の窓の緩み。余剰人数（候補数 − 必要人数）のうち何割まで
+ * 「優先度順を飛ばしてよいか」を決める。0 なら完全に優先度順（質の最適化の
+ * 自由度ゼロ）、1 なら窓なし（従来）。
+ *
+ * 固定値にすると候補プールがコート数に対して十分大きい条件でしか発動せず、
+ * 遅参加の過剰が最も酷い 14人2コート / 18人3コートで効かなかった。
+ */
+const FAIRNESS_WINDOW_RATIO = 0.7;
+
 /** コート1つ分の内部状態。slots = [teamA0, teamA1, teamB0, teamB1] */
 interface CourtState {
   courtId: number;
@@ -135,6 +145,18 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   });
 
   const candidateCount = sortedCandidates.length;
+
+  // 各候補が「同じコートに入れる相手」の人数。variety の閾値スケールに使う。
+  const reachableCountById = new Map<string, number>(
+    candidates.map(p => {
+      if (wideSpanThreshold === null) return [p.id, candidates.length - 1] as const;
+      const rank = rankById.get(p.id) ?? 0;
+      const count = candidates.filter(
+        q => q.id !== p.id && Math.abs((rankById.get(q.id) ?? 0) - rank) < wideSpanThreshold
+      ).length;
+      return [p.id, count] as const;
+    })
+  );
   const priorityRankById = new Map<string, number>(
     sortedCandidates.map((p, index) => [p.id, index] as const)
   );
@@ -359,6 +381,19 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       }
       if (isRecentDuplicate(members)) violations++;
     }
+    // 公平性の窓: 優先度順で「必要人数 + slack」番目より後ろの人を出場させない。
+    // 旧エンジンは優先度順に上から取る構造だったので公平性が強く守られていた。
+    // 新エンジンは fairness を重み付きの一項目にしたため、質の項に押し負けて
+    // 出遅れている人を飛ばしてしまう。質の最適化は窓の中だけで行わせる。
+    const surplus = candidateCount - neededCount;
+    const windowLimit = neededCount + Math.ceil(surplus * FAIRNESS_WINDOW_RATIO);
+    if (windowLimit < candidateCount) {
+      for (const court of s.courts) {
+        for (const id of courtMembers(court)) {
+          if ((priorityRankById.get(id) ?? 0) >= windowLimit) violations++;
+        }
+      }
+    }
     const terms = computeObjectiveTerms({
       courts: placements,
       benchIds: s.bench,
@@ -370,6 +405,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       preferGenderMix,
       pairCounts,
       pairKeyOf,
+      reachableCountById,
     });
     return { violations, objective: weightedObjective(terms, weights) };
   };

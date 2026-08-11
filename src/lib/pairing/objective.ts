@@ -32,9 +32,26 @@ export interface ObjectiveWeights {
 }
 
 /**
- * `mixSplit` の重み。2-2 のコートは原則 MIX×MIX に分ける（旧エンジンの
- * `splitIntoTeams` はこれをハード制約にしていた）。ここではソフト制約にして、
- * 少数派性別が偏った日など逃げ道が要る場面で破綻しないようにしている。
+ * `mixSplit` の重み。2-2 のコートは MIX×MIX に分ける（旧エンジンの
+ * `splitIntoTeams` はこれをハード制約にしていた）。
+ *
+ * **形式はソフト制約だが、1.0 では実質ハード制約**。コート4人を実力順に
+ * r1<r2<r3<r4、`a = r2−r1`、`b = r4−r3` と置くと、`competitive` が
+ * `mixSplit` に打ち勝って男女戦が選ばれる条件は
+ *
+ * ```
+ * 2 * min(a, b) > ロースター人数 − 1
+ * ```
+ *
+ * だが `2*min(a,b) <= a+b <= コート内の実力幅 <= ロースター人数 − 1` が常に
+ * 成り立つため、この不等式は決して満たされない（8〜30人で総当たり検算済み。
+ * 最悪ケースでもマージン −0.034）。閾値は 0.5〜0.6 の間にあり、0.4 まで
+ * 下げると最も釣り合わない構成に限って 0.3〜1.1% で男女戦が出る。
+ *
+ * バランス上どうしても MIX が組めない場面の逃げ道は、この項ではなく
+ * **コート構成のレイヤー**にある。2-2 にせず 4-0 / 3-1 にすればこの項は
+ * 適用対象外（`computeMixSplit` は 2-2 のみ判定）で、その判断は `gender` が担う。
+ *
  * 値は bench で決定（`docs/plans/2026-08-05-pairing-goals-and-rewrite.md`）。
  */
 const MIX_SPLIT_WEIGHT = 1.0;
@@ -62,9 +79,10 @@ const MIX_SPLIT_WEIGHT = 1.0;
  * 3. `variety` **2.6**: 1.2 では「6回組んだペアを再選出しない」という目的6 の
  *    基本的なケース（`algorithm.test.ts` の集中度テスト）を落とす。集計上の
  *    占有率は良くても、偏りそのものを外すのは筋が悪いので上げた
- * 4. `mixSplit` **1.0**: 後から追加（→ `MIX_SPLIT_WEIGHT`）。0.5 でも男女戦は
- *    0.1〜0.2% まで下がるが 0 にはならず、1.0 で全条件 0.0%。0.5 → 1.0 の
- *    追加コストは無い（競り度・占有率・試合数幅とも誤差範囲）
+ * 4. `mixSplit` **1.0**: 後から追加（→ `MIX_SPLIT_WEIGHT`）。0.4 では男女戦が
+ *    0.3〜1.1% 残り、0.5 で 0.0〜0.1%、0.6 以上で全条件 0.0%。1.0 を採ったのは
+ *    閾値（0.5〜0.6）から余裕を取るため。0.4 → 1.0 で他の指標は変わらない
+ *    （競り度・占有率・試合数幅とも誤差範囲）
  *
  * 結果、**質・多様性の全指標で既存エンジンを上回り**、劣るのは試合数幅のみ
  * （21人3コートで 2.16 vs 1.41）。
@@ -104,6 +122,8 @@ export interface ObjectiveInput {
   preferGenderMix: boolean;
   pairCounts: PairCounts;
   pairKeyOf: (a: string, b: string) => string;
+  /** 各候補が「同じコートに入れる相手」の人数。variety の閾値スケールに使う */
+  reachableCountById: Map<string, number>;
 }
 
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
@@ -243,28 +263,51 @@ export function computeMixSplit(
  * 目的6: variety — 各コートで
  * `0.6 * min(1, 最多ペアの共演回数 / 4) + 0.4 * min(1, 6ペアの共演回数合計 / 12)` の平均。
  * 「共演回数」はパートナー回数 + 対戦相手回数。
+ *
+ * 共演回数は**その2人が組める相手数**で割ってから閾値に当てる（`scaleOf`）。
  */
 export function computeVariety(
   courts: CourtPlacement[],
   pairCounts: PairCounts,
-  pairKeyOf: (a: string, b: string) => string
+  pairKeyOf: (a: string, b: string) => string,
+  reachableCountById: Map<string, number>
 ): number {
   if (courts.length === 0) return 0;
   const together = (a: string, b: string): number => {
     const key = pairKeyOf(a, b);
     return (pairCounts.partner.get(key) ?? 0) + (pairCounts.opponent.get(key) ?? 0);
   };
+
+  // 閾値のスケール。序列の端の人は同居できる相手が片側にしかおらず、組める相手数が
+  // 中央の半分程度しかない。同じ回数を回しても共演回数が早く飽和するため、絶対値の
+  // 閾値のままだと「避けようのない繰り返し」を罰することになり、端の人ほど
+  // ベンチに残されてしまう（実測: 端は中央より 0.7〜0.9 試合少なかった）。
+  const reachable = [...reachableCountById.values()].filter(v => v > 0);
+  const avgReachable = reachable.length
+    ? reachable.reduce((a, b) => a + b, 0) / reachable.length
+    : 0;
+  const scaleOf = (a: string, b: string): number => {
+    if (avgReachable <= 0) return 1;
+    const ra = reachableCountById.get(a) ?? avgReachable;
+    const rb = reachableCountById.get(b) ?? avgReachable;
+    const min = Math.min(ra, rb);
+    if (min <= 0) return 1;
+    return Math.max(1, avgReachable / min);
+  };
+
   const sum = courts.reduce((s, court) => {
     const members = courtMembers(court);
-    const pairSums: number[] = [];
+    let maxRatio = 0;
+    let totalRatio = 0;
     for (let i = 0; i < members.length; i++) {
       for (let j = i + 1; j < members.length; j++) {
-        pairSums.push(together(members[i], members[j]));
+        const scale = scaleOf(members[i], members[j]);
+        const ratio = together(members[i], members[j]) / scale;
+        if (ratio > maxRatio) maxRatio = ratio;
+        totalRatio += ratio;
       }
     }
-    const maxPair = pairSums.length ? Math.max(...pairSums) : 0;
-    const total = pairSums.reduce((a, b) => a + b, 0);
-    const term = 0.6 * Math.min(1, maxPair / 4) + 0.4 * Math.min(1, total / 12);
+    const term = 0.6 * Math.min(1, maxRatio / 4) + 0.4 * Math.min(1, totalRatio / 12);
     return s + term;
   }, 0);
   return clamp01(sum / courts.length);
@@ -281,7 +324,12 @@ export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
     competitive: computeCompetitive(input.courts, input.rankById, input.rosterSize),
     gender: computeGender(input.courts, input.genderById, input.preferGenderMix),
     mixSplit: computeMixSplit(input.courts, input.genderById),
-    variety: computeVariety(input.courts, input.pairCounts, input.pairKeyOf),
+    variety: computeVariety(
+      input.courts,
+      input.pairCounts,
+      input.pairKeyOf,
+      input.reachableCountById
+    ),
   };
 }
 

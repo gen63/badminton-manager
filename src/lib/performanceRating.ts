@@ -48,6 +48,17 @@ export interface PlayerPerformance {
   expectedWinRate: number | null;
   /** 実勝利数 − 期待勝利数。相手の強さを補正した上振れ分（小数第1位まで）。 */
   winsAboveExpected: number;
+  /**
+   * `winsAboveExpected` の標準誤差（二項分布 sqrt(n*q*(1-q))、小数第2位まで）。
+   * 1日分の試合数（10〜15試合）では 1.4〜1.9 程度になる。
+   */
+  winsAboveExpectedError: number;
+  /**
+   * 上振れが偶然では説明しにくいか（|上振れ| >= 1.96 * 標準誤差）。
+   * **1日分のデータではほとんどの人が false になる**（2026-08-11 の実データでは
+   * 21人中 1人だけ）。レートの順位を「その日の強さ順」として読ませないための情報。
+   */
+  isSignificant: boolean;
 }
 
 export interface PerformanceResult {
@@ -274,6 +285,15 @@ export function computePerformanceRatings(
       expectedWinRate:
         total > 0 ? Math.round((stat.expectedWins / total) * 100) : null,
       winsAboveExpected: round1(stat.wins - stat.expectedWins),
+      ...((): { winsAboveExpectedError: number; isSignificant: boolean } => {
+        const q = total > 0 ? stat.expectedWins / total : 0;
+        const error = Math.sqrt(total * q * (1 - q));
+        const above = stat.wins - stat.expectedWins;
+        return {
+          winsAboveExpectedError: Math.round(error * 100) / 100,
+          isSignificant: error > 0 && Math.abs(above) >= 1.96 * error,
+        };
+      })(),
     };
   });
 

@@ -335,8 +335,12 @@ function PlayerRecordSummary({
             <span>
               期待勝率 {performance.expectedWinRate ?? '—'}% →{' '}
               {performance.winRate ?? '—'}%（
-              {formatSigned(performance.winsAboveExpected)}勝）
+              {formatSigned(performance.winsAboveExpected)}勝 ±
+              {performance.winsAboveExpectedError.toFixed(1)}）
             </span>
+            {!performance.isSignificant && (
+              <span className="opacity-75">この試合数では誤差の範囲</span>
+            )}
           </div>
         </div>
       )}
@@ -426,15 +430,24 @@ function PerformanceRanking({
                     相手平均 {p.opponentRating}
                   </span>
                   <span
-                    className={`whitespace-nowrap font-medium ${
-                      p.winsAboveExpected > 0
-                        ? 'text-emerald-600'
-                        : p.winsAboveExpected < 0
-                          ? 'text-orange-600'
-                          : ''
+                    className={`whitespace-nowrap ${
+                      p.isSignificant
+                        ? p.winsAboveExpected > 0
+                          ? 'font-medium text-emerald-600'
+                          : 'font-medium text-orange-600'
+                        : ''
                     }`}
+                    title={
+                      p.isSignificant
+                        ? '偶然では説明しにくい差'
+                        : 'この試合数では誤差の範囲'
+                    }
                   >
                     期待比 {formatSigned(p.winsAboveExpected)}勝
+                    <span className="opacity-60">
+                      {' '}
+                      ±{p.winsAboveExpectedError.toFixed(1)}
+                    </span>
                   </span>
                 </div>
               </button>
