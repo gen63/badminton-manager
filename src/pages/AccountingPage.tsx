@@ -566,9 +566,9 @@ export function AccountingPage() {
         </div>
       </div>
 
-      {/* タブ */}
+      {/* タブ（スクロールしても常に見えるよう固定） */}
       {isAdmin && (
-        <div className="border-b border-border bg-card">
+        <div className="sticky top-0 z-20 border-b border-border bg-card">
           <div className="max-w-md mx-auto flex">
             <button
               onClick={() => setActiveTab('input')}
