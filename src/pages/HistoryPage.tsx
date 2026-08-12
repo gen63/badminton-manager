@@ -28,7 +28,12 @@ import type { Match } from '../types/match';
 
 const SHORT_MATCH_WARNING_MESSAGE = '試合時間が短すぎます（操作ミスの可能性）';
 
-/** チームの名前を1人ずつ描画し、絞り込み中のメンバーだけを強調する。 */
+/**
+ * チームの名前を1人ずつ描画し、絞り込み中のメンバーだけを強調する。
+ * 名前ごとに独立した折り返し単位（flex アイテム）にしているため、
+ * 幅が足りないときはまず名前の区切りで改行され、1人の名前だけで
+ * 1行に収まらない場合にのみ名前の途中で折り返す。
+ */
 function TeamNames({
   playerIds,
   getPlayerName,
@@ -42,10 +47,11 @@ function TeamNames({
     <>
       {playerIds.map((id, i) => {
         const isHighlighted = getPlayerName(id) === highlightName;
-        const className = isHighlighted ? 'font-bold text-indigo-600' : undefined;
         return (
-          <span key={`${id}-${i}`} className={className}>
-            {i > 0 && ' '}
+          <span
+            key={`${id}-${i}`}
+            className={`min-w-0 break-words ${isHighlighted ? 'font-bold text-indigo-600' : ''}`}
+          >
             {getPlayerName(id)}
           </span>
         );
@@ -123,17 +129,21 @@ function MatchCard({
         </div>
 
         <div className="flex-1 min-w-0 space-y-0.5">
-          <div className="flex items-center text-sm gap-1.5 leading-tight">
-            <span className="font-bold text-foreground truncate flex-1 min-w-0">
-              <TeamNames playerIds={leftIds} getPlayerName={getPlayerName} highlightName={highlightName} />
-            </span>
-            <span className="text-muted-foreground font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
-            <span className="text-muted-foreground truncate flex-1 min-w-0">
-              <TeamNames playerIds={rightIds} getPlayerName={getPlayerName} highlightName={highlightName} />
-            </span>
+          {/*
+            チームを左右に並べると1チームあたり画面幅の半分弱しか使えず、
+            日本語の名前2人分が入らないため上下2段にする。各段がカード幅を
+            まるごと使えるので、ほとんどの試合で名前を省略せずに表示できる。
+            勝者が上段（太字）、敗者が下段（VS バッジ付き・淡色）。
+          */}
+          <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight font-bold text-foreground">
+            <TeamNames playerIds={leftIds} getPlayerName={getPlayerName} highlightName={highlightName} />
+          </div>
+          <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight text-muted-foreground">
+            <span className="font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
+            <TeamNames playerIds={rightIds} getPlayerName={getPlayerName} highlightName={highlightName} />
           </div>
 
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground leading-tight">
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground leading-tight">
             <span className="flex items-center gap-0.5 whitespace-nowrap">
               <Clock size={11} />
               {formatTime(match.finishedAt)}
