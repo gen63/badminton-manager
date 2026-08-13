@@ -24,19 +24,15 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { DEFAULT_RESERVATION_BLOCK_THRESHOLD } from '../lib/algorithm';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { usePresenceStore } from '../stores/presenceStore';
-import { notifyMatchStart, notifyForcedRest } from '../lib/notifications';
+import { notifyForcedRest } from '../lib/notifications';
 import { unresolvedOpsOf } from '../services/sessionMutations';
 import { useNoticeStore } from '../stores/noticeStore';
-import type { Court } from '../types/court';
 import type { Match } from '../types/match';
 import type { Player } from '../types/player';
 import type { GameState } from '../services/sessionService';
 import type { Session } from '../types/session';
 
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-
-/** 試合開始通知の重複防止（プロセス全体で共有） */
-const notifiedMatches = new Set<string>();
 
 /** 未対応強制休憩通知の重複防止（プロセス全体で共有） */
 const notifiedForcedRests = new Set<string>();
@@ -200,12 +196,6 @@ export function useFirebaseSync() {
           return;
         }
 
-        // 試合開始通知（前後比較）— setState 前に oldCourts を撮る
-        const oldCourts = useGameStore.getState().courts;
-        if (gameState.courts !== undefined) {
-          checkMatchStartNotifications(oldCourts, gameState.courts);
-        }
-
         // 未対応（会費・名簿）強制休憩の全員通知（実施端末以外もここで受け取る）
         if (gameState.players !== undefined) {
           checkForcedRestNotifications(gameState.players);
@@ -326,7 +316,6 @@ export function useFirebaseSync() {
       window.removeEventListener('online', handleOnline);
       useSyncStatusStore.getState().setGameStateLoaded(false);
       // 通知済みセットはセッション切替時にクリア（新セッションでは再通知してよい）
-      notifiedMatches.clear();
       notifiedForcedRests.clear();
       notifiedUnrecordedRests.clear();
     };
@@ -409,57 +398,5 @@ function checkUnrecordedRestNotifications(matchHistory: Match[], players: Player
 
     useNoticeStore.getState().show(message, 'warning', 8000);
     notifyForcedRest(m.id, message);
-  }
-}
-
-/** 自分がメンバーのコートで試合が新規開始されたら通知を出す */
-function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
-  const currentUser = useSessionStore.getState().currentUser;
-  if (!currentUser) return;
-
-  const players = usePlayerStore.getState().players;
-  const myPlayer = players.find((p) => p.name === currentUser);
-  if (!myPlayer) return;
-
-  const { matchHistory } = useGameStore.getState();
-
-  for (const newCourt of newCourts) {
-    const oldCourt = oldCourts.find((c) => c.id === newCourt.id);
-    const justStarted = newCourt.isPlaying && (!oldCourt || !oldCourt.isPlaying);
-    if (!justStarted) continue;
-
-    const matchKey = `${newCourt.id}-${newCourt.startedAt}`;
-    if (notifiedMatches.has(matchKey)) continue;
-
-    const allPlayerIds = [...newCourt.teamA, ...newCourt.teamB];
-    if (!allPlayerIds.includes(myPlayer.id)) continue;
-
-    // リロード時の誤通知防止: 初回スナップショット（比較対象の旧コートが無い）は
-    // 開始から 2 分以上経過していれば通知しない。
-    // 実際に isPlaying: false → true の遷移を観測した場合は、いま開始されたことが
-    // 確かなので経過時間で弾かない（配置後 3 分の自動開始は startedAt が配置時刻
-    // ＝ 3 分前になるため、経過時間で弾くと通知が出ない）。
-    if (!oldCourt) {
-      const timeSinceStart = newCourt.startedAt ? Date.now() - newCourt.startedAt : 0;
-      if (timeSinceStart > 120_000) continue;
-    }
-
-    const finishedBefore = matchHistory.filter(
-      (m) => m.finishedAt && newCourt.startedAt && m.finishedAt <= newCourt.startedAt,
-    ).length;
-    const playingBefore = newCourts.filter((c) => c.isPlaying && c.id < newCourt.id).length;
-    const matchNumber = finishedBefore + playingBefore + 1;
-
-    const teamANames = newCourt.teamA.map((id) => players.find((p) => p.id === id)?.name ?? '');
-    const teamBNames = newCourt.teamB.map((id) => players.find((p) => p.id === id)?.name ?? '');
-
-    notifyMatchStart(
-      newCourt.id,
-      matchNumber,
-      teamANames,
-      teamBNames,
-      newCourt.startedAt ?? undefined,
-    );
-    notifiedMatches.add(matchKey);
   }
 }

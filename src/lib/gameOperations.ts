@@ -24,6 +24,15 @@ export const MATCH_AUTO_END_MS = 15 * 60 * 1000;
  */
 export const MATCH_AUTO_START_MS = 3 * 60 * 1000;
 
+/**
+ * 「次の試合に入りそう」呼び出し通知を出す試合経過時間の閾値（4分30秒）。
+ * 実測（2026-08-11、有効 n=62、外れ値1件除外）: 5分17.5% / 6分31.7% / 7分30.2% /
+ * 8分15.9% / 9分3.2%、平均6.55分・中央値6.5分・p10 5.0分・p90 8.0分。
+ * 閾値5分だと発火率82%・リードタイム中央2分。ただし記録が分単位（丸め）のため
+ * 「5分」の実体は4:30〜5:30。取りこぼしを避けて4:30に倒している。
+ */
+export const MATCH_CALL_THRESHOLD_MS = 4.5 * 60 * 1000;
+
 /** ゲームモードに応じた1コートあたりの人数 */
 export function getPlayersPerCourt(gameMode: 'singles' | 'doubles'): number {
   return gameMode === 'singles' ? 2 : 4;

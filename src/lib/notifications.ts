@@ -15,37 +15,15 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return result === 'granted';
 }
 
-/** 試合開始通知を送信 */
-export function notifyMatchStart(
-  courtNumber: number,
-  matchNumber: number,
-  teamANames: string[],
-  teamBNames: string[],
-  startedAt?: number
-): void {
+/** 次の試合に入りそうなメンバーへの事前呼び出し通知を送信 */
+export function notifyNextMatchSoon(): void {
   if (!isNotificationSupported()) return;
   if (Notification.permission !== 'granted') return;
 
-  // タイムラグを計算
-  const now = Date.now();
-  const lagMs = startedAt ? now - startedAt : 0;
-  const lagSec = Math.round(lagMs / 100) / 10; // 小数点1桁
-
-  // チーム名を整形（空文字を除外して結合）
-  const teamA = teamANames.filter(n => n).join(' ');
-  const teamB = teamBNames.filter(n => n).join(' ');
-  const matchInfo = teamA && teamB ? `${teamA} vs ${teamB}` : '';
-
-  const lagInfo = startedAt && lagSec > 0 ? `（${lagSec}秒前）` : '';
-  
-  const body = matchInfo
-    ? `#${matchNumber} コート${courtNumber}: ${matchInfo} ${lagInfo}`.trim()
-    : `#${matchNumber} コート${courtNumber}が始まりました ${lagInfo}`.trim();
-
-  new Notification('試合開始！', {
-    body,
+  new Notification('まもなく出番です', {
+    body: '次の試合に入りそうです。準備してコート脇へお願いします',
     icon: '/badminton-manager/icons/icon-192x192.png',
-    tag: `match-start-court-${courtNumber}`,
+    tag: 'next-match-soon',
   });
 }
 
