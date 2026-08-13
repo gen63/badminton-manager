@@ -91,7 +91,7 @@ interface PlayerIssue {
 // Phase A: E-tomoスクレイピング
 // ============================================================
 
-export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName, AUTO_SESSION_ADMINS, computeRosterDiff, computeRosterSync, readTmpSheet, fetchWithRetry, fetchEventDetails, describeError };
+export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, isRatingRequired, findUnratedParticipants, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName, AUTO_SESSION_ADMINS, computeRosterDiff, computeRosterSync, readTmpSheet, fetchWithRetry, fetchEventDetails, describeError };
 
 // ============================================================
 // リトライ付き fetch
@@ -539,6 +539,29 @@ function checkPlayerIssues(
   return issues;
 }
 
+/**
+ * その回でレーティングが必須か。楽・単は序列をほぼ使わない（単は順位差が
+ * タイブレークに効くだけ）ので未設定でも止めない。
+ */
+function isRatingRequired(event: { note: string }): boolean {
+  return event.note !== '楽' && event.note !== '単';
+}
+
+/**
+ * 同期後もレート未設定のまま**セッションに残っている**参加者。
+ * `held`（今回追加を見送った人）は既に別枠で通知するので除く。
+ * FORCE_CREATE で作成した回や、レート必須化より前に入った人がここに出る。
+ */
+function findUnratedParticipants(
+  event: EtomoEventDetail,
+  memberMap: Map<string, MemberData>,
+  held: string[],
+): string[] {
+  return checkPlayerIssues(event.participants, memberMap)
+    .map((i) => i.name)
+    .filter((name) => !held.includes(name));
+}
+
 async function fetchCreatedSessions(
   db: ReturnType<typeof getFirestore>,
   eventIds: string[],
@@ -666,25 +689,74 @@ function computeRosterDiff(
   };
 }
 
+/** レートが変わった留任プレイヤー1人分の記録（Discord 通知用） */
+interface RatingChange {
+  name: string;
+  from: number | undefined;
+  to: number;
+}
+
+interface RosterSyncOptions {
+  /**
+   * レート未設定の**新規**参加者の追加を見送るか（複＝レート必須の回で true）。
+   * 未設定のまま追加すると `buildInitialOrder` が未設定者を序列の中位ブロックへ
+   * 挿入するため、初参加者が実力不明のまま中位として配置されてしまう。
+   * 保留した人は Discord に列挙し、tmp シート入力 → 再実行で追加される。
+   */
+  holdUnratedAdditions?: boolean;
+  /**
+   * 留任プレイヤーのレートを tmp シートの skill で上書きするか。
+   * 試合開始後は配置基準が途中で変わるため呼び出し側が false にする。
+   */
+  syncExistingRatings?: boolean;
+}
+
+interface RosterSyncResult {
+  state: GameState;
+  added: string[];
+  removed: string[];
+  /** レート未設定のため追加を見送った新規参加者 */
+  held: string[];
+  /** tmp シートの skill に合わせて更新した留任プレイヤー */
+  ratingUpdated: RatingChange[];
+}
+
 /**
  * gameState.players の実ロースターを E-ToMo の最新出席者リストへ同期する。
  * 追加プレイヤーの構築ルールは buildSessionData の player 構築と同一。
  * 削除は src/services/sessionMutations.ts の computeRemovePlayer と同じ整合性
  * ルール（court の teamA/teamB を空文字に、restingPlayerIds/reservation.playerIds
  * から除外し空になった予約は削除）を踏襲する。matchHistory は変更しない。
+ *
+ * 留任プレイヤーのレートも tmp シートの skill へ追従させる（`syncExistingRatings`）。
+ * tmp シートは管理者の手入力を保持したまま再実行できる（`docs/webhook.js` の
+ * `createOrUpdateTmpSheet_`）ので、「シートでレートを直す → 再実行」で既存
+ * セッションのレートを更新できる。**シートが正**で、アプリ側で手編集したレートは
+ * 上書きされる（どちらが新しいかを判別する手段が無いため）。
+ * skill が空の人は現状維持（undefined で消さない）。
  */
 function computeRosterSync(
   state: GameState,
   event: EtomoEventDetail,
   memberMap: Map<string, MemberData>,
-): { state: GameState; added: string[]; removed: string[] } {
+  options: RosterSyncOptions = {},
+): RosterSyncResult {
+  const { holdUnratedAdditions = false, syncExistingRatings = true } = options;
   const currentNames = state.players.map((p) => p.name);
   const { toAdd, toRemove } = computeRosterDiff(currentNames, event.participants);
 
-  const newPlayers: Player[] = toAdd.map((name) => {
+  const ratingOf = (name: string): number | undefined => {
+    const skill = memberMap.get(name)?.skill;
+    return skill != null ? skillToRating(skill) : undefined;
+  };
+
+  const held = holdUnratedAdditions ? toAdd.filter((name) => ratingOf(name) == null) : [];
+  const accepted = toAdd.filter((name) => !held.includes(name));
+
+  const newPlayers: Player[] = accepted.map((name) => {
     const member = memberMap.get(name);
     const gender = event.genders[name] || member?.gender;
-    const rating = member?.skill != null ? skillToRating(member.skill) : undefined;
+    const rating = ratingOf(name);
     return {
       id: crypto.randomUUID(),
       name,
@@ -701,6 +773,17 @@ function computeRosterSync(
     state.players.filter((p) => toRemove.includes(p.name)).map((p) => p.id),
   );
 
+  const ratingUpdated: RatingChange[] = [];
+  const retainedPlayers = state.players
+    .filter((p) => !removeIds.has(p.id))
+    .map((p) => {
+      if (!syncExistingRatings) return p;
+      const rating = ratingOf(p.name);
+      if (rating == null || rating === p.rating) return p;
+      ratingUpdated.push({ name: p.name, from: p.rating, to: rating });
+      return { ...p, rating };
+    });
+
   const blankTeam = (team: [string, string]): [string, string] => [
     removeIds.has(team[0]) ? '' : team[0],
     removeIds.has(team[1]) ? '' : team[1],
@@ -708,7 +791,7 @@ function computeRosterSync(
 
   const nextState: GameState = {
     ...state,
-    players: [...state.players.filter((p) => !removeIds.has(p.id)), ...newPlayers],
+    players: [...retainedPlayers, ...newPlayers],
     courts: state.courts.map((c) => ({
       ...c,
       teamA: blankTeam(c.teamA),
@@ -720,7 +803,7 @@ function computeRosterSync(
       .filter((r) => r.playerIds.length > 0),
   };
 
-  return { state: nextState, added: toAdd, removed: toRemove };
+  return { state: nextState, added: accepted, removed: toRemove, held, ratingUpdated };
 }
 
 // undefined値を除去（serverTimestamp()等のセンチネル値はsanitize対象外にする）
@@ -779,14 +862,20 @@ async function createFirestoreSession(
 
 /**
  * 既存セッションの gameState.players を E-ToMo の最新出席者リストへ同期する。
- * 変更（追加/削除）があった場合のみ Firestore を更新する。
+ * 変更（追加/削除/レート更新）があった場合のみ Firestore を更新する。
+ *
+ * **レートの更新は試合開始前（matchHistory が空）に限る。** 序列は配置のたびに
+ * `buildInitialOrder` から作り直されるため、試合中にレートを書き換えると
+ * その場で実力差の判定基準が変わってしまう。運用上も「開始前にシートを微調整して
+ * 再実行する」のが想定フローなので、開始後は出欠（追加/削除）だけ同期する。
  */
 async function syncSessionRoster(
   db: ReturnType<typeof getFirestore>,
   sessionId: string,
   event: EtomoEventDetail,
   memberMap: Map<string, MemberData>,
-): Promise<{ added: string[]; removed: string[] }> {
+  options: { holdUnratedAdditions: boolean },
+): Promise<RosterSyncResult & { ratingSyncSkipped: boolean }> {
   const docRef = doc(db, 'sessions', sessionId);
 
   return await runTransaction(db, async (transaction) => {
@@ -800,9 +889,14 @@ async function syncSessionRoster(
       throw new Error(`Session ${sessionId} has no gameState`);
     }
 
-    const { state: nextState, added, removed } = computeRosterSync(gameState, event, memberMap);
+    const matchesStarted = (gameState.matchHistory?.length ?? 0) > 0;
+    const result = computeRosterSync(gameState, event, memberMap, {
+      holdUnratedAdditions: options.holdUnratedAdditions,
+      syncExistingRatings: !matchesStarted,
+    });
+    const { state: nextState, added, removed, ratingUpdated } = result;
 
-    if (added.length > 0 || removed.length > 0) {
+    if (added.length > 0 || removed.length > 0 || ratingUpdated.length > 0) {
       transaction.update(docRef, {
         gameState: sanitize(nextState),
         registeredPlayers: nextState.players.map((p) => p.name),
@@ -810,7 +904,7 @@ async function syncSessionRoster(
       });
     }
 
-    return { added, removed };
+    return { ...result, ratingSyncSkipped: matchesStarted };
   });
 }
 
@@ -958,22 +1052,56 @@ async function notifySessionSynced(
   event: EtomoEventDetail,
   sessionId: string,
   targetDate: Date,
-  added: string[],
-  removed: string[],
+  detail: {
+    added: string[];
+    removed: string[];
+    held: string[];
+    ratingUpdated: RatingChange[];
+    ratingSyncSkipped: boolean;
+    unratedRemaining: string[];
+    tmpSheetName: string;
+  },
 ): Promise<void> {
   const summary = formatEventSummary(event, targetDate);
+  const { added, removed, held, ratingUpdated, ratingSyncSkipped, unratedRemaining } = detail;
+  const bullets = (names: string[]) => names.map((name) => `  • ${name}`).join('\n');
   const lines = [
-    '🔄 **メンバー同期完了**',
+    held.length > 0 ? '⚠️ **メンバー同期（一部保留）**' : '🔄 **メンバー同期完了**',
     '━━━━━━━━━━━━━━━━━━',
     summary,
     `セッションID: **${sessionId}**`,
   ];
 
   if (added.length > 0) {
-    lines.push('', '➕ **追加:**', added.map((name) => `  • ${name}`).join('\n'));
+    lines.push('', '➕ **追加:**', bullets(added));
   }
   if (removed.length > 0) {
-    lines.push('', '➖ **削除:**', removed.map((name) => `  • ${name}`).join('\n'));
+    lines.push('', '➖ **削除:**', bullets(removed));
+  }
+  if (ratingUpdated.length > 0) {
+    lines.push(
+      '',
+      '🔢 **レーティング更新:**',
+      ratingUpdated.map((r) => `  • ${r.name}: ${r.from ?? '未設定'} → ${r.to}`).join('\n'),
+    );
+  }
+  if (held.length > 0) {
+    lines.push(
+      '',
+      '⏸️ **レーティング未設定のため未追加:**',
+      bullets(held),
+      `📝 tmpシート「${detail.tmpSheetName}」に入力後、GitHub Actionsを再実行すると追加されます`,
+    );
+  }
+  if (unratedRemaining.length > 0) {
+    lines.push(
+      '',
+      '❓ **レーティング未設定のまま参加中:**',
+      bullets(unratedRemaining),
+    );
+  }
+  if (ratingSyncSkipped) {
+    lines.push('', '⏱️ 試合が開始済みのため、レーティングの更新は見送りました');
   }
 
   await sendDiscordMessage(lines.join('\n'));
@@ -1039,14 +1167,42 @@ async function processEvents(
           continue;
         }
         console.log(`  -> Already created (${existingSessionId}), syncing roster`);
-        const { added, removed } = await syncSessionRoster(db, existingSessionId, event, memberMap);
-        if (added.length > 0 || removed.length > 0) {
-          console.log(`  -> Roster synced: +${added.length} / -${removed.length}`);
+        // 複はレート必須。未設定の新規参加者（初参加など）は追加を保留し、
+        // tmp シートに入力してもらってから再実行で入れる。作成時の pending と同じ運用。
+        const holdUnratedAdditions = isRatingRequired(event) && !forceCreate;
+        const { added, removed, held, ratingUpdated, ratingSyncSkipped } =
+          await syncSessionRoster(db, existingSessionId, event, memberMap, {
+            holdUnratedAdditions,
+          });
+        const changed = added.length > 0 || removed.length > 0 || ratingUpdated.length > 0;
+        if (changed) {
+          console.log(
+            `  -> Roster synced: +${added.length} / -${removed.length} / rating ${ratingUpdated.length}`,
+          );
           if (added.length > 0) console.log(`     added: ${added.join(', ')}`);
           if (removed.length > 0) console.log(`     removed: ${removed.join(', ')}`);
-          await notifySessionSynced(event, existingSessionId, targetDate, added, removed);
+          for (const r of ratingUpdated) {
+            console.log(`     rating: ${r.name} ${r.from ?? '未設定'} -> ${r.to}`);
+          }
         } else {
-          console.log(`  -> No roster changes`);
+          console.log('  -> No roster changes');
+        }
+        if (held.length > 0) console.log(`  -> Held (no rating): ${held.join(', ')}`);
+        if (ratingSyncSkipped) console.log('  -> Rating sync skipped (matches already started)');
+
+        if (changed || held.length > 0) {
+          await notifySessionSynced(event, existingSessionId, targetDate, {
+            added,
+            removed,
+            held,
+            ratingUpdated,
+            ratingSyncSkipped,
+            unratedRemaining: isRatingRequired(event)
+              ? findUnratedParticipants(event, memberMap, held)
+              : [],
+            tmpSheetName,
+          });
+        } else {
           await notifyNoRosterChange(event, targetDate);
         }
         continue;
@@ -1054,7 +1210,7 @@ async function processEvents(
 
       const issues = checkPlayerIssues(event.participants, memberMap);
       // 楽・単はレーティング不要なので未設定でも作成を保留しない
-      const ratingRequired = event.note !== '楽' && event.note !== '単';
+      const ratingRequired = isRatingRequired(event);
 
       if (issues.length > 0) {
         for (const issue of issues) {
