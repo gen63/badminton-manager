@@ -11,6 +11,7 @@ import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import type { SyncSettings } from '../services/sessionService';
 import { assignCourts, getCallableReservationRestingIds } from './algorithm';
+import { withInProgressGames } from './effectiveGames';
 
 /** 試合の自動終了までの経過時間（ms）。これを超えた試合は自動で終了する。 */
 export const MATCH_AUTO_END_MS = 15 * 60 * 1000;
@@ -200,7 +201,13 @@ export function computeFinishAndContinue(
     const playersInCourts = new Set(
       updatedCourts.flatMap(c => [...c.teamA, ...c.teamB]).filter(id => id?.trim())
     );
-    const waitingPlayers = updatedPlayers.filter(
+    // 公平性判定の母集団には「配置済み（=このコートで既に試合を始めている）
+    // メンバー」を +1 して混ぜる。ここで渡す updatedCourts は対象コートを
+    // 既にクリアした後なので、この試合終了処理で既に +1 された4人には
+    // 二重に乗らない（他コートで進行中のメンバーだけに乗る）。
+    // 詳細: docs/plans/2026-08-13-in-progress-games-in-fairness.md
+    const effectivePlayers = withInProgressGames(updatedPlayers, updatedCourts);
+    const waitingPlayers = effectivePlayers.filter(
       p => !p.isResting && !playersInCourts.has(p.id)
     );
 
@@ -208,7 +215,7 @@ export function computeFinishAndContinue(
     // 判定に加算する（例: 2コート10人で4人予約中は待機が最大6人になり、
     // これを数えないと最小待機人数ゲートを永久に下回る）。
     const callableReservedIds = getCallableReservationRestingIds(
-      updatedPlayers,
+      effectivePlayers,
       reservationsAfterFinish,
       playersInCourts,
       {
@@ -247,14 +254,14 @@ export function computeFinishAndContinue(
           // 全アクティブプレイヤー (他コートでプレイ中の高 gamesPlayed 含む) を渡す。
           // lateBalance の maxGamesPlayed 算出に必要。これが無いと待機者だけから
           // max を取ってしまい、後半均等化ペナルティが過小評価される。
-          allPlayers: updatedPlayers.filter((p) => !p.isResting),
+          allPlayers: effectivePlayers.filter((p) => !p.isResting),
           useStayDurationPriority: options.useStayDurationPriority,
           reservations: reservationsAfterFinish,
           gameMode: options.gameMode,
           lateBalanceMode: options.lateBalanceMode,
           reservationBlockThreshold: options.reservationBlockThreshold,
           // 予約は休憩中メンバーも呼び出せる（プレイ中でない休憩者）
-          restingPlayers: updatedPlayers.filter((p) => p.isResting && !playersInCourts.has(p.id)),
+          restingPlayers: effectivePlayers.filter((p) => p.isResting && !playersInCourts.has(p.id)),
         });
       } catch {
         assignments = [];

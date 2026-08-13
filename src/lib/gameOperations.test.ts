@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { computeFinishAndContinue, gameModeFromPracticeType, type GameState } from './gameOperations';
 import type { Player } from '../types/player';
 import type { Court } from '../types/court';
+import * as algorithm from './algorithm';
 
 /** テスト用プレイヤー生成 */
 function makePlayer(id: string, overrides?: Partial<Player>): Player {
@@ -402,6 +403,140 @@ describe('computeFinishAndContinue', () => {
       expect(result.continuousError).toBe('not_enough_players');
       // not_enough_players は単に人数が足りないだけで連続モード自体は無効化しない
       expect(result.newState.settings?.continuousMatchMode).toBe(true);
+    });
+  });
+
+  // 進行中の試合を公平性の母集団に数える（effective gamesPlayed）の配線テスト。
+  // docs/plans/2026-08-13-in-progress-games-in-fairness.md
+  //
+  // assignCourts / getCallableReservationRestingIds の内部選出ロジックは
+  // 複雑な局所探索を含むため、選出結果の変化から間接的に検証するのではなく、
+  // computeFinishAndContinue が実際にどの players 配列を渡しているかを
+  // スパイで直接検証する。
+  describe('進行中の試合を公平性の母集団に数える（effective gamesPlayed）', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    /** court1 が試合終了し、court2 は別メンバーで試合継続中の2コート状態 */
+    function makeTwoCourtState(): GameState {
+      return {
+        players: [
+          // court1: 終了するコート
+          makePlayer('p1', { gamesPlayed: 0 }),
+          makePlayer('p2', { gamesPlayed: 0 }),
+          makePlayer('p3', { gamesPlayed: 0 }),
+          makePlayer('p4', { gamesPlayed: 0 }),
+          // court2: 引き続き試合中のコート（保存値はまだ試合終了時+1がされていない）
+          makePlayer('c1', { gamesPlayed: 5 }),
+          makePlayer('c2', { gamesPlayed: 5 }),
+          makePlayer('c3', { gamesPlayed: 5 }),
+          makePlayer('c4', { gamesPlayed: 5 }),
+          // 待機（連続モードのゲート用に十分な人数）
+          makePlayer('w1'), makePlayer('w2'), makePlayer('w3'),
+          makePlayer('w4'), makePlayer('w5'), makePlayer('w6'), makePlayer('w7'),
+        ],
+        courts: [
+          makeCourt(1, {
+            teamA: ['p1', 'p2'],
+            teamB: ['p3', 'p4'],
+            isPlaying: true,
+            startedAt: 1710500000000,
+          }),
+          makeCourt(2, {
+            teamA: ['c1', 'c2'],
+            teamB: ['c3', 'c4'],
+            isPlaying: true,
+            startedAt: 1710500000000,
+          }),
+        ],
+        matchHistory: [],
+        reservations: [],
+      };
+    }
+
+    it('もう一方のコートで試合中のメンバーが assignCourts の allPlayers に +1 された値で渡る', () => {
+      const spy = vi.spyOn(algorithm, 'assignCourts');
+      const state = makeTwoCourtState();
+
+      computeFinishAndContinue(state, 1, {
+        ...defaultOptions,
+        continuousMatchMode: true,
+      });
+
+      expect(spy).toHaveBeenCalled();
+      const [, , , options] = spy.mock.calls[0];
+      const allPlayers = options?.allPlayers ?? [];
+      // court2 で進行中の c1-c4 は保存値(5)ではなく、配置済みとみなして +1 された6で渡る
+      for (const id of ['c1', 'c2', 'c3', 'c4']) {
+        expect(allPlayers.find((p) => p.id === id)?.gamesPlayed).toBe(6);
+      }
+    });
+
+    it('終了したコートの4人は二重加算されない（+1のみ）', () => {
+      const spy = vi.spyOn(algorithm, 'assignCourts');
+      const state = makeTwoCourtState();
+
+      computeFinishAndContinue(state, 1, {
+        ...defaultOptions,
+        continuousMatchMode: true,
+      });
+
+      expect(spy).toHaveBeenCalled();
+      const [, , , options] = spy.mock.calls[0];
+      const allPlayers = options?.allPlayers ?? [];
+      // p1-p4 は試合終了処理で既に+1（0→1）済み。updatedCourts は対象コートを
+      // クリアした後なので、effective 側でもう一度+1されて2にはならない。
+      for (const id of ['p1', 'p2', 'p3', 'p4']) {
+        expect(allPlayers.find((p) => p.id === id)?.gamesPlayed).toBe(1);
+      }
+    });
+
+    it('getCallableReservationRestingIds にも進行中メンバーの +1 が反映された players が渡る', () => {
+      const spy = vi.spyOn(algorithm, 'getCallableReservationRestingIds');
+      const state = makeTwoCourtState();
+      state.reservations = [
+        { id: 'r1', orderNumber: 1, playerIds: ['w1'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+      ];
+
+      computeFinishAndContinue(state, 1, {
+        ...defaultOptions,
+        continuousMatchMode: true,
+      });
+
+      expect(spy).toHaveBeenCalled();
+      const [presentPlayers] = spy.mock.calls[0];
+      for (const id of ['c1', 'c2', 'c3', 'c4']) {
+        expect(presentPlayers.find((p) => p.id === id)?.gamesPlayed).toBe(6);
+      }
+      // 終了した4人は二重加算されない
+      for (const id of ['p1', 'p2', 'p3', 'p4']) {
+        expect(presentPlayers.find((p) => p.id === id)?.gamesPlayed).toBe(1);
+      }
+    });
+
+    // effective 値（+1 した一時 view）はあくまで assignCourts 等への入力用の
+    // 一時的な計算結果であり、Firestore に書き戻される newState.players には
+    // 混ざってはいけない（保存値は試合終了時 +1 のみを反映する）。将来のリファクタで
+    // effectivePlayers を誤って newState の返り値に流し込んでしまう事故を防ぐための
+    // 回帰テスト。
+    it('effective な +1 は永続化される state（newState.players）に漏れない', () => {
+      const state = makeTwoCourtState();
+
+      const result = computeFinishAndContinue(state, 1, {
+        ...defaultOptions,
+        continuousMatchMode: true,
+      });
+
+      // court2 で試合継続中の c1-c4 は保存値のまま(5)。6 になっていたら
+      // effective 値が newState に漏れている。
+      for (const id of ['c1', 'c2', 'c3', 'c4']) {
+        expect(result.newState.players.find((p) => p.id === id)?.gamesPlayed).toBe(5);
+      }
+      // 終了した p1-p4 は試合終了による +1 のみ（0 → 1）。
+      for (const id of ['p1', 'p2', 'p3', 'p4']) {
+        expect(result.newState.players.find((p) => p.id === id)?.gamesPlayed).toBe(1);
+      }
     });
   });
 

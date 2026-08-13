@@ -30,6 +30,7 @@ import { predictNextMatchPlayers } from '../lib/nextMatchPrediction';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH_AUTO_END_MS, MATCH_AUTO_START_MS } from '../lib/gameOperations';
+import { withInProgressGames } from '../lib/effectiveGames';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 
 import { BottomNav } from '../components/BottomNav';
@@ -501,13 +502,18 @@ export function MainPage() {
           .map(c => c.id);
       }
 
-      const waitingPlayers = players.filter(
+      // 公平性判定の母集団には「配置済み（=コート上にいる）メンバー」を +1 して
+      // 混ぜる（配置された時点でその人は1試合こなす、とみなす）。
+      // 詳細: docs/plans/2026-08-13-in-progress-games-in-fairness.md
+      const effectivePlayers = withInProgressGames(players, courts);
+
+      const waitingPlayers = effectivePlayers.filter(
         (p) => !p.isResting && !playersInCourts.has(p.id)
       );
 
-      const allActivePlayers = players.filter(p => !p.isResting);
+      const allActivePlayers = effectivePlayers.filter(p => !p.isResting);
       // 予約は休憩中メンバーも呼び出せる（プレイ中でない休憩者）
-      const restingPlayers = players.filter(
+      const restingPlayers = effectivePlayers.filter(
         (p) => p.isResting && !playersInCourts.has(p.id)
       );
 
@@ -677,8 +683,10 @@ export function MainPage() {
   );
   // 予約成立で休憩から呼び出せるメンバーは配置に使えるため人数カウントに加算する
   // （例: 2コート10人で4人予約中、他コート試合中で待機2人でも予約で1面組める）
+  // 公平性判定の母集団には「配置済み（=コート上にいる）メンバー」を +1 して混ぜる。
+  // 詳細: docs/plans/2026-08-13-in-progress-games-in-fairness.md
   const callableReservedCount = getCallableReservationRestingIds(
-    players, reservations, playersInCourts,
+    withInProgressGames(players, courts), reservations, playersInCourts,
     { gameMode, reservationBlockThreshold }
   ).size;
   const canAutoAssign = emptyCourts.length > 0 &&
