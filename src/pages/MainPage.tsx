@@ -76,7 +76,7 @@ export function MainPage() {
   const matchHistory = useGameStore((s) => s.matchHistory);
   const useStayDurationPriority = useSettingsStore((s) => s.useStayDurationPriority);
   const continuousMatchMode = useSettingsStore((s) => s.continuousMatchMode);
-  const prioritizeDiversity = useSettingsStore((s) => s.prioritizeDiversity);
+  const forceBulkAssignment = useSettingsStore((s) => s.forceBulkAssignment);
   const practiceType = useSettingsStore((s) => s.practiceType);
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
   const lateBalanceAutoFired = useSettingsStore((s) => s.lateBalanceAutoFired);
@@ -241,7 +241,7 @@ export function MainPage() {
       const res = await sm.finishMatchAndContinue(session.id, courtId, matchStartedAt, {
         matchId: crypto.randomUUID(),
         useStayDurationPriority,
-        prioritizeDiversity,
+        forceBulkAssignment,
         skipContinuous: true,
       });
       if (res.result === 'success') {
@@ -251,7 +251,7 @@ export function MainPage() {
     } catch (err) {
       console.error('[AutoEndMatch] Transaction failed:', err);
     }
-  }, [session?.id, useStayDurationPriority, prioritizeDiversity, toast]);
+  }, [session?.id, useStayDurationPriority, forceBulkAssignment, toast]);
 
   // プレイ中コートごとに「開始 + 15 分」の節目で autoEndMatch を発火させる setTimeout を
   // 仕掛ける。スコア更新などでの不要な再スケジュールを避けるため、依存はプレイ中コートの
@@ -536,7 +536,7 @@ export function MainPage() {
     if (continuousMatchMode) {
       const activeCount = players.filter(p => !p.isResting).length;
       const waitingAfter = activeCount - newCount * playersPerCourt;
-      const threshold = prioritizeDiversity ? getMinWaitingCount(gameMode) : 2;
+      const threshold = forceBulkAssignment ? getMinWaitingCount(gameMode) : 2;
       if (waitingAfter < threshold) {
         await writer.setContinuousMatchMode(false);
       }
@@ -670,7 +670,7 @@ export function MainPage() {
         {
           matchId,
           useStayDurationPriority,
-          prioritizeDiversity,
+          forceBulkAssignment,
         },
       );
       if (res.result === 'already_finished') {
@@ -741,7 +741,7 @@ export function MainPage() {
 
   const waitingCount = sortedWaitingPlayers.length;
   const shouldBlockAssignment = shouldBlockForDiversity(
-    prioritizeDiversity,
+    forceBulkAssignment,
     occupiedCourts.length,
     emptyCourts.length,
     waitingCount,

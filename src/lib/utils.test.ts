@@ -99,7 +99,7 @@ describe('generateSessionId', () => {
 // --- 多様性優先関連のテスト -----------------------------------------------
 
 describe('shouldBlockForDiversity', () => {
-  it('returns false when prioritizeDiversity is off', () => {
+  it('returns false when forceBulkAssignment is off', () => {
     expect(
       shouldBlockForDiversity(false, 1, 1, 0, 4, 2)
     ).toBe(false);

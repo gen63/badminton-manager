@@ -36,8 +36,7 @@ export function SettingsPage() {
   const players = usePlayerStore((s) => s.players);
   const useStayDurationPriority = useSettingsStore((s) => s.useStayDurationPriority);
   const recordScores = useSettingsStore((s) => s.recordScores);
-  const prioritizeDiversity = useSettingsStore((s) => s.prioritizeDiversity);
-  const setPrioritizeDiversity = useSettingsStore((s) => s.setPrioritizeDiversity);
+  const forceBulkAssignment = useSettingsStore((s) => s.forceBulkAssignment);
   const practiceType = useSettingsStore((s) => s.practiceType);
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
   const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
@@ -339,14 +338,14 @@ export function SettingsPage() {
               const isSinglesMode = practiceType === '単';
               const isRelaxedMode = practiceType === '楽';
               const isLocked = isSinglesMode || isRelaxedMode;
-              const diversityActive = isRelaxedMode || (!isSinglesMode && prioritizeDiversity);
-              const countActive = isSinglesMode || (!isRelaxedMode && !prioritizeDiversity);
+              const diversityActive = isRelaxedMode || (!isSinglesMode && forceBulkAssignment);
+              const countActive = isSinglesMode || (!isRelaxedMode && !forceBulkAssignment);
               return (
                 <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">配置タイミング</label>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">一括配置強制</label>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => !isLocked && setPrioritizeDiversity(true)}
+                      onClick={() => !isLocked && void writer.setForceBulkAssignment(true)}
                       disabled={isLocked}
                       className={`flex-1 select-button text-xs px-2 ${
                         diversityActive
@@ -355,10 +354,10 @@ export function SettingsPage() {
                       } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {diversityActive && <span className="mr-1">✓</span>}
-                      多様性優先
+                      ON
                     </button>
                     <button
-                      onClick={() => !isLocked && setPrioritizeDiversity(false)}
+                      onClick={() => !isLocked && void writer.setForceBulkAssignment(false)}
                       disabled={isLocked}
                       className={`flex-1 select-button text-xs px-2 ${
                         countActive
@@ -367,17 +366,17 @@ export function SettingsPage() {
                       } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {countActive && <span className="mr-1">✓</span>}
-                      回数優先
+                      OFF
                     </button>
                   </div>
                   <p className="text-[10px] text-muted-foreground mt-1">
                     {isSinglesMode
-                      ? 'シングルスでは回数優先が適用されます'
+                      ? 'シングルスでは一括配置強制は無効です'
                       : isRelaxedMode
-                      ? '楽では多様性優先が適用されます'
-                      : prioritizeDiversity
-                      ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
-                      : '空きが出たら即座に配置'}
+                      ? '楽では一括配置強制が適用されます'
+                      : forceBulkAssignment
+                      ? '余りが少ない時は2面空くまで待ってまとめて配置'
+                      : '空きが出たら1面ずつ即座に配置'}
                   </p>
                 </div>
               );

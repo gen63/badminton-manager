@@ -103,7 +103,7 @@ beforeEach(() => {
     recordScores: true,
     continuousMatchMode: true,
     practiceType: '複',
-    prioritizeDiversity: false,
+    forceBulkAssignment: false,
   });
   useSyncStatusStore.setState({ isGameStateLoaded: false, reconnectNonce: 0, syncError: null });
 });
@@ -154,9 +154,9 @@ describe('useFirebaseSync - onSnapshot direct setState', () => {
 });
 
 describe('useFirebaseSync - settings 反映の副作用', () => {
-  it("practiceType '楽' 受信で prioritizeDiversity=true まで連動する", () => {
+  it("practiceType '楽' 受信で forceBulkAssignment=true まで連動する", () => {
     setSharedSession();
-    useSettingsStore.setState({ practiceType: '複', prioritizeDiversity: false });
+    useSettingsStore.setState({ practiceType: '複', forceBulkAssignment: false });
     renderHook(() => useFirebaseSync());
 
     act(() => {
@@ -173,7 +173,7 @@ describe('useFirebaseSync - settings 反映の副作用', () => {
     });
 
     expect(useSettingsStore.getState().practiceType).toBe('楽');
-    expect(useSettingsStore.getState().prioritizeDiversity).toBe(true);
+    expect(useSettingsStore.getState().forceBulkAssignment).toBe(true);
   });
 
   it('reservationBlockThreshold をリモートからストアにミラーする', () => {
@@ -212,9 +212,47 @@ describe('useFirebaseSync - settings 反映の副作用', () => {
     expect(useSettingsStore.getState().reservationBlockThreshold).toBe(2);
   });
 
-  it("practiceType '単' 受信で prioritizeDiversity=false に矯正される", () => {
+  it('settings.forceBulkAssignment 未設定の受信では true（デフォルト ON）に矯正される', () => {
+    // 旧セッション互換。未設定を false のまま放置すると、settingsStore の初期値 true と
+    // 食い違ったまま端末に残ってしまう（docs/plans/2026-08-13-force-bulk-assignment.md）
     setSharedSession();
-    useSettingsStore.setState({ practiceType: '複', prioritizeDiversity: true });
+    useSettingsStore.setState({ practiceType: '複', forceBulkAssignment: false });
+    renderHook(() => useFirebaseSync());
+
+    act(() => {
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          players: [], courts: [], matchHistory: [], reservations: [],
+          settings: { practiceType: '複' },
+        },
+      });
+    });
+
+    expect(useSettingsStore.getState().forceBulkAssignment).toBe(true);
+  });
+
+  it('settings.forceBulkAssignment=false の受信でローカルに反映される', () => {
+    setSharedSession();
+    useSettingsStore.setState({ practiceType: '複', forceBulkAssignment: true });
+    renderHook(() => useFirebaseSync());
+
+    act(() => {
+      emit({
+        updatedAt: NOW,
+        gameState: {
+          players: [], courts: [], matchHistory: [], reservations: [],
+          settings: { practiceType: '複', forceBulkAssignment: false },
+        },
+      });
+    });
+
+    expect(useSettingsStore.getState().forceBulkAssignment).toBe(false);
+  });
+
+  it("practiceType '単' 受信で forceBulkAssignment=false に矯正される", () => {
+    setSharedSession();
+    useSettingsStore.setState({ practiceType: '複', forceBulkAssignment: true });
     renderHook(() => useFirebaseSync());
 
     act(() => {
@@ -228,30 +266,28 @@ describe('useFirebaseSync - settings 反映の副作用', () => {
     });
 
     expect(useSettingsStore.getState().practiceType).toBe('単');
-    expect(useSettingsStore.getState().prioritizeDiversity).toBe(false);
+    expect(useSettingsStore.getState().forceBulkAssignment).toBe(false);
   });
 
-  it('同じ practiceType の場合は action を呼ばない（無駄な setState を避ける）', () => {
+  it('同じ practiceType の場合は action を呼ばない（forceBulkAssignment は独立して同期される）', () => {
     setSharedSession();
-    useSettingsStore.setState({ practiceType: '楽', prioritizeDiversity: true });
+    useSettingsStore.setState({ practiceType: '楽', forceBulkAssignment: false });
     renderHook(() => useFirebaseSync());
-
-    // act 前に prioritizeDiversity を意図的に false にしておき、
-    // 受信時に setPracticeType が呼ばれないなら矯正されないことを確認
-    useSettingsStore.setState({ prioritizeDiversity: false });
 
     act(() => {
       emit({
         updatedAt: NOW,
         gameState: {
           players: [], courts: [], matchHistory: [], reservations: [],
-          settings: { practiceType: '楽' },
+          // practiceType は変化なし（setPracticeType action は呼ばれない）が、
+          // forceBulkAssignment 自体は Firestore 同期対象なので独立して反映される。
+          settings: { practiceType: '楽', forceBulkAssignment: false },
         },
       });
     });
 
-    // setPracticeType が呼ばれていないので prioritizeDiversity は手動で書き換えた false のまま
-    expect(useSettingsStore.getState().prioritizeDiversity).toBe(false);
+    expect(useSettingsStore.getState().practiceType).toBe('楽');
+    expect(useSettingsStore.getState().forceBulkAssignment).toBe(false);
   });
 
   it('settings.continuousMatchMode 未設定の受信ではローカルが false に同期される', () => {
@@ -297,7 +333,7 @@ describe('useFirebaseSync - settings 反映の副作用', () => {
     // 持ち越した端末ローカル '単' が gameMode に流出すると、ダブルス練習でも
     // assignCourts がシングルスフローを走らせて 2 人しか配置されない不具合になる。
     setSharedSession();
-    useSettingsStore.setState({ practiceType: '単', prioritizeDiversity: false });
+    useSettingsStore.setState({ practiceType: '単', forceBulkAssignment: false });
     renderHook(() => useFirebaseSync());
 
     act(() => {
@@ -315,7 +351,7 @@ describe('useFirebaseSync - settings 反映の副作用', () => {
 
   it('settings.practiceType 未設定でも config.gameMode=singles なら "単" を維持', () => {
     setSharedSession();
-    useSettingsStore.setState({ practiceType: '複', prioritizeDiversity: false });
+    useSettingsStore.setState({ practiceType: '複', forceBulkAssignment: false });
     renderHook(() => useFirebaseSync());
 
     act(() => {

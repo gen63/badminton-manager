@@ -74,11 +74,11 @@ export function gameModeFromPracticeType(
 function checkContinuousBlock(
   players: Player[],
   courts: Court[],
-  prioritizeDiversity: boolean,
+  forceBulkAssignment: boolean,
   gameMode: 'singles' | 'doubles',
   callableReservedCount: number = 0,
 ): { blocked: boolean; reason?: string } {
-  if (!prioritizeDiversity) return { blocked: false };
+  if (!forceBulkAssignment) return { blocked: false };
 
   const ppc = getPlayersPerCourt(gameMode);
   const threshold = getMinWaitingCount(gameMode);
@@ -116,7 +116,7 @@ export function computeFinishAndContinue(
   options: {
     continuousMatchMode: boolean;
     useStayDurationPriority: boolean;
-    prioritizeDiversity: boolean;
+    forceBulkAssignment: boolean;
     gameMode: 'singles' | 'doubles';
     matchId?: string;
     lateBalanceMode?: boolean;
@@ -242,7 +242,7 @@ export function computeFinishAndContinue(
 
     // ブロックチェック
     const block = checkContinuousBlock(
-      updatedPlayers, updatedCourts, options.prioritizeDiversity, options.gameMode,
+      updatedPlayers, updatedCourts, options.forceBulkAssignment, options.gameMode,
       callableReservedIds.size,
     );
     if (block.blocked) {

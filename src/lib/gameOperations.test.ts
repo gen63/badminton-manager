@@ -58,7 +58,7 @@ function makeBaseState(): GameState {
 const defaultOptions = {
   continuousMatchMode: false,
   useStayDurationPriority: true,
-  prioritizeDiversity: false,
+  forceBulkAssignment: false,
   gameMode: 'doubles' as const,
 };
 
@@ -265,7 +265,7 @@ describe('computeFinishAndContinue', () => {
 
       const result = computeFinishAndContinue(state, 1, {
         ...continuousOptions,
-        prioritizeDiversity: true,
+        forceBulkAssignment: true,
       });
       expect(result.continuousNextApplied).toBe(false);
       expect(result.continuousError).toBe('diversity_block');
@@ -290,7 +290,7 @@ describe('computeFinishAndContinue', () => {
 
       const result = computeFinishAndContinue(state, 1, {
         ...continuousOptions,
-        prioritizeDiversity: true,
+        forceBulkAssignment: true,
       });
 
       expect(result.continuousError).toBe('diversity_block');
@@ -576,7 +576,7 @@ describe('computeFinishAndContinue', () => {
       const result = computeFinishAndContinue(state, 1, {
         continuousMatchMode: true,
         useStayDurationPriority: true,
-        prioritizeDiversity: false,
+        forceBulkAssignment: false,
         gameMode: 'singles',
       });
 

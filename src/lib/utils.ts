@@ -124,7 +124,7 @@ export function getRecommendedCourtCount(playerCount: number, maxCourts: number 
 /**
  * 多様性優先モードのブロック判定ユーティリティ。
  *
- * @param prioritizeDiversity 多様性優先モードかどうか
+ * @param forceBulkAssignment 一括配置強制モードかどうか
  * @param occupiedCourts 目前でプレー中またはプレイヤーが入っているコート数
  * @param emptyCourts 空いているコート数
  * @param waitingCount 待機中のプレイヤー人数（コート内に入っていないアクティブプレイヤー）
@@ -158,7 +158,7 @@ export function getRecommendedCourtCount(playerCount: number, maxCourts: number 
  *   ブロック: waitingCount - emptyCourts × playersPerCourt ≤ baseThreshold
  */
 export function shouldBlockForDiversity(
-  prioritizeDiversity: boolean,
+  forceBulkAssignment: boolean,
   occupiedCourts: number,
   emptyCourts: number,
   waitingCount: number,
@@ -166,7 +166,7 @@ export function shouldBlockForDiversity(
   baseThreshold: number,
   playersPerCourt: number = 4
 ): boolean {
-  if (!prioritizeDiversity) return false;
+  if (!forceBulkAssignment) return false;
 
   // エッジケース：3コート以上全空きの場合は推奨なし
   const totalCourts = occupiedCourts + emptyCourts;

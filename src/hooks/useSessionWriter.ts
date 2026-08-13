@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from 'react';
 import { useSessionStore } from '../stores/sessionStore';
-import { useSettingsStore } from '../stores/settingsStore';
 import * as sm from '../services/sessionMutations';
 import { SessionError } from '../lib/errorHandler';
 import type { Player } from '../types/player';
@@ -232,10 +231,13 @@ export function useSessionWriter(options?: SessionWriterOptions) {
 
   const setPracticeType = useCallback(
     async (value: '単' | '複' | '楽') => {
-      // 端末ローカルの prioritizeDiversity も整合させる（'単'→false, '楽'→true）
-      if (value === '単') useSettingsStore.setState({ prioritizeDiversity: false });
-      else if (value === '楽') useSettingsStore.setState({ prioritizeDiversity: true });
-      await handle('setPracticeType', (sid) => sm.setPracticeType(sid, value));
+      // forceBulkAssignment を practiceType と同一 transaction で整合させる
+      // （単→false, 楽→true）。複は既存値を変えないので渡さない。
+      const forceBulkAssignment =
+        value === '単' ? false : value === '楽' ? true : undefined;
+      await handle('setPracticeType', (sid) =>
+        sm.setPracticeType(sid, value, forceBulkAssignment),
+      );
     },
     [handle],
   );
@@ -249,6 +251,14 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     (value: boolean) =>
       handle('setUseStayDurationPriority', (sid) =>
         sm.setUseStayDurationPriority(sid, value),
+      ),
+    [handle],
+  );
+
+  const setForceBulkAssignment = useCallback(
+    (value: boolean) =>
+      handle('setForceBulkAssignment', (sid) =>
+        sm.setForceBulkAssignment(sid, value),
       ),
     [handle],
   );
@@ -305,6 +315,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setPracticeType,
       setLateBalanceMode,
       setUseStayDurationPriority,
+      setForceBulkAssignment,
       markLateBalanceAutoFired,
       setReservationBlockThreshold,
     }),
@@ -343,6 +354,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setPracticeType,
       setLateBalanceMode,
       setUseStayDurationPriority,
+      setForceBulkAssignment,
       markLateBalanceAutoFired,
       setReservationBlockThreshold,
     ],

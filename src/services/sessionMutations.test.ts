@@ -55,6 +55,7 @@ import {
   computeSetSetting,
   applyPayment,
   addPlayers,
+  setPracticeType,
   finishMatchAndContinue,
   overwriteGameState,
   updateMatch,
@@ -859,6 +860,81 @@ describe('sessionMutations - settings', () => {
       useStayDurationPriority: false,
     });
   });
+
+  it('computeSetSetting: forceBulkAssignment を他の設定を壊さずに更新する', () => {
+    const state = baseState({ settings: { recordScores: true, continuousMatchMode: true } });
+    const next = computeSetSetting(state, 'forceBulkAssignment', false);
+    expect(next.settings).toEqual({
+      recordScores: true,
+      continuousMatchMode: true,
+      forceBulkAssignment: false,
+    });
+  });
+});
+
+describe('sessionMutations - setPracticeType', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('forceBulkAssignment を渡すと practiceType と同一 transaction で書き込む（単→false）', async () => {
+    const state = baseState({ settings: { practiceType: '複', forceBulkAssignment: true } });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await setPracticeType('s', '単', false);
+
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    const payload = mockTransactionUpdate.mock.calls[0][1] as {
+      gameState: { settings?: Record<string, unknown> };
+    };
+    const settings = payload.gameState.settings as Record<string, unknown>;
+    expect(settings.practiceType).toBe('単');
+    expect(settings.forceBulkAssignment).toBe(false);
+  });
+
+  it('forceBulkAssignment を渡すと practiceType と同一 transaction で書き込む（楽→true）', async () => {
+    const state = baseState({ settings: { practiceType: '複', forceBulkAssignment: false } });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await setPracticeType('s', '楽', true);
+
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    const payload = mockTransactionUpdate.mock.calls[0][1] as {
+      gameState: { settings?: Record<string, unknown> };
+    };
+    const settings = payload.gameState.settings as Record<string, unknown>;
+    expect(settings.practiceType).toBe('楽');
+    expect(settings.forceBulkAssignment).toBe(true);
+  });
+
+  it('forceBulkAssignment 省略時は practiceType のみ更新する（複への切替）', async () => {
+    const state = baseState({ settings: { practiceType: '単', forceBulkAssignment: false } });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await setPracticeType('s', '複');
+
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    const payload = mockTransactionUpdate.mock.calls[0][1] as {
+      gameState: { settings?: Record<string, unknown> };
+    };
+    const settings = payload.gameState.settings as Record<string, unknown>;
+    expect(settings.practiceType).toBe('複');
+    // forceBulkAssignment は明示指定しない限り既存値を保持する
+    expect(settings.forceBulkAssignment).toBe(false);
+  });
 });
 
 describe('sessionMutations - markLateBalanceAutoFired', () => {
@@ -1589,7 +1665,7 @@ describe('sessionMutations - finishMatchAndContinue', () => {
       finishMatchAndContinue('s', 1, 0, {
         matchId: 'm1',
         useStayDurationPriority: false,
-        prioritizeDiversity: false,
+        forceBulkAssignment: false,
       }),
     ).rejects.toMatchObject({ code: 'invalid-arg' });
     expect(mockRunTransaction).not.toHaveBeenCalled();
@@ -1616,7 +1692,7 @@ describe('sessionMutations - finishMatchAndContinue', () => {
     const result = await finishMatchAndContinue('s', 1, 1000, {
       matchId: 'm1',
       useStayDurationPriority: false,
-      prioritizeDiversity: false,
+      forceBulkAssignment: false,
     });
     expect(result.result).toBe('already_finished');
     expect(result.writtenState).toBeUndefined();
@@ -1644,7 +1720,7 @@ describe('sessionMutations - finishMatchAndContinue', () => {
     const result = await finishMatchAndContinue('s', 1, 1000, {
       matchId: 'm1',
       useStayDurationPriority: false,
-      prioritizeDiversity: false,
+      forceBulkAssignment: false,
     });
     expect(result.result).toBe('already_finished');
     expect(mockTransactionUpdate).not.toHaveBeenCalled();
@@ -1660,7 +1736,7 @@ describe('sessionMutations - finishMatchAndContinue', () => {
       finishMatchAndContinue('s', 1, 1000, {
         matchId: 'm1',
         useStayDurationPriority: false,
-        prioritizeDiversity: false,
+        forceBulkAssignment: false,
       }),
     ).rejects.toBeInstanceOf(SessionError);
   });
