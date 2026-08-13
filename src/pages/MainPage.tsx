@@ -29,7 +29,7 @@ import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { predictNextMatchPlayers } from '../lib/nextMatchPrediction';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
-import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH_AUTO_END_MS } from '../lib/gameOperations';
+import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH_AUTO_END_MS, MATCH_AUTO_START_MS } from '../lib/gameOperations';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 
 import { BottomNav } from '../components/BottomNav';
@@ -276,6 +276,53 @@ export function MainPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id, playingCourtsSignature, autoEndMatch]);
 
+  // 配置したまま「開始」が押されずに 3 分経過したコートを自動的に試合開始にする。
+  // 開始時刻は自動開始が走った時刻ではなく配置時刻（assignedAt）を採用する。
+  // assignedAt をべき等キーとするため、複数端末が同時に発火しても 1 度だけ成功する
+  // （他端末は already_started）。
+  const autoStartMatch = useCallback(async (courtId: number, assignedAt: number) => {
+    if (!session?.id) return;
+    try {
+      const res = await sm.autoStartMatch(session.id, courtId, assignedAt);
+      if (res.result === 'success') {
+        const label = ['①', '②', '③'][courtId - 1] || `コート${courtId}`;
+        toast.info(`${label} は配置から3分経過したため、配置時刻で試合を開始しました`);
+      }
+    } catch (err) {
+      console.error('[AutoStartMatch] Transaction failed:', err);
+    }
+  }, [session?.id, toast]);
+
+  // 「配置済みだが未開始」のコートごとに「配置 + 3 分」で autoStartMatch を仕掛ける。
+  // メンバー交換などでの不要な再スケジュールを避けるため、依存は (id, assignedAt) の
+  // シグネチャに絞る。既に 3 分を過ぎていれば即発火（PWA 再起動・遅参加対応）。
+  const assignedCourtsSignature = useMemo(
+    () => courts
+      .filter((c) => !c.isPlaying && c.teamA[0] && (c.assignedAt ?? 0) > 0)
+      .map((c) => `${c.id}:${c.assignedAt}`)
+      .join(','),
+    [courts]
+  );
+
+  useEffect(() => {
+    if (!session?.id) return;
+    const assigned = courts.filter(
+      (c) => !c.isPlaying && c.teamA[0] && (c.assignedAt ?? 0) > 0
+    );
+    if (assigned.length === 0) return;
+
+    const timers = assigned.map((court) => {
+      const assignedAt = court.assignedAt ?? 0;
+      const delay = Math.max(0, assignedAt + MATCH_AUTO_START_MS - Date.now());
+      return setTimeout(() => {
+        void autoStartMatch(court.id, assignedAt);
+      }, delay);
+    });
+    return () => timers.forEach(clearTimeout);
+    // assignedCourtsSignature が未開始コートの (id, assignedAt) を表すため courts 自体は依存に含めない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id, assignedCourtsSignature, autoStartMatch]);
+
   // 強制休憩チェック（毎分 + マウント時）:
   //   - 会費・名簿未対応メンバー（最初の試合を終えてから猶予時間経過）
   //   - 結果未登録試合の出場者（勝敗記録モード時のみ、未登録が2試合以上
@@ -493,8 +540,11 @@ export function MainPage() {
         .map((r) => r.id);
 
       // 1 transaction で予約消化 + 全コート割当（H4 修正）
+      // 単体配置は「開始」待ち（isPlaying=false）。配置時刻を assignedAt に記録し、
+      // 3 分経っても開始されなければこの時刻を開始時刻として自動開始する。
       const isBulk = !courtId;
-      const startedAt = isBulk ? Date.now() : 0;
+      const assignedAt = Date.now();
+      const startedAt = isBulk ? assignedAt : 0;
       await writer.autoAssignAndFulfill(
         assignments.map((a) => ({
           courtId: a.courtId,
@@ -502,6 +552,7 @@ export function MainPage() {
           teamB: a.teamB,
           isPlaying: isBulk,
           startedAt,
+          assignedAt,
           activatePlayerIds: a.activatedFromRestIds,
         })),
         fulfilledIds,
@@ -984,6 +1035,18 @@ export function MainPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
                           </svg>
                           <CourtTimer startedAt={court.startedAt} />
+                        </div>
+                      ) : hasPlayers && (court.assignedAt ?? 0) > 0 ? (
+                        // 配置済み・未開始。3 分経過で配置時刻から自動開始される
+                        <div
+                          className="flex items-center gap-1 bg-muted text-muted-foreground px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tabular-nums whitespace-nowrap"
+                          title="配置から3分経過すると自動で開始します"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" strokeWidth="2"/>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
+                          </svg>
+                          <CourtTimer startedAt={court.assignedAt ?? 0} />
                         </div>
                       ) : !hasPlayers && courts.length > 1 && isAdmin() && (
                         <button

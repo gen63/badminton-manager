@@ -7,6 +7,13 @@ export interface Court {
   isPlaying: boolean;
   startedAt: number; // 試合開始時刻（Unix timestamp、未設定時は0）
   finishedAt: number; // 試合終了時刻（Unix timestamp、未設定時は0）
+  /**
+   * コートに配置した時刻（Unix timestamp、未設定時は0）。
+   * 「開始」が押されないまま `MATCH_AUTO_START_MS` を超えた場合の自動開始の基準で、
+   * 自動開始時はこの時刻がそのまま `startedAt` になる。
+   * 旧データには存在しないため読み出しは `?? 0`。
+   */
+  assignedAt?: number;
   /** 休憩からタップ交換で出場したメンバー。試合終了時に休憩へ戻す。 */
   restingPlayerIds?: string[];
 }
@@ -20,6 +27,7 @@ export const EMPTY_COURT_STATE = {
   isPlaying: false,
   startedAt: 0,
   finishedAt: 0,
+  assignedAt: 0,
   restingPlayerIds: [] as string[],
 } as const satisfies Omit<Court, 'id'>;
 

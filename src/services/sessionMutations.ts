@@ -569,6 +569,29 @@ export function computeStartGame(
   };
 }
 
+/**
+ * 配置後の自動開始（`MATCH_AUTO_START_MS` 超過）を計算する。
+ * 開始時刻は **配置時刻 (`assignedAt`) そのもの**（自動開始が走った時刻ではない）。
+ *
+ * 自動開始してはいけない状態（配置が無い / 既に開始済み / 別の配置に差し替わって
+ * いる）のときは `null` を返し、呼び出し側は書き込みを行わない。
+ * `assignedAt` をべき等キーとして扱うため、複数端末が同時に発火しても
+ * 1 度だけ成功する。
+ */
+export function computeAutoStartGame(
+  state: GameState,
+  courtId: number,
+  assignedAt: number,
+): GameState | null {
+  if (assignedAt <= 0) return null;
+  const court = state.courts.find((c) => c.id === courtId);
+  if (!court) return null;
+  if (court.isPlaying) return null;
+  if (!court.teamA[0]) return null;
+  if ((court.assignedAt ?? 0) !== assignedAt) return null;
+  return computeUpdateCourt(state, courtId, { isPlaying: true, startedAt: assignedAt });
+}
+
 export function computeClearCourt(state: GameState, courtId: number): GameState {
   return {
     ...state,
@@ -1122,6 +1145,8 @@ export interface AutoAssignSpec {
   teamB: [string, string];
   isPlaying: boolean;
   startedAt: number;
+  /** 配置時刻。未開始のまま `MATCH_AUTO_START_MS` を超えたときの自動開始の基準。 */
+  assignedAt: number;
   /** 休憩中から予約で呼び出したメンバー。出場のため isResting=false にする。 */
   activatePlayerIds?: string[];
 }
@@ -1145,6 +1170,7 @@ export function autoAssignAndFulfill(
         scoreB: 0,
         isPlaying: a.isPlaying,
         startedAt: a.startedAt,
+        assignedAt: a.assignedAt,
         finishedAt: 0,
         // 新しい試合の配置なので、前の試合の「休憩へ戻す」フラグは持ち越さない
         restingPlayerIds: [],
@@ -1335,6 +1361,60 @@ export async function resizeCourtsWithConfig(
         'config.courtCount': count,
       });
       return next;
+    });
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === 'aborted') {
+      throw new SessionError(
+        '他のユーザーが更新しました。もう一度お試しください',
+        'conflict',
+      );
+    }
+    throw error;
+  }
+}
+
+// =============================================================================
+// Composite operations: 試合開始
+// =============================================================================
+
+/**
+ * 配置後 `MATCH_AUTO_START_MS` を超えたコートを自動的に試合開始にする。
+ *
+ * `assignedAt` をべき等キーとして二重開始を防ぐ。リモート側で既に開始済み
+ * （手動「開始」が押された / 他端末が先に自動開始した）、コートがクリアされた、
+ * 別の配置に差し替わっている場合は `already_started` を返し、書き込みは行わない。
+ *
+ * 開始時刻は自動開始が走った時刻ではなく **配置時刻** を採用する
+ * （＝配置したタイミングを試合開始とみなす）。
+ */
+export async function autoStartMatch(
+  sessionId: string,
+  courtId: number,
+  assignedAt: number,
+): Promise<{ result: 'success' | 'already_started' }> {
+  if (assignedAt <= 0) {
+    throw new SessionError('assignedAt が無効です（配置されていません）', 'invalid-arg');
+  }
+
+  const _db = requireDb();
+  const ref = doc(_db, 'sessions', sessionId);
+
+  try {
+    return await runTransaction(_db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) {
+        throw new SessionError('セッションが見つかりません', 'not-found');
+      }
+      const remote = snap.data().gameState as GameState | undefined;
+      if (!remote) {
+        throw new SessionError('セッションの状態が初期化されていません', 'invalid-state');
+      }
+
+      const next = computeAutoStartGame(remote, courtId, assignedAt);
+      if (!next) return { result: 'already_started' as const };
+
+      transaction.update(ref, buildGameStatePayload(next));
+      return { result: 'success' as const };
     });
   } catch (error: unknown) {
     if ((error as { code?: string })?.code === 'aborted') {
