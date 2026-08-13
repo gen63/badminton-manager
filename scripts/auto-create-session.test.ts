@@ -6,6 +6,8 @@ import {
   filterEventsByDate,
   findNextPracticeDate,
   checkPlayerIssues,
+  isRatingRequired,
+  findUnratedParticipants,
   decodeHtmlEntities,
   formatEventSummary,
   buildSessionData,
@@ -763,6 +765,127 @@ describe('computeRosterSync', () => {
     const { added, removed } = computeRosterSync(state, event, new Map());
     expect(added).toEqual([]);
     expect(removed).toEqual([]);
+  });
+
+  describe('留任プレイヤーのレーティング同期', () => {
+    const stateWith = (players: { id: string; name: string; rating?: number }[]) => ({
+      players: players.map((p) => ({
+        ...p, isResting: false, gamesPlayed: 0, lastPlayedAt: 0, activatedAt: 0,
+      })),
+      courts: [],
+      matchHistory: [],
+      reservations: [],
+    });
+
+    it('tmpシートのskillが変わっていれば既存プレイヤーのratingを上書きする', () => {
+      const state = stateWith([{ id: 'p1', name: '田中太郎', rating: 3 }]);
+      const event = { ...baseEvent, participants: ['田中太郎'], genders: {} };
+      const memberMap = new Map([['田中太郎', { skill: 7 }]]);
+
+      const { state: nextState, ratingUpdated } = computeRosterSync(state, event, memberMap);
+
+      expect(nextState.players[0].rating).toBe(7);
+      expect(ratingUpdated).toEqual([{ name: '田中太郎', from: 3, to: 7 }]);
+    });
+
+    it('レート未設定だった既存プレイヤーにもskillが入る', () => {
+      const state = stateWith([{ id: 'p1', name: '田中太郎' }]);
+      const event = { ...baseEvent, participants: ['田中太郎'], genders: {} };
+      const memberMap = new Map([['田中太郎', { skill: 5 }]]);
+
+      const { state: nextState, ratingUpdated } = computeRosterSync(state, event, memberMap);
+
+      expect(nextState.players[0].rating).toBe(5);
+      expect(ratingUpdated).toEqual([{ name: '田中太郎', from: undefined, to: 5 }]);
+    });
+
+    it('skillが同値なら更新扱いにしない', () => {
+      const state = stateWith([{ id: 'p1', name: '田中太郎', rating: 5 }]);
+      const event = { ...baseEvent, participants: ['田中太郎'], genders: {} };
+      const memberMap = new Map([['田中太郎', { skill: 5 }]]);
+
+      const { ratingUpdated } = computeRosterSync(state, event, memberMap);
+      expect(ratingUpdated).toEqual([]);
+    });
+
+    it('tmpシートにskillが無い人は既存ratingを維持する（消さない）', () => {
+      const state = stateWith([{ id: 'p1', name: '田中太郎', rating: 4 }]);
+      const event = { ...baseEvent, participants: ['田中太郎'], genders: {} };
+
+      const { state: nextState, ratingUpdated } = computeRosterSync(state, event, new Map());
+
+      expect(nextState.players[0].rating).toBe(4);
+      expect(ratingUpdated).toEqual([]);
+    });
+
+    it('syncExistingRatings: false（試合開始後）ではratingを変更しない', () => {
+      const state = stateWith([{ id: 'p1', name: '田中太郎', rating: 3 }]);
+      const event = { ...baseEvent, participants: ['田中太郎'], genders: {} };
+      const memberMap = new Map([['田中太郎', { skill: 7 }]]);
+
+      const { state: nextState, ratingUpdated } = computeRosterSync(state, event, memberMap, {
+        syncExistingRatings: false,
+      });
+
+      expect(nextState.players[0].rating).toBe(3);
+      expect(ratingUpdated).toEqual([]);
+    });
+
+    it('削除対象プレイヤーはレート更新の対象外', () => {
+      const state = stateWith([{ id: 'p1', name: '田中太郎', rating: 3 }]);
+      const event = { ...baseEvent, participants: [], genders: {} };
+      const memberMap = new Map([['田中太郎', { skill: 7 }]]);
+
+      const { ratingUpdated, removed } = computeRosterSync(state, event, memberMap);
+
+      expect(removed).toEqual(['田中太郎']);
+      expect(ratingUpdated).toEqual([]);
+    });
+  });
+
+  it('レート未設定の新規参加者もそのまま追加される（後の再実行でシートの skill が入る）', () => {
+    const emptyState = { players: [], courts: [], matchHistory: [], reservations: [] };
+    const event = { ...baseEvent, participants: ['初参加さん', '常連さん'], genders: {} };
+    const memberMap = new Map([['常連さん', { skill: 5 }]]);
+
+    const { state: nextState, added } = computeRosterSync(emptyState, event, memberMap);
+
+    expect(added).toEqual(['初参加さん', '常連さん']);
+    expect(nextState.players.map((p) => p.name)).toEqual(['初参加さん', '常連さん']);
+    expect(nextState.players.find((p) => p.name === '初参加さん')?.rating).toBeUndefined();
+    expect(nextState.players.find((p) => p.name === '常連さん')?.rating).toBe(5);
+  });
+});
+
+describe('isRatingRequired', () => {
+  it('複はレーティング必須', () => {
+    expect(isRatingRequired({ note: '複' })).toBe(true);
+  });
+
+  it('楽・単はレーティング不要', () => {
+    expect(isRatingRequired({ note: '楽' })).toBe(false);
+    expect(isRatingRequired({ note: '単' })).toBe(false);
+  });
+});
+
+describe('findUnratedParticipants', () => {
+  const baseEvent = {
+    eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+    startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
+    participantCount: 0, capacity: null, waitlistCount: 0, location: '',
+    genders: {},
+  };
+
+  it('レート未設定の参加者を列挙する', () => {
+    const event = { ...baseEvent, participants: ['A', 'B', 'C'] };
+    const memberMap = new Map([['A', { skill: 5 }]]);
+
+    expect(findUnratedParticipants(event, memberMap)).toEqual(['B', 'C']);
+  });
+
+  it('全員設定済みなら空配列', () => {
+    const event = { ...baseEvent, participants: ['A'] };
+    expect(findUnratedParticipants(event, new Map([['A', { skill: 1 }]]))).toEqual([]);
   });
 });
 

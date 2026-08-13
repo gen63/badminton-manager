@@ -2,8 +2,10 @@ name: Auto Create Session
 
 on:
   schedule:
-    # 21:00 UTC = 06:00 JST
+    # 21:00 UTC = 06:00 JST — 翌日分のセッションを作成
     - cron: '0 21 * * *'
+    # 08:30 UTC = 17:30 JST — 直近（当日）練習の出欠とレーティングを練習開始前に反映
+    - cron: '30 8 * * *'
   workflow_dispatch:
     inputs:
       target_date:
@@ -13,10 +15,6 @@ on:
           - tomorrow
           - nearest
         default: tomorrow
-      force:
-        description: '不明点があっても強制的にセッションを作成する'
-        type: boolean
-        default: false
 
 jobs:
   create-session:
@@ -42,8 +40,9 @@ jobs:
           ETOMO_URL: ${{ secrets.ETOMO_URL }}
           GAS_WEB_APP_URL: ${{ secrets.GAS_WEB_APP_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          TARGET_DATE: ${{ inputs.target_date || 'tomorrow' }}
-          FORCE_CREATE: ${{ inputs.force || 'false' }}
+          # 17:30 JST の定期実行だけ nearest（当日の練習）を対象にする。
+          # 手動実行は inputs 優先、06:00 JST は従来どおり tomorrow。
+          TARGET_DATE: ${{ inputs.target_date || (github.event.schedule == '30 8 * * *' && 'nearest' || 'tomorrow') }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
           VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
