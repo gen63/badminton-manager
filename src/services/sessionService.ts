@@ -29,6 +29,7 @@ import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import { SessionError } from '../lib/errorHandler';
 import { requireDb, sanitize } from '../lib/firestoreUtils';
+import { medianGamesPlayed } from '../lib/median';
 import { computeFirstMatchStartedAt, isSessionVisible } from '../lib/sessionArchive';
 import { AUTO_SESSION_BOT_CREATOR } from '../constants/autoSession';
 
@@ -151,6 +152,7 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     matchCount: Array.isArray(gameState?.matchHistory) ? gameState.matchHistory.length : 0,
     paidCount,
     incomeTotal,
+    medianGamesPlayed: medianGamesPlayed(gameState?.players ?? []),
     practiceType: gameState?.settings?.practiceType,
     recordScores: gameState?.settings?.recordScores,
   };
