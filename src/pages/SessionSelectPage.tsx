@@ -520,15 +520,27 @@ export function SessionSelectPage() {
                           既存のタイトなアイコン行とのオーバーラップを避ける */}
                       {devMode && <UploadStatusBadges session={session} />}
 
-                      {/* 2行目: メモ（周知事項の最初の1行）— あるときだけ表示し、上に余白を入れる */}
-                      {session.information?.text?.trim() && (
+                      {/* 2行目: 試合数中央値（開発モード限定） + メモ（周知事項の最初の1行）
+                          — どちらか一方でもあれば表示し、上に余白を入れる。中央値チップは
+                          固定幅にして全カードでメモの開始 x 座標を揃える */}
+                      {(devMode && typeof session.medianGamesPlayed === 'number') ||
+                      session.information?.text?.trim() ? (
                         <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground min-w-0">
-                          <StickyNote size={12} className="flex-shrink-0" />
-                          <span className="truncate">
-                            {session.information.text.split('\n')[0]}
-                          </span>
+                          {devMode && typeof session.medianGamesPlayed === 'number' && (
+                            <span className="inline-block flex-shrink-0 min-w-[3.75rem] tabular-nums">
+                              中央 {session.medianGamesPlayed}
+                            </span>
+                          )}
+                          {session.information?.text?.trim() && (
+                            <>
+                              <StickyNote size={12} className="flex-shrink-0" />
+                              <span className="truncate">
+                                {session.information.text.split('\n')[0]}
+                              </span>
+                            </>
+                          )}
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   </button>
 

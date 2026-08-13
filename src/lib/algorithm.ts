@@ -4,6 +4,7 @@ import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import { SessionError } from './errorHandler';
 import { assignRoundByObjective } from './pairing/assignRound';
+import { median } from './median';
 
 type RatingGroup = 'upper' | 'middle' | 'lower';
 
@@ -1896,13 +1897,7 @@ export function getCallableReservationRestingIds(
   ).length;
 
   // 中央値は在席全員（休憩者含む）で算出（assignCourts の保留判定と同じ母集団）
-  const sortedGames = presentPlayers.map(p => p.gamesPlayed).sort((a, b) => a - b);
-  const mid = Math.floor(sortedGames.length / 2);
-  const medianGamesPlayed = sortedGames.length === 0
-    ? 0
-    : sortedGames.length % 2 === 0
-      ? (sortedGames[mid - 1] + sortedGames[mid]) / 2
-      : sortedGames[mid];
+  const medianGamesPlayed = median(presentPlayers.map(p => p.gamesPlayed));
 
   for (const reservation of pending) {
     const ids = reservation.playerIds;
@@ -2009,15 +2004,9 @@ export function assignCourts(
   // 母集団は休憩者も含む全在席プレイヤーで算出（全員休憩でも中央値が0に潰れないように）。
   const reservationBlockThreshold =
     options?.reservationBlockThreshold ?? DEFAULT_RESERVATION_BLOCK_THRESHOLD;
-  const medianGamesPlayed = ((): number => {
-    const pool = [...(options?.allPlayers ?? activePlayers), ...restingPlayers];
-    if (pool.length === 0) return 0;
-    const sorted = pool.map(p => p.gamesPlayed).sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 0
-      ? (sorted[mid - 1] + sorted[mid]) / 2
-      : sorted[mid];
-  })();
+  const medianGamesPlayed = median(
+    [...(options?.allPlayers ?? activePlayers), ...restingPlayers].map(p => p.gamesPlayed)
+  );
   const isReservationBlocked = (playerIds: string[]): boolean =>
     playerIds.some(id => {
       const p = reservationPool.find(pl => pl.id === id);
