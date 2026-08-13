@@ -230,15 +230,8 @@ export function useSessionWriter(options?: SessionWriterOptions) {
   );
 
   const setPracticeType = useCallback(
-    async (value: '単' | '複' | '楽') => {
-      // forceBulkAssignment を practiceType と同一 transaction で整合させる
-      // （単→false, 楽→true）。複は既存値を変えないので渡さない。
-      const forceBulkAssignment =
-        value === '単' ? false : value === '楽' ? true : undefined;
-      await handle('setPracticeType', (sid) =>
-        sm.setPracticeType(sid, value, forceBulkAssignment),
-      );
-    },
+    (value: '単' | '複' | '楽') =>
+      handle('setPracticeType', (sid) => sm.setPracticeType(sid, value)),
     [handle],
   );
 

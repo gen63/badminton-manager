@@ -300,6 +300,50 @@ describe('computeFinishAndContinue', () => {
       expect(result.newState.settings?.practiceType).toBe('楽');
     });
 
+    it('空き2面（他コートが既に空き）でも diversity block が発動する（getAssignmentGate 統合による挙動拡張）', () => {
+      // 3コート: コート1が試合中（今回終了）、コート2は既に空き（前回の連続配置が
+      // 見送られたまま）、コート3が試合中。終了後は occupied=1(コート3), empty=2
+      // (コート1+コート2)、waiting=8（コート1の4人+待機4人）。
+      //
+      // 旧 checkContinuousBlock は emptyCourts を見ず actualWaiting(8) < 7 のみで
+      // 判定していたため、この場合は「ブロックしない」(8 >= 7) だった。
+      // 新 getAssignmentGate は emptyCourts=2 も加味し、thin(8-2*4=0<=2) かつ
+      // emptyCourts>=2 なので bulkOnly と判定する。plan の方針
+      // 「free 以外なら見送る（bulkOnly でも1面だけ入れるのは抜け道）」により、
+      // このケースは新ロジックでは新たにブロックされるようになる（意図した挙動拡張）。
+      const state: GameState = {
+        players: [
+          makePlayer('a1'), makePlayer('a2'), makePlayer('a3'), makePlayer('a4'),
+          makePlayer('b1'), makePlayer('b2'), makePlayer('b3'), makePlayer('b4'),
+          makePlayer('c1'), makePlayer('c2'), makePlayer('c3'), makePlayer('c4'),
+        ],
+        courts: [
+          makeCourt(1, {
+            teamA: ['a1', 'a2'],
+            teamB: ['a3', 'a4'],
+            isPlaying: true,
+            startedAt: 1710500000000,
+          }),
+          makeCourt(2), // 既に空き
+          makeCourt(3, {
+            teamA: ['b1', 'b2'],
+            teamB: ['b3', 'b4'],
+            isPlaying: true,
+            startedAt: 1710500000000,
+          }),
+        ],
+        matchHistory: [],
+        reservations: [],
+      };
+
+      const result = computeFinishAndContinue(state, 1, {
+        ...continuousOptions,
+        forceBulkAssignment: true,
+      });
+      expect(result.continuousNextApplied).toBe(false);
+      expect(result.continuousError).toBe('diversity_block');
+    });
+
     it('2コート10人+成立可能な4人予約: 待機6人でも予約でゲートを通過し、終了コートに予約を配置する', () => {
       // 2コート10人。r1-r4 は4人予約で休憩中、w1-w4 がコート1で試合中、
       // w5, w6 が待機。コート1終了後は待機6人（w1-w6）+ 呼び出し可能4人 = 10 >= 7。

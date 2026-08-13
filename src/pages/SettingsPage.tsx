@@ -338,8 +338,8 @@ export function SettingsPage() {
               const isSinglesMode = practiceType === '単';
               const isRelaxedMode = practiceType === '楽';
               const isLocked = isSinglesMode || isRelaxedMode;
-              const diversityActive = isRelaxedMode || (!isSinglesMode && forceBulkAssignment);
-              const countActive = isSinglesMode || (!isRelaxedMode && !forceBulkAssignment);
+              const onActive = isRelaxedMode || (!isSinglesMode && forceBulkAssignment);
+              const offActive = isSinglesMode || (!isRelaxedMode && !forceBulkAssignment);
               return (
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">一括配置強制</label>
@@ -348,24 +348,24 @@ export function SettingsPage() {
                       onClick={() => !isLocked && void writer.setForceBulkAssignment(true)}
                       disabled={isLocked}
                       className={`flex-1 select-button text-xs px-2 ${
-                        diversityActive
+                        onActive
                           ? 'select-button-active'
                           : 'select-button-inactive'
                       } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      {diversityActive && <span className="mr-1">✓</span>}
+                      {onActive && <span className="mr-1">✓</span>}
                       ON
                     </button>
                     <button
                       onClick={() => !isLocked && void writer.setForceBulkAssignment(false)}
                       disabled={isLocked}
                       className={`flex-1 select-button text-xs px-2 ${
-                        countActive
+                        offActive
                           ? 'select-button-active'
                           : 'select-button-inactive'
                       } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      {countActive && <span className="mr-1">✓</span>}
+                      {offActive && <span className="mr-1">✓</span>}
                       OFF
                     </button>
                   </div>

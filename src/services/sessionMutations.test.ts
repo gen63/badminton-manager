@@ -878,7 +878,7 @@ describe('sessionMutations - setPracticeType', () => {
     mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
   });
 
-  it('forceBulkAssignment を渡すと practiceType と同一 transaction で書き込む（単→false）', async () => {
+  it('単 に切り替えると forceBulkAssignment を false 固定で同一 transaction で書き込む', async () => {
     const state = baseState({ settings: { practiceType: '複', forceBulkAssignment: true } });
     mockTransactionGet.mockResolvedValueOnce({
       exists: () => true,
@@ -886,7 +886,7 @@ describe('sessionMutations - setPracticeType', () => {
       ref: { __docRef: true },
     });
 
-    await setPracticeType('s', '単', false);
+    await setPracticeType('s', '単');
 
     expect(mockRunTransaction).toHaveBeenCalledTimes(1);
     const payload = mockTransactionUpdate.mock.calls[0][1] as {
@@ -897,7 +897,7 @@ describe('sessionMutations - setPracticeType', () => {
     expect(settings.forceBulkAssignment).toBe(false);
   });
 
-  it('forceBulkAssignment を渡すと practiceType と同一 transaction で書き込む（楽→true）', async () => {
+  it('楽 に切り替えると forceBulkAssignment を true 固定で同一 transaction で書き込む', async () => {
     const state = baseState({ settings: { practiceType: '複', forceBulkAssignment: false } });
     mockTransactionGet.mockResolvedValueOnce({
       exists: () => true,
@@ -905,7 +905,7 @@ describe('sessionMutations - setPracticeType', () => {
       ref: { __docRef: true },
     });
 
-    await setPracticeType('s', '楽', true);
+    await setPracticeType('s', '楽');
 
     expect(mockRunTransaction).toHaveBeenCalledTimes(1);
     const payload = mockTransactionUpdate.mock.calls[0][1] as {
@@ -916,7 +916,7 @@ describe('sessionMutations - setPracticeType', () => {
     expect(settings.forceBulkAssignment).toBe(true);
   });
 
-  it('forceBulkAssignment 省略時は practiceType のみ更新する（複への切替）', async () => {
+  it('複 に切り替えると forceBulkAssignment は既存値を維持する', async () => {
     const state = baseState({ settings: { practiceType: '単', forceBulkAssignment: false } });
     mockTransactionGet.mockResolvedValueOnce({
       exists: () => true,
@@ -932,7 +932,7 @@ describe('sessionMutations - setPracticeType', () => {
     };
     const settings = payload.gameState.settings as Record<string, unknown>;
     expect(settings.practiceType).toBe('複');
-    // forceBulkAssignment は明示指定しない限り既存値を保持する
+    // forceBulkAssignment は複では触らないので既存値を保持する
     expect(settings.forceBulkAssignment).toBe(false);
   });
 });

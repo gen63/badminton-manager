@@ -12,6 +12,7 @@ import type { Reservation } from '../types/reservation';
 import type { SyncSettings } from '../services/sessionService';
 import { assignCourts, getCallableReservationRestingIds } from './algorithm';
 import { withInProgressGames } from './effectiveGames';
+import { getAssignmentGate } from './utils';
 
 /** 試合の自動終了までの経過時間（ms）。これを超えた試合は自動で終了する。 */
 export const MATCH_AUTO_END_MS = 15 * 60 * 1000;
@@ -67,7 +68,11 @@ export function gameModeFromPracticeType(
 }
 
 /**
- * 連続モード配置のブロック判定（多様性優先モード用）
+ * 連続モード配置のブロック判定（一括配置強制モード用）。
+ * `getAssignmentGate` に一本化し、`free` 以外なら見送る（`bulkOnly` でも1面だけ
+ * 入れるのは抜け道になるため）。連続モードは「終わったコート1面に入れる」＝
+ * 空き1面相当だが、`emptyCourts` 固定ではなく `courts` から実際の空き数を数える。
+ *
  * callableReservedCount: 予約成立で休憩から呼び出せるメンバー数
  * （待機扱いでカウントに加算する）
  */
@@ -81,12 +86,13 @@ function checkContinuousBlock(
   if (!forceBulkAssignment) return { blocked: false };
 
   const ppc = getPlayersPerCourt(gameMode);
-  const threshold = getMinWaitingCount(gameMode);
   const occupied = courts.filter(c => c.isPlaying || (c.teamA[0] && c.teamA[0] !== ''));
+  const emptyCourts = courts.length - occupied.length;
   const active = players.filter(p => !p.isResting);
-  const actualWaiting = active.length + callableReservedCount - occupied.length * ppc;
+  const waitingCount = active.length + callableReservedCount - occupied.length * ppc;
 
-  if (occupied.length > 0 && actualWaiting < threshold) {
+  const gate = getAssignmentGate(forceBulkAssignment, occupied.length, emptyCourts, waitingCount, ppc);
+  if (gate !== 'free') {
     return { blocked: true, reason: 'diversity_block' };
   }
   return { blocked: false };

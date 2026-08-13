@@ -121,20 +121,27 @@ export function getRecommendedCourtCount(playerCount: number, maxCourts: number 
   return 1;
 }
 
+/** 一括配置強制モードの3状態ゲート。 */
+export type AssignmentGate = 'free' | 'waiting' | 'bulkOnly';
+
 /**
- * 多様性優先モードのブロック判定ユーティリティ。
+ * 一括配置強制モードの3状態ゲート判定。
  *
  * @param forceBulkAssignment 一括配置強制モードかどうか
- * @param occupiedCourts 目前でプレー中またはプレイヤーが入っているコート数
+ * @param occupiedCourts 現在プレー中またはプレイヤーが入っているコート数
  * @param emptyCourts 空いているコート数
  * @param waitingCount 待機中のプレイヤー人数（コート内に入っていないアクティブプレイヤー）
- * @param _totalActiveCount アクティブ（休憩中でない）プレイヤーの総数（現状未使用）
+ * @param playersPerCourt 1コートあたりの人数（通常は4、シングルスは2）
  * @param baseThreshold ブロックするための基本待機人数閾値（通常は2）
  *
- * 推奨メッセージを表示する条件:
- *   1. 多様性優先モードが有効
- *   2. エッジケース除外：3コート以上全空きの場合は推奨なし（1コートずつ配置OK）
- *   3. 空きコートを埋めた後の待機人数が baseThreshold 以下
+ * 状態:
+ *   - `free`: 通常。従来通り1面ずつ即配置してよい。
+ *   - `waiting`（待機中）: thin かつ空き1面かつ他コートに人がいる。他コート終了待ち。
+ *     一括ボタンも無効（空き1面での一括は per-court と同じ動作になるため抜け道になる）。
+ *   - `bulkOnly`（一括のみ）: thin かつ空き2面以上。一括ボタンで2面まとめて配置する。
+ *
+ * `emptyCourts === 1 && occupiedCourts === 0`（1コートセッション）は待つ相手がいないので
+ * `free` を返す。
  *
  * 【設計根拠：多様性確率】
  * 1コート空き時、待機 w 人 + 直前対戦の 4 人 = w+4 人プールから 4 人選抜する。
@@ -143,37 +150,24 @@ export function getRecommendedCourtCount(playerCount: number, maxCourts: number 
  *   w=3: 1人(25%) / w=4以上: 0人(0%)
  * → baseThreshold=2 のとき「強制再投入 ≥ 50%」の境界でブロック。
  *
- * 【実際の動作範囲】 baseThreshold=2 の場合：
- *   空きコート 0:
- *     - ブロック: waiting ≤ 2
- *     - 解除: waiting ≥ 3（次にコート空けば 7+ 人プールから 4 人選抜可）
- *   2コート（1使用中+1空き）:
- *     - ブロック: 4-6人待機（プール 4-6 から 4 選抜、残り 0-2）
- *     - 解除: 7人以上待機
- *   3コート（2使用中+1空き）:
- *     - ブロック: 4-6人待機
- *     - 解除: 7人以上待機
- *
  * 一般式:
- *   ブロック: waitingCount - emptyCourts × playersPerCourt ≤ baseThreshold
+ *   thin: waitingCount - emptyCourts × playersPerCourt ≤ baseThreshold
+ *
+ * 解除条件は「プレイ中0面」ではなく「空き2面」。一括配置に意味があるのは空き2面以上
+ * のときだけなので、止めるべきは空き1面のときだけで、2面空いた時点で即解除する。
  */
-export function shouldBlockForDiversity(
+export function getAssignmentGate(
   forceBulkAssignment: boolean,
   occupiedCourts: number,
   emptyCourts: number,
   waitingCount: number,
-  _totalActiveCount: number,
-  baseThreshold: number,
-  playersPerCourt: number = 4
-): boolean {
-  if (!forceBulkAssignment) return false;
-
-  // エッジケース：3コート以上全空きの場合は推奨なし
-  const totalCourts = occupiedCourts + emptyCourts;
-  if (totalCourts >= 3 && occupiedCourts === 0) {
-    return false;
-  }
-
-  const remainingAfterAssignment = Math.max(0, waitingCount - (emptyCourts * playersPerCourt));
-  return remainingAfterAssignment <= baseThreshold;
+  playersPerCourt: number = 4,
+  baseThreshold: number = 2,
+): AssignmentGate {
+  if (!forceBulkAssignment) return 'free';
+  if (emptyCourts === 0) return 'free'; // 配置対象がない
+  const thin = waitingCount - emptyCourts * playersPerCourt <= baseThreshold;
+  if (!thin) return 'free';
+  if (emptyCourts === 1) return occupiedCourts > 0 ? 'waiting' : 'free';
+  return 'bulkOnly';
 }

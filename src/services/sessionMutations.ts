@@ -1016,19 +1016,16 @@ export function setContinuousMatchMode(sessionId: string, value: boolean) {
 }
 
 /**
- * 練習種別を更新する。`forceBulkAssignment` を渡すと同一 transaction で一括更新する
- * （単→false / 楽→true の整合を Firestore へ書き込む用途。複は省略して個別に扱う）。
+ * 練習種別を更新する。単＝`forceBulkAssignment` false 固定 / 楽＝true 固定という不変条件を
+ * ここで導出し、同一 transaction で一緒に書き込む（呼び出し側に導出させない）。
+ * 複は `forceBulkAssignment` を触らず既存値を維持する。
  */
-export function setPracticeType(
-  sessionId: string,
-  value: '単' | '複' | '楽',
-  forceBulkAssignment?: boolean,
-) {
+export function setPracticeType(sessionId: string, value: '単' | '複' | '楽') {
   return mutateGameState(sessionId, (s) => {
     const next = computeSetSetting(s, 'practiceType', value);
-    return forceBulkAssignment === undefined
-      ? next
-      : computeSetSetting(next, 'forceBulkAssignment', forceBulkAssignment);
+    if (value === '単') return computeSetSetting(next, 'forceBulkAssignment', false);
+    if (value === '楽') return computeSetSetting(next, 'forceBulkAssignment', true);
+    return next;
   });
 }
 

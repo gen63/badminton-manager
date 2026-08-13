@@ -5,7 +5,7 @@ import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { assignCourts, sortWaitingPlayers, getCallableReservationRestingIds } from '../lib/algorithm';
-import { getRecommendedCourtCount, shouldBlockForDiversity } from '../lib/utils';
+import { getRecommendedCourtCount, getAssignmentGate } from '../lib/utils';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { useSettingsStore } from '../stores/settingsStore';
 import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, Trash2, ChevronDown, Minus, Settings, Info, MessageSquare } from 'lucide-react';
@@ -740,23 +740,22 @@ export function MainPage() {
   // computeFinishAndContinue を実行するため、ローカルでの handleContinuousNext は不要。
 
   const waitingCount = sortedWaitingPlayers.length;
-  const shouldBlockAssignment = shouldBlockForDiversity(
-    forceBulkAssignment,
-    occupiedCourts.length,
-    emptyCourts.length,
-    waitingCount,
-    totalActiveCount,
-    2,
-    playersPerCourt
-  );
   // 予約成立で休憩から呼び出せるメンバーは配置に使えるため人数カウントに加算する
   // （例: 2コート10人で4人予約中、他コート試合中で待機2人でも予約で1面組める）
   // 公平性判定の母集団には「配置済み（=コート上にいる）メンバー」を +1 して混ぜる。
   // 詳細: docs/plans/2026-08-13-in-progress-games-in-fairness.md
+  // gate 計算にも同じ加算後の人数を使うため、gate 計算より前に算出する。
   const callableReservedCount = getCallableReservationRestingIds(
     withInProgressGames(players, courts), reservations, playersInCourts,
     { gameMode, reservationBlockThreshold }
   ).size;
+  const assignmentGate = getAssignmentGate(
+    forceBulkAssignment,
+    occupiedCourts.length,
+    emptyCourts.length,
+    waitingCount + callableReservedCount,
+    playersPerCourt,
+  );
   const canAutoAssign = emptyCourts.length > 0 &&
     sortedWaitingPlayers.length + callableReservedCount >= playersPerCourt;
   const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * playersPerCourt;
@@ -946,7 +945,7 @@ export function MainPage() {
             )}
             <button
               onClick={() => handleAutoAssign()}
-              disabled={!canAutoAssign}
+              disabled={!canAutoAssign || assignmentGate === 'waiting'}
               className="flex items-center gap-1 px-2 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
             >
               <Users size={16} />
@@ -1072,10 +1071,12 @@ export function MainPage() {
         );
       })()}
 
-      {shouldBlockAssignment && courts.length > 1 && (
+      {assignmentGate !== 'free' && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-center gap-2">
           <span className="text-xs text-amber-800 font-medium text-center">
-            💡 組み合わせの多様性を確保するため、一括配置を推奨
+            {assignmentGate === 'waiting'
+              ? '⏳ 多様性確保のため、あと1面の終了を待っています'
+              : `💡 ${emptyCourts.length}面まとめて配置します`}
           </span>
         </div>
       )}
@@ -1224,17 +1225,29 @@ export function MainPage() {
                         <p className="text-xs text-muted-foreground font-medium">空き</p>
                       </div>
                       <div className="flex flex-col gap-1 items-center">
-                        {shouldBlockAssignment && courts.length > 1 && (
-                          <p className="text-[10px] text-amber-700">⚠️ 一括配置推奨</p>
+                        {assignmentGate === 'waiting' ? (
+                          <>
+                            <p className="text-[10px] text-amber-700">他コート終了待ち</p>
+                            <button
+                              disabled
+                              className="px-3 py-1.5 bg-card border border-border shadow-sm rounded-lg text-xs font-medium text-primary flex items-center gap-1.5 opacity-50 cursor-not-allowed"
+                            >
+                              <Plus size={12} />
+                              配置
+                            </button>
+                          </>
+                        ) : assignmentGate === 'bulkOnly' ? (
+                          <p className="text-[10px] text-amber-700">一括ボタンで配置</p>
+                        ) : (
+                          <button
+                            onClick={() => handleAutoAssign(court.id)}
+                            disabled={!canAutoAssign}
+                            className="px-3 py-1.5 bg-card border border-border shadow-sm rounded-lg text-xs font-medium text-primary flex items-center gap-1.5 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Plus size={12} />
+                            配置
+                          </button>
                         )}
-                        <button
-                          onClick={() => handleAutoAssign(court.id)}
-                          disabled={!canAutoAssign}
-                          className="px-3 py-1.5 bg-card border border-border shadow-sm rounded-lg text-xs font-medium text-primary flex items-center gap-1.5 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Plus size={12} />
-                          配置
-                        </button>
                       </div>
                     </div>
                   )}
