@@ -25,6 +25,9 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { FinishGameButton } from '../components/FinishGameButton';
 import { UnrecordedMatchPrompt } from '../components/UnrecordedMatchPrompt';
 import { CourtTimer } from '../components/CourtTimer';
+import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
+import { predictNextMatchPlayers } from '../lib/nextMatchPrediction';
+import type { Player } from '../types/player';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH_AUTO_END_MS } from '../lib/gameOperations';
@@ -343,6 +346,38 @@ export function MainPage() {
   ), [players, recentlyRestoredIds]);
 
   const playerMap = useMemo(() => new Map(players.map(p => [p.id, p])), [players]);
+
+  // 次の試合に入るメンバーの予測（配置アルゴリズムの空打ち）。
+  // 空きコートがあればその配置結果、全コート稼働中はプレイ中の各コートが
+  // 終わったケースを全部シミュレートし、全ケース共通 = ほぼ確定 / 一部のみ = 候補。
+  const nextMatchPrediction = useMemo(
+    () => predictNextMatchPlayers(players, courts, matchHistory, reservations, {
+      practiceStartTime: session?.config.practiceStartTime,
+      useStayDurationPriority,
+      gameMode,
+      lateBalanceMode,
+      reservationBlockThreshold,
+    }),
+    [players, courts, matchHistory, reservations, session?.config.practiceStartTime,
+      useStayDurationPriority, gameMode, lateBalanceMode, reservationBlockThreshold],
+  );
+
+  // 候補は出現率の高い順に並べる（同率は試合数の少ない順）
+  const { predictedCertainPlayers, predictedLikelyPlayers } = useMemo(() => {
+    const byRate = (a: Player, b: Player) => {
+      const diff = (nextMatchPrediction.appearanceRate.get(b.id) ?? 0)
+        - (nextMatchPrediction.appearanceRate.get(a.id) ?? 0);
+      return diff !== 0 ? diff : a.gamesPlayed - b.gamesPlayed;
+    };
+    return {
+      predictedCertainPlayers: players
+        .filter(p => nextMatchPrediction.certainIds.has(p.id))
+        .sort((a, b) => a.gamesPlayed - b.gamesPlayed),
+      predictedLikelyPlayers: players
+        .filter(p => nextMatchPrediction.likelyIds.has(p.id))
+        .sort(byRate),
+    };
+  }, [players, nextMatchPrediction]);
 
   const getPlayerName = useCallback((playerId: string) => {
     return playerMap.get(playerId)?.name || '未設定';
@@ -1111,10 +1146,20 @@ export function MainPage() {
           <div className="flex flex-col gap-3">
             <h3 className="text-sm font-bold text-foreground">待機中 ({sortedWaitingPlayers.length})</h3>
 
+            <NextMatchPredictionBar
+              certain={predictedCertainPlayers}
+              likely={predictedLikelyPlayers}
+            />
+
             <div className="grid grid-cols-3 gap-2">
               {sortedWaitingPlayers.map((player) => {
                 const isSelected = selectedPlayer?.id === player.id;
                 const isReserved = pendingReservations.some(r => r.playerIds.includes(player.id));
+                const prediction = nextMatchPrediction.certainIds.has(player.id)
+                  ? 'certain'
+                  : nextMatchPrediction.likelyIds.has(player.id)
+                  ? 'likely'
+                  : null;
 
                 return (
                   <button
@@ -1123,11 +1168,26 @@ export function MainPage() {
                     className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl px-2 pt-[3px] pb-2 flex flex-col items-center justify-end gap-0 shadow-sm transition-all text-left h-[58px] ${
                       isSelected
                         ? 'ring-2 ring-primary ring-offset-1 border-primary'
+                        : prediction === 'certain'
+                        ? 'border-indigo-400 bg-indigo-50/60'
+                        : prediction === 'likely'
+                        ? 'border-indigo-200'
                         : isReserved
                         ? 'border-orange-300 bg-orange-50/50'
                         : 'border-border'
                     }`}
                   >
+                    {prediction && (
+                      <div className="absolute -top-1 right-0.5">
+                        <span className={`px-1 py-0.5 text-[8px] font-bold rounded ${
+                          prediction === 'certain'
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-indigo-100 text-indigo-700 border border-indigo-300'
+                        }`}>
+                          {prediction === 'certain' ? '次' : '候補'}
+                        </span>
+                      </div>
+                    )}
                     {!isSelected && canToggleBreak(player.name) && (
                       <div className="absolute top-1/2 -translate-y-1/2 right-1">
                         <button
