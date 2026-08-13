@@ -46,10 +46,8 @@ vi.mock('react-router-dom', () => ({
 }));
 
 // 通知関数を mock
-const mockNotifyMatchStart = vi.fn();
 const mockNotifyForcedRest = vi.fn();
 vi.mock('../lib/notifications', () => ({
-  notifyMatchStart: (...args: unknown[]) => mockNotifyMatchStart(...args),
   notifyForcedRest: (...args: unknown[]) => mockNotifyForcedRest(...args),
 }));
 
@@ -94,7 +92,6 @@ beforeEach(() => {
   mockOnSnapshot.mockClear();
   mockUnsub.mockClear();
   mockNavigate.mockClear();
-  mockNotifyMatchStart.mockClear();
   mockNotifyForcedRest.mockClear();
   useNoticeStore.setState({ notices: [] });
   // ストアをリセット

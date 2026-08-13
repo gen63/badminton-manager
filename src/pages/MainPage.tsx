@@ -27,11 +27,14 @@ import { UnrecordedMatchPrompt } from '../components/UnrecordedMatchPrompt';
 import { CourtTimer } from '../components/CourtTimer';
 import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { predictNextMatchPlayers } from '../lib/nextMatchPrediction';
+import { shouldCallNextMatch, callBasisCourtId, buildNextMatchCallMessage } from '../lib/nextMatchCall';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH_AUTO_END_MS, MATCH_AUTO_START_MS } from '../lib/gameOperations';
 import { withInProgressGames } from '../lib/effectiveGames';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
+import { notifyNextMatchSoon } from '../lib/notifications';
+import { useNoticeStore } from '../stores/noticeStore';
 
 import { BottomNav } from '../components/BottomNav';
 
@@ -409,8 +412,15 @@ export function MainPage() {
       useStayDurationPriority, gameMode, lateBalanceMode, reservationBlockThreshold],
   );
 
+  const myPlayerId = useMemo(
+    () => players.find(p => p.name === currentUser)?.id ?? null,
+    [players, currentUser],
+  );
+
   // 表示対象（ほぼ確定 + 候補）を入りやすい順に並べる
   // （出現率の高い順、同率なら試合数の少ない順）
+  // 呼び出し通知の対象メンバー名（certainIds 絞り込み）にも使うため、
+  // 呼び出し用 useEffect より前に定義しておく。
   const predictedPlayers = useMemo(() => {
     const shownIds = new Set([
       ...nextMatchPrediction.certainIds,
@@ -424,6 +434,64 @@ export function MainPage() {
         return diff !== 0 ? diff : a.gamesPlayed - b.gamesPlayed;
       });
   }, [players, nextMatchPrediction]);
+
+  // 「次の試合に入りそう」事前呼び出し通知のリセット: 自分がいずれかのコートに
+  // 配置されたときだけ呼び出し済みフラグを戻す。予測から外れただけではリセット
+  // しない（予測のブレで何度も呼ばれるのを防ぐため）。
+  // 併せて lastOnCourtAtRef も更新する（クールダウン起点＝最後にコートに乗っていた時刻）。
+  const calledForNextMatchRef = useRef(false);
+  const lastOnCourtAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (myPlayerId === null) return;
+    const onAnyCourt = courts.some(
+      (c) => c.teamA.includes(myPlayerId) || c.teamB.includes(myPlayerId)
+    );
+    if (onAnyCourt) {
+      calledForNextMatchRef.current = false;
+      lastOnCourtAtRef.current = Date.now();
+    }
+  }, [courts, myPlayerId]);
+
+  // 「次の試合に入りそう」事前呼び出し通知: 自分が予測の「ほぼ確定」メンバーで、
+  // まだどのコートにも乗っておらず、経過時間が最大のプレイ中コートが
+  // MATCH_CALL_THRESHOLD_MS を超えたら 1 度だけ通知する。通知許可が無いメンバーにも
+  // 見えるよう、Browser Notification に加えてグローバルトーストでも出す
+  // （強制休憩通知と同じ構成）。閾値 4:30 に対して 10 秒間隔の評価で十分。
+  useEffect(() => {
+    const evaluate = () => {
+      if (myPlayerId !== null) {
+        const onAnyCourt = courts.some(
+          (c) => c.teamA.includes(myPlayerId) || c.teamB.includes(myPlayerId)
+        );
+        if (onAnyCourt) {
+          lastOnCourtAtRef.current = Date.now();
+        }
+      }
+
+      const called = shouldCallNextMatch({
+        courts,
+        certainIds: nextMatchPrediction.certainIds,
+        myPlayerId,
+        now: Date.now(),
+        alreadyCalled: calledForNextMatchRef.current,
+        lastOnCourtAt: lastOnCourtAtRef.current,
+      });
+      if (called) {
+        const basisCourtId = callBasisCourtId(courts, Date.now());
+        if (basisCourtId === null) return;
+        const names = predictedPlayers
+          .filter((p) => nextMatchPrediction.certainIds.has(p.id))
+          .map((p) => p.name);
+        const { body, toast: toastText } = buildNextMatchCallMessage(basisCourtId, names);
+        notifyNextMatchSoon(body);
+        useNoticeStore.getState().show(toastText, 'info', 8000);
+        calledForNextMatchRef.current = true;
+      }
+    };
+    evaluate();
+    const intervalId = setInterval(evaluate, 10_000);
+    return () => clearInterval(intervalId);
+  }, [courts, nextMatchPrediction, myPlayerId, predictedPlayers]);
 
   const getPlayerName = useCallback((playerId: string) => {
     return playerMap.get(playerId)?.name || '未設定';
