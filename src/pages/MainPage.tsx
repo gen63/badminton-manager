@@ -362,22 +362,30 @@ export function MainPage() {
       useStayDurationPriority, gameMode, lateBalanceMode, reservationBlockThreshold],
   );
 
-  // 候補は出現率の高い順に並べる（同率は試合数の少ない順）
-  const { predictedCertainPlayers, predictedLikelyPlayers } = useMemo(() => {
-    const byRate = (a: Player, b: Player) => {
-      const diff = (nextMatchPrediction.appearanceRate.get(b.id) ?? 0)
-        - (nextMatchPrediction.appearanceRate.get(a.id) ?? 0);
-      return diff !== 0 ? diff : a.gamesPlayed - b.gamesPlayed;
-    };
-    return {
-      predictedCertainPlayers: players
-        .filter(p => nextMatchPrediction.certainIds.has(p.id))
-        .sort((a, b) => a.gamesPlayed - b.gamesPlayed),
-      predictedLikelyPlayers: players
-        .filter(p => nextMatchPrediction.likelyIds.has(p.id))
-        .sort(byRate),
-    };
-  }, [players, nextMatchPrediction]);
+  // 表示対象（ほぼ確定 + 候補）を、代表シナリオのペア単位に並べ替える。
+  // ペアに含まれない候補は extras として末尾に（出現率の高い順）。
+  const { predictedTeamPlayers, predictedExtraPlayers } = useMemo(() => {
+    const shownIds = new Set([
+      ...nextMatchPrediction.certainIds,
+      ...nextMatchPrediction.likelyIds,
+    ]);
+    const teams = nextMatchPrediction.predictedTeams
+      .map(team => team
+        .map(id => playerMap.get(id))
+        .filter((p): p is Player => !!p && shownIds.has(p.id)))
+      .filter(team => team.length > 0);
+
+    const inTeams = new Set(teams.flat().map(p => p.id));
+    const extras = players
+      .filter(p => shownIds.has(p.id) && !inTeams.has(p.id))
+      .sort((a, b) => {
+        const diff = (nextMatchPrediction.appearanceRate.get(b.id) ?? 0)
+          - (nextMatchPrediction.appearanceRate.get(a.id) ?? 0);
+        return diff !== 0 ? diff : a.gamesPlayed - b.gamesPlayed;
+      });
+
+    return { predictedTeamPlayers: teams, predictedExtraPlayers: extras };
+  }, [players, playerMap, nextMatchPrediction]);
 
   const getPlayerName = useCallback((playerId: string) => {
     return playerMap.get(playerId)?.name || '未設定';
@@ -1147,8 +1155,9 @@ export function MainPage() {
             <h3 className="text-sm font-bold text-foreground">待機中 ({sortedWaitingPlayers.length})</h3>
 
             <NextMatchPredictionBar
-              certain={predictedCertainPlayers}
-              likely={predictedLikelyPlayers}
+              teams={predictedTeamPlayers}
+              extras={predictedExtraPlayers}
+              certainIds={nextMatchPrediction.certainIds}
             />
 
             <div className="grid grid-cols-3 gap-2">
