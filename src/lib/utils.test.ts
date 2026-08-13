@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { cn, formatDate, formatTime, formatDuration, generateSessionId, copyToClipboard, parsePlayerInput, getRecommendedCourtCount, shouldBlockForDiversity } from './utils';
+import { cn, formatDate, formatTime, formatDuration, generateSessionId, copyToClipboard, parsePlayerInput, getRecommendedCourtCount, getAssignmentGate } from './utils';
 
 describe('cn', () => {
   it('単一のクラス名を返す', () => {
@@ -96,105 +96,86 @@ describe('generateSessionId', () => {
   });
 });
 
-// --- 多様性優先関連のテスト -----------------------------------------------
+// --- 一括配置強制モード（3状態ゲート）関連のテスト -------------------------
 
-describe('shouldBlockForDiversity', () => {
-  it('returns false when prioritizeDiversity is off', () => {
-    expect(
-      shouldBlockForDiversity(false, 1, 1, 0, 4, 2)
-    ).toBe(false);
+describe('getAssignmentGate', () => {
+  it('forceBulkAssignment が false なら常に free', () => {
+    expect(getAssignmentGate(false, 1, 1, 0)).toBe('free');
+    expect(getAssignmentGate(false, 0, 3, 5)).toBe('free');
+    expect(getAssignmentGate(false, 2, 1, 4)).toBe('free');
   });
 
-  it('空きコート0でも待機が少なすぎる場合は推奨', () => {
-    // 空きコート0、待機2人 → コート空き直後プール6→4選抜で強制再投入50% → 推奨表示
-    expect(
-      shouldBlockForDiversity(true, 2, 0, 2, 8, 2)
-    ).toBe(true);
-
-    // 空きコート0、待機10人 → 強制再投入0% → 推奨なし
-    expect(
-      shouldBlockForDiversity(true, 2, 0, 10, 16, 2)
-    ).toBe(false);
+  it('空きコート0（配置対象なし）は free', () => {
+    expect(getAssignmentGate(true, 3, 0, 0)).toBe('free');
   });
 
-  it('空きコート0、待機3人以上なら多様性確保可能なので推奨しない', () => {
-    // 空きコート0、待機3人 → コート空き直後プール7→4選抜で強制再投入25% → 推奨なし
-    expect(
-      shouldBlockForDiversity(true, 2, 0, 3, 11, 2)
-    ).toBe(false);
+  describe('検証ケース: 3コート13人', () => {
+    it('1面空き → waiting（プール待機1+終了4=5人）', () => {
+      // occupied=2, empty=1, waiting=13-2*4=5, thin: 5-4=1<=2
+      expect(getAssignmentGate(true, 2, 1, 5)).toBe('waiting');
+    });
 
-    // 空きコート0、待機4人（スクリーンショットケース） → 強制再投入0% → 推奨なし
-    expect(
-      shouldBlockForDiversity(true, 2, 0, 4, 12, 2)
-    ).toBe(false);
+    it('2面空き → bulkOnly（プール待機1+終了8=9人→8人配置）', () => {
+      // occupied=1, empty=2, waiting=13-1*4=9, thin: 9-8=1<=2
+      expect(getAssignmentGate(true, 1, 2, 9)).toBe('bulkOnly');
+    });
   });
 
-  it('blocks when all courts empty but players insufficient for diversity', () => {
-    // 2コート全空き、8人 -> 余り0 <= 2 -> 推奨表示
-    expect(
-      shouldBlockForDiversity(true, 0, 2, 8, 8, 2)
-    ).toBe(true);
+  describe('検証ケース: 2コート10人', () => {
+    it('1面空き → waiting', () => {
+      // occupied=1, empty=1, waiting=10-4=6, thin: 6-4=2<=2
+      expect(getAssignmentGate(true, 1, 1, 6)).toBe('waiting');
+    });
 
-    // 2コート全空き、10人 -> 余り2 <= 2 -> 推奨表示
-    expect(
-      shouldBlockForDiversity(true, 0, 2, 10, 10, 2)
-    ).toBe(true);
-
-    // 2コート全空き、11人 -> 余り3 > 2 -> 推奨なし
-    expect(
-      shouldBlockForDiversity(true, 0, 2, 11, 11, 2)
-    ).toBe(false);
+    it('2面空き → bulkOnly', () => {
+      // occupied=0, empty=2, waiting=10, thin: 10-8=2<=2
+      expect(getAssignmentGate(true, 0, 2, 10)).toBe('bulkOnly');
+    });
   });
 
-  it('edge case: 3コート全空きは推奨なし', () => {
-    // 3コート全空き、10人 -> エッジケース -> 推奨なし
-    expect(
-      shouldBlockForDiversity(true, 0, 3, 10, 10, 2)
-    ).toBe(false);
+  describe('検証ケース: 2コート12人（両方 free）', () => {
+    it('1面空き → free（十分厚い）', () => {
+      // occupied=1, empty=1, waiting=12-4=8, thin: 8-4=4>2
+      expect(getAssignmentGate(true, 1, 1, 8)).toBe('free');
+    });
 
-    // 3コート全空き、14人 -> エッジケース -> 推奨なし
-    expect(
-      shouldBlockForDiversity(true, 0, 3, 14, 14, 2)
-    ).toBe(false);
-
-    // 3コート（1使用中+2空き）、10人 -> 余り2 <= 2 -> 推奨表示
-    expect(
-      shouldBlockForDiversity(true, 1, 2, 10, 14, 2)
-    ).toBe(true);
+    it('2面空き → free', () => {
+      // occupied=0, empty=2, waiting=12, thin: 12-8=4>2
+      expect(getAssignmentGate(true, 0, 2, 12)).toBe('free');
+    });
   });
 
-  it('blocks when remaining after assignment <= base threshold (2)', () => {
-    // 1 empty, waiting 4 -> remaining 0 <= 2 -> block
-    expect(
-      shouldBlockForDiversity(true, 1, 1, 4, 8, 2)
-    ).toBe(true);
-
-    // 1 empty, waiting 5 -> remaining 1 <= 2 -> block
-    expect(
-      shouldBlockForDiversity(true, 1, 1, 5, 9, 2)
-    ).toBe(true);
-
-    // 1 empty, waiting 6 -> remaining 2 <= 2 -> block
-    expect(
-      shouldBlockForDiversity(true, 1, 1, 6, 10, 2)
-    ).toBe(true);
-
-    // 1 empty, waiting 7 -> remaining 3 > 2 -> no block (元の問題が解決)
-    expect(
-      shouldBlockForDiversity(true, 1, 1, 7, 11, 2)
-    ).toBe(false);
+  it('検証ケース: 3コート15人、1面空きで待機7人 → free', () => {
+    // occupied=2, empty=1, waiting=7, thin: 7-4=3>2
+    expect(getAssignmentGate(true, 2, 1, 7)).toBe('free');
   });
 
-  it('連続モード用の高いthreshold (7) でもテスト', () => {
-    // 1 empty, waiting 10 -> remaining 6 <= 7 -> block
-    expect(
-      shouldBlockForDiversity(true, 1, 1, 10, 14, 7)
-    ).toBe(true);
+  it('検証ケース: 1コートセッション（emptyCourts===1 && occupiedCourts===0）は free', () => {
+    // 待つ相手がいない。thin であっても free。
+    expect(getAssignmentGate(true, 0, 1, 0)).toBe('free');
+    expect(getAssignmentGate(true, 0, 1, 2)).toBe('free');
+  });
 
-    // 1 empty, waiting 12 -> remaining 8 > 7 -> no block
-    expect(
-      shouldBlockForDiversity(true, 1, 1, 12, 16, 7)
-    ).toBe(false);
+  it('検証ケース: forceBulkAssignment=false は常に free', () => {
+    expect(getAssignmentGate(false, 2, 1, 5)).toBe('free');
+    expect(getAssignmentGate(false, 1, 2, 9)).toBe('free');
+  });
+
+  it('3コート全空き（thin なら bulkOnly、旧エッジケース除外は廃止）', () => {
+    // occupied=0, empty=3, waiting=10, thin: 10-12=-2<=2
+    expect(getAssignmentGate(true, 0, 3, 10)).toBe('bulkOnly');
+  });
+
+  it('停止性: 10人2コート両面終了でも emptyCourts=2 は bulkOnly（永久ブロックしない）', () => {
+    // occupied=0, empty=2, waiting=10, thin: 10-8=2<=2
+    expect(getAssignmentGate(true, 0, 2, 10)).toBe('bulkOnly');
+  });
+
+  it('playersPerCourt / baseThreshold のカスタム値を反映する（シングルス想定）', () => {
+    // playersPerCourt=2, baseThreshold=2: occupied=1,empty=1,waiting=3, thin: 3-2=1<=2
+    expect(getAssignmentGate(true, 1, 1, 3, 2, 2)).toBe('waiting');
+    // waiting=5, thin: 5-2=3>2 -> free
+    expect(getAssignmentGate(true, 1, 1, 5, 2, 2)).toBe('free');
   });
 });
 

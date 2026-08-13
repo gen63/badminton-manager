@@ -69,7 +69,7 @@ export function SessionCreate() {
   const [selectedCreatorName, setSelectedCreatorName] = useState('');
   const setCurrentUser = useSessionStore((state) => state.setCurrentUser);
 
-  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, prioritizeDiversity, setPrioritizeDiversity, practiceType, setPracticeType } = useSettingsStore();
+  const { useStayDurationPriority, setUseStayDurationPriority, recordScores, setRecordScores, forceBulkAssignment, setForceBulkAssignment, practiceType, setPracticeType } = useSettingsStore();
 
   const [targetScore] = useState(15);
   const [selectedGym] = useState(getInitialGym);
@@ -142,16 +142,23 @@ export function SessionCreate() {
         id: i + 1,
         ...EMPTY_COURT_STATE,
       }));
-      const { recordScores, continuousMatchMode, practiceType, useStayDurationPriority } =
+      const { recordScores, continuousMatchMode, practiceType, useStayDurationPriority, forceBulkAssignment } =
         useSettingsStore.getState();
       const initialGameState = {
         players: initialPlayers,
         courts: initialCourts,
         matchHistory: [],
         reservations: [],
-        // useStayDurationPriority はセッション設定。作成前は writer が使えないので
-        // 画面上の選択（メモリ上の settingsStore）をここで初期 settings に焼き込む。
-        settings: { recordScores, continuousMatchMode, practiceType, useStayDurationPriority },
+        // useStayDurationPriority / forceBulkAssignment はセッション設定。作成前は
+        // writer が使えないので画面上の選択（メモリ上の settingsStore）をここで
+        // 初期 settings に焼き込む。
+        settings: {
+          recordScores,
+          continuousMatchMode,
+          practiceType,
+          useStayDurationPriority,
+          forceBulkAssignment,
+        },
       };
 
       // デフォルト周知事項（appConfig/global）があれば周知事項として同梱する。
@@ -415,46 +422,46 @@ export function SessionCreate() {
             </p>
           </div>
 
-          {/* 配置タイミング */}
+          {/* 一括配置強制 */}
           {(() => {
             const isSinglesMode = practiceType === '単';
             const isRelaxedMode = practiceType === '楽';
             const isLocked = isSinglesMode || isRelaxedMode;
-            const diversityActive = isRelaxedMode || (!isSinglesMode && prioritizeDiversity);
-            const countActive = isSinglesMode || (!isRelaxedMode && !prioritizeDiversity);
+            const onActive = isRelaxedMode || (!isSinglesMode && forceBulkAssignment);
+            const offActive = isSinglesMode || (!isRelaxedMode && !forceBulkAssignment);
             return (
               <div>
-                <label className="label">配置タイミング</label>
+                <label className="label">一括配置強制</label>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => !isLocked && setPrioritizeDiversity(true)}
+                    onClick={() => !isLocked && setForceBulkAssignment(true)}
                     disabled={isLocked}
                     className={`flex-1 select-button text-xs px-2 ${
-                      diversityActive ? 'select-button-active' : 'select-button-inactive'
+                      onActive ? 'select-button-active' : 'select-button-inactive'
                     } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    {diversityActive && <span className="mr-1">✓</span>}
-                    多様性優先
+                    {onActive && <span className="mr-1">✓</span>}
+                    ON
                   </button>
                   <button
-                    onClick={() => !isLocked && setPrioritizeDiversity(false)}
+                    onClick={() => !isLocked && setForceBulkAssignment(false)}
                     disabled={isLocked}
                     className={`flex-1 select-button text-xs px-2 ${
-                      countActive ? 'select-button-active' : 'select-button-inactive'
+                      offActive ? 'select-button-active' : 'select-button-inactive'
                     } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    {countActive && <span className="mr-1">✓</span>}
-                    回数優先
+                    {offActive && <span className="mr-1">✓</span>}
+                    OFF
                   </button>
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-1">
                   {isSinglesMode
-                    ? 'シングルスでは回数優先が適用されます'
+                    ? 'シングルスでは一括配置強制は無効です'
                     : isRelaxedMode
-                    ? '楽では多様性優先が適用されます'
-                    : prioritizeDiversity
-                    ? '組み合わせの多様性を優先（余り人数が少ない時は一括配置を推奨）'
-                    : '空きが出たら即座に配置'}
+                    ? '楽では一括配置強制が適用されます'
+                    : forceBulkAssignment
+                    ? '余りが少ない時は2面空くまで待ってまとめて配置'
+                    : '空きが出たら1面ずつ即座に配置'}
                 </p>
               </div>
             );

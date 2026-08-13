@@ -12,8 +12,8 @@ interface SettingsState {
   setContinuousMatchMode: (value: boolean) => void;
   recordScores: boolean;
   setRecordScores: (value: boolean) => void;
-  prioritizeDiversity: boolean;
-  setPrioritizeDiversity: (value: boolean) => void;
+  forceBulkAssignment: boolean;
+  setForceBulkAssignment: (value: boolean) => void;
   practiceType: '単' | '複' | '楽';
   setPracticeType: (value: '単' | '複' | '楽') => void;
   lateBalanceMode: boolean;
@@ -37,15 +37,15 @@ export const useSettingsStore = create<SettingsState>()(
       setContinuousMatchMode: (value) => set({ continuousMatchMode: value }),
       recordScores: true,
       setRecordScores: (value) => set({ recordScores: value }),
-      prioritizeDiversity: false,
-      setPrioritizeDiversity: (value) => set({ prioritizeDiversity: value }),
+      forceBulkAssignment: true,
+      setForceBulkAssignment: (value) => set({ forceBulkAssignment: value }),
       practiceType: '複',
       setPracticeType: (value) =>
         set(() => {
-          // 楽 は多様性優先固定、単 は回数優先固定。
-          // 切替時に prioritizeDiversity も整合させる。
-          if (value === '単') return { practiceType: value, prioritizeDiversity: false };
-          if (value === '楽') return { practiceType: value, prioritizeDiversity: true };
+          // 楽 は一括配置強制 ON 固定、単 は OFF 固定。
+          // 切替時に forceBulkAssignment も整合させる。
+          if (value === '単') return { practiceType: value, forceBulkAssignment: false };
+          if (value === '楽') return { practiceType: value, forceBulkAssignment: true };
           return { practiceType: value };
         }),
       lateBalanceMode: false,
@@ -68,7 +68,11 @@ export const useSettingsStore = create<SettingsState>()(
       // セッション全体の挙動を決めるため、端末ごとに違うと「試合終了を押した人の
       // 設定で連続配置のモードが変わる」ことになる。
       // docs/plans/2026-08-11-stay-duration-mode-not-applied.md
-      version: 3,
+      //
+      // version 4: `prioritizeDiversity` を `forceBulkAssignment` にリネームし、同様に
+      // Firestore 同期へ移した（デフォルトも false→true に変更）。
+      // docs/plans/2026-08-13-force-bulk-assignment.md
+      version: 4,
       migrate: (persisted, version) => {
         let state = persisted;
         if (version < 1 && state && typeof state === 'object') {
@@ -93,23 +97,29 @@ export const useSettingsStore = create<SettingsState>()(
           void _sd;
           state = rest;
         }
+        if (version < 4 && state && typeof state === 'object') {
+          // 旧 version で localStorage に書かれていた prioritizeDiversity を剥がす。
+          // forceBulkAssignment として Firestore がソースになる。
+          const { prioritizeDiversity: _pd, ...rest } = state as Record<string, unknown>;
+          void _pd;
+          state = rest;
+        }
         return state;
       },
       partialize: (state) => ({
         gasWebAppUrl: state.gasWebAppUrl,
         accountingWebAppUrl: state.accountingWebAppUrl,
-        prioritizeDiversity: state.prioritizeDiversity,
       }),
       onRehydrateStorage: () => (state) => {
         // 旧バージョンで保存された localStorage から復元したとき、
-        // practiceType と prioritizeDiversity の整合を取り直す。
+        // practiceType と forceBulkAssignment の整合を取り直す。
         // version 1 以降は practiceType を persist しないので state.practiceType は
         // 必ずデフォルトの '複' になり下記のチェックは no-op になる。安全弁として残す。
         if (!state) return;
-        if (state.practiceType === '単' && state.prioritizeDiversity !== false) {
-          state.prioritizeDiversity = false;
-        } else if (state.practiceType === '楽' && state.prioritizeDiversity !== true) {
-          state.prioritizeDiversity = true;
+        if (state.practiceType === '単' && state.forceBulkAssignment !== false) {
+          state.forceBulkAssignment = false;
+        } else if (state.practiceType === '楽' && state.forceBulkAssignment !== true) {
+          state.forceBulkAssignment = true;
         }
       },
     }

@@ -1015,8 +1015,18 @@ export function setContinuousMatchMode(sessionId: string, value: boolean) {
   return mutateGameState(sessionId, (s) => computeSetSetting(s, 'continuousMatchMode', value));
 }
 
+/**
+ * 練習種別を更新する。単＝`forceBulkAssignment` false 固定 / 楽＝true 固定という不変条件を
+ * ここで導出し、同一 transaction で一緒に書き込む（呼び出し側に導出させない）。
+ * 複は `forceBulkAssignment` を触らず既存値を維持する。
+ */
 export function setPracticeType(sessionId: string, value: '単' | '複' | '楽') {
-  return mutateGameState(sessionId, (s) => computeSetSetting(s, 'practiceType', value));
+  return mutateGameState(sessionId, (s) => {
+    const next = computeSetSetting(s, 'practiceType', value);
+    if (value === '単') return computeSetSetting(next, 'forceBulkAssignment', false);
+    if (value === '楽') return computeSetSetting(next, 'forceBulkAssignment', true);
+    return next;
+  });
 }
 
 export function setLateBalanceMode(sessionId: string, value: boolean) {
@@ -1026,6 +1036,12 @@ export function setLateBalanceMode(sessionId: string, value: boolean) {
 export function setUseStayDurationPriority(sessionId: string, value: boolean) {
   return mutateGameState(sessionId, (s) =>
     computeSetSetting(s, 'useStayDurationPriority', value),
+  );
+}
+
+export function setForceBulkAssignment(sessionId: string, value: boolean) {
+  return mutateGameState(sessionId, (s) =>
+    computeSetSetting(s, 'forceBulkAssignment', value),
   );
 }
 
@@ -1434,7 +1450,7 @@ export async function autoStartMatch(
 export interface FinishGameOptions {
   matchId: string;
   useStayDurationPriority: boolean;
-  prioritizeDiversity: boolean;
+  forceBulkAssignment: boolean;
   /**
    * true のとき、連続モードが ON でも次の試合を自動配置しない
    * （15 分超過の自動終了用）。
@@ -1453,8 +1469,9 @@ export interface FinishGameOptions {
  * `gameStore.finishGame`（楽観更新版）と区別するため、composite であることを
  * 明示する名前にしている。
  *
- * 設定（continuousMatchMode / practiceType / useStayDurationPriority）と
- * 練習開始日時（config.practiceStartTime）はリモート状態を優先採用する。
+ * 設定（continuousMatchMode / practiceType / useStayDurationPriority /
+ * forceBulkAssignment）と練習開始日時（config.practiceStartTime）はリモート状態を
+ * 優先採用する。
  */
 export async function finishMatchAndContinue(
   sessionId: string,
@@ -1504,7 +1521,10 @@ export async function finishMatchAndContinue(
         // 呼び出し側（端末ローカル設定）の値にフォールバックする。
         useStayDurationPriority:
           remoteSettings?.useStayDurationPriority ?? options.useStayDurationPriority,
-        prioritizeDiversity: options.prioritizeDiversity,
+        // forceBulkAssignment も同様にセッション設定を優先。リモート未設定の旧セッションの
+        // みクライアントの値にフォールバックする。
+        forceBulkAssignment:
+          remoteSettings?.forceBulkAssignment ?? options.forceBulkAssignment,
         gameMode,
         matchId: options.matchId,
         lateBalanceMode: remoteSettings?.lateBalanceMode ?? false,

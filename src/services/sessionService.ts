@@ -51,6 +51,15 @@ export interface SyncSettings {
    */
   useStayDurationPriority?: boolean;
   /**
+   * 一括配置強制モード。true = 待機が薄いとき2面空くまで待ってまとめて配置、
+   * false = 空きが出たら1面ずつ即座に配置。**未設定は `true` 扱い**。
+   *
+   * セッション全体の配置挙動を決めるので端末ローカルではなく Firestore に持つ。
+   * 端末ごとに違うと「試合終了を押した人の設定で連続配置のモードが変わる」ため。
+   * 詳細: docs/plans/2026-08-13-force-bulk-assignment.md
+   */
+  forceBulkAssignment?: boolean;
+  /**
    * 予約メンバーの試合数が「中央値 + この値」以上のとき、その予約全体を保留する閾値。
    * 試合数の多い人が予約で順番を飛ばし続けるのを防ぐフェアネス制限。未設定時は 2。
    */

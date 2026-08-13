@@ -497,6 +497,24 @@ describe('buildSessionData', () => {
     expect(data.gameState.settings.recordScores).toBe(false);
   });
 
+  it('practiceType に応じて forceBulkAssignment を明示的に書く（単→false / 複・楽→true）', () => {
+    const baseEvent = {
+      eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+      startTime: '18:30', endTime: '21:30', venue: '千川館',
+      participantCount: 0, capacity: null, waitlistCount: 0,
+      location: '', participants: [], genders: {},
+    };
+
+    const singles = buildSessionData({ ...baseEvent, note: '単' }, new Map(), new Date(2026, 3, 9));
+    expect(singles.gameState.settings.forceBulkAssignment).toBe(false);
+
+    const doubles = buildSessionData({ ...baseEvent, note: '複' }, new Map(), new Date(2026, 3, 9));
+    expect(doubles.gameState.settings.forceBulkAssignment).toBe(true);
+
+    const relaxed = buildSessionData({ ...baseEvent, note: '楽' }, new Map(), new Date(2026, 3, 9));
+    expect(relaxed.gameState.settings.forceBulkAssignment).toBe(true);
+  });
+
   it('レーティング未設定の参加者はrating無し、性別はE-tomoから取得', () => {
     const event = {
       eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,

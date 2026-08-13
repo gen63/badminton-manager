@@ -36,9 +36,9 @@ npm run test:run # ユニットテスト
   `setState`（merge 無し）。初回受信は `useSyncStatusStore.isGameStateLoaded` で追跡。
 - **zustand persist は最小限**:
   - `settingsStore`: 端末ローカル設定のみ persist（`gasWebAppUrl` /
-    `accountingWebAppUrl` / `prioritizeDiversity`）。
+    `accountingWebAppUrl`）。
     `practiceType` / `continuousMatchMode` / `recordScores` /
-    `useStayDurationPriority` は Firestore 同期で持たない。
+    `useStayDurationPriority` / `forceBulkAssignment` は Firestore 同期で持たない。
   - `sessionStore`: `currentUser` のみ。`session` は持たず、リロード時は再選択。
   - `accountingStore`: persist しない（永続先は GAS シート）。
   - `playerStore` / `gameStore` / `reservationStore` は persist 撤廃済み。

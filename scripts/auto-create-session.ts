@@ -663,6 +663,9 @@ function buildSessionData(
         // 配置モードはセッション設定（既定は待機時間優先）。明示して端末ローカルの
         // 値に依存しないようにする。
         useStayDurationPriority: true,
+        // 単＝OFF固定 / 楽＝ON固定 / 複＝新デフォルトの ON。未設定は受信側で `?? true`
+        // になるため、明示しないと単が誤って ON になってしまう（不変条件を明示する）。
+        forceBulkAssignment: event.note !== '単',
       },
     },
   };
