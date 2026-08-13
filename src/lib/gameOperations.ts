@@ -15,6 +15,14 @@ import { assignCourts, getCallableReservationRestingIds } from './algorithm';
 /** 試合の自動終了までの経過時間（ms）。これを超えた試合は自動で終了する。 */
 export const MATCH_AUTO_END_MS = 15 * 60 * 1000;
 
+/**
+ * 配置から試合の自動開始までの経過時間（ms）。
+ * 「開始」が押されないままこれを超えたコートは、**配置時刻を開始時刻として**
+ * 自動的に試合開始扱いにする。
+ * 詳細: docs/plans/2026-08-13-auto-start-after-assign.md
+ */
+export const MATCH_AUTO_START_MS = 3 * 60 * 1000;
+
 /** ゲームモードに応じた1コートあたりの人数 */
 export function getPlayersPerCourt(gameMode: 'singles' | 'doubles'): number {
   return gameMode === 'singles' ? 2 : 4;
@@ -266,6 +274,8 @@ export function computeFinishAndContinue(
                 isPlaying: true,
                 startedAt: nextStartedAt,
                 finishedAt: 0,
+                // 配置と同時に開始するため、配置時刻＝開始時刻
+                assignedAt: nextStartedAt,
               }
             : c
         );

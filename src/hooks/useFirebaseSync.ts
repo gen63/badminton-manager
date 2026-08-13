@@ -434,9 +434,15 @@ function checkMatchStartNotifications(oldCourts: Court[], newCourts: Court[]) {
     const allPlayerIds = [...newCourt.teamA, ...newCourt.teamB];
     if (!allPlayerIds.includes(myPlayer.id)) continue;
 
-    // 開始から 2 分以上経過していれば通知しない（リロード時の誤通知防止）
-    const timeSinceStart = newCourt.startedAt ? Date.now() - newCourt.startedAt : 0;
-    if (timeSinceStart > 120_000) continue;
+    // リロード時の誤通知防止: 初回スナップショット（比較対象の旧コートが無い）は
+    // 開始から 2 分以上経過していれば通知しない。
+    // 実際に isPlaying: false → true の遷移を観測した場合は、いま開始されたことが
+    // 確かなので経過時間で弾かない（配置後 3 分の自動開始は startedAt が配置時刻
+    // ＝ 3 分前になるため、経過時間で弾くと通知が出ない）。
+    if (!oldCourt) {
+      const timeSinceStart = newCourt.startedAt ? Date.now() - newCourt.startedAt : 0;
+      if (timeSinceStart > 120_000) continue;
+    }
 
     const finishedBefore = matchHistory.filter(
       (m) => m.finishedAt && newCourt.startedAt && m.finishedAt <= newCourt.startedAt,

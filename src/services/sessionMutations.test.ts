@@ -40,6 +40,7 @@ import {
   computeRemoveCourt,
   computeUpdateCourt,
   computeStartGame,
+  computeAutoStartGame,
   computeClearCourt,
   computeResetAllCourts,
   computeClearPlayers,
@@ -59,6 +60,7 @@ import {
   updateMatch,
   updatePlayer,
   autoAssignAndFulfill,
+  autoStartMatch,
   resizeCourtsWithConfig,
   swapPlayer,
   swapPositions,
@@ -552,6 +554,37 @@ describe('sessionMutations - courts', () => {
     const next = computeStartGame(state, 1, 5000);
     expect(next.courts[0].isPlaying).toBe(true);
     expect(next.courts[0].startedAt).toBe(5000);
+  });
+
+  it('computeAutoStartGame: 配置時刻をそのまま startedAt にして開始する', () => {
+    const state = baseState({
+      courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'], assignedAt: 5000 })],
+    });
+    const next = computeAutoStartGame(state, 1, 5000);
+    expect(next?.courts[0]).toMatchObject({ isPlaying: true, startedAt: 5000 });
+  });
+
+  it('computeAutoStartGame: 既に開始済み / 配置が変わっている / 空コートは null', () => {
+    const playing = baseState({
+      courts: [makeCourt(1, { teamA: ['p1', 'p2'], isPlaying: true, startedAt: 6000, assignedAt: 5000 })],
+    });
+    expect(computeAutoStartGame(playing, 1, 5000)).toBeNull();
+
+    // 一度クリアされて別のメンバーが配置し直された（assignedAt が更新済み）
+    const reassigned = baseState({
+      courts: [makeCourt(1, { teamA: ['p5', 'p6'], assignedAt: 8000 })],
+    });
+    expect(computeAutoStartGame(reassigned, 1, 5000)).toBeNull();
+
+    // クリアされて空になった
+    const cleared = baseState({ courts: [makeCourt(1, { assignedAt: 0 })] });
+    expect(computeAutoStartGame(cleared, 1, 5000)).toBeNull();
+
+    // 旧データ（assignedAt 無し）は対象外
+    const legacy = baseState({ courts: [makeCourt(1, { teamA: ['p1', 'p2'] })] });
+    expect(computeAutoStartGame(legacy, 1, 5000)).toBeNull();
+
+    expect(computeAutoStartGame(playing, 2, 5000)).toBeNull();
   });
 
   it('computeClearCourt: チームと状態をリセット', () => {
@@ -1766,8 +1799,8 @@ describe('sessionMutations - autoAssignAndFulfill (H4 fix)', () => {
     await autoAssignAndFulfill(
       's',
       [
-        { courtId: 1, teamA: ['a', 'b'], teamB: ['c', 'd'], isPlaying: true, startedAt: 5000 },
-        { courtId: 2, teamA: ['e', 'f'], teamB: ['g', 'h'], isPlaying: false, startedAt: 0 },
+        { courtId: 1, teamA: ['a', 'b'], teamB: ['c', 'd'], isPlaying: true, startedAt: 5000, assignedAt: 5000 },
+        { courtId: 2, teamA: ['e', 'f'], teamB: ['g', 'h'], isPlaying: false, startedAt: 0, assignedAt: 5000 },
       ],
       ['r1'],
       5000,
@@ -1778,7 +1811,63 @@ describe('sessionMutations - autoAssignAndFulfill (H4 fix)', () => {
     expect(next.reservations[0].status).toBe('fulfilled');
     expect(next.reservations[0].fulfilledAt).toBe(5000);
     expect(next.courts[0]).toMatchObject({ teamA: ['a', 'b'], isPlaying: true, startedAt: 5000 });
-    expect(next.courts[1]).toMatchObject({ teamA: ['e', 'f'], isPlaying: false });
+    expect(next.courts[1]).toMatchObject({ teamA: ['e', 'f'], isPlaying: false, assignedAt: 5000 });
+  });
+});
+
+// =============================================================================
+// 配置後3分の自動開始（autoStartMatch）
+// =============================================================================
+
+describe('sessionMutations - autoStartMatch', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('assignedAt <= 0 で invalid-arg を throw（read 前にガード）', async () => {
+    await expect(autoStartMatch('s', 1, 0)).rejects.toMatchObject({ code: 'invalid-arg' });
+    expect(mockRunTransaction).not.toHaveBeenCalled();
+  });
+
+  it('配置時刻を開始時刻として書き込む', async () => {
+    const state = baseState({
+      courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'], assignedAt: 5000 })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    const result = await autoStartMatch('s', 1, 5000);
+    expect(result.result).toBe('success');
+    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
+    const next = mockTransactionUpdate.mock.calls[0][1].gameState;
+    expect(next.courts[0]).toMatchObject({ isPlaying: true, startedAt: 5000 });
+  });
+
+  it('他端末が先に開始済みなら already_started を返し update しない', async () => {
+    const state = baseState({
+      courts: [
+        makeCourt(1, {
+          teamA: ['p1', 'p2'],
+          teamB: ['p3', 'p4'],
+          isPlaying: true,
+          startedAt: 5500,
+          assignedAt: 5000,
+        }),
+      ],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    const result = await autoStartMatch('s', 1, 5000);
+    expect(result.result).toBe('already_started');
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
   });
 });
 
