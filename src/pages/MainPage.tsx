@@ -362,22 +362,30 @@ export function MainPage() {
       useStayDurationPriority, gameMode, lateBalanceMode, reservationBlockThreshold],
   );
 
-  // 候補は出現率の高い順に並べる（同率は試合数の少ない順）
-  const { predictedCertainPlayers, predictedLikelyPlayers } = useMemo(() => {
-    const byRate = (a: Player, b: Player) => {
-      const diff = (nextMatchPrediction.appearanceRate.get(b.id) ?? 0)
-        - (nextMatchPrediction.appearanceRate.get(a.id) ?? 0);
-      return diff !== 0 ? diff : a.gamesPlayed - b.gamesPlayed;
-    };
-    return {
-      predictedCertainPlayers: players
-        .filter(p => nextMatchPrediction.certainIds.has(p.id))
-        .sort((a, b) => a.gamesPlayed - b.gamesPlayed),
-      predictedLikelyPlayers: players
-        .filter(p => nextMatchPrediction.likelyIds.has(p.id))
-        .sort(byRate),
-    };
-  }, [players, nextMatchPrediction]);
+  // 表示対象（ほぼ確定 + 候補）を、代表シナリオのペア単位に並べ替える。
+  // ペアに含まれない候補は extras として末尾に（出現率の高い順）。
+  const { predictedTeamPlayers, predictedExtraPlayers } = useMemo(() => {
+    const shownIds = new Set([
+      ...nextMatchPrediction.certainIds,
+      ...nextMatchPrediction.likelyIds,
+    ]);
+    const teams = nextMatchPrediction.predictedTeams
+      .map(team => team
+        .map(id => playerMap.get(id))
+        .filter((p): p is Player => !!p && shownIds.has(p.id)))
+      .filter(team => team.length > 0);
+
+    const inTeams = new Set(teams.flat().map(p => p.id));
+    const extras = players
+      .filter(p => shownIds.has(p.id) && !inTeams.has(p.id))
+      .sort((a, b) => {
+        const diff = (nextMatchPrediction.appearanceRate.get(b.id) ?? 0)
+          - (nextMatchPrediction.appearanceRate.get(a.id) ?? 0);
+        return diff !== 0 ? diff : a.gamesPlayed - b.gamesPlayed;
+      });
+
+    return { predictedTeamPlayers: teams, predictedExtraPlayers: extras };
+  }, [players, playerMap, nextMatchPrediction]);
 
   const getPlayerName = useCallback((playerId: string) => {
     return playerMap.get(playerId)?.name || '未設定';
@@ -1147,19 +1155,15 @@ export function MainPage() {
             <h3 className="text-sm font-bold text-foreground">待機中 ({sortedWaitingPlayers.length})</h3>
 
             <NextMatchPredictionBar
-              certain={predictedCertainPlayers}
-              likely={predictedLikelyPlayers}
+              teams={predictedTeamPlayers}
+              extras={predictedExtraPlayers}
+              certainIds={nextMatchPrediction.certainIds}
             />
 
             <div className="grid grid-cols-3 gap-2">
               {sortedWaitingPlayers.map((player) => {
                 const isSelected = selectedPlayer?.id === player.id;
                 const isReserved = pendingReservations.some(r => r.playerIds.includes(player.id));
-                const prediction = nextMatchPrediction.certainIds.has(player.id)
-                  ? 'certain'
-                  : nextMatchPrediction.likelyIds.has(player.id)
-                  ? 'likely'
-                  : null;
 
                 return (
                   <button
@@ -1168,26 +1172,11 @@ export function MainPage() {
                     className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl px-2 pt-[3px] pb-2 flex flex-col items-center justify-end gap-0 shadow-sm transition-all text-left h-[58px] ${
                       isSelected
                         ? 'ring-2 ring-primary ring-offset-1 border-primary'
-                        : prediction === 'certain'
-                        ? 'border-indigo-400 bg-indigo-50/60'
-                        : prediction === 'likely'
-                        ? 'border-indigo-200'
                         : isReserved
                         ? 'border-orange-300 bg-orange-50/50'
                         : 'border-border'
                     }`}
                   >
-                    {prediction && (
-                      <div className="absolute -top-1 right-0.5">
-                        <span className={`px-1 py-0.5 text-[8px] font-bold rounded ${
-                          prediction === 'certain'
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-indigo-100 text-indigo-700 border border-indigo-300'
-                        }`}>
-                          {prediction === 'certain' ? '次' : '候補'}
-                        </span>
-                      </div>
-                    )}
                     {!isSelected && canToggleBreak(player.name) && (
                       <div className="absolute top-1/2 -translate-y-1/2 right-1">
                         <button
