@@ -1924,8 +1924,19 @@ export function getCallableReservationRestingIds(
 
 /**
  * 自動配置アルゴリズム
+ *
+ * 予約・休憩・シングルス・強制休憩などの前処理をこの関数が担い、
+ * 「誰を出して、どう4人に分けるか」の本体は **既定で目的関数ベースの新エンジン**
+ * `assignRoundByObjective`（`src/lib/pairing/`）に委譲する
+ * （`useObjectiveEngine` の既定が true。docs/plans/2026-08-05-pairing-goals-and-rewrite.md）。
+ * 新エンジンはハード制約（順位差の閾値 / 直近試合との重複）→ 6目的の重み付き合計 →
+ * 決定的な局所探索、という構成で、**コート ID ごとの実力帯の割り当ては持たない**
+ * （ラウンド全体をまとめて最適化する）。
+ *
+ * 以降の記述は `useObjectiveEngine: false` を明示したときだけ通る**旧エンジン**の仕様:
  * - レーティングベースのグルーピング（3等分/2等分）
- * - 固定コート配置（3コート: upper→C1, middle→C2, lower→C3）+ 借用フォールバック
+ * - 3コート以上: 動的グループ選択（`selectMostUrgentGroup` が最も待たされている
+ *   レーティング帯を1コートずつ選ぶ。コート ID との固定対応ではない）+ 借用フォールバック
  * - ホリスティック配置（2コート同時）
  * - 各個人の直近2試合で3人以上の重複を回避
  * - 上位/下位の孤立を回避（3コート）
@@ -1948,7 +1959,8 @@ export function assignCourts(
     reservationBlockThreshold?: number; // 予約保留の閾値（中央値+この値以上のメンバーを含む予約を保留）
     restingPlayers?: Player[]; // 休憩中で予約により呼び出せるメンバー（通常配置の対象外）
     /**
-     * 目的関数ベースの新エンジン（`src/lib/pairing/`）を使うかどうか。既定 false。
+     * 目的関数ベースの新エンジン（`src/lib/pairing/`）を使うかどうか。**既定 true**
+     * （切り替えコミット: cabf45e）。false を明示したときだけ旧エンジンを通る。
      * true のとき、予約・休憩・シングルス・強制休憩の処理はすべて既存のまま通し、
      * 「誰を出して、どう4人に分けるか」の部分だけ `assignRoundByObjective` に委譲する。
      * docs/plans/2026-08-05-pairing-goals-and-rewrite.md 参照。
@@ -2263,10 +2275,11 @@ export function assignCourts(
   // （3コート以上の動的グループ選択で、コートの候補が少数派1人だけになっていないか判定するため）
   const scarceMinorityGender = preferGenderMix ? getScarceMinorityGender(groupingPlayers) : null;
 
-  // 新エンジン（目的関数ベースの同時配置）。既定 false のため本番挙動は変わらない。
+  // 新エンジン（目的関数ベースの同時配置）。**既定 true = 本番はここを通る**。
   // docs/plans/2026-08-05-pairing-goals-and-rewrite.md の新設計を別モジュールとして
-  // 並走させる。既存の selectBestFour / applyStreakSwaps / groupPlayers3Court /
-  // 修復パス群には一切触れない。
+  // 実装したもので、既存の selectBestFour / applyStreakSwaps / groupPlayers3Court /
+  // 修復パス群には一切触れない。以降の旧エンジンは useObjectiveEngine: false を
+  // 明示したとき（主にテスト・bench の比較用）だけ通る。
   if (options?.useObjectiveEngine ?? true) {
     const objectiveBaseRankById = new Map(
       buildInitialOrder(groupingPlayers).map((id, index) => [id, index] as const)
