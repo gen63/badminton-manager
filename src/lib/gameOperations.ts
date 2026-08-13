@@ -23,8 +23,9 @@ export function getPlayersPerCourt(gameMode: 'singles' | 'doubles'): number {
 /**
  * 会費・名簿が未対応か（sessionMutations.unresolvedOpsOf と同じ判定）。
  * gameOperations ⇄ sessionMutations の循環 import を避けるためここに小さく持つ。
+ * 試合後の休憩判定を再現する nextMatchPrediction からも参照する。
  */
-function hasUnresolvedOps(p: Player): boolean {
+export function hasUnresolvedOps(p: Player): boolean {
   return !p.operationStatus?.payment || !p.operationStatus?.roster;
 }
 

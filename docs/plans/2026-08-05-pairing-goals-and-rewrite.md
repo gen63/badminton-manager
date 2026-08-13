@@ -309,6 +309,11 @@ NOISE=0、`maxDrift = stepSize`（現状）→ `ceil(stepSize/2)`:
 `useObjectiveEngine`（既定 false）で切り替わる。bench は `ENGINE=objective`。
 **本番の挙動は変えていない。**
 
+> **追記（2026-08-13）**: その後 `cabf45e`「新エンジンの重複バグを修正し、既定エンジンに
+> 切り替える」で `useObjectiveEngine` の既定が **true** になり、本番は新エンジンを通る。
+> 旧エンジン（`selectMostUrgentGroup` / `assign2CourtsHolistic` / `selectBestFour` 系）は
+> `useObjectiveEngine: false` を明示したときだけ通る。
+
 ### 初期解の作り方が目的3 を壊していた
 
 初版は「優先度順の先頭 4×コート数人を、そのまま順にコートへ配る」形だった。
