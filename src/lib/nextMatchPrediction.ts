@@ -50,12 +50,6 @@ export interface NextMatchPrediction {
   scenarioCount: number;
   /** シナリオ別の内訳（どのコートが終わったら誰が入るか） */
   scenarios: NextMatchScenario[];
-  /**
-   * 代表シナリオのチーム構成（`[[ペアA], [ペアB], ...]`）。表示の並び順に使う。
-   * 代表シナリオ = 選出メンバーの出現率合計が最大のシナリオ（＝最も「典型的」な
-   * 結果）。同点なら若いコート ID。
-   */
-  predictedTeams: string[][];
 }
 
 export interface NextMatchScenario {
@@ -63,8 +57,6 @@ export interface NextMatchScenario {
   courtId: number;
   /** そのとき選出されるメンバー */
   playerIds: string[];
-  /** そのときのチーム分け（コートごとに teamA / teamB の2要素） */
-  teams: string[][];
 }
 
 export interface NextMatchPredictionOptions {
@@ -82,7 +74,6 @@ const EMPTY_PREDICTION: NextMatchPrediction = {
   appearanceRate: new Map(),
   scenarioCount: 0,
   scenarios: [],
-  predictedTeams: [],
 };
 
 /** コートに乗っているメンバー ID の集合 */
@@ -105,7 +96,7 @@ function runScenario(
   reservations: Reservation[],
   targetCourtIds: number[],
   options: NextMatchPredictionOptions,
-): { playerIds: string[]; teams: string[][] } | null {
+): string[] | null {
   const inCourts = playersOnCourts(courts);
   const waitingPlayers = players.filter(p => !p.isResting && !inCourts.has(p.id));
   const activePlayers = players.filter(p => !p.isResting);
@@ -125,10 +116,9 @@ function runScenario(
       restingPlayers,
     });
     if (assignments.length === 0) return null;
-    const teams = assignments
-      .flatMap(a => [a.teamA, a.teamB])
-      .map(team => team.filter(id => id && id.trim()));
-    return { playerIds: teams.flat(), teams };
+    return assignments
+      .flatMap(a => [...a.teamA, ...a.teamB])
+      .filter(id => id && id.trim());
   } catch {
     // 人数不足など。そのシナリオは予測不能として捨てる
     return null;
@@ -228,18 +218,18 @@ export function predictNextMatchPlayers(
 
   if (emptyCourtIds.length > 0) {
     // 空きコートがある = 次の配置対象は確定している
-    const result = runScenario(players, courts, matchHistory, reservations, emptyCourtIds, options);
-    if (result) scenarios.push({ courtId: emptyCourtIds[0], ...result });
+    const ids = runScenario(players, courts, matchHistory, reservations, emptyCourtIds, options);
+    if (ids) scenarios.push({ courtId: emptyCourtIds[0], playerIds: ids });
   } else {
     const now = Date.now();
     // 準備中（配置済みで未開始）のコートは終わらないので、プレイ中のみ対象
     const playingCourts = courts.filter(c => c.isPlaying && c.teamA[0] && c.teamA[0] !== '');
     for (const court of playingCourts) {
       const after = simulateFinish(players, courts, matchHistory, reservations, court, now);
-      const result = runScenario(
+      const ids = runScenario(
         after.players, after.courts, after.matchHistory, after.reservations, [court.id], options,
       );
-      if (result) scenarios.push({ courtId: court.id, ...result });
+      if (ids) scenarios.push({ courtId: court.id, playerIds: ids });
     }
   }
 
@@ -278,26 +268,11 @@ export function predictNextMatchPlayers(
     }
   }
 
-  // 代表シナリオ = 選出メンバーの出現率合計が最大（＝最も典型的な結果）。
-  // そのチーム分けを「ペアになるであろう並び」として表示に使う。
-  const representative = scenarios.reduce((best, scenario) => {
-    const score = scenario.playerIds.reduce(
-      (sum, id) => sum + (appearanceRate.get(id) ?? 0), 0,
-    );
-    const bestScore = best.playerIds.reduce(
-      (sum, id) => sum + (appearanceRate.get(id) ?? 0), 0,
-    );
-    if (score > bestScore) return scenario;
-    if (score === bestScore && scenario.courtId < best.courtId) return scenario;
-    return best;
-  }, scenarios[0]);
-
   return {
     certainIds,
     likelyIds,
     appearanceRate,
     scenarioCount: scenarios.length,
     scenarios,
-    predictedTeams: representative.teams,
   };
 }
