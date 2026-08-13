@@ -1,4 +1,4 @@
-# 自動セッション再実行でレーティングを同期する / 未設定をガードする
+# 自動セッション再実行でレーティングを同期し、未設定は通知する
 
 2026-08-13
 
@@ -11,11 +11,12 @@
    まま再実行できる（`docs/webhook.js` の `createOrUpdateTmpSheet_`）のに、アプリ側は
    新規追加者にしか skill → rating を反映していなかった。練習開始前にシートでレートを
    微調整しても、既にセッションに居る人には一切効かない。
-2. **複（レート必須）でもレート未設定者がセッションに入り得た。** 未設定チェック
-   （`checkPlayerIssues` → 作成保留）は**新規作成時のみ**で、再実行の同期パスには
-   無かった。初参加者が当日 E-ToMo に増えると、レート未設定のまま追加される。
-   `buildInitialOrder` は未設定者を序列の中位ブロックへ挿入するため、実力不明の人が
-   「中位」として配置され、実力差の判定（目的3 skillGap / 目的4 competitive）が濁る。
+2. **複（レート必須）でレート未設定者がセッションに入っても、誰も気づけなかった。**
+   未設定チェック（`checkPlayerIssues`）は**新規作成時のみ**で、再実行の同期パスには
+   無かった。初参加者が当日 E-ToMo に増えると、レート未設定のまま追加されるのに
+   Discord には一切出ない。`buildInitialOrder` は未設定者を序列の中位ブロックへ
+   挿入するため、実力不明の人が「中位」として配置され、実力差の判定（目的3 skillGap /
+   目的4 competitive）が濁る——だからこそ、未設定のまま埋もれさせず気づける仕組みが要る。
 
 加えて、定期実行が 06:00 JST の1回だけで、**当日夕方の出欠変動やレート調整を練習開始前に
 取り込む機会が無かった**。
@@ -108,7 +109,7 @@ TARGET_DATE: ${{ inputs.target_date || (github.event.schedule == '30 8 * * *' &&
 
 ## 検証
 
-- `npx vitest run scripts/auto-create-session.test.ts`（レート同期・保留の網羅）
+- `npx vitest run scripts/auto-create-session.test.ts`（レート同期・未設定でも追加されることの網羅）
 - `npm run build` / `npm run lint` / `npm run test:run`
 - 本番前確認: GitHub Actions を `target_date=nearest` で手動実行し、Discord の
   「メンバー同期完了」にレーティング更新行が出ること、tmp シートの skill を変えて
