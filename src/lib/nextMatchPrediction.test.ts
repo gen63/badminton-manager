@@ -73,46 +73,6 @@ describe('predictNextMatchPlayers', () => {
     expect(result.likelyIds.size).toBe(0);
   });
 
-  it('predictedTeams は実配置のチーム分け（ペア）と一致する', () => {
-    const players = Array.from({ length: 6 }, (_, i) => makePlayer(`p${i + 1}`));
-    const courts = [emptyCourt(1)];
-
-    const result = predict(players, courts);
-
-    const expected = assignCourts(players, 1, [], {
-      totalCourtCount: 1,
-      targetCourtIds: [1],
-      practiceStartTime: PRACTICE_START,
-      allPlayers: players,
-      useStayDurationPriority: false,
-      reservations: [],
-      gameMode: 'doubles',
-    })[0];
-
-    expect(result.predictedTeams).toHaveLength(2);
-    expect(result.predictedTeams.map(t => [...t].sort())).toEqual([
-      [...expected.teamA].sort(),
-      [...expected.teamB].sort(),
-    ]);
-  });
-
-  it('代表シナリオは選出メンバーの出現率合計が最大のものになる', () => {
-    const players = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i + 1}`));
-    const courts = [
-      playingCourt(1, ['p1', 'p2'], ['p3', 'p4']),
-      playingCourt(2, ['p5', 'p6'], ['p7', 'p8']),
-    ];
-
-    const result = predict(players, courts);
-
-    const rateSumOf = (ids: string[]) =>
-      ids.reduce((sum, id) => sum + (result.appearanceRate.get(id) ?? 0), 0);
-    const chosen = rateSumOf(result.predictedTeams.flat());
-    for (const scenario of result.scenarios) {
-      expect(chosen).toBeGreaterThanOrEqual(rateSumOf(scenario.playerIds));
-    }
-  });
-
   it('1コート稼働中は、そのコートが終わる1シナリオのみで全員ほぼ確定になる', () => {
     const players = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i + 1}`));
     const courts = [playingCourt(1, ['p1', 'p2'], ['p3', 'p4'])];

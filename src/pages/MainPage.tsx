@@ -27,7 +27,6 @@ import { UnrecordedMatchPrompt } from '../components/UnrecordedMatchPrompt';
 import { CourtTimer } from '../components/CourtTimer';
 import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { predictNextMatchPlayers } from '../lib/nextMatchPrediction';
-import type { Player } from '../types/player';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH_AUTO_END_MS } from '../lib/gameOperations';
@@ -362,30 +361,21 @@ export function MainPage() {
       useStayDurationPriority, gameMode, lateBalanceMode, reservationBlockThreshold],
   );
 
-  // 表示対象（ほぼ確定 + 候補）を、代表シナリオのペア単位に並べ替える。
-  // ペアに含まれない候補は extras として末尾に（出現率の高い順）。
-  const { predictedTeamPlayers, predictedExtraPlayers } = useMemo(() => {
+  // 表示対象（ほぼ確定 + 候補）を入りやすい順に並べる
+  // （出現率の高い順、同率なら試合数の少ない順）
+  const predictedPlayers = useMemo(() => {
     const shownIds = new Set([
       ...nextMatchPrediction.certainIds,
       ...nextMatchPrediction.likelyIds,
     ]);
-    const teams = nextMatchPrediction.predictedTeams
-      .map(team => team
-        .map(id => playerMap.get(id))
-        .filter((p): p is Player => !!p && shownIds.has(p.id)))
-      .filter(team => team.length > 0);
-
-    const inTeams = new Set(teams.flat().map(p => p.id));
-    const extras = players
-      .filter(p => shownIds.has(p.id) && !inTeams.has(p.id))
+    return players
+      .filter(p => shownIds.has(p.id))
       .sort((a, b) => {
         const diff = (nextMatchPrediction.appearanceRate.get(b.id) ?? 0)
           - (nextMatchPrediction.appearanceRate.get(a.id) ?? 0);
         return diff !== 0 ? diff : a.gamesPlayed - b.gamesPlayed;
       });
-
-    return { predictedTeamPlayers: teams, predictedExtraPlayers: extras };
-  }, [players, playerMap, nextMatchPrediction]);
+  }, [players, nextMatchPrediction]);
 
   const getPlayerName = useCallback((playerId: string) => {
     return playerMap.get(playerId)?.name || '未設定';
@@ -1155,8 +1145,7 @@ export function MainPage() {
             <h3 className="text-sm font-bold text-foreground">待機中 ({sortedWaitingPlayers.length})</h3>
 
             <NextMatchPredictionBar
-              teams={predictedTeamPlayers}
-              extras={predictedExtraPlayers}
+              players={predictedPlayers}
               certainIds={nextMatchPrediction.certainIds}
             />
 
