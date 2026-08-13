@@ -843,55 +843,17 @@ describe('computeRosterSync', () => {
     });
   });
 
-  describe('レート未設定の新規参加者の保留（holdUnratedAdditions）', () => {
+  it('レート未設定の新規参加者もそのまま追加される（後の再実行でシートの skill が入る）', () => {
     const emptyState = { players: [], courts: [], matchHistory: [], reservations: [] };
+    const event = { ...baseEvent, participants: ['初参加さん', '常連さん'], genders: {} };
+    const memberMap = new Map([['常連さん', { skill: 5 }]]);
 
-    it('holdUnratedAdditions: true ではレート未設定の新規参加者を追加しない', () => {
-      const event = { ...baseEvent, participants: ['初参加さん', '常連さん'], genders: {} };
-      const memberMap = new Map([['常連さん', { skill: 5 }]]);
+    const { state: nextState, added } = computeRosterSync(emptyState, event, memberMap);
 
-      const { state: nextState, added, held } = computeRosterSync(emptyState, event, memberMap, {
-        holdUnratedAdditions: true,
-      });
-
-      expect(added).toEqual(['常連さん']);
-      expect(held).toEqual(['初参加さん']);
-      expect(nextState.players.map((p) => p.name)).toEqual(['常連さん']);
-    });
-
-    it('holdUnratedAdditions: false（既定）では従来どおりレート無しでも追加する', () => {
-      const event = { ...baseEvent, participants: ['初参加さん'], genders: {} };
-
-      const { state: nextState, added, held } = computeRosterSync(emptyState, event, new Map());
-
-      expect(added).toEqual(['初参加さん']);
-      expect(held).toEqual([]);
-      expect(nextState.players).toHaveLength(1);
-    });
-
-    it('保留があっても削除・レート更新は通常どおり行われる', () => {
-      const state = {
-        players: [
-          { id: 'p1', name: '常連さん', rating: 3, isResting: false, gamesPlayed: 0, lastPlayedAt: 0, activatedAt: 0 },
-          { id: 'p2', name: '欠席さん', isResting: false, gamesPlayed: 0, lastPlayedAt: 0, activatedAt: 0 },
-        ],
-        courts: [],
-        matchHistory: [],
-        reservations: [],
-      };
-      const event = { ...baseEvent, participants: ['常連さん', '初参加さん'], genders: {} };
-      const memberMap = new Map([['常連さん', { skill: 8 }]]);
-
-      const { state: nextState, added, removed, held, ratingUpdated } = computeRosterSync(
-        state, event, memberMap, { holdUnratedAdditions: true },
-      );
-
-      expect(added).toEqual([]);
-      expect(removed).toEqual(['欠席さん']);
-      expect(held).toEqual(['初参加さん']);
-      expect(ratingUpdated).toEqual([{ name: '常連さん', from: 3, to: 8 }]);
-      expect(nextState.players.map((p) => p.name)).toEqual(['常連さん']);
-    });
+    expect(added).toEqual(['初参加さん', '常連さん']);
+    expect(nextState.players.map((p) => p.name)).toEqual(['初参加さん', '常連さん']);
+    expect(nextState.players.find((p) => p.name === '初参加さん')?.rating).toBeUndefined();
+    expect(nextState.players.find((p) => p.name === '常連さん')?.rating).toBe(5);
   });
 });
 
@@ -914,16 +876,16 @@ describe('findUnratedParticipants', () => {
     genders: {},
   };
 
-  it('レート未設定の参加者のうち、今回保留した人を除いて返す', () => {
+  it('レート未設定の参加者を列挙する', () => {
     const event = { ...baseEvent, participants: ['A', 'B', 'C'] };
     const memberMap = new Map([['A', { skill: 5 }]]);
 
-    expect(findUnratedParticipants(event, memberMap, ['C'])).toEqual(['B']);
+    expect(findUnratedParticipants(event, memberMap)).toEqual(['B', 'C']);
   });
 
-  it('全員レート設定済みなら空配列', () => {
+  it('全員設定済みなら空配列', () => {
     const event = { ...baseEvent, participants: ['A'] };
-    expect(findUnratedParticipants(event, new Map([['A', { skill: 1 }]]), [])).toEqual([]);
+    expect(findUnratedParticipants(event, new Map([['A', { skill: 1 }]]))).toEqual([]);
   });
 });
 

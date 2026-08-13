@@ -9,7 +9,6 @@
  *   ETOMO_URL          - E-tomo認証付きURL
  *   GAS_WEB_APP_URL    - メンバーデータGAS Web App URL
  *   DISCORD_WEBHOOK_URL - Discord Webhook URL
- *   FORCE_CREATE       - 'true'なら不明点があっても強制作成
  *   TARGET_DATE        - 対象日（本番書き込みあり）。'nearest'=直近の練習日、それ以外(デフォルト)='tomorrow'=翌日
  *   VITE_FIREBASE_*    - Firebase設定
  *   TZ                 - Asia/Tokyo
@@ -548,18 +547,15 @@ function isRatingRequired(event: { note: string }): boolean {
 }
 
 /**
- * 同期後もレート未設定のまま**セッションに残っている**参加者。
- * `held`（今回追加を見送った人）は既に別枠で通知するので除く。
- * FORCE_CREATE で作成した回や、レート必須化より前に入った人がここに出る。
+ * 同期後もレート未設定のまま**セッションに参加している**人。
+ * レート未設定の新規参加者も常に追加される運用なので、ここでの検出結果は
+ * 「シートに入力して再実行すればレートが反映される」という Discord 案内に使う。
  */
 function findUnratedParticipants(
   event: EtomoEventDetail,
   memberMap: Map<string, MemberData>,
-  held: string[],
 ): string[] {
-  return checkPlayerIssues(event.participants, memberMap)
-    .map((i) => i.name)
-    .filter((name) => !held.includes(name));
+  return checkPlayerIssues(event.participants, memberMap).map((i) => i.name);
 }
 
 async function fetchCreatedSessions(
@@ -698,13 +694,6 @@ interface RatingChange {
 
 interface RosterSyncOptions {
   /**
-   * レート未設定の**新規**参加者の追加を見送るか（複＝レート必須の回で true）。
-   * 未設定のまま追加すると `buildInitialOrder` が未設定者を序列の中位ブロックへ
-   * 挿入するため、初参加者が実力不明のまま中位として配置されてしまう。
-   * 保留した人は Discord に列挙し、tmp シート入力 → 再実行で追加される。
-   */
-  holdUnratedAdditions?: boolean;
-  /**
    * 留任プレイヤーのレートを tmp シートの skill で上書きするか。
    * 試合開始後は配置基準が途中で変わるため呼び出し側が false にする。
    */
@@ -715,8 +704,6 @@ interface RosterSyncResult {
   state: GameState;
   added: string[];
   removed: string[];
-  /** レート未設定のため追加を見送った新規参加者 */
-  held: string[];
   /** tmp シートの skill に合わせて更新した留任プレイヤー */
   ratingUpdated: RatingChange[];
 }
@@ -727,6 +714,11 @@ interface RosterSyncResult {
  * 削除は src/services/sessionMutations.ts の computeRemovePlayer と同じ整合性
  * ルール（court の teamA/teamB を空文字に、restingPlayerIds/reservation.playerIds
  * から除外し空になった予約は削除）を踏襲する。matchHistory は変更しない。
+ *
+ * レート未設定の新規参加者も**常に追加する**。`buildInitialOrder` は未設定者を
+ * 序列の中位ブロックへ挿入するため実力不明のまま中位に配置されるが、tmp シートに
+ * skill を入力して再実行すれば `syncExistingRatings` により留任プレイヤーとして
+ * レートが反映される。止めるのではなく「通知して、シート更新＋再実行で直す」運用。
  *
  * 留任プレイヤーのレートも tmp シートの skill へ追従させる（`syncExistingRatings`）。
  * tmp シートは管理者の手入力を保持したまま再実行できる（`docs/webhook.js` の
@@ -741,7 +733,7 @@ function computeRosterSync(
   memberMap: Map<string, MemberData>,
   options: RosterSyncOptions = {},
 ): RosterSyncResult {
-  const { holdUnratedAdditions = false, syncExistingRatings = true } = options;
+  const { syncExistingRatings = true } = options;
   const currentNames = state.players.map((p) => p.name);
   const { toAdd, toRemove } = computeRosterDiff(currentNames, event.participants);
 
@@ -750,10 +742,7 @@ function computeRosterSync(
     return skill != null ? skillToRating(skill) : undefined;
   };
 
-  const held = holdUnratedAdditions ? toAdd.filter((name) => ratingOf(name) == null) : [];
-  const accepted = toAdd.filter((name) => !held.includes(name));
-
-  const newPlayers: Player[] = accepted.map((name) => {
+  const newPlayers: Player[] = toAdd.map((name) => {
     const member = memberMap.get(name);
     const gender = event.genders[name] || member?.gender;
     const rating = ratingOf(name);
@@ -803,7 +792,7 @@ function computeRosterSync(
       .filter((r) => r.playerIds.length > 0),
   };
 
-  return { state: nextState, added: accepted, removed: toRemove, held, ratingUpdated };
+  return { state: nextState, added: toAdd, removed: toRemove, ratingUpdated };
 }
 
 // undefined値を除去（serverTimestamp()等のセンチネル値はsanitize対象外にする）
@@ -874,7 +863,6 @@ async function syncSessionRoster(
   sessionId: string,
   event: EtomoEventDetail,
   memberMap: Map<string, MemberData>,
-  options: { holdUnratedAdditions: boolean },
 ): Promise<RosterSyncResult & { ratingSyncSkipped: boolean }> {
   const docRef = doc(db, 'sessions', sessionId);
 
@@ -891,7 +879,6 @@ async function syncSessionRoster(
 
     const matchesStarted = (gameState.matchHistory?.length ?? 0) > 0;
     const result = computeRosterSync(gameState, event, memberMap, {
-      holdUnratedAdditions: options.holdUnratedAdditions,
       syncExistingRatings: !matchesStarted,
     });
     const { state: nextState, added, removed, ratingUpdated } = result;
@@ -952,39 +939,29 @@ async function notifySessionCreated(
   event: EtomoEventDetail,
   sessionId: string,
   targetDate: Date,
+  unrated: string[],
+  tmpSheetName: string,
 ): Promise<void> {
   const summary = formatEventSummary(event, targetDate);
-  const message = [
-    '✅ **セッション作成完了**',
+  const lines = [
+    unrated.length > 0 ? '⚠️ **セッション作成完了（レート未設定あり）**' : '✅ **セッション作成完了**',
     '━━━━━━━━━━━━━━━━━━',
     summary,
     `セッションID: **${sessionId}**`,
     `${SESSION_BASE_URL}/${sessionId}`,
-  ].join('\n');
+  ];
 
-  await sendDiscordMessage(message);
-}
+  if (unrated.length > 0) {
+    lines.push(
+      '',
+      '⚠️ **レーティング未設定:**',
+      unrated.map((name) => `  • ${name}`).join('\n'),
+      '',
+      `📝 tmpシート「${tmpSheetName}」に入力後、GitHub Actionsを再実行するとセッションのレートに反映されます`,
+    );
+  }
 
-async function notifySessionPending(
-  event: EtomoEventDetail,
-  issues: PlayerIssue[],
-  targetDate: Date,
-  tmpSheetName: string,
-): Promise<void> {
-  const summary = formatEventSummary(event, targetDate);
-  const issueNames = issues.map((i) => `  • ${i.name}`).join('\n');
-  const message = [
-    '⚠️ **セッション作成保留（要確認）**',
-    '━━━━━━━━━━━━━━━━━━',
-    summary,
-    '',
-    '❓ **レーティング未設定:**',
-    issueNames,
-    '',
-    `📝 tmpシート「${tmpSheetName}」でレーティングを入力後、GitHub Actionsを手動実行してください`,
-  ].join('\n');
-
-  await sendDiscordMessage(message);
+  await sendDiscordMessage(lines.join('\n'));
 }
 
 /**
@@ -1055,7 +1032,6 @@ async function notifySessionSynced(
   detail: {
     added: string[];
     removed: string[];
-    held: string[];
     ratingUpdated: RatingChange[];
     ratingSyncSkipped: boolean;
     unratedRemaining: string[];
@@ -1063,10 +1039,10 @@ async function notifySessionSynced(
   },
 ): Promise<void> {
   const summary = formatEventSummary(event, targetDate);
-  const { added, removed, held, ratingUpdated, ratingSyncSkipped, unratedRemaining } = detail;
+  const { added, removed, ratingUpdated, ratingSyncSkipped, unratedRemaining } = detail;
   const bullets = (names: string[]) => names.map((name) => `  • ${name}`).join('\n');
   const lines = [
-    held.length > 0 ? '⚠️ **メンバー同期（一部保留）**' : '🔄 **メンバー同期完了**',
+    unratedRemaining.length > 0 ? '⚠️ **メンバー同期完了（レート未設定あり）**' : '🔄 **メンバー同期完了**',
     '━━━━━━━━━━━━━━━━━━',
     summary,
     `セッションID: **${sessionId}**`,
@@ -1085,19 +1061,12 @@ async function notifySessionSynced(
       ratingUpdated.map((r) => `  • ${r.name}: ${r.from ?? '未設定'} → ${r.to}`).join('\n'),
     );
   }
-  if (held.length > 0) {
-    lines.push(
-      '',
-      '⏸️ **レーティング未設定のため未追加:**',
-      bullets(held),
-      `📝 tmpシート「${detail.tmpSheetName}」に入力後、GitHub Actionsを再実行すると追加されます`,
-    );
-  }
   if (unratedRemaining.length > 0) {
     lines.push(
       '',
       '❓ **レーティング未設定のまま参加中:**',
       bullets(unratedRemaining),
+      `📝 tmpシート「${detail.tmpSheetName}」に入力後、再実行するとレートが反映されます`,
     );
   }
   if (ratingSyncSkipped) {
@@ -1131,7 +1100,6 @@ async function processEvents(
   eventsWithDetails: EtomoEventDetail[],
   memberMap: Map<string, MemberData>,
   targetDate: Date,
-  forceCreate: boolean,
   tmpSheetName: string,
 ) {
   const app = initializeApp({
@@ -1167,13 +1135,8 @@ async function processEvents(
           continue;
         }
         console.log(`  -> Already created (${existingSessionId}), syncing roster`);
-        // 複はレート必須。未設定の新規参加者（初参加など）は追加を保留し、
-        // tmp シートに入力してもらってから再実行で入れる。作成時の pending と同じ運用。
-        const holdUnratedAdditions = isRatingRequired(event) && !forceCreate;
-        const { added, removed, held, ratingUpdated, ratingSyncSkipped } =
-          await syncSessionRoster(db, existingSessionId, event, memberMap, {
-            holdUnratedAdditions,
-          });
+        const { added, removed, ratingUpdated, ratingSyncSkipped } =
+          await syncSessionRoster(db, existingSessionId, event, memberMap);
         const changed = added.length > 0 || removed.length > 0 || ratingUpdated.length > 0;
         if (changed) {
           console.log(
@@ -1187,19 +1150,18 @@ async function processEvents(
         } else {
           console.log('  -> No roster changes');
         }
-        if (held.length > 0) console.log(`  -> Held (no rating): ${held.join(', ')}`);
         if (ratingSyncSkipped) console.log('  -> Rating sync skipped (matches already started)');
 
-        if (changed || held.length > 0) {
+        const unratedRemaining = isRatingRequired(event)
+          ? findUnratedParticipants(event, memberMap)
+          : [];
+        if (changed || unratedRemaining.length > 0) {
           await notifySessionSynced(event, existingSessionId, targetDate, {
             added,
             removed,
-            held,
             ratingUpdated,
             ratingSyncSkipped,
-            unratedRemaining: isRatingRequired(event)
-              ? findUnratedParticipants(event, memberMap, held)
-              : [],
+            unratedRemaining,
             tmpSheetName,
           });
         } else {
@@ -1209,25 +1171,20 @@ async function processEvents(
       }
 
       const issues = checkPlayerIssues(event.participants, memberMap);
-      // 楽・単はレーティング不要なので未設定でも作成を保留しない
+      // 楽・単はレーティング不要なので未設定者一覧には出さない
       const ratingRequired = isRatingRequired(event);
 
       if (issues.length > 0) {
         for (const issue of issues) {
           console.log(`     ${issue.name}: ${issue.reason}`);
         }
-
-        if (!forceCreate && ratingRequired) {
-          console.log(`  -> Pending: ${issues.length} issue(s)`);
-          await notifySessionPending(event, issues, targetDate, tmpSheetName);
-          continue;
-        }
-        console.log(`  -> Force creating with ${issues.length} issue(s)`);
+        console.log(`  -> Creating with ${issues.length} issue(s)`);
       }
 
       const sessionId = await createFirestoreSession(db, event, memberMap, targetDate, defaultAnnouncementText);
       console.log(`  -> Session created: ${sessionId}`);
-      await notifySessionCreated(event, sessionId, targetDate);
+      const unrated = ratingRequired ? issues.map((i) => i.name) : [];
+      await notifySessionCreated(event, sessionId, targetDate, unrated, tmpSheetName);
     }
   } finally {
     await deleteApp(app);
@@ -1236,12 +1193,10 @@ async function processEvents(
 
 async function main() {
   const etomoUrl = requireEnv('ETOMO_URL');
-  const forceCreate = process.env.FORCE_CREATE === 'true';
   const useNearestDate = process.env.TARGET_DATE === 'nearest';
 
   console.log(`=== Auto Create Session ===`);
   console.log(`Target date mode: ${useNearestDate ? 'nearest' : 'tomorrow'}`);
-  console.log(`Force create: ${forceCreate}`);
   console.log(`Timezone: ${process.env.TZ || 'not set'}`);
 
   // Phase A: E-tomoイベント一覧取得
@@ -1311,7 +1266,7 @@ async function main() {
 
   // Phase D: セッション作成
   console.log('\n--- Phase D: セッション作成 ---');
-  await processEvents(eventsWithDetails, memberMap, targetDate, forceCreate, tmpSheetName);
+  await processEvents(eventsWithDetails, memberMap, targetDate, tmpSheetName);
 
   console.log('\n=== Done ===');
 }

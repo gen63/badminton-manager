@@ -39,21 +39,36 @@ tmp シートの skill と現在の `rating` が異なる留任プレイヤー�
 基準がその場で変わることを意味する。出欠（追加・削除）は従来どおり同期し、Discord に
 「試合が開始済みのためレート更新は見送り」と出す。
 
-### 3. 複でレート未設定の新規参加者を保留（`holdUnratedAdditions`）
+### 3. レート未設定は止めずに通知する（FORCE_CREATE 廃止）
 
-`isRatingRequired(event)`（`楽`/`単` 以外＝複）かつ `FORCE_CREATE` でないとき、レート
-未設定の**新規**参加者は追加せず `held` に積む。作成時の pending と同じ運用で、tmp
-シートに入力 → 再実行すれば追加される。削除・レート更新は保留と無関係に実行する。
+レートは（1）で後から再実行で直せるようになったので、「未設定だから止める」を
+やめ、`FORCE_CREATE` という概念自体を廃止した。常に作成・常に追加し、未設定は
+Discord で知らせるだけにする。
 
-Discord 通知（`notifySessionSynced`）に以下を追加:
+- (a) **作成時の pending を廃止して常に作成する。** `checkPlayerIssues` の結果に
+  かかわらず `createFirestoreSession` を実行する。`notifySessionPending` は削除。
+- (b) **同期時も未設定のまま追加する。** `computeRosterSync` の
+  `holdUnratedAdditions` オプションと `held` の戻り値を削除し、新規参加者は
+  レート未設定でも常に `toAdd` として追加する。
+- (c) **代わりに、作成・同期どちらの Discord 通知にも未設定者一覧と案内を出す。**
+  - 作成完了通知（`notifySessionCreated`）: `isRatingRequired(event)` が true の
+    ときだけ未設定者を列挙し、見出しを `⚠️ **セッション作成完了（レート未設定
+    あり）**` にする。末尾に「tmp シートに入力後、GitHub Actions を再実行すると
+    セッションのレートに反映されます」と案内。
+  - 同期完了通知（`notifySessionSynced`）: `findUnratedParticipants`（2引数化）で
+    セッションに残っている未設定者を検出し、`❓ **レーティング未設定のまま参加
+    中:**` の下に同様の再実行案内を足す。未設定者が残っていれば、追加/削除/
+    レート更新の変更が無くても通知する（黙って埋もれさせない）。
+- (d) **再実行でレートが後から入るようになったので、ブロックする必要が無くなった。**
+  未設定のまま試合を配置すると `buildInitialOrder` が中位に挿入してしまう点は
+  従来どおりだが、それは「シートを直して再実行」で解消できる運用上の話であり、
+  作成・追加そのものを止める理由にはならない。
+
+Discord 通知に含める情報（変更後）:
 
 - 🔢 レーティング更新（`名前: 旧 → 新`）
-- ⏸️ レーティング未設定のため未追加（+ tmp シート名と再実行の案内）
-- ❓ レーティング未設定のまま参加中（`findUnratedParticipants`。FORCE_CREATE 作成回や
-  過去の取りこぼしの検出用）
+- ⚠️/❓ レーティング未設定者一覧（+ tmp シート名と再実行の案内）
 - ⏱️ 試合開始済みでレート更新を見送った旨
-
-変更が無くても `held` があれば通知する（黙って未追加にしない）。
 
 ### 4. 17:30 JST の定期実行を追加（`.github/workflows/auto-session.yml`）
 
@@ -71,18 +86,25 @@ TARGET_DATE: ${{ inputs.target_date || (github.event.schedule == '30 8 * * *' &&
 
 ## 変更ファイル
 
-- `scripts/auto-create-session.ts` — `computeRosterSync` にオプションと
-  `held` / `ratingUpdated` を追加、`syncSessionRoster` の試合開始判定、
-  `isRatingRequired` / `findUnratedParticipants` の追加、通知の拡充
-- `scripts/auto-create-session.test.ts` — レート同期・保留の単体テスト
-- `.github/workflows/auto-session.yml` — 17:30 JST 枠と `TARGET_DATE` の切り替え
+- `scripts/auto-create-session.ts` — `computeRosterSync` に `ratingUpdated` を
+  追加（`held`/`holdUnratedAdditions` は導入後に廃止）、`syncSessionRoster` の
+  試合開始判定、`isRatingRequired` / `findUnratedParticipants` の追加、
+  `FORCE_CREATE` の廃止と通知の拡充（未設定者一覧 + 再実行案内を常に出す）
+- `scripts/auto-create-session.test.ts` — レート同期・未設定でも追加される
+  ことの単体テスト
+- `.github/workflows/auto-session.yml` — 17:30 JST 枠と `TARGET_DATE` の切り替え、
+  `FORCE_CREATE`/`force` input の廃止
 
 ## 想定運用フロー
 
-1. 06:00 JST: 翌日分のセッションを作成（複でレート未設定者がいれば作成保留 → Discord）
+1. 06:00 JST: 翌日分のセッションを常に作成する（複でレート未設定者がいても止めず、
+   未設定者一覧を Discord に添えて作成完了を通知）
 2. 管理者が tmp シート `tmp_MMDD` の skill 列を調整（初参加者の入力もここ）
-3. 17:30 JST（または手動実行）: 当日セッションへ出欠 + レートを反映 → Discord に差分
+3. 17:30 JST（または手動実行）: 当日セッションへ出欠 + レートを反映 → Discord に
+   差分（未設定のまま参加中の人がいればそれも通知）
 4. 試合開始後の再実行では出欠のみ同期し、レートは固定される
+5. 未設定者は上記のどの段階でも一旦そのまま追加され、シート入力 → 再実行を
+   繰り返すことでレートが反映されていく
 
 ## 検証
 
