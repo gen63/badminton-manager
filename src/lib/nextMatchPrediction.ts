@@ -25,6 +25,7 @@ import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import { assignCourts } from './algorithm';
 import { getPlayersPerCourt, hasUnresolvedOps } from './gameOperations';
+import { withInProgressGames } from './effectiveGames';
 
 /**
  * 「候補」として表示する最低出現率。
@@ -98,9 +99,12 @@ function runScenario(
   options: NextMatchPredictionOptions,
 ): string[] | null {
   const inCourts = playersOnCourts(courts);
-  const waitingPlayers = players.filter(p => !p.isResting && !inCourts.has(p.id));
-  const activePlayers = players.filter(p => !p.isResting);
-  const restingPlayers = players.filter(p => p.isResting && !inCourts.has(p.id));
+  // 公平性判定の母集団には「配置済み（=コート上にいる）メンバー」を +1 して混ぜる。
+  // 詳細: docs/plans/2026-08-13-in-progress-games-in-fairness.md
+  const effectivePlayers = withInProgressGames(players, courts);
+  const waitingPlayers = effectivePlayers.filter(p => !p.isResting && !inCourts.has(p.id));
+  const activePlayers = effectivePlayers.filter(p => !p.isResting);
+  const restingPlayers = effectivePlayers.filter(p => p.isResting && !inCourts.has(p.id));
 
   try {
     const assignments = assignCourts(waitingPlayers, targetCourtIds.length, matchHistory, {
