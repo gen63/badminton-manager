@@ -22,12 +22,9 @@ export function NextMatchPredictionBar({ certain, likely }: NextMatchPredictionB
 
   return (
     <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl px-3 py-2 flex flex-col gap-1.5">
-      <div className="flex items-center gap-1.5 flex-wrap">
+      <div className="flex items-center gap-1.5">
         <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-        <span className="text-xs font-bold text-indigo-900">次の試合予測</span>
-        <span className="text-[10px] text-indigo-700/70">
-          ※現在の状況からの予測です
-        </span>
+        <span className="text-xs font-bold text-indigo-900">配置予測</span>
       </div>
 
       <div className="flex flex-wrap gap-1.5">
@@ -49,17 +46,15 @@ export function NextMatchPredictionBar({ certain, likely }: NextMatchPredictionB
         ))}
       </div>
 
-      {likely.length > 0 && (
+      {certain.length > 0 && likely.length > 0 && (
         <div className="flex items-center gap-2 text-[10px] text-indigo-700/80 flex-wrap">
-          {certain.length > 0 && (
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
-              どのコートが終わっても出場
-            </span>
-          )}
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
+            ほぼ確定
+          </span>
           <span className="flex items-center gap-1">
             <span className="w-2.5 h-2.5 rounded-full bg-card border border-indigo-300" />
-            候補（終わるコート次第）
+            候補
           </span>
         </div>
       )}

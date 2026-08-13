@@ -1155,11 +1155,6 @@ export function MainPage() {
               {sortedWaitingPlayers.map((player) => {
                 const isSelected = selectedPlayer?.id === player.id;
                 const isReserved = pendingReservations.some(r => r.playerIds.includes(player.id));
-                const prediction = nextMatchPrediction.certainIds.has(player.id)
-                  ? 'certain'
-                  : nextMatchPrediction.likelyIds.has(player.id)
-                  ? 'likely'
-                  : null;
 
                 return (
                   <button
@@ -1168,26 +1163,11 @@ export function MainPage() {
                     className={`relative group bg-card border hover:border-primary/50 active:bg-accent/10 rounded-xl px-2 pt-[3px] pb-2 flex flex-col items-center justify-end gap-0 shadow-sm transition-all text-left h-[58px] ${
                       isSelected
                         ? 'ring-2 ring-primary ring-offset-1 border-primary'
-                        : prediction === 'certain'
-                        ? 'border-indigo-400 bg-indigo-50/60'
-                        : prediction === 'likely'
-                        ? 'border-indigo-200'
                         : isReserved
                         ? 'border-orange-300 bg-orange-50/50'
                         : 'border-border'
                     }`}
                   >
-                    {prediction && (
-                      <div className="absolute -top-1 right-0.5">
-                        <span className={`px-1 py-0.5 text-[8px] font-bold rounded ${
-                          prediction === 'certain'
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-indigo-100 text-indigo-700 border border-indigo-300'
-                        }`}>
-                          {prediction === 'certain' ? '次' : '候補'}
-                        </span>
-                      </div>
-                    )}
                     {!isSelected && canToggleBreak(player.name) && (
                       <div className="absolute top-1/2 -translate-y-1/2 right-1">
                         <button
