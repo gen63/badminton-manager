@@ -33,6 +33,13 @@ export const MATCH_AUTO_START_MS = 3 * 60 * 1000;
  */
 export const MATCH_CALL_THRESHOLD_MS = 4.5 * 60 * 1000;
 
+/**
+ * 自分がコートを降りてから「次の試合に入りそう」呼び出し通知を抑制する時間（90秒）。
+ * 降りた直後はまだ物理的にコート脇に居るため呼ぶ必要が無く、鳴るとうるさいだけ。
+ * 呼び損ねる実害がほぼ無い範囲として90秒とした。
+ */
+export const MATCH_CALL_COOLDOWN_MS = 90 * 1000;
+
 /** ゲームモードに応じた1コートあたりの人数 */
 export function getPlayersPerCourt(gameMode: 'singles' | 'doubles'): number {
   return gameMode === 'singles' ? 2 : 4;

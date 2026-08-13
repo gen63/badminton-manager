@@ -15,13 +15,16 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return result === 'granted';
 }
 
-/** 次の試合に入りそうなメンバーへの事前呼び出し通知を送信 */
-export function notifyNextMatchSoon(): void {
+/**
+ * 次の試合に入りそうなメンバーへの事前呼び出し通知を送信。
+ * body の組み立ては呼び出し側（buildNextMatchCallMessage）の責務。
+ */
+export function notifyNextMatchSoon(body: string): void {
   if (!isNotificationSupported()) return;
   if (Notification.permission !== 'granted') return;
 
   new Notification('まもなく出番です', {
-    body: '次の試合に入りそうです。準備してコート脇へお願いします',
+    body,
     icon: '/badminton-manager/icons/icon-192x192.png',
     tag: 'next-match-soon',
   });
