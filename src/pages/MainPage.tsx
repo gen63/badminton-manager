@@ -8,7 +8,7 @@ import { assignCourts, sortWaitingPlayers, getCallableReservationRestingIds } fr
 import { getRecommendedCourtCount, getAssignmentGate } from '../lib/utils';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, Trash2, ChevronDown, Minus, Settings, Info, MessageSquare } from 'lucide-react';
+import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, Trash2, ChevronDown, Minus, Settings, Info, MessageSquare, Bell, BellOff } from 'lucide-react';
 import { sendBugReportToDiscord } from '../lib/bugReport';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
@@ -34,6 +34,7 @@ import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH
 import { withInProgressGames } from '../lib/effectiveGames';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 import { notifyNextMatchSoon } from '../lib/notifications';
+import { unlockMatchCallAudio, playMatchCallChime, fireMatchCallAlert, installMatchCallAudioUnlock } from '../lib/matchCallAlert';
 import { useNoticeStore } from '../stores/noticeStore';
 
 import { BottomNav } from '../components/BottomNav';
@@ -81,6 +82,8 @@ export function MainPage() {
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
   const lateBalanceAutoFired = useSettingsStore((s) => s.lateBalanceAutoFired);
   const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
+  const matchCallAlert = useSettingsStore((s) => s.matchCallAlert);
+  const setMatchCallAlert = useSettingsStore((s) => s.setMatchCallAlert);
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
   // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
@@ -483,8 +486,11 @@ export function MainPage() {
           .filter((p) => nextMatchPrediction.certainIds.has(p.id))
           .map((p) => p.name);
         const { body, toast: toastText } = buildNextMatchCallMessage(basisCourtId, names);
-        notifyNextMatchSoon(body);
+        // トースト → OS通知 → 音・振動 の順で発火する。トーストを最初に出すことで
+        // 通知系（SW/Notification API・WebAudio）が失敗しても画面表示だけは必ず残る。
         useNoticeStore.getState().show(toastText, 'info', 8000);
+        notifyNextMatchSoon(body);
+        fireMatchCallAlert();
         calledForNextMatchRef.current = true;
       }
     };
@@ -492,6 +498,14 @@ export function MainPage() {
     const intervalId = setInterval(evaluate, 10_000);
     return () => clearInterval(intervalId);
   }, [courts, nextMatchPrediction, myPlayerId, predictedPlayers]);
+
+  // matchCallAlert のデフォルトは true（=呼び出し音 ON）だが、AudioContext は
+  // ユーザー操作からしか生成できない。ベルボタンに一度も触れないユーザーが
+  // 大半のため、ベルの onClick だけを unlock 契機にすると音が一生鳴らない。
+  // アプリ内の最初のタップ・キー操作を汎用的な unlock 契機にする。
+  useEffect(() => {
+    return installMatchCallAudioUnlock();
+  }, []);
 
   const getPlayerName = useCallback((playerId: string) => {
     return playerMap.get(playerId)?.name || '未設定';
@@ -1010,6 +1024,19 @@ export function MainPage() {
               aria-label="やり直し"
             >
               <Redo2 size={18} />
+            </button>
+            <button
+              onClick={() => {
+                unlockMatchCallAudio();
+                const next = !matchCallAlert;
+                setMatchCallAlert(next);
+                // OFF→ON に切り替えたときだけ鳴らす。動作確認とテスト再生を兼ねる。
+                if (next) playMatchCallChime();
+              }}
+              className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+              aria-label={matchCallAlert ? '呼び出し音をオフにする' : '呼び出し音をオンにする'}
+            >
+              {matchCallAlert ? <Bell size={18} /> : <BellOff size={18} />}
             </button>
             {isAdmin() && (
               <button

@@ -23,6 +23,9 @@ interface SettingsState {
   /** 予約保留の閾値（中央値+この値以上の試合数のメンバーを含む予約を保留）。Firestore 同期。 */
   reservationBlockThreshold: number;
   setReservationBlockThreshold: (value: number) => void;
+  /** 呼び出し通知時に音・振動を鳴らすか。端末ローカル設定（Firestore 同期しない）。 */
+  matchCallAlert: boolean;
+  setMatchCallAlert: (value: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -54,6 +57,8 @@ export const useSettingsStore = create<SettingsState>()(
       setLateBalanceAutoFired: (value) => set({ lateBalanceAutoFired: value }),
       reservationBlockThreshold: DEFAULT_RESERVATION_BLOCK_THRESHOLD,
       setReservationBlockThreshold: (value) => set({ reservationBlockThreshold: value }),
+      matchCallAlert: true,
+      setMatchCallAlert: (value) => set({ matchCallAlert: value }),
     }),
     {
       name: 'badminton-settings',
@@ -109,6 +114,7 @@ export const useSettingsStore = create<SettingsState>()(
       partialize: (state) => ({
         gasWebAppUrl: state.gasWebAppUrl,
         accountingWebAppUrl: state.accountingWebAppUrl,
+        matchCallAlert: state.matchCallAlert,
       }),
       onRehydrateStorage: () => (state) => {
         // 旧バージョンで保存された localStorage から復元したとき、
