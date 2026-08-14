@@ -264,6 +264,25 @@ describe('buildNextMatchCallMessage', () => {
     const result = buildNextMatchCallMessage(3, ['太郎', '花子'], '太郎');
     expect(result.speech).toBe('太郎さん、花子さん。3コート付近で試合終了をお待ちください');
   });
+
+  it('courtNumber が null のとき、名前ありで body・toast・speech すべてコート番号なしの見出しになる', () => {
+    const result = buildNextMatchCallMessage(null, ['太郎', '花子']);
+    expect(result.body).toBe('試合終了をお待ちください\n太郎さん・花子さん');
+    expect(result.toast).toBe('試合終了をお待ちください（太郎さん・花子さん）');
+    expect(result.speech).toBe('太郎さん、花子さん。試合終了をお待ちください');
+  });
+
+  it('courtNumber が null のとき、名前なしで body・toast・speech すべて見出しのみになる', () => {
+    const result = buildNextMatchCallMessage(null, []);
+    expect(result.body).toBe('試合終了をお待ちください');
+    expect(result.toast).toBe('試合終了をお待ちください');
+    expect(result.speech).toBe('試合終了をお待ちください');
+  });
+
+  it('courtNumber が null でも selfName の先頭寄せは従来どおり働く', () => {
+    const result = buildNextMatchCallMessage(null, ['太郎', '花子', '次郎'], '花子');
+    expect(result.speech).toBe('花子さん、太郎さん、次郎さん。試合終了をお待ちください');
+  });
 });
 
 describe('sanitizeNameForSpeech', () => {

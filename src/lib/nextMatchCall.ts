@@ -98,6 +98,13 @@ export function sanitizeNameForSpeech(name: string): string {
 /**
  * 呼び出し通知の本文。notification は改行あり、toast は1行。
  *
+ * `courtNumber` は「コート番号を見出しに含めるか」の指示を呼び出し側から
+ * 受け取るだけで、この関数自身は運用コート数などを判断しない。`null` を
+ * 渡すと見出しからコート番号が消え `試合終了をお待ちください` になる
+ * （運用コートが1面のみで番号が冗長なケースを想定）。数値を渡した場合は
+ * 従来どおり `${courtNumber}コート付近で試合終了をお待ちください`。
+ * この差し替えは body / toast / speech の3つすべての見出しに反映される。
+ *
  * `selfName` は読み上げ（speech）専用の引数。カクテルパーティ効果（雑音下でも
  * 自分の名前だけは注意を引く）を活かすため、speech だけは「名前 → 用件」の
  * 順に反転し、かつ自分の名前を先頭に寄せる。体育館の喧騒で聞き始めが遅れたり
@@ -105,12 +112,15 @@ export function sanitizeNameForSpeech(name: string): string {
  * body / toast は表示なので聞き逃しの心配が無く、順序は変更しない。
  */
 export function buildNextMatchCallMessage(
-  courtNumber: number,
+  courtNumber: number | null,
   names: string[],
   selfName?: string,
 ): { body: string; toast: string; speech: string } {
   const namesText = names.map((n) => `${n}さん`).join('・');
-  const headline = `${courtNumber}コート付近で試合終了をお待ちください`;
+  const headline =
+    courtNumber === null
+      ? '試合終了をお待ちください'
+      : `${courtNumber}コート付近で試合終了をお待ちください`;
 
   // speech だけ区切りが「、」なのは TTS 前提のため。「・」は無音のまま
   // 素通りされることがあり、読点の方が自然な間が入る。括弧も使わない
