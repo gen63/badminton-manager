@@ -84,15 +84,29 @@ export function callBasisCourtId(courts: Court[], now: number): number | null {
   return best.id;
 }
 
+/** 読み上げ時に無視する名前の接頭辞（ゲスト参加者を表す運用上のラベル）。 */
+const SPEECH_IGNORED_NAME_PREFIXES = ['外部'];
+
 /**
- * 読み上げ（TTS）用に名前から記号・絵文字・空白を除去する。
- * 残すのはひらがな・カタカナ・漢字・英数字・長音符（ー）・々のみ。
- * 表示用の body / toast には影響させない（読み上げ専用の加工）。
+ * 読み上げ（TTS）用に名前から記号・絵文字・空白を除去し、ゲスト参加者を表す
+ * 接頭辞（`外部` 等）を取り除く。残すのはひらがな・カタカナ・漢字・英数字・
+ * 長音符（ー）・々のみ。表示用の body / toast には影響させない（読み上げ専用の加工）。
  * 絵文字はサロゲートペアだが、否定文字クラスなのでペアの各コードユニットが
  * 個別に除去対象となり結果として消える（u フラグは不要）。
+ *
+ * 処理順序は「記号除去 → 接頭辞除去」で固定する。先に記号を除去することで
+ * `【外部】はなこ` のような括弧付き表記も `外部はなこ` に正規化されてから
+ * 接頭辞が落ち、`はなこ` になる。逆順だと括弧が接頭辞の前に残ってしまい
+ * 除去できない。
  */
 export function sanitizeNameForSpeech(name: string): string {
-  return name.replace(/[^ぁ-ゟ゠-ヿ一-鿿々ーa-zA-Z0-9]/g, '');
+  const symbolsRemoved = name.replace(/[^ぁ-ゟ゠-ヿ一-鿿々ーa-zA-Z0-9]/g, '');
+  for (const prefix of SPEECH_IGNORED_NAME_PREFIXES) {
+    if (symbolsRemoved.startsWith(prefix)) {
+      return symbolsRemoved.slice(prefix.length);
+    }
+  }
+  return symbolsRemoved;
 }
 
 /**
