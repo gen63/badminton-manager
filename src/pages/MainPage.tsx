@@ -1048,7 +1048,7 @@ export function MainPage() {
                 // 動作確認とテスト再生を兼ねる。iOS では navigator.vibrate が
                 // 未実装のため振動は no-op になる（vibrateMatchCall 内部で
                 // 安全に処理される）。読み上げは実際の呼び出し時と同じ間の
-                // 取り方にするため、チャイム・振動の直後に 400ms 遅らせる。
+                // 取り方にするため、チャイム・振動の直後に 200ms 遅らせる。
                 if (next) {
                   playMatchCallChime();
                   vibrateMatchCall();
