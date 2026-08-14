@@ -204,9 +204,9 @@ describe('buildNextMatchCallMessage', () => {
     expect(result.toast).toBe('3コート付近で試合終了をお待ちください');
   });
 
-  it('名前ありのとき speech は「。」区切り・「、」連結', () => {
+  it('名前ありのとき speech は「名前 → 用件」・「。」区切り・「、」連結', () => {
     const result = buildNextMatchCallMessage(3, ['太郎', '花子']);
-    expect(result.speech).toBe('3コート付近で試合終了をお待ちください。太郎さん、花子さん');
+    expect(result.speech).toBe('太郎さん、花子さん。3コート付近で試合終了をお待ちください');
   });
 
   it('名前なしのとき speech は見出しのみ', () => {
@@ -217,7 +217,7 @@ describe('buildNextMatchCallMessage', () => {
   it('記号入りの名前は除去された形で読み上げられる', () => {
     const result = buildNextMatchCallMessage(3, ['ゆうき★', 'たろう(2)']);
     // 数字は残す文字クラスに含まれるため 2 はそのまま残り、括弧のみ除去される
-    expect(result.speech).toBe('3コート付近で試合終了をお待ちください。ゆうきさん、たろう2さん');
+    expect(result.speech).toBe('ゆうきさん、たろう2さん。3コート付近で試合終了をお待ちください');
     // body / toast には記号がそのまま残る（読み上げ専用の加工であることの確認）
     expect(result.body).toBe('3コート付近で試合終了をお待ちください\nゆうき★さん・たろう(2)さん');
     expect(result.toast).toBe('3コート付近で試合終了をお待ちください（ゆうき★さん・たろう(2)さん）');
@@ -225,12 +225,44 @@ describe('buildNextMatchCallMessage', () => {
 
   it('記号のみの名前は読み上げ対象から外れる', () => {
     const result = buildNextMatchCallMessage(3, ['太郎', '★★']);
-    expect(result.speech).toBe('3コート付近で試合終了をお待ちください。太郎さん');
+    expect(result.speech).toBe('太郎さん。3コート付近で試合終了をお待ちください');
   });
 
   it('絵文字入りの名前は除去される', () => {
     const result = buildNextMatchCallMessage(3, ['太郎🏸']);
-    expect(result.speech).toBe('3コート付近で試合終了をお待ちください。太郎さん');
+    expect(result.speech).toBe('太郎さん。3コート付近で試合終了をお待ちください');
+  });
+
+  it('selfName を渡すと、その名前が読み上げの先頭に来る', () => {
+    const result = buildNextMatchCallMessage(3, ['太郎', '花子', '次郎'], '花子');
+    expect(result.speech).toBe('花子さん、太郎さん、次郎さん。3コート付近で試合終了をお待ちください');
+  });
+
+  it('selfName 以外の名前の相対順序は保たれる', () => {
+    const result = buildNextMatchCallMessage(3, ['太郎', '花子', '次郎', '三郎'], '次郎');
+    expect(result.speech).toBe(
+      '次郎さん、太郎さん、花子さん、三郎さん。3コート付近で試合終了をお待ちください',
+    );
+  });
+
+  it('selfName が名前リストに含まれない場合、順序は変わらない', () => {
+    const result = buildNextMatchCallMessage(3, ['太郎', '花子'], '見知らぬ人');
+    expect(result.speech).toBe('太郎さん、花子さん。3コート付近で試合終了をお待ちください');
+  });
+
+  it('selfName を渡さない場合、元の順序のまま「名前 → 用件」になる', () => {
+    const result = buildNextMatchCallMessage(3, ['太郎', '花子']);
+    expect(result.speech).toBe('太郎さん、花子さん。3コート付近で試合終了をお待ちください');
+  });
+
+  it('記号付きの selfName でも sanitize 後の比較で正しく先頭に来る', () => {
+    const result = buildNextMatchCallMessage(3, ['太郎', 'ゆうき', '花子'], 'ゆうき★');
+    expect(result.speech).toBe('ゆうきさん、太郎さん、花子さん。3コート付近で試合終了をお待ちください');
+  });
+
+  it('selfName が既に先頭の場合も順序はそのまま', () => {
+    const result = buildNextMatchCallMessage(3, ['太郎', '花子'], '太郎');
+    expect(result.speech).toBe('太郎さん、花子さん。3コート付近で試合終了をお待ちください');
   });
 });
 

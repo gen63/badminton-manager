@@ -485,7 +485,12 @@ export function MainPage() {
         const names = predictedPlayers
           .filter((p) => nextMatchPrediction.certainIds.has(p.id))
           .map((p) => p.name);
-        const { body, toast: toastText, speech } = buildNextMatchCallMessage(basisCourtId, names);
+        const selfName = myPlayerId !== null ? playerMap.get(myPlayerId)?.name : undefined;
+        const { body, toast: toastText, speech } = buildNextMatchCallMessage(
+          basisCourtId,
+          names,
+          selfName,
+        );
         // トースト → OS通知 → 音・振動・読み上げ の順で発火する。トーストを最初に
         // 出すことで通知系（SW/Notification API・WebAudio・speechSynthesis）が
         // 失敗しても画面表示だけは必ず残る。
@@ -498,7 +503,7 @@ export function MainPage() {
     evaluate();
     const intervalId = setInterval(evaluate, 10_000);
     return () => clearInterval(intervalId);
-  }, [courts, nextMatchPrediction, myPlayerId, predictedPlayers]);
+  }, [courts, nextMatchPrediction, myPlayerId, predictedPlayers, playerMap]);
 
   // matchCallAlert のデフォルトは true（=呼び出し音 ON）だが、AudioContext は
   // ユーザー操作からしか生成できない。ベルボタンに一度も触れないユーザーが

@@ -41,12 +41,27 @@
 `buildNextMatchCallMessage` の戻り値に `speech` を追加し、`{ body, toast, speech }`
 にする。文言の組み立てを1箇所に集約する既存方針を維持する。
 
-`speech` はトーストと同内容だが、TTS が読みやすい区切りにする:
+`speech` はトーストと同内容だが、**「名前 → 用件」の順**にし、TTS が読みやすい
+区切りにする:
 
-- 名前あり: `3コート付近で試合終了をお待ちください。太郎さん、花子さん`
+- 名前あり: `太郎さん、花子さん。3コート付近で試合終了をお待ちください`
+  - body / toast は「見出し → 名前」だが、speech だけ順序を反転する
   - 括弧は使わない（TTS が不自然に読む/長く止まるため）
   - 名前の区切りは `・` ではなく `、`
 - 名前なし（sanitize で全滅した場合を含む）: 見出しのみ
+
+**名前を先頭に置く理由（カクテルパーティ効果）**: 体育館の喧騒下では音声通知の
+頭が聞き取れなかったり、用件部分を聞き流されたりしやすい。自分の名前は雑音下でも
+無意識に注意を引く（カクテルパーティ効果）ため、名前を最初に発話することで
+「自分宛の呼び出しだ」と早い段階で気づいてもらえる。
+
+**自分の名前を先頭に寄せる理由**: `buildNextMatchCallMessage` は第3引数
+`selfName?: string` を受け取る。対象者が複数いる場合、聞いている本人にとって
+重要なのは自分の名前であり、他人の名前が先に読まれると聞き逃す可能性が残る。
+そのため `selfName` を渡すと、sanitize 後の名前リストの中からそれを探し出し
+（比較は `sanitizeNameForSpeech` 適用後の文字列同士で行う）、他の名前の相対順序を
+保ったまま先頭へ移動する。`selfName` を渡さない場合や、渡しても一致する名前が
+無い場合は、名前の並び順は変えない。
 
 ### 2. 読み上げの実行（`src/lib/matchCallAlert.ts`）
 
@@ -73,6 +88,11 @@
 ### 4. 呼び出し側（`src/pages/MainPage.tsx`）
 
 `buildNextMatchCallMessage` の `speech` を `fireMatchCallAlert(speech)` に渡す。
+第3引数 `selfName` には `playerMap.get(myPlayerId)?.name` を渡す。`playerMap` は
+`players` から作った `id → Player` の Map で既存のヘルパー（`getPlayerName` 等）
+が使っているものと同じ。`myPlayerId` が `null` のときは渡さない（この呼び出し
+経路は `shouldCallNextMatch` が `myPlayerId !== null` を確認した後にしか
+実行されないため、実質的に常に渡る）。
 
 ## スコープ外
 
