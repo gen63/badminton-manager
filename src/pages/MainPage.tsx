@@ -34,7 +34,7 @@ import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH
 import { withInProgressGames } from '../lib/effectiveGames';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 import { notifyNextMatchSoon } from '../lib/notifications';
-import { unlockMatchCallAudio, playMatchCallChime, fireMatchCallAlert, installMatchCallAudioUnlock } from '../lib/matchCallAlert';
+import { unlockMatchCallAudio, playMatchCallChime, vibrateMatchCall, fireMatchCallAlert, installMatchCallAudioUnlock } from '../lib/matchCallAlert';
 import { useNoticeStore } from '../stores/noticeStore';
 
 import { BottomNav } from '../components/BottomNav';
@@ -1030,11 +1030,16 @@ export function MainPage() {
                 unlockMatchCallAudio();
                 const next = !matchCallAlert;
                 setMatchCallAlert(next);
-                // OFF→ON に切り替えたときだけ鳴らす。動作確認とテスト再生を兼ねる。
-                if (next) playMatchCallChime();
+                // OFF→ON に切り替えたときだけ鳴らす・振動させる。動作確認とテスト再生を兼ねる。
+                // iOS では navigator.vibrate が未実装のため振動は no-op になる
+                // （vibrateMatchCall 内部で安全に処理される）。
+                if (next) {
+                  playMatchCallChime();
+                  vibrateMatchCall();
+                }
               }}
               className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors"
-              aria-label={matchCallAlert ? '呼び出し音をオフにする' : '呼び出し音をオンにする'}
+              aria-label={matchCallAlert ? '呼び出し音・振動をオフにする' : '呼び出し音・振動をオンにする'}
             >
               {matchCallAlert ? <Bell size={18} /> : <BellOff size={18} />}
             </button>
