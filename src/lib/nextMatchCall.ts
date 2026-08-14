@@ -84,20 +84,41 @@ export function callBasisCourtId(courts: Court[], now: number): number | null {
   return best.id;
 }
 
+/**
+ * 読み上げ（TTS）用に名前から記号・絵文字・空白を除去する。
+ * 残すのはひらがな・カタカナ・漢字・英数字・長音符（ー）・々のみ。
+ * 表示用の body / toast には影響させない（読み上げ専用の加工）。
+ * 絵文字はサロゲートペアだが、否定文字クラスなのでペアの各コードユニットが
+ * 個別に除去対象となり結果として消える（u フラグは不要）。
+ */
+export function sanitizeNameForSpeech(name: string): string {
+  return name.replace(/[^ぁ-ゟ゠-ヿ一-鿿々ーa-zA-Z0-9]/g, '');
+}
+
 /** 呼び出し通知の本文。notification は改行あり、toast は1行 */
 export function buildNextMatchCallMessage(
   courtNumber: number,
   names: string[],
-): { body: string; toast: string } {
+): { body: string; toast: string; speech: string } {
   const namesText = names.map((n) => `${n}さん`).join('・');
   const headline = `${courtNumber}コート付近で試合終了をお待ちください`;
 
+  // speech だけ区切りが「、」なのは TTS 前提のため。「・」は無音のまま
+  // 素通りされることがあり、読点の方が自然な間が入る。括弧も使わない
+  // （TTS が不自然に読む/長く止まるため）。
+  const speechNames = names.map((n) => sanitizeNameForSpeech(n)).filter((n) => n !== '');
+  const speech =
+    speechNames.length === 0
+      ? headline
+      : `${headline}。${speechNames.map((n) => `${n}さん`).join('、')}`;
+
   if (names.length === 0) {
-    return { body: headline, toast: headline };
+    return { body: headline, toast: headline, speech };
   }
 
   return {
     body: `${headline}\n${namesText}`,
     toast: `${headline}（${namesText}）`,
+    speech,
   };
 }

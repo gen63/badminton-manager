@@ -1,9 +1,10 @@
 /**
- * 呼び出し通知に付随する音・振動ユーティリティ。
+ * 呼び出し通知に付随する音・振動・読み上げユーティリティ。
  *
  * OS 通知（`notifications.ts`）とは独立に、アプリを開いている端末で確実に
- * 気づけるよう WebAudio のビープ音と `navigator.vibrate` を鳴らす。
- * オフラインでも動くよう音声ファイルは使わず WebAudio で生成する。
+ * 気づけるよう WebAudio のビープ音と `navigator.vibrate`、`speechSynthesis`
+ * による読み上げを鳴らす。オフラインでも動くよう音声ファイルは使わず
+ * WebAudio で生成する。
  */
 import { useSettingsStore } from '../stores/settingsStore';
 
@@ -97,6 +98,7 @@ export function installMatchCallAudioUnlock(): () => void {
     document.removeEventListener('pointerdown', handleFirstInteraction);
     document.removeEventListener('keydown', handleFirstInteraction);
     unlockMatchCallAudio();
+    primeSpeechSynthesis();
   };
 
   document.addEventListener('pointerdown', handleFirstInteraction, { once: true });
@@ -120,12 +122,59 @@ export function vibrateMatchCall(): void {
   }
 }
 
+/** チャイムと読み上げが重ならないようにする間隔（ms）。チャイムは 0.3 秒。 */
+export const SPEECH_DELAY_MS = 400;
+
 /**
- * 呼び出し通知の音・振動を発火する単一の入口。
- * 設定（`matchCallAlert`）が ON のときだけ実行する。
+ * `speechSynthesis` で読み上げる。未対応環境・失敗時は黙って何もしない
+ * （throw しない）。発話前に `cancel()` して読み上げの積み残しを消す。
  */
-export function fireMatchCallAlert(): void {
+export function speakMatchCall(text: string): void {
+  if (!text) return;
+  if (!('speechSynthesis' in window)) return;
+
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ja-JP';
+    window.speechSynthesis.speak(utterance);
+  } catch (error) {
+    console.error('[matchCallAlert] speakMatchCall failed:', error);
+  }
+}
+
+/**
+ * iOS のユーザー操作要件を満たすため、ごく短い無音の発話を一度流して
+ * `speechSynthesis` をプライミングする。`unlockMatchCallAudio()` と同様、
+ * ユーザー操作ハンドラから呼ぶことを想定。冪等（複数回呼んでも安全）で、
+ * 失敗しても throw しない。
+ */
+export function primeSpeechSynthesis(): void {
+  if (!('speechSynthesis' in window)) return;
+
+  try {
+    const utterance = new SpeechSynthesisUtterance('');
+    utterance.volume = 0;
+    window.speechSynthesis.speak(utterance);
+  } catch (error) {
+    console.error('[matchCallAlert] primeSpeechSynthesis failed:', error);
+  }
+}
+
+/**
+ * 呼び出し通知の音・振動・読み上げを発火する単一の入口。
+ * 設定（`matchCallAlert`）が ON のときだけ実行する。
+ * `speechText` を渡すとチャイム・振動に続けて読み上げる。体育館の騒音下では
+ * ビープの方が通るため先に注意を引き、チャイム（0.3 秒）と重ならないよう
+ * `setTimeout` で 400ms 遅らせてから読み上げる。
+ */
+export function fireMatchCallAlert(speechText?: string): void {
   if (!useSettingsStore.getState().matchCallAlert) return;
   playMatchCallChime();
   vibrateMatchCall();
+  if (speechText) {
+    setTimeout(() => {
+      speakMatchCall(speechText);
+    }, SPEECH_DELAY_MS);
+  }
 }

@@ -4,6 +4,7 @@ import {
   maxPlayingElapsedMs,
   callBasisCourtId,
   buildNextMatchCallMessage,
+  sanitizeNameForSpeech,
 } from './nextMatchCall';
 import { MATCH_CALL_THRESHOLD_MS, MATCH_CALL_COOLDOWN_MS } from './gameOperations';
 import type { Court } from '../types/court';
@@ -201,5 +202,57 @@ describe('buildNextMatchCallMessage', () => {
     const result = buildNextMatchCallMessage(3, []);
     expect(result.body).toBe('3コート付近で試合終了をお待ちください');
     expect(result.toast).toBe('3コート付近で試合終了をお待ちください');
+  });
+
+  it('名前ありのとき speech は「。」区切り・「、」連結', () => {
+    const result = buildNextMatchCallMessage(3, ['太郎', '花子']);
+    expect(result.speech).toBe('3コート付近で試合終了をお待ちください。太郎さん、花子さん');
+  });
+
+  it('名前なしのとき speech は見出しのみ', () => {
+    const result = buildNextMatchCallMessage(3, []);
+    expect(result.speech).toBe('3コート付近で試合終了をお待ちください');
+  });
+
+  it('記号入りの名前は除去された形で読み上げられる', () => {
+    const result = buildNextMatchCallMessage(3, ['ゆうき★', 'たろう(2)']);
+    // 数字は残す文字クラスに含まれるため 2 はそのまま残り、括弧のみ除去される
+    expect(result.speech).toBe('3コート付近で試合終了をお待ちください。ゆうきさん、たろう2さん');
+    // body / toast には記号がそのまま残る（読み上げ専用の加工であることの確認）
+    expect(result.body).toBe('3コート付近で試合終了をお待ちください\nゆうき★さん・たろう(2)さん');
+    expect(result.toast).toBe('3コート付近で試合終了をお待ちください（ゆうき★さん・たろう(2)さん）');
+  });
+
+  it('記号のみの名前は読み上げ対象から外れる', () => {
+    const result = buildNextMatchCallMessage(3, ['太郎', '★★']);
+    expect(result.speech).toBe('3コート付近で試合終了をお待ちください。太郎さん');
+  });
+
+  it('絵文字入りの名前は除去される', () => {
+    const result = buildNextMatchCallMessage(3, ['太郎🏸']);
+    expect(result.speech).toBe('3コート付近で試合終了をお待ちください。太郎さん');
+  });
+});
+
+describe('sanitizeNameForSpeech', () => {
+  it('ひらがな・カタカナ・漢字・英数字・長音符・々を残す', () => {
+    expect(sanitizeNameForSpeech('たろうタロウ太郎ABC123ラーメン々')).toBe(
+      'たろうタロウ太郎ABC123ラーメン々',
+    );
+  });
+
+  it('記号・空白を除去する（数字は英数字として残る）', () => {
+    expect(sanitizeNameForSpeech('ゆうき★')).toBe('ゆうき');
+    expect(sanitizeNameForSpeech('たろう(2)')).toBe('たろう2');
+    expect(sanitizeNameForSpeech('花 子')).toBe('花子');
+  });
+
+  it('絵文字（サロゲートペア）を除去する', () => {
+    expect(sanitizeNameForSpeech('太郎🏸')).toBe('太郎');
+    expect(sanitizeNameForSpeech('🏸')).toBe('');
+  });
+
+  it('記号のみの名前は空文字になる', () => {
+    expect(sanitizeNameForSpeech('★★')).toBe('');
   });
 });
