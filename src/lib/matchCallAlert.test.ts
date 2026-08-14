@@ -131,13 +131,13 @@ describe('fireMatchCallAlert', () => {
 
     vi.useFakeTimers();
     fireMatchCallAlert('太郎さん');
-    vi.advanceTimersByTime(400);
+    vi.advanceTimersByTime(200);
     vi.useRealTimers();
 
     expect(speakMock).not.toHaveBeenCalled();
   });
 
-  it('設定 ON かつ speechText ありで 400ms 後に speak が呼ばれる', () => {
+  it('設定 ON かつ speechText ありで 200ms 後に speak が呼ばれる', () => {
     useSettingsStore.setState({ matchCallAlert: true });
     const speakMock = vi.fn();
     vi.stubGlobal('speechSynthesis', { cancel: vi.fn(), speak: speakMock });
@@ -155,7 +155,7 @@ describe('fireMatchCallAlert', () => {
     vi.useFakeTimers();
     fireMatchCallAlert('太郎さん');
     expect(speakMock).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(399);
+    vi.advanceTimersByTime(199);
     expect(speakMock).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     vi.useRealTimers();

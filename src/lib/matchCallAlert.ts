@@ -122,8 +122,8 @@ export function vibrateMatchCall(): void {
   }
 }
 
-/** チャイムと読み上げが重ならないようにする間隔（ms）。チャイムは 0.3 秒。 */
-export const SPEECH_DELAY_MS = 400;
+/** チャイムの直後に続けて読み上げるための間隔。チャイム（0.3 秒）の末尾とわずかに重なるが、間延びを避けるためこの値にしている（ms）。 */
+export const SPEECH_DELAY_MS = 200;
 
 /**
  * 読み上げ中の画面タップでキャンセルするための `pointerdown` リスナー。
@@ -161,7 +161,7 @@ export function cancelMatchCallSpeech(): void {
  * 読み上げ中に画面のどこかをタップしたら即座に止められるよう、`speak()` の
  * 呼び出しと同時（同期的に、同じタイミングで）に `document` へ `pointerdown`
  * リスナーを登録する。`fireMatchCallAlert` / ベルのテスト再生はどちらも
- * `speak()` 自体を `setTimeout` で 400ms 遅らせて呼んでいるため、読み上げが
+ * `speak()` 自体を `setTimeout` で 200ms 遅らせて呼んでいるため、読み上げが
  * 実際に始まる時点では、きっかけとなった操作（ベルタップ等）の `pointerdown`
  * は既に発生し終わっている。リスナー登録を `speak()` と同じタイミングに
  * 揃えることで「ベルを押した瞬間に自分のタップでキャンセルされる」ことを防ぐ
@@ -225,8 +225,8 @@ export function primeSpeechSynthesis(): void {
  * 呼び出し通知の音・振動・読み上げを発火する単一の入口。
  * 設定（`matchCallAlert`）が ON のときだけ実行する。
  * `speechText` を渡すとチャイム・振動に続けて読み上げる。体育館の騒音下では
- * ビープの方が通るため先に注意を引き、チャイム（0.3 秒）と重ならないよう
- * `setTimeout` で 400ms 遅らせてから読み上げる。
+ * ビープの方が通るため先に注意を引き、チャイム（0.3 秒）の末尾とわずかに重なるが
+ * 間延びを避けるため `setTimeout` で 200ms 遅らせてから読み上げる。
  */
 export function fireMatchCallAlert(speechText?: string): void {
   if (!useSettingsStore.getState().matchCallAlert) return;
