@@ -492,8 +492,10 @@ export function MainPage() {
           .filter((p) => nextMatchPrediction.certainIds.has(p.id))
           .map((p) => p.name);
         const selfName = myPlayerId !== null ? playerMap.get(myPlayerId)?.name : undefined;
+        // 運用コートが1面のみのときは「1コート」が冗長なので番号を出さない
+        const courtNumberForMessage = courts.length <= 1 ? null : basisCourtId;
         const { body, toast: toastText, speech } = buildNextMatchCallMessage(
-          basisCourtId,
+          courtNumberForMessage,
           names,
           selfName,
         );
@@ -1051,8 +1053,11 @@ export function MainPage() {
                   playMatchCallChime();
                   vibrateMatchCall();
                   setTimeout(() => {
+                    // テスト再生も実際の呼び出しと同じ判定を通し、聞こえる文言を一致させる。
+                    // 1面運用中は「1コート」を出さない。
+                    const testCourtNumber = courts.length <= 1 ? null : SPEECH_TEST_COURT;
                     speakMatchCall(
-                      buildNextMatchCallMessage(SPEECH_TEST_COURT, [SPEECH_TEST_NAME], SPEECH_TEST_NAME).speech,
+                      buildNextMatchCallMessage(testCourtNumber, [SPEECH_TEST_NAME], SPEECH_TEST_NAME).speech,
                     );
                   }, SPEECH_DELAY_MS);
                 }
