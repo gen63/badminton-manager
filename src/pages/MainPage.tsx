@@ -41,6 +41,12 @@ import { BottomNav } from '../components/BottomNav';
 
 const BUG_REPORT_TEMPLATE = '発生画面：\n期待値：\n実際：';
 
+// ベルのテスト再生用サンプル。実際の呼び出しと同じ buildNextMatchCallMessage を
+// 通すことで、文言だけでなく名前の読み上げ品質（sanitizeNameForSpeech の挙動等）
+// まで確認できるようにする。文言のベタ書きはしない。
+const SPEECH_TEST_NAME = 'ゆーた';
+const SPEECH_TEST_COURT = 1;
+
 export function MainPage() {
   const navigate = useNavigate();
   const session = useSessionStore((s) => s.session);
@@ -1045,7 +1051,9 @@ export function MainPage() {
                   playMatchCallChime();
                   vibrateMatchCall();
                   setTimeout(() => {
-                    speakMatchCall('呼び出しの読み上げテストです');
+                    speakMatchCall(
+                      buildNextMatchCallMessage(SPEECH_TEST_COURT, [SPEECH_TEST_NAME], SPEECH_TEST_NAME).speech,
+                    );
                   }, SPEECH_DELAY_MS);
                 }
               }}

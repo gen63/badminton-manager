@@ -126,17 +126,77 @@ export function vibrateMatchCall(): void {
 export const SPEECH_DELAY_MS = 400;
 
 /**
+ * 読み上げ中の画面タップでキャンセルするための `pointerdown` リスナー。
+ * `speakMatchCall()` 実行中のみ非 null。連続呼び出し時に前回分が残らないよう
+ * 発話開始のたびに前回のリスナーを解除してから新しく登録する。
+ */
+let activeCancelOnTapListener: (() => void) | null = null;
+
+function removeCancelOnTapListener(): void {
+  if (!activeCancelOnTapListener) return;
+  document.removeEventListener('pointerdown', activeCancelOnTapListener);
+  activeCancelOnTapListener = null;
+}
+
+/**
+ * 読み上げ中の `speechSynthesis` を止める。リスナー解除もあわせて行う。
+ * `speakMatchCall()` の画面タップキャンセルと共通化するためエクスポートし、
+ * テストや将来の呼び出し元（他のキャンセル導線）からも使えるようにする。
+ * 未対応環境・失敗時は throw しない。
+ */
+export function cancelMatchCallSpeech(): void {
+  removeCancelOnTapListener();
+  if (!('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+  } catch (error) {
+    console.error('[matchCallAlert] cancelMatchCallSpeech failed:', error);
+  }
+}
+
+/**
  * `speechSynthesis` で読み上げる。未対応環境・失敗時は黙って何もしない
  * （throw しない）。発話前に `cancel()` して読み上げの積み残しを消す。
+ *
+ * 読み上げ中に画面のどこかをタップしたら即座に止められるよう、`speak()` の
+ * 呼び出しと同時（同期的に、同じタイミングで）に `document` へ `pointerdown`
+ * リスナーを登録する。`fireMatchCallAlert` / ベルのテスト再生はどちらも
+ * `speak()` 自体を `setTimeout` で 400ms 遅らせて呼んでいるため、読み上げが
+ * 実際に始まる時点では、きっかけとなった操作（ベルタップ等）の `pointerdown`
+ * は既に発生し終わっている。リスナー登録を `speak()` と同じタイミングに
+ * 揃えることで「ベルを押した瞬間に自分のタップでキャンセルされる」ことを防ぐ
+ * ——このタイミングがずれると自タップキャンセルが再発するため、ここで揃える。
+ *
+ * 読み上げが自然に終わったとき（`onend`）・エラー時（`onerror`）はリスナーを
+ * 解除する。リスナーが残り続けないことを保証するため、`{ once: true }` に
+ * 頼らず `onend`/`onerror`/キャンセル実行時のいずれの経路でも明示的に
+ * `removeEventListener` する。
  */
 export function speakMatchCall(text: string): void {
   if (!text) return;
   if (!('speechSynthesis' in window)) return;
 
   try {
-    window.speechSynthesis.cancel();
+    // 前回の発話が残っていれば、まずそのリスナーを解除してから cancel する。
+    cancelMatchCallSpeech();
+
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'ja-JP';
+
+    const handleTapCancel = () => {
+      // cancelMatchCallSpeech 内でリスナー解除も行われる。
+      cancelMatchCallSpeech();
+    };
+    activeCancelOnTapListener = handleTapCancel;
+    document.addEventListener('pointerdown', handleTapCancel);
+
+    utterance.onend = () => {
+      removeCancelOnTapListener();
+    };
+    utterance.onerror = () => {
+      removeCancelOnTapListener();
+    };
+
     window.speechSynthesis.speak(utterance);
   } catch (error) {
     console.error('[matchCallAlert] speakMatchCall failed:', error);

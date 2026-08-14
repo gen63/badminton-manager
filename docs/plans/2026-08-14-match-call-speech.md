@@ -75,6 +75,22 @@
   `speechText` があれば読み上げる。**チャイムを先に鳴らしてから読み上げる**
   （注意を引いてから内容を伝える。体育館の騒音下ではビープの方が通る）。
   チャイムは 0.3 秒なので `setTimeout` で 400ms 遅らせる。
+- **読み上げ中に画面をタップしたら即座にキャンセルする。** `speakMatchCall()`
+  は `speak()` の呼び出しと同時に `document` へ `pointerdown` リスナーを登録し、
+  発火したら `speechSynthesis.cancel()` する。リスナーは読み上げが自然に終わった
+  とき（`utterance.onend`）・エラー時（`onerror`）・キャンセル実行時のいずれでも
+  明示的に `removeEventListener` し、残り続けないようにする。連続で
+  `speakMatchCall()` が呼ばれた場合は、新しい発話を始める前に前回のリスナーを
+  解除する。
+- `cancelMatchCallSpeech(): void` を公開する。`speechSynthesis.cancel()` と
+  リスナー解除をまとめて行う。未対応環境・失敗時は throw しない。テストや
+  将来の他のキャンセル導線から呼べるようにするためのエクスポート。
+- `fireMatchCallAlert` / ベルのテスト再生は、いずれも `speak()` の呼び出し自体を
+  `setTimeout` で 400ms 遅らせている。そのため読み上げが実際に始まる時点では、
+  きっかけとなった操作（ベルタップ等）の `pointerdown` は既に発生し終わっており、
+  「ベルを押した瞬間に自分のタップでキャンセルされる」ことは起きない。この
+  前提はタップキャンセル用リスナーの登録タイミングを `speak()` 呼び出しと
+  揃えることで担保している。
 
 ### 3. 設定
 
@@ -83,7 +99,14 @@
 その時に分ける。
 
 ベルの OFF→ON 時のテスト再生でも読み上げを鳴らし、音声が出る端末か確認できる
-ようにする。
+ようにする。**テスト再生の読み上げ文は専用の文言を用意せず、実際の呼び出しと
+同じ `buildNextMatchCallMessage` を通して組み立てる。** サンプル名
+`ゆーた`・コート番号 `1`（モジュールスコープの定数 `SPEECH_TEST_NAME` /
+`SPEECH_TEST_COURT` として `src/pages/MainPage.tsx` に切り出す）を渡し、
+`buildNextMatchCallMessage(SPEECH_TEST_COURT, [SPEECH_TEST_NAME], SPEECH_TEST_NAME).speech`
+（＝「ゆーたさん。1コート付近で試合終了をお待ちください」）を読み上げる。
+実際の呼び出しと同じ経路を通すことで、文言だけでなく名前の読み上げ品質
+（`sanitizeNameForSpeech` の挙動含む）まで確認できる。
 
 ### 4. 呼び出し側（`src/pages/MainPage.tsx`）
 

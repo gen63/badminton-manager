@@ -7,6 +7,7 @@ import {
   unlockMatchCallAudio,
   speakMatchCall,
   primeSpeechSynthesis,
+  cancelMatchCallSpeech,
 } from './matchCallAlert';
 
 describe('vibrateMatchCall', () => {
@@ -189,6 +190,9 @@ describe('fireMatchCallAlert', () => {
 
 describe('speakMatchCall / primeSpeechSynthesis', () => {
   afterEach(() => {
+    // タップキャンセル用の pointerdown リスナーが次のテストへ残らないよう
+    // 念のため解除しておく（speechSynthesis 未対応でも throw しない）。
+    cancelMatchCallSpeech();
     vi.unstubAllGlobals();
   });
 
@@ -237,6 +241,41 @@ describe('speakMatchCall / primeSpeechSynthesis', () => {
     for (const call of speakMock.mock.calls) {
       expect(call[0].volume).toBe(0);
     }
+  });
+
+  it('読み上げ中に document へ pointerdown を dispatch すると speechSynthesis.cancel が呼ばれる', () => {
+    const { speakMock, cancelMock } = stubSpeechSynthesis();
+    speakMatchCall('太郎さん');
+    // speakMatchCall 冒頭の cancel() 呼び出し分をリセットしてから検証する。
+    cancelMock.mockClear();
+
+    document.dispatchEvent(new Event('pointerdown'));
+
+    expect(cancelMock).toHaveBeenCalledTimes(1);
+    expect(speakMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('utterance.onend が発火した後は pointerdown を dispatch しても cancel が追加で呼ばれない', () => {
+    const { speakMock, cancelMock } = stubSpeechSynthesis();
+    speakMatchCall('太郎さん');
+    const utterance = speakMock.mock.calls[0][0] as { onend?: () => void };
+    cancelMock.mockClear();
+
+    // 読み上げが自然に終わったことを模す。
+    utterance.onend?.();
+    document.dispatchEvent(new Event('pointerdown'));
+
+    expect(cancelMock).not.toHaveBeenCalled();
+  });
+
+  it('cancelMatchCallSpeech は speechSynthesis.cancel を呼ぶ', () => {
+    const { cancelMock } = stubSpeechSynthesis();
+    cancelMatchCallSpeech();
+    expect(cancelMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancelMatchCallSpeech は speechSynthesis 未対応環境（window に無い）でも throw しない', () => {
+    expect(() => cancelMatchCallSpeech()).not.toThrow();
   });
 });
 
