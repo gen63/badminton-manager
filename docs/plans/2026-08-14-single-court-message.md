@@ -10,7 +10,8 @@
 - speech: `太郎さん、花子さん。3コート付近で試合終了をお待ちください`
 
 運用しているコートが1面だけのとき、「1コート」という番号は冗長である。
-どのコートかは言うまでもないため、コート番号の部分を省く。
+どのコートかは言うまでもないため、**コート番号だけを省き、「コート付近で」は残す**。
+つまり 2面以上では `3コート付近で試合終了をお待ちください` で、1面では `コート付近で試合終了をお待ちください` になる。
 
 ## 仕様
 
@@ -27,7 +28,7 @@ export function buildNextMatchCallMessage(
 ): { body: string; toast: string; speech: string }
 ```
 
-- `courtNumber` が `null` のとき: 見出し（headline）を `試合終了をお待ちください`
+- `courtNumber` が `null` のとき: 見出し（headline）を `コート付近で試合終了をお待ちください`
   にする
 - `courtNumber` が数値のとき: 従来どおり `${courtNumber}コート付近で試合終了を
   お待ちください`
@@ -70,7 +71,7 @@ const courtNumberForMessage = courts.length <= 1 ? null : basisCourtId;
 ベルの OFF→ON テスト再生（`SPEECH_TEST_COURT` を使う経路）も、実際に聞こえる
 文言と一致させるため同じ判定を通す。`SPEECH_TEST_COURT` をそのまま渡さず
 `courts.length <= 1 ? null : SPEECH_TEST_COURT` を渡す。1面運用中の端末では
-「ゆーたさん。試合終了をお待ちください」と読まれるのが正しい挙動になる。
+「ゆーたさん。コート付近で試合終了をお待ちください」と読まれるのが正しい挙動になる。
 
 ## スコープ外
 
@@ -80,7 +81,7 @@ const courtNumberForMessage = courts.length <= 1 ? null : basisCourtId;
 ## テスト
 
 - `src/lib/nextMatchCall.test.ts` — `courtNumber` に `null` を渡したとき
-  body / toast / speech すべてで見出しが `試合終了をお待ちください` になる
+  body / toast / speech すべてで見出しが `コート付近で試合終了をお待ちください` になる
   ことを名前あり・名前なしの両方で確認。`selfName` の先頭寄せが `null` でも
   従来どおり働くことも確認する。`courtNumber` が数値のときの既存の期待値は
   変更しない。
