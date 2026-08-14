@@ -14,7 +14,13 @@ import {
   resolvePracticeTypeLabel,
   deriveFilterOptions,
   applySessionFilters,
+  summarizeSessionMedians,
+  parseMonthFilterValue,
   formatMonthLabel,
+  DEFAULT_SESSION_FILTER,
+  CLEARED_SESSION_FILTER,
+  RECENT_MONTHS,
+  RECENT_MONTHS_LABEL,
   type SessionFilterState,
 } from '../lib/sessionFilters';
 import type { Session } from '../types/session';
@@ -297,18 +303,21 @@ export function SessionSelectPage() {
     [sessions, devMode, now],
   );
 
-  // 体育館 / 種別 / 月フィルタ。ephemeral（persist しない）。
-  const [filter, setFilter] = useState<SessionFilterState>({
-    gym: null,
-    practiceType: null,
-    month: null,
-  });
+  // 体育館 / 種別 / 月フィルタ。ephemeral（persist しない）。月は「直近2ヶ月」が初期選択。
+  const [filter, setFilter] = useState<SessionFilterState>(DEFAULT_SESSION_FILTER);
   const options = useMemo(() => deriveFilterOptions(visibleSessions), [visibleSessions]);
+  // フィルタ UI は devMode 限定なので、絞り込みも devMode のときだけ適用する
+  // （初期選択の「直近2ヶ月」が、解除 UI を持たない一般参加者に効かないようにする）。
   const filteredSessions = useMemo(
-    () => applySessionFilters(visibleSessions, filter),
-    [visibleSessions, filter],
+    () => (devMode ? applySessionFilters(visibleSessions, filter, now) : visibleSessions),
+    [visibleSessions, filter, devMode, now],
   );
-  const clearFilter = () => setFilter({ gym: null, practiceType: null, month: null });
+  // 絞り込み後の実績サマリ（開催を1データ点とした試合数中央値）
+  const filteredSummary = useMemo(
+    () => summarizeSessionMedians(filteredSessions),
+    [filteredSessions],
+  );
+  const clearFilter = () => setFilter(CLEARED_SESSION_FILTER);
 
   // ローディング
   if (loading) {
@@ -410,41 +419,53 @@ export function SessionSelectPage() {
           </div>
         )}
 
-        {/* フィルタバー（体育館 / 種別 / 月）— 開発モード限定。選択肢が2未満の軸は出さない */}
-        {devMode &&
-          visibleSessions.length > 0 &&
-          (options.gyms.length >= 2 || options.practiceTypes.length >= 2 || options.months.length >= 2) && (
-            <div className="card p-3">
-              <div className="flex gap-2">
-                {options.gyms.length >= 2 && (
-                  <FilterSelect
-                    axisLabel="体育館"
-                    options={options.gyms.map((g) => ({ value: g, display: g }))}
-                    selected={filter.gym}
-                    onSelect={(value) => setFilter((prev) => ({ ...prev, gym: value }))}
-                  />
-                )}
-                {options.practiceTypes.length >= 2 && (
-                  <FilterSelect
-                    axisLabel="種別"
-                    options={options.practiceTypes.map((t) => ({ value: t, display: t }))}
-                    selected={filter.practiceType}
-                    onSelect={(value) => setFilter((prev) => ({ ...prev, practiceType: value }))}
-                  />
-                )}
-                {options.months.length >= 2 && (
-                  <FilterSelect
-                    axisLabel="月"
-                    options={options.months.map((m) => ({ value: String(m), display: formatMonthLabel(m) }))}
-                    selected={filter.month !== null ? String(filter.month) : null}
-                    onSelect={(value) =>
-                      setFilter((prev) => ({ ...prev, month: value === null ? null : Number(value) }))
-                    }
-                  />
-                )}
-              </div>
+        {/* フィルタバー（体育館 / 種別 / 月）— 開発モード限定。
+            体育館 / 種別は選択肢が2未満の軸を出さない。月は「直近60日」が初期選択で、
+            解除できないと困るため常に描画する。 */}
+        {devMode && visibleSessions.length > 0 && (
+          <div className="card p-3">
+            <div className="flex gap-2">
+              {options.gyms.length >= 2 && (
+                <FilterSelect
+                  axisLabel="体育館"
+                  options={options.gyms.map((g) => ({ value: g, display: g }))}
+                  selected={filter.gym}
+                  onSelect={(value) => setFilter((prev) => ({ ...prev, gym: value }))}
+                />
+              )}
+              {options.practiceTypes.length >= 2 && (
+                <FilterSelect
+                  axisLabel="種別"
+                  options={options.practiceTypes.map((t) => ({ value: t, display: t }))}
+                  selected={filter.practiceType}
+                  onSelect={(value) => setFilter((prev) => ({ ...prev, practiceType: value }))}
+                />
+              )}
+              <FilterSelect
+                axisLabel="月"
+                options={[
+                  { value: RECENT_MONTHS, display: RECENT_MONTHS_LABEL },
+                  ...options.months.map((m) => ({ value: String(m), display: formatMonthLabel(m) })),
+                ]}
+                selected={filter.month !== null ? String(filter.month) : null}
+                onSelect={(value) =>
+                  setFilter((prev) => ({ ...prev, month: parseMonthFilterValue(value) }))
+                }
+              />
             </div>
-          )}
+
+            {/* 絞り込み結果のサマリ。中央値は「開催を1データ点」とした中央値
+                （各開催の試合数中央値の中央値）。試合数ゼロの開催は母集団から除く */}
+            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+              <span>{filteredSessions.length}開催</span>
+              {typeof filteredSummary.median === 'number' && (
+                <span>
+                  中央 {filteredSummary.median}（実績 {filteredSummary.sessionCount}開催）
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* セッション一覧 */}
         {visibleSessions.length === 0 ? (
