@@ -283,6 +283,23 @@ describe('buildNextMatchCallMessage', () => {
     const result = buildNextMatchCallMessage(null, ['太郎', '花子', '次郎'], '花子');
     expect(result.speech).toBe('花子さん、太郎さん、次郎さん。コート付近で試合終了をお待ちください');
   });
+
+  it('「外部」だけの名前は除去後に空文字になり読み上げ対象から外れる', () => {
+    const result = buildNextMatchCallMessage(3, ['太郎', '外部']);
+    expect(result.speech).toBe('太郎さん。3コート付近で試合終了をお待ちください');
+  });
+
+  it('「外部」付きの selfName でも sanitize 後の比較で正しく先頭寄せされる', () => {
+    const result = buildNextMatchCallMessage(3, ['太郎', 'たろう', '花子'], '外部たろう');
+    expect(result.speech).toBe('たろうさん、太郎さん、花子さん。3コート付近で試合終了をお待ちください');
+  });
+
+  it('speech からは「外部」が消える一方、body / toast には残る（読み上げ専用の加工であることの確認）', () => {
+    const result = buildNextMatchCallMessage(3, ['外部たろう']);
+    expect(result.speech).toBe('たろうさん。3コート付近で試合終了をお待ちください');
+    expect(result.body).toBe('3コート付近で試合終了をお待ちください\n外部たろうさん');
+    expect(result.toast).toBe('3コート付近で試合終了をお待ちください（外部たろうさん）');
+  });
 });
 
 describe('sanitizeNameForSpeech', () => {
@@ -305,5 +322,21 @@ describe('sanitizeNameForSpeech', () => {
 
   it('記号のみの名前は空文字になる', () => {
     expect(sanitizeNameForSpeech('★★')).toBe('');
+  });
+
+  it('先頭の「外部」を除去する', () => {
+    expect(sanitizeNameForSpeech('外部たろう')).toBe('たろう');
+  });
+
+  it('「外部 ゆうき」（半角空白入り）は空白除去後に接頭辞も除去される', () => {
+    expect(sanitizeNameForSpeech('外部 ゆうき')).toBe('ゆうき');
+  });
+
+  it('「【外部】はなこ」は記号除去 → 接頭辞除去の順で「はなこ」になる', () => {
+    expect(sanitizeNameForSpeech('【外部】はなこ')).toBe('はなこ');
+  });
+
+  it('名前の途中や末尾にある「外部」は除去されない', () => {
+    expect(sanitizeNameForSpeech('たろう外部')).toBe('たろう外部');
   });
 });
