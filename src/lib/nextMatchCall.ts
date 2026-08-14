@@ -84,20 +84,62 @@ export function callBasisCourtId(courts: Court[], now: number): number | null {
   return best.id;
 }
 
-/** 呼び出し通知の本文。notification は改行あり、toast は1行 */
+/**
+ * 読み上げ（TTS）用に名前から記号・絵文字・空白を除去する。
+ * 残すのはひらがな・カタカナ・漢字・英数字・長音符（ー）・々のみ。
+ * 表示用の body / toast には影響させない（読み上げ専用の加工）。
+ * 絵文字はサロゲートペアだが、否定文字クラスなのでペアの各コードユニットが
+ * 個別に除去対象となり結果として消える（u フラグは不要）。
+ */
+export function sanitizeNameForSpeech(name: string): string {
+  return name.replace(/[^ぁ-ゟ゠-ヿ一-鿿々ーa-zA-Z0-9]/g, '');
+}
+
+/**
+ * 呼び出し通知の本文。notification は改行あり、toast は1行。
+ *
+ * `selfName` は読み上げ（speech）専用の引数。カクテルパーティ効果（雑音下でも
+ * 自分の名前だけは注意を引く）を活かすため、speech だけは「名前 → 用件」の
+ * 順に反転し、かつ自分の名前を先頭に寄せる。体育館の喧騒で聞き始めが遅れたり
+ * 頭の用件部分を聞き流したりしても、最初の一言で自分宛だと気づけるようにする。
+ * body / toast は表示なので聞き逃しの心配が無く、順序は変更しない。
+ */
 export function buildNextMatchCallMessage(
   courtNumber: number,
   names: string[],
-): { body: string; toast: string } {
+  selfName?: string,
+): { body: string; toast: string; speech: string } {
   const namesText = names.map((n) => `${n}さん`).join('・');
   const headline = `${courtNumber}コート付近で試合終了をお待ちください`;
 
+  // speech だけ区切りが「、」なのは TTS 前提のため。「・」は無音のまま
+  // 素通りされることがあり、読点の方が自然な間が入る。括弧も使わない
+  // （TTS が不自然に読む/長く止まるため）。
+  let speechNames = names.map((n) => sanitizeNameForSpeech(n)).filter((n) => n !== '');
+  if (selfName !== undefined) {
+    const sanitizedSelf = sanitizeNameForSpeech(selfName);
+    const selfIndex = speechNames.indexOf(sanitizedSelf);
+    if (sanitizedSelf !== '' && selfIndex > 0) {
+      speechNames = [
+        sanitizedSelf,
+        ...speechNames.slice(0, selfIndex),
+        ...speechNames.slice(selfIndex + 1),
+      ];
+    }
+  }
+  // 「名前 → 用件」に反転。名前が1件も残らなければ見出しのみ（現状どおり）。
+  const speech =
+    speechNames.length === 0
+      ? headline
+      : `${speechNames.map((n) => `${n}さん`).join('、')}。${headline}`;
+
   if (names.length === 0) {
-    return { body: headline, toast: headline };
+    return { body: headline, toast: headline, speech };
   }
 
   return {
     body: `${headline}\n${namesText}`,
     toast: `${headline}（${namesText}）`,
+    speech,
   };
 }

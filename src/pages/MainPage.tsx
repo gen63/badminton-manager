@@ -34,12 +34,18 @@ import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH
 import { withInProgressGames } from '../lib/effectiveGames';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 import { notifyNextMatchSoon } from '../lib/notifications';
-import { unlockMatchCallAudio, playMatchCallChime, vibrateMatchCall, fireMatchCallAlert, installMatchCallAudioUnlock } from '../lib/matchCallAlert';
+import { unlockMatchCallAudio, playMatchCallChime, vibrateMatchCall, fireMatchCallAlert, installMatchCallAudioUnlock, speakMatchCall, SPEECH_DELAY_MS } from '../lib/matchCallAlert';
 import { useNoticeStore } from '../stores/noticeStore';
 
 import { BottomNav } from '../components/BottomNav';
 
 const BUG_REPORT_TEMPLATE = '発生画面：\n期待値：\n実際：';
+
+// ベルのテスト再生用サンプル。実際の呼び出しと同じ buildNextMatchCallMessage を
+// 通すことで、文言だけでなく名前の読み上げ品質（sanitizeNameForSpeech の挙動等）
+// まで確認できるようにする。文言のベタ書きはしない。
+const SPEECH_TEST_NAME = 'ゆーた';
+const SPEECH_TEST_COURT = 1;
 
 export function MainPage() {
   const navigate = useNavigate();
@@ -485,19 +491,25 @@ export function MainPage() {
         const names = predictedPlayers
           .filter((p) => nextMatchPrediction.certainIds.has(p.id))
           .map((p) => p.name);
-        const { body, toast: toastText } = buildNextMatchCallMessage(basisCourtId, names);
-        // トースト → OS通知 → 音・振動 の順で発火する。トーストを最初に出すことで
-        // 通知系（SW/Notification API・WebAudio）が失敗しても画面表示だけは必ず残る。
+        const selfName = myPlayerId !== null ? playerMap.get(myPlayerId)?.name : undefined;
+        const { body, toast: toastText, speech } = buildNextMatchCallMessage(
+          basisCourtId,
+          names,
+          selfName,
+        );
+        // トースト → OS通知 → 音・振動・読み上げ の順で発火する。トーストを最初に
+        // 出すことで通知系（SW/Notification API・WebAudio・speechSynthesis）が
+        // 失敗しても画面表示だけは必ず残る。
         useNoticeStore.getState().show(toastText, 'info', 8000);
         notifyNextMatchSoon(body);
-        fireMatchCallAlert();
+        fireMatchCallAlert(speech);
         calledForNextMatchRef.current = true;
       }
     };
     evaluate();
     const intervalId = setInterval(evaluate, 10_000);
     return () => clearInterval(intervalId);
-  }, [courts, nextMatchPrediction, myPlayerId, predictedPlayers]);
+  }, [courts, nextMatchPrediction, myPlayerId, predictedPlayers, playerMap]);
 
   // matchCallAlert のデフォルトは true（=呼び出し音 ON）だが、AudioContext は
   // ユーザー操作からしか生成できない。ベルボタンに一度も触れないユーザーが
@@ -1030,16 +1042,23 @@ export function MainPage() {
                 unlockMatchCallAudio();
                 const next = !matchCallAlert;
                 setMatchCallAlert(next);
-                // OFF→ON に切り替えたときだけ鳴らす・振動させる。動作確認とテスト再生を兼ねる。
-                // iOS では navigator.vibrate が未実装のため振動は no-op になる
-                // （vibrateMatchCall 内部で安全に処理される）。
+                // OFF→ON に切り替えたときだけ鳴らす・振動させる・読み上げる。
+                // 動作確認とテスト再生を兼ねる。iOS では navigator.vibrate が
+                // 未実装のため振動は no-op になる（vibrateMatchCall 内部で
+                // 安全に処理される）。読み上げは実際の呼び出し時と同じ間の
+                // 取り方にするため、チャイム・振動の直後に 400ms 遅らせる。
                 if (next) {
                   playMatchCallChime();
                   vibrateMatchCall();
+                  setTimeout(() => {
+                    speakMatchCall(
+                      buildNextMatchCallMessage(SPEECH_TEST_COURT, [SPEECH_TEST_NAME], SPEECH_TEST_NAME).speech,
+                    );
+                  }, SPEECH_DELAY_MS);
                 }
               }}
               className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors"
-              aria-label={matchCallAlert ? '呼び出し音・振動をオフにする' : '呼び出し音・振動をオンにする'}
+              aria-label={matchCallAlert ? '呼び出し通知をオフにする' : '呼び出し通知をオンにする'}
             >
               {matchCallAlert ? <Bell size={18} /> : <BellOff size={18} />}
             </button>

@@ -1,9 +1,10 @@
 /**
- * 呼び出し通知に付随する音・振動ユーティリティ。
+ * 呼び出し通知に付随する音・振動・読み上げユーティリティ。
  *
  * OS 通知（`notifications.ts`）とは独立に、アプリを開いている端末で確実に
- * 気づけるよう WebAudio のビープ音と `navigator.vibrate` を鳴らす。
- * オフラインでも動くよう音声ファイルは使わず WebAudio で生成する。
+ * 気づけるよう WebAudio のビープ音と `navigator.vibrate`、`speechSynthesis`
+ * による読み上げを鳴らす。オフラインでも動くよう音声ファイルは使わず
+ * WebAudio で生成する。
  */
 import { useSettingsStore } from '../stores/settingsStore';
 
@@ -97,6 +98,7 @@ export function installMatchCallAudioUnlock(): () => void {
     document.removeEventListener('pointerdown', handleFirstInteraction);
     document.removeEventListener('keydown', handleFirstInteraction);
     unlockMatchCallAudio();
+    primeSpeechSynthesis();
   };
 
   document.addEventListener('pointerdown', handleFirstInteraction, { once: true });
@@ -120,12 +122,119 @@ export function vibrateMatchCall(): void {
   }
 }
 
+/** チャイムと読み上げが重ならないようにする間隔（ms）。チャイムは 0.3 秒。 */
+export const SPEECH_DELAY_MS = 400;
+
 /**
- * 呼び出し通知の音・振動を発火する単一の入口。
- * 設定（`matchCallAlert`）が ON のときだけ実行する。
+ * 読み上げ中の画面タップでキャンセルするための `pointerdown` リスナー。
+ * `speakMatchCall()` 実行中のみ非 null。連続呼び出し時に前回分が残らないよう
+ * 発話開始のたびに前回のリスナーを解除してから新しく登録する。
  */
-export function fireMatchCallAlert(): void {
+let activeCancelOnTapListener: (() => void) | null = null;
+
+function removeCancelOnTapListener(): void {
+  if (!activeCancelOnTapListener) return;
+  document.removeEventListener('pointerdown', activeCancelOnTapListener);
+  activeCancelOnTapListener = null;
+}
+
+/**
+ * 読み上げ中の `speechSynthesis` を止める。リスナー解除もあわせて行う。
+ * `speakMatchCall()` の画面タップキャンセルと共通化するためエクスポートし、
+ * テストや将来の呼び出し元（他のキャンセル導線）からも使えるようにする。
+ * 未対応環境・失敗時は throw しない。
+ */
+export function cancelMatchCallSpeech(): void {
+  removeCancelOnTapListener();
+  if (!('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+  } catch (error) {
+    console.error('[matchCallAlert] cancelMatchCallSpeech failed:', error);
+  }
+}
+
+/**
+ * `speechSynthesis` で読み上げる。未対応環境・失敗時は黙って何もしない
+ * （throw しない）。発話前に `cancel()` して読み上げの積み残しを消す。
+ *
+ * 読み上げ中に画面のどこかをタップしたら即座に止められるよう、`speak()` の
+ * 呼び出しと同時（同期的に、同じタイミングで）に `document` へ `pointerdown`
+ * リスナーを登録する。`fireMatchCallAlert` / ベルのテスト再生はどちらも
+ * `speak()` 自体を `setTimeout` で 400ms 遅らせて呼んでいるため、読み上げが
+ * 実際に始まる時点では、きっかけとなった操作（ベルタップ等）の `pointerdown`
+ * は既に発生し終わっている。リスナー登録を `speak()` と同じタイミングに
+ * 揃えることで「ベルを押した瞬間に自分のタップでキャンセルされる」ことを防ぐ
+ * ——このタイミングがずれると自タップキャンセルが再発するため、ここで揃える。
+ *
+ * 読み上げが自然に終わったとき（`onend`）・エラー時（`onerror`）はリスナーを
+ * 解除する。リスナーが残り続けないことを保証するため、`{ once: true }` に
+ * 頼らず `onend`/`onerror`/キャンセル実行時のいずれの経路でも明示的に
+ * `removeEventListener` する。
+ */
+export function speakMatchCall(text: string): void {
+  if (!text) return;
+  if (!('speechSynthesis' in window)) return;
+
+  try {
+    // 前回の発話が残っていれば、まずそのリスナーを解除してから cancel する。
+    cancelMatchCallSpeech();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ja-JP';
+
+    const handleTapCancel = () => {
+      // cancelMatchCallSpeech 内でリスナー解除も行われる。
+      cancelMatchCallSpeech();
+    };
+    activeCancelOnTapListener = handleTapCancel;
+    document.addEventListener('pointerdown', handleTapCancel);
+
+    utterance.onend = () => {
+      removeCancelOnTapListener();
+    };
+    utterance.onerror = () => {
+      removeCancelOnTapListener();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  } catch (error) {
+    console.error('[matchCallAlert] speakMatchCall failed:', error);
+  }
+}
+
+/**
+ * iOS のユーザー操作要件を満たすため、ごく短い無音の発話を一度流して
+ * `speechSynthesis` をプライミングする。`unlockMatchCallAudio()` と同様、
+ * ユーザー操作ハンドラから呼ぶことを想定。冪等（複数回呼んでも安全）で、
+ * 失敗しても throw しない。
+ */
+export function primeSpeechSynthesis(): void {
+  if (!('speechSynthesis' in window)) return;
+
+  try {
+    const utterance = new SpeechSynthesisUtterance('');
+    utterance.volume = 0;
+    window.speechSynthesis.speak(utterance);
+  } catch (error) {
+    console.error('[matchCallAlert] primeSpeechSynthesis failed:', error);
+  }
+}
+
+/**
+ * 呼び出し通知の音・振動・読み上げを発火する単一の入口。
+ * 設定（`matchCallAlert`）が ON のときだけ実行する。
+ * `speechText` を渡すとチャイム・振動に続けて読み上げる。体育館の騒音下では
+ * ビープの方が通るため先に注意を引き、チャイム（0.3 秒）と重ならないよう
+ * `setTimeout` で 400ms 遅らせてから読み上げる。
+ */
+export function fireMatchCallAlert(speechText?: string): void {
   if (!useSettingsStore.getState().matchCallAlert) return;
   playMatchCallChime();
   vibrateMatchCall();
+  if (speechText) {
+    setTimeout(() => {
+      speakMatchCall(speechText);
+    }, SPEECH_DELAY_MS);
+  }
 }
