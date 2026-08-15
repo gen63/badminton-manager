@@ -27,7 +27,14 @@ import { UnrecordedMatchPrompt } from '../components/UnrecordedMatchPrompt';
 import { CourtTimer } from '../components/CourtTimer';
 import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { predictNextMatchPlayers } from '../lib/nextMatchPrediction';
-import { shouldCallNextMatch, callBasisCourtId, buildNextMatchCallMessage } from '../lib/nextMatchCall';
+import {
+  shouldCallNextMatch,
+  callBasisCourtId,
+  buildNextMatchCallMessage,
+  shouldAnnounceToAdmin,
+  buildAdminMatchCallMessage,
+  adminAnnounceKey,
+} from '../lib/nextMatchCall';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH_AUTO_END_MS, MATCH_AUTO_START_MS } from '../lib/gameOperations';
@@ -90,6 +97,7 @@ export function MainPage() {
   const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
   const matchCallAlert = useSettingsStore((s) => s.matchCallAlert);
   const setMatchCallAlert = useSettingsStore((s) => s.setMatchCallAlert);
+  const adminMatchCallAnnounce = useSettingsStore((s) => s.adminMatchCallAnnounce);
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
   // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
@@ -466,6 +474,10 @@ export function MainPage() {
   // MATCH_CALL_THRESHOLD_MS を超えたら 1 度だけ通知する。通知許可が無いメンバーにも
   // 見えるよう、Browser Notification に加えてグローバルトーストでも出す
   // （強制休憩通知と同じ構成）。閾値 4:30 に対して 10 秒間隔の評価で十分。
+  // 管理者向け「もうすぐ試合です」アナウンス（5:00、本人向けの30秒後）。
+  // 「移動したかどうか」は検知できないため、時間差で情報を渡すだけに徹する。
+  // 詳細: docs/plans/2026-08-15-admin-match-call-announce.md
+  const announcedAdminKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const evaluate = () => {
       if (myPlayerId !== null) {
@@ -507,11 +519,46 @@ export function MainPage() {
         fireMatchCallAlert(speech);
         calledForNextMatchRef.current = true;
       }
+
+      const shouldAnnounce = shouldAnnounceToAdmin({
+        courts,
+        certainIds: nextMatchPrediction.certainIds,
+        myPlayerId,
+        now: Date.now(),
+        isAdmin: isAdmin(),
+        announceEnabled: adminMatchCallAnnounce,
+        alreadyAnnouncedKey: announcedAdminKeyRef.current,
+      });
+      if (shouldAnnounce) {
+        const basisCourtId = callBasisCourtId(courts, Date.now());
+        const names = predictedPlayers
+          .filter((p) => nextMatchPrediction.certainIds.has(p.id))
+          .map((p) => p.name);
+        // 運用コートが1面のみのときは「1コート」が冗長なので番号を出さない
+        const courtNumberForMessage = courts.length <= 1 ? null : basisCourtId;
+        const { toast: adminToastText, speech: adminSpeech } = buildAdminMatchCallMessage(
+          courtNumberForMessage,
+          names,
+        );
+        // 管理者向けはトースト＋音・振動・読み上げのみ。OS 通知は出さない
+        // （管理者はアプリを開いて進行を見ている前提のため）。
+        useNoticeStore.getState().show(adminToastText, 'info', 8000);
+        fireMatchCallAlert(adminSpeech);
+        announcedAdminKeyRef.current = adminAnnounceKey(courts, Date.now());
+      }
     };
     evaluate();
     const intervalId = setInterval(evaluate, 10_000);
     return () => clearInterval(intervalId);
-  }, [courts, nextMatchPrediction, myPlayerId, predictedPlayers, playerMap]);
+  }, [
+    courts,
+    nextMatchPrediction,
+    myPlayerId,
+    predictedPlayers,
+    playerMap,
+    isAdmin,
+    adminMatchCallAnnounce,
+  ]);
 
   // matchCallAlert のデフォルトは true（=呼び出し音 ON）だが、AudioContext は
   // ユーザー操作からしか生成できない。ベルボタンに一度も触れないユーザーが

@@ -2,11 +2,19 @@ import { describe, it, expect } from 'vitest';
 import {
   shouldCallNextMatch,
   maxPlayingElapsedMs,
+  maxPlayingCourt,
   callBasisCourtId,
   buildNextMatchCallMessage,
   sanitizeNameForSpeech,
+  shouldAnnounceToAdmin,
+  adminAnnounceKey,
+  buildAdminMatchCallMessage,
 } from './nextMatchCall';
-import { MATCH_CALL_THRESHOLD_MS, MATCH_CALL_COOLDOWN_MS } from './gameOperations';
+import {
+  MATCH_CALL_THRESHOLD_MS,
+  MATCH_CALL_COOLDOWN_MS,
+  MATCH_CALL_ADMIN_THRESHOLD_MS,
+} from './gameOperations';
 import type { Court } from '../types/court';
 import { EMPTY_COURT_STATE } from '../types/court';
 
@@ -52,6 +60,25 @@ describe('maxPlayingElapsedMs', () => {
       emptyCourt(3),
     ];
     expect(maxPlayingElapsedMs(courts, NOW)).toBe(7 * 60 * 1000);
+  });
+});
+
+describe('maxPlayingCourt', () => {
+  it('プレイ中コートが無ければ null', () => {
+    expect(maxPlayingCourt([emptyCourt(1)], NOW)).toBeNull();
+  });
+
+  it('複数のプレイ中コートのうち経過最大のコートを返す', () => {
+    const c1 = playingCourt(1, NOW - 3 * 60 * 1000);
+    const c2 = playingCourt(2, NOW - 7 * 60 * 1000);
+    const courts = [c1, c2, emptyCourt(3)];
+    expect(maxPlayingCourt(courts, NOW)).toEqual(c2);
+  });
+
+  it('経過時間が同着なら ID の小さい方を返す', () => {
+    const c2 = playingCourt(2, NOW - 5 * 60 * 1000);
+    const c1 = playingCourt(1, NOW - 5 * 60 * 1000);
+    expect(maxPlayingCourt([c2, c1], NOW)).toEqual(c1);
   });
 });
 
@@ -338,5 +365,121 @@ describe('sanitizeNameForSpeech', () => {
 
   it('名前の途中や末尾にある「外部」は除去されない', () => {
     expect(sanitizeNameForSpeech('たろう外部')).toBe('たろう外部');
+  });
+});
+
+describe('adminAnnounceKey', () => {
+  it('プレイ中コートが無ければ null', () => {
+    expect(adminAnnounceKey([emptyCourt(1)], NOW)).toBeNull();
+  });
+
+  it('経過最大のプレイ中コートの id と startedAt からキーを組み立てる', () => {
+    const startedAt = NOW - 7 * 60 * 1000;
+    const courts = [playingCourt(1, NOW - 3 * 60 * 1000), playingCourt(2, startedAt)];
+    expect(adminAnnounceKey(courts, NOW)).toBe(`2:${startedAt}`);
+  });
+});
+
+describe('shouldAnnounceToAdmin', () => {
+  const baseArgs = {
+    courts: [playingCourt(1, NOW - MATCH_CALL_ADMIN_THRESHOLD_MS)],
+    certainIds: new Set(['p5']),
+    myPlayerId: 'me',
+    now: NOW,
+    isAdmin: true,
+    announceEnabled: true,
+    alreadyAnnouncedKey: null,
+  };
+
+  it('5分以上・条件を満たせば true', () => {
+    expect(shouldAnnounceToAdmin(baseArgs)).toBe(true);
+  });
+
+  it('非管理者なら false', () => {
+    const args = { ...baseArgs, isAdmin: false };
+    expect(shouldAnnounceToAdmin(args)).toBe(false);
+  });
+
+  it('端末設定 OFF なら false', () => {
+    const args = { ...baseArgs, announceEnabled: false };
+    expect(shouldAnnounceToAdmin(args)).toBe(false);
+  });
+
+  it('5分未満なら false', () => {
+    const args = {
+      ...baseArgs,
+      courts: [playingCourt(1, NOW - (MATCH_CALL_ADMIN_THRESHOLD_MS - 1))],
+    };
+    expect(shouldAnnounceToAdmin(args)).toBe(false);
+  });
+
+  it('自分が対象メンバーに含まれていれば false', () => {
+    const args = { ...baseArgs, certainIds: new Set(['me', 'p5']) };
+    expect(shouldAnnounceToAdmin(args)).toBe(false);
+  });
+
+  it('対象メンバーが全員どこかのコートに乗っていれば false', () => {
+    const args = {
+      ...baseArgs,
+      certainIds: new Set(['p1']),
+      courts: [playingCourt(1, NOW - MATCH_CALL_ADMIN_THRESHOLD_MS, ['p1', 'p2'], ['p3', 'p4'])],
+    };
+    expect(shouldAnnounceToAdmin(args)).toBe(false);
+  });
+
+  it('対象メンバーのうち1人でも未着席なら true', () => {
+    const args = {
+      ...baseArgs,
+      certainIds: new Set(['p1', 'p5']),
+      courts: [playingCourt(1, NOW - MATCH_CALL_ADMIN_THRESHOLD_MS, ['p1', 'p2'], ['p3', 'p4'])],
+    };
+    expect(shouldAnnounceToAdmin(args)).toBe(true);
+  });
+
+  it('対象メンバーが0人なら false', () => {
+    const args = { ...baseArgs, certainIds: new Set<string>() };
+    expect(shouldAnnounceToAdmin(args)).toBe(false);
+  });
+
+  it('同じキーで既にアナウンス済みなら false', () => {
+    const key = adminAnnounceKey(baseArgs.courts, NOW);
+    const args = { ...baseArgs, alreadyAnnouncedKey: key };
+    expect(shouldAnnounceToAdmin(args)).toBe(false);
+  });
+
+  it('前回と異なるキーなら true（次の試合サイクルで解禁される）', () => {
+    const args = { ...baseArgs, alreadyAnnouncedKey: '1:0' };
+    expect(shouldAnnounceToAdmin(args)).toBe(true);
+  });
+
+  it('myPlayerId が null でも対象メンバーがいれば true', () => {
+    const args = { ...baseArgs, myPlayerId: null };
+    expect(shouldAnnounceToAdmin(args)).toBe(true);
+  });
+});
+
+describe('buildAdminMatchCallMessage', () => {
+  it('コート番号ありのとき toast・speech とも指定の文言になる', () => {
+    const result = buildAdminMatchCallMessage(3, ['太郎', '花子']);
+    expect(result.toast).toBe('太郎さん・花子さんがもうすぐ3コートで試合です');
+    expect(result.speech).toBe('太郎さん、花子さん、もうすぐ3コートで試合です');
+  });
+
+  it('コート番号なしのとき toast・speech とも指定の文言になる', () => {
+    const result = buildAdminMatchCallMessage(null, ['太郎', '花子']);
+    expect(result.toast).toBe('太郎さん・花子さんがもうすぐ試合です');
+    expect(result.speech).toBe('太郎さん、花子さん、もうすぐ試合です');
+  });
+
+  it('speech 側だけ記号・絵文字が除去される（toast は無加工）', () => {
+    const result = buildAdminMatchCallMessage(3, ['ゆうき★', '太郎🏸']);
+    expect(result.speech).toBe('ゆうきさん、太郎さん、もうすぐ3コートで試合です');
+    expect(result.toast).toBe('ゆうき★さん・太郎🏸さんがもうすぐ3コートで試合です');
+  });
+
+  it('speech 側だけ「外部」接頭辞が除去される（toast は無加工）', () => {
+    const result = buildAdminMatchCallMessage(3, ['外部たろう', '花子']);
+    expect(result.speech).toBe('たろうさん、花子さん、もうすぐ3コートで試合です');
+    expect(result.toast).toBe('外部たろうさん・花子さんがもうすぐ3コートで試合です');
   });
 });

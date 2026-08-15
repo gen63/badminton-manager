@@ -9,17 +9,36 @@
  */
 
 import type { Court } from '../types/court';
-import { MATCH_CALL_THRESHOLD_MS, MATCH_CALL_COOLDOWN_MS } from './gameOperations';
+import {
+  MATCH_CALL_THRESHOLD_MS,
+  MATCH_CALL_COOLDOWN_MS,
+  MATCH_CALL_ADMIN_THRESHOLD_MS,
+} from './gameOperations';
 
-/** プレイ中コートの経過時間の最大値（ms）。プレイ中のコートが無ければ 0 */
-export function maxPlayingElapsedMs(courts: Court[], now: number): number {
-  let max = 0;
+/**
+ * プレイ中コート（`isPlaying && startedAt > 0`）のうち経過時間が最大のコート。
+ * 同着なら `id` の小さい方。プレイ中コートが無ければ null。
+ * `maxPlayingElapsedMs` / `callBasisCourtId` / `adminAnnounceKey` が共通してこの
+ * 「経過最大のコートを選ぶ」ロジックに依存する。
+ */
+export function maxPlayingCourt(courts: Court[], now: number): Court | null {
+  let best: Court | null = null;
+  let bestElapsed = -1;
   for (const c of courts) {
     if (!c.isPlaying || c.startedAt <= 0) continue;
     const elapsed = now - c.startedAt;
-    if (elapsed > max) max = elapsed;
+    if (best === null || elapsed > bestElapsed || (elapsed === bestElapsed && c.id < best.id)) {
+      best = c;
+      bestElapsed = elapsed;
+    }
   }
-  return max;
+  return best;
+}
+
+/** プレイ中コートの経過時間の最大値（ms）。プレイ中のコートが無ければ 0 */
+export function maxPlayingElapsedMs(courts: Court[], now: number): number {
+  const court = maxPlayingCourt(courts, now);
+  return court === null ? 0 : now - court.startedAt;
 }
 
 export interface NextMatchCallArgs {
@@ -69,19 +88,66 @@ export function callBasisCourtId(courts: Court[], now: number): number | null {
     return emptyCourts.reduce((min, c) => (c.id < min.id ? c : min)).id;
   }
 
-  const playingCourts = courts.filter((c) => c.isPlaying && c.startedAt > 0);
-  if (playingCourts.length === 0) return null;
+  const best = maxPlayingCourt(courts, now);
+  return best === null ? null : best.id;
+}
 
-  let best: Court = playingCourts[0];
-  let bestElapsed = now - best.startedAt;
-  for (const c of playingCourts.slice(1)) {
-    const elapsed = now - c.startedAt;
-    if (elapsed > bestElapsed || (elapsed === bestElapsed && c.id < best.id)) {
-      best = c;
-      bestElapsed = elapsed;
-    }
-  }
-  return best.id;
+/**
+ * 管理者向けアナウンスの重複防止キー。プレイ中コートのうち経過時間が最大の
+ * コートの `id` と `startedAt` を組にした文字列。このコートが閾値判定の基準
+ * そのものなので、その試合が終わって次が始まれば `startedAt` が変わり、
+ * 自然に次のサイクルのアナウンスが解禁される。プレイ中コートが無ければ null。
+ * `shouldAnnounceToAdmin` の内部と呼び出し側（MainPage）の両方がこの関数で
+ * キーを組み立てる必要がある（別々に組み立てるとずれるため）。
+ */
+export function adminAnnounceKey(courts: Court[], now: number): string | null {
+  const court = maxPlayingCourt(courts, now);
+  return court === null ? null : `${court.id}:${court.startedAt}`;
+}
+
+export interface ShouldAnnounceToAdminArgs {
+  courts: Court[];
+  /** 配置予測の「ほぼ確定」メンバー（候補 likelyIds は対象外） */
+  certainIds: Set<string>;
+  /** 自分の Player ID。特定できないときは null */
+  myPlayerId: string | null;
+  now: number;
+  /** isAdmin()（作成者＋管理者、すなわち「管理者以上」） */
+  isAdmin: boolean;
+  /** 端末設定 adminMatchCallAnnounce */
+  announceEnabled: boolean;
+  /** 前回アナウンス時のキー（`adminAnnounceKey` で組み立てたもの）。未アナウンスなら null */
+  alreadyAnnouncedKey: string | null;
+}
+
+/**
+ * 管理者向け「もうすぐ試合です」アナウンスを出すべきか判定する。
+ * 詳細: docs/plans/2026-08-15-admin-match-call-announce.md「## 発火条件」
+ */
+export function shouldAnnounceToAdmin(args: ShouldAnnounceToAdminArgs): boolean {
+  const { courts, certainIds, myPlayerId, now, isAdmin, announceEnabled, alreadyAnnouncedKey } =
+    args;
+
+  if (!isAdmin) return false;
+  if (!announceEnabled) return false;
+
+  const key = adminAnnounceKey(courts, now);
+  if (key === null || key === alreadyAnnouncedKey) return false;
+
+  if (certainIds.size === 0) return false;
+  // 自分が対象に含まれる場合は抑制する。管理者自身が呼ばれているなら 4:30 の
+  // 本人向け通知を既に受け取っており、30秒後に管理者向けも鳴ると同じ端末が
+  // 1サイクルに2回鳴って煩わしい。
+  if (myPlayerId !== null && certainIds.has(myPlayerId)) return false;
+
+  // 対象メンバー全員が既にどのコートかに乗っていれば、促す相手がいないので
+  // アナウンスする意味が無い。1人以上が未着席のときだけ発火する。
+  const allOnCourt = Array.from(certainIds).every((id) =>
+    courts.some((c) => c.teamA.includes(id) || c.teamB.includes(id)),
+  );
+  if (allOnCourt) return false;
+
+  return maxPlayingElapsedMs(courts, now) >= MATCH_CALL_ADMIN_THRESHOLD_MS;
 }
 
 /** 読み上げ時に無視する名前の接頭辞（ゲスト参加者を表す運用上のラベル）。 */
@@ -164,6 +230,44 @@ export function buildNextMatchCallMessage(
   return {
     body: `${headline}\n${namesText}`,
     toast: `${headline}（${namesText}）`,
+    speech,
+  };
+}
+
+/**
+ * 管理者向け「もうすぐ試合です」アナウンスの文言。
+ *
+ * 本人向け（`buildNextMatchCallMessage`）と違い OS 通知は出さないため body は無く、
+ * `{ toast, speech }` のみを返す。`shouldAnnounceToAdmin` の条件5により自分は
+ * 対象メンバーに含まれないため、`selfName` の先頭寄せは行わない。
+ *
+ * speech 側の名前だけ `sanitizeNameForSpeech` を通し、除去後に空文字になった
+ * 名前は読み上げ対象から外す。toast は表示用なので無加工。
+ *
+ * `names` が空になるのは呼び出し側が呼ばない前提（`shouldAnnounceToAdmin` が
+ * 対象0人なら false を返す）。ここでも `buildNextMatchCallMessage` と同様、
+ * 名前が無ければ見出しのみの自然な文にする。
+ */
+export function buildAdminMatchCallMessage(
+  courtNumber: number | null,
+  names: string[],
+): { toast: string; speech: string } {
+  const headline =
+    courtNumber === null ? 'もうすぐ試合です' : `もうすぐ${courtNumber}コートで試合です`;
+
+  if (names.length === 0) {
+    return { toast: headline, speech: headline };
+  }
+
+  const namesText = names.map((n) => `${n}さん`).join('・');
+  const speechNames = names.map((n) => sanitizeNameForSpeech(n)).filter((n) => n !== '');
+  const speech =
+    speechNames.length === 0
+      ? headline
+      : `${speechNames.map((n) => `${n}さん`).join('、')}、${headline}`;
+
+  return {
+    toast: `${namesText}が${headline}`,
     speech,
   };
 }

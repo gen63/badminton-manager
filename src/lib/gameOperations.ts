@@ -41,6 +41,14 @@ export const MATCH_CALL_THRESHOLD_MS = 4.5 * 60 * 1000;
  */
 export const MATCH_CALL_COOLDOWN_MS = 90 * 1000;
 
+/**
+ * 管理者向け「もうすぐ試合です」アナウンスを出す試合経過時間の閾値（5分）。
+ * 本人向けの4:30から30秒遅らせて管理者に知らせる。本人が気づかず動いていない
+ * ケースを想定し、管理者が周囲を見渡して促せるようにするための余裕時間。
+ * 詳細: docs/plans/2026-08-15-admin-match-call-announce.md
+ */
+export const MATCH_CALL_ADMIN_THRESHOLD_MS = 5 * 60 * 1000;
+
 /** ゲームモードに応じた1コートあたりの人数 */
 export function getPlayersPerCourt(gameMode: 'singles' | 'doubles'): number {
   return gameMode === 'singles' ? 2 : 4;
