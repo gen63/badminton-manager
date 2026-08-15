@@ -26,6 +26,12 @@ interface SettingsState {
   /** 呼び出し通知時に音・振動を鳴らすか。端末ローカル設定（Firestore 同期しない）。 */
   matchCallAlert: boolean;
   setMatchCallAlert: (value: boolean) => void;
+  /**
+   * 管理者向け「もうすぐ試合です」アナウンスを鳴らすか。端末ローカル設定
+   * （Firestore 同期しない）。管理者が複数いる場合に各自で切れる必要がある。
+   */
+  adminMatchCallAnnounce: boolean;
+  setAdminMatchCallAnnounce: (value: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -59,6 +65,8 @@ export const useSettingsStore = create<SettingsState>()(
       setReservationBlockThreshold: (value) => set({ reservationBlockThreshold: value }),
       matchCallAlert: true,
       setMatchCallAlert: (value) => set({ matchCallAlert: value }),
+      adminMatchCallAnnounce: true,
+      setAdminMatchCallAnnounce: (value) => set({ adminMatchCallAnnounce: value }),
     }),
     {
       name: 'badminton-settings',
@@ -115,6 +123,7 @@ export const useSettingsStore = create<SettingsState>()(
         gasWebAppUrl: state.gasWebAppUrl,
         accountingWebAppUrl: state.accountingWebAppUrl,
         matchCallAlert: state.matchCallAlert,
+        adminMatchCallAnnounce: state.adminMatchCallAnnounce,
       }),
       onRehydrateStorage: () => (state) => {
         // 旧バージョンで保存された localStorage から復元したとき、

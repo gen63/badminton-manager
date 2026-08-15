@@ -13,7 +13,7 @@ import { clearAppBadge } from '../lib/badge';
 import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2 } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -40,6 +40,8 @@ export function SettingsPage() {
   const practiceType = useSettingsStore((s) => s.practiceType);
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
   const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
+  const adminMatchCallAnnounce = useSettingsStore((s) => s.adminMatchCallAnnounce);
+  const setAdminMatchCallAnnounce = useSettingsStore((s) => s.setAdminMatchCallAnnounce);
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
   const writer = useSessionWriterWithToast(toast);
@@ -436,6 +438,40 @@ export function SettingsPage() {
               </p>
             </div>
           </div>
+        </div>
+
+        {/* 呼び出しアナウンス（管理者） */}
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+            <span className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center">
+              <Volume2 size={14} className="text-indigo-600" />
+            </span>
+            呼び出しアナウンス
+            <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">管理者</span>
+          </h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setAdminMatchCallAnnounce(true)}
+              className={`flex-1 select-button text-xs px-2 ${
+                adminMatchCallAnnounce ? 'select-button-active' : 'select-button-inactive'
+              }`}
+            >
+              {adminMatchCallAnnounce && <span className="mr-1">✓</span>}
+              ON
+            </button>
+            <button
+              onClick={() => setAdminMatchCallAnnounce(false)}
+              className={`flex-1 select-button text-xs px-2 ${
+                !adminMatchCallAnnounce ? 'select-button-active' : 'select-button-inactive'
+              }`}
+            >
+              {!adminMatchCallAnnounce && <span className="mr-1">✓</span>}
+              OFF
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            この端末のみの設定です。本人への呼び出しの30秒後に、対象者を読み上げます。
+          </p>
         </div>
 
         {/* 管理者管理（作成者のみ） */}
