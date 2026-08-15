@@ -23,6 +23,8 @@ import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
 import { BottomNav } from '../components/BottomNav';
+import { OrphanPlayerAssignModal, type AssignScope } from '../components/OrphanPlayerAssignModal';
+import { countOrphanMatches } from '../services/sessionMutations';
 
 import type { Match } from '../types/match';
 
@@ -38,15 +40,35 @@ function TeamNames({
   playerIds,
   getPlayerName,
   highlightName,
+  isOrphanId,
+  onTapOrphan,
 }: {
   playerIds: string[];
   getPlayerName: (id: string) => string;
   highlightName: string | null;
+  /** 名簿から消えたメンバーの ID（空スロットの '' は含まない） */
+  isOrphanId: (id: string) => boolean;
+  /** 修復権限があるときのみ渡される。未設定をタップして割り当て直す */
+  onTapOrphan?: (orphanId: string) => void;
 }) {
   return (
     <>
       {playerIds.map((id, i) => {
         const isHighlighted = getPlayerName(id) === highlightName;
+        // 消えたメンバーの「未設定」だけタップで修復できる。空スロット（3人試合）は対象外
+        if (onTapOrphan && isOrphanId(id)) {
+          return (
+            <button
+              key={`${id}-${i}`}
+              type="button"
+              onClick={() => onTapOrphan(id)}
+              className="min-w-0 break-words underline decoration-dotted underline-offset-2 text-amber-700 hover:text-amber-800 active:scale-95 transition-all duration-150"
+              title="誰だったか割り当てて修復する"
+            >
+              {getPlayerName(id)}
+            </button>
+          );
+        }
         return (
           <span
             key={`${id}-${i}`}
@@ -70,6 +92,8 @@ function MatchCard({
   canDelete,
   onShortMatchWarning,
   highlightName,
+  isOrphanId,
+  onAssignOrphan,
 }: {
   match: Match;
   matchNumber: number;
@@ -80,6 +104,8 @@ function MatchCard({
   canDelete: boolean;
   onShortMatchWarning: () => void;
   highlightName: string | null;
+  isOrphanId: (id: string) => boolean;
+  onAssignOrphan?: (orphanId: string, match: Match, matchNumber: number) => void;
 }) {
   const durationMs = match.finishedAt - match.startedAt;
   const duration = Math.round(durationMs / 60000);
@@ -136,11 +162,23 @@ function MatchCard({
             勝者が上段（太字）、敗者が下段（VS バッジ付き・淡色）。
           */}
           <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight font-bold text-foreground">
-            <TeamNames playerIds={leftIds} getPlayerName={getPlayerName} highlightName={highlightName} />
+            <TeamNames
+              playerIds={leftIds}
+              getPlayerName={getPlayerName}
+              highlightName={highlightName}
+              isOrphanId={isOrphanId}
+              onTapOrphan={onAssignOrphan && ((id) => onAssignOrphan(id, match, matchNumber))}
+            />
           </div>
           <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight text-muted-foreground">
             <span className="font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
-            <TeamNames playerIds={rightIds} getPlayerName={getPlayerName} highlightName={highlightName} />
+            <TeamNames
+              playerIds={rightIds}
+              getPlayerName={getPlayerName}
+              highlightName={highlightName}
+              isOrphanId={isOrphanId}
+              onTapOrphan={onAssignOrphan && ((id) => onAssignOrphan(id, match, matchNumber))}
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground leading-tight">
@@ -198,6 +236,8 @@ function MatchList({
   setScoredCollapsed,
   onShortMatchWarning,
   highlightName,
+  isOrphanId,
+  onAssignOrphan,
 }: {
   unscoredMatches: { match: Match; matchNumber: number }[];
   scoredMatches: { match: Match; matchNumber: number }[];
@@ -212,6 +252,8 @@ function MatchList({
   setScoredCollapsed: (v: boolean) => void;
   onShortMatchWarning: () => void;
   highlightName: string | null;
+  isOrphanId: (id: string) => boolean;
+  onAssignOrphan?: (orphanId: string, match: Match, matchNumber: number) => void;
 }) {
   return (
     <div className="space-y-2">
@@ -241,6 +283,8 @@ function MatchList({
               canDelete={canDelete}
               onShortMatchWarning={onShortMatchWarning}
               highlightName={highlightName}
+              isOrphanId={isOrphanId}
+              onAssignOrphan={onAssignOrphan}
             />
           ))}
         </>
@@ -272,6 +316,8 @@ function MatchList({
               canDelete={canDelete}
               onShortMatchWarning={onShortMatchWarning}
               highlightName={highlightName}
+              isOrphanId={isOrphanId}
+              onAssignOrphan={onAssignOrphan}
             />
           ))}
         </>
@@ -481,12 +527,20 @@ export function HistoryPage() {
   const canDelete = isCreator();
   // 勝率の表示は作成者または開発モードのときのみ（isCreator() は開発モードで true）
   const showWinRate = isCreator();
+  // 「未設定」の修復も作成者または開発モードのみ。誰でも履歴を書き換えられると困る
+  const canRepairOrphan = isCreator();
   const gasWebAppUrl = useSettingsStore((s) => s.gasWebAppUrl);
   const devMode = useDevMode();
   // 強さ指標（レート・偏差値・ランキング）は開発モードのときのみ
   const showPerformance = devMode;
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
+  // 「未設定」タップで開く修復モーダルの対象（null = 閉じている）
+  const [orphanTarget, setOrphanTarget] = useState<{
+    orphanId: string;
+    match: Match;
+    matchNumber: number;
+  } | null>(null);
 
   // フィルタ対象プレイヤー名（null = フィルタ無し / 全試合表示）。
   // URL クエリ `?player=名前` に保持する。こうすることでスコア入力画面へ遷移して
@@ -642,6 +696,24 @@ export function HistoryPage() {
 
   const getPlayerRating = (playerId: string) => {
     return players.find((p) => p.id === playerId)?.rating ?? 0;
+  };
+
+  /**
+   * 名簿から消えたメンバーの ID（履歴で「未設定」と出る）。
+   * 空文字は3人試合の空きスロットで、同じ「未設定」表示でも別物なので除く。
+   */
+  const isOrphanId = (playerId: string) =>
+    playerId !== '' && !players.some((p) => p.id === playerId);
+
+  const handleAssignOrphan = async (playerId: string, scope: AssignScope) => {
+    if (!orphanTarget) return;
+    const { orphanId, match } = orphanTarget;
+    const name = players.find((p) => p.id === playerId)?.name ?? '';
+    setOrphanTarget(null);
+    await writer.assignOrphanPlayer(orphanId, playerId, scope === 'match' ? match.id : undefined);
+    toast.success(
+      scope === 'match' ? `この試合を${name}に修復しました` : `${name}の試合を修復しました`,
+    );
   };
 
   const handleEdit = (matchId: string) => {
@@ -877,12 +949,31 @@ export function HistoryPage() {
                   setScoredCollapsed={setScoredCollapsed}
                   onShortMatchWarning={handleShortMatchWarning}
                   highlightName={filterActive ? filterPlayerName : null}
+                  isOrphanId={isOrphanId}
+                  onAssignOrphan={
+                    canRepairOrphan
+                      ? (orphanId, match, matchNumber) =>
+                          setOrphanTarget({ orphanId, match, matchNumber })
+                      : undefined
+                  }
                 />
               )}
             </div>
           )}
         </div>
       </div>
+
+      {/* 「未設定」の修復（作成者・開発モードのみ） */}
+      {orphanTarget && (
+        <OrphanPlayerAssignModal
+          matchNumber={orphanTarget.matchNumber}
+          orphanMatchCount={countOrphanMatches(matchHistory, orphanTarget.orphanId)}
+          players={players}
+          idsInMatch={[...orphanTarget.match.teamA, ...orphanTarget.match.teamB].filter(Boolean)}
+          onConfirm={handleAssignOrphan}
+          onCancel={() => setOrphanTarget(null)}
+        />
+      )}
 
       {/* Toast notifications */}
       {toast.toasts.map((t) => (

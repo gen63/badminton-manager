@@ -83,26 +83,9 @@ Firestore への書き込み条件（追加/削除/レート更新のいずれ�
 
 ## 事故の修復（発生済みセッションの復旧）
 
-この修正より前に削除されてしまったセッションは、`scripts/repair-orphan-players.ts`
-で直せる。**試合記録そのもの（スコア・時刻・コート・勝敗・出場者の ID）は
-`matchHistory` に残っており、消えたのは `gameState.players` のレコードだけ**なので、
-履歴に残った ID に対してプレイヤーを作り直せば「未設定」表示は解消する。
+この修正より前に削除されてしまったセッションは、**履歴画面の「未設定」タップ**で直せる。
+**試合記録そのもの（スコア・時刻・コート・勝敗・出場者の ID）は `matchHistory` に
+残っており、消えたのは `gameState.players` のレコードだけ**なので、ID を本人へ
+割り当て直せば履歴・成績・勝率がすべて元に戻る。
 
-```bash
-# 診断（読み取りのみ。宙に浮いた ID・その人が出た試合・同席者・復元名の候補を出す）
-tsx scripts/repair-orphan-players.ts <sessionId>
-
-# 復活（履歴の ID をそのまま使ってプレイヤーを作り直す。既定は dry-run）
-tsx scripts/repair-orphan-players.ts <sessionId> --restore <id>=<名前> --apply
-
-# 付け替え（本人が既に手動で再追加済みなら、旧 ID を新 ID に差し替える）
-tsx scripts/repair-orphan-players.ts <sessionId> --remap <旧id>=<名前> --apply
-```
-
-- 名前の手掛かり: 同期時の Discord 通知（➖ 削除: の一覧）、`participants` /
-  `lastSeen` / `information.readBy`（同期はこれらを触らないので名前が残っている）、
-  同じ試合に出ていた人の名前。
-- `gamesPlayed` / `lastPlayedAt` は履歴から再計算する。
-- 復元できないもの: 支払い・名簿の対応状況（`operationStatus` / `paymentAmount` /
-  `opsCompletedAt`）。会計画面から入れ直す。rating は tmp シートの skill から
-  `--rating` で指定できる。
+詳細: `docs/plans/2026-08-15-history-orphan-player-repair.md`

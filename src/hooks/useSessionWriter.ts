@@ -193,6 +193,14 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  const assignOrphanPlayer = useCallback(
+    (orphanId: string, newPlayerId: string, matchId?: string) =>
+      handle('assignOrphanPlayer', (sid) =>
+        sm.assignOrphanPlayer(sid, orphanId, newPlayerId, matchId),
+      ),
+    [handle],
+  );
+
   // ===== Reservations =====
   const addReservation = useCallback(
     (playerIds: string[], createdBy?: string) =>
@@ -297,6 +305,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       removeMatch,
       updateMatchScore,
       updateMatch,
+      assignOrphanPlayer,
       // reservations
       addReservation,
       removeReservation,
@@ -338,6 +347,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       removeMatch,
       updateMatchScore,
       updateMatch,
+      assignOrphanPlayer,
       addReservation,
       removeReservation,
       fulfillReservation,
