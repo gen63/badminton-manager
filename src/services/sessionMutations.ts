@@ -656,6 +656,92 @@ export function computeRemoveMatch(state: GameState, matchId: string): GameState
   };
 }
 
+/**
+ * 名簿に存在しない ID（＝削除されてしまったプレイヤー）を指しているスロットか。
+ * 空文字は「3人試合の空きスロット」なので対象外（表示は同じ「未設定」だが別物）。
+ */
+export function isOrphanPlayerId(state: GameState, playerId: string): boolean {
+  return playerId !== '' && !state.players.some((p) => p.id === playerId);
+}
+
+/** その orphan ID が出場している履歴の試合数 */
+export function countOrphanMatches(matchHistory: Match[], orphanId: string): number {
+  if (!orphanId) return 0;
+  return matchHistory.filter((m) => [...m.teamA, ...m.teamB].includes(orphanId)).length;
+}
+
+/**
+ * 履歴に取り残された ID（削除されたプレイヤー）を現在のメンバーに割り当て直す。
+ *
+ * 同期が試合開始後にメンバーを削除していた時期の事故で、`matchHistory` に ID だけが
+ * 残り「未設定」と表示される。試合記録そのもの（スコア・時刻・勝敗）は無事なので、
+ * ID を本人へ差し替えれば履歴・成績・勝率がすべて元に戻る。
+ *
+ * **正しい記録を書き換えられないための不変条件**:
+ * - `orphanId` が現在の名簿に居る場合は **no-op**。つまり「今いるメンバーの試合を
+ *   別人に書き換える」経路は存在しない。UI 側のガードではなくここで担保する。
+ * - 置換すると同じ試合に `newPlayerId` が2回現れてしまう試合はスキップする
+ *   （既にその試合に出ている人へは寄せられない）。
+ *
+ * `matchId` 指定でその試合だけ、未指定なら全試合＋コート・予約の参照も差し替える。
+ * `gamesPlayed` / `lastPlayedAt` は `recomputePlayerMatchStats` で履歴と整合させる。
+ */
+export function computeAssignOrphanPlayer(
+  state: GameState,
+  orphanId: string,
+  newPlayerId: string,
+  matchId?: string,
+): GameState {
+  if (!isOrphanPlayerId(state, orphanId)) return state;
+  if (!state.players.some((p) => p.id === newPlayerId)) return state;
+
+  const swapPair = (pair: [string, string]): [string, string] => [
+    pair[0] === orphanId ? newPlayerId : pair[0],
+    pair[1] === orphanId ? newPlayerId : pair[1],
+  ];
+
+  const matchHistory = state.matchHistory.map((m) => {
+    if (matchId != null && m.id !== matchId) return m;
+    if (![...m.teamA, ...m.teamB].includes(orphanId)) return m;
+    // 置換で同一試合内に重複が生じる場合は触らない
+    if ([...m.teamA, ...m.teamB].includes(newPlayerId)) return m;
+    return { ...m, teamA: swapPair(m.teamA), teamB: swapPair(m.teamB) };
+  });
+
+  // 単一試合の修正ではコート・予約に触れない（その試合の記録だけを直す操作なので）
+  const targetsAll = matchId == null;
+  const courts = targetsAll
+    ? state.courts.map((c) =>
+        [...c.teamA, ...c.teamB].includes(newPlayerId)
+          ? c
+          : {
+              ...c,
+              teamA: swapPair(c.teamA),
+              teamB: swapPair(c.teamB),
+              ...(c.restingPlayerIds && {
+                restingPlayerIds: [
+                  ...new Set(c.restingPlayerIds.map((id) => (id === orphanId ? newPlayerId : id))),
+                ],
+              }),
+            },
+      )
+    : state.courts;
+  const reservations = targetsAll
+    ? state.reservations.map((r) => ({
+        ...r,
+        playerIds: [...new Set(r.playerIds.map((id) => (id === orphanId ? newPlayerId : id)))],
+      }))
+    : state.reservations;
+
+  return {
+    ...state,
+    players: recomputePlayerMatchStats(state.players, matchHistory),
+    matchHistory,
+    courts,
+    reservations,
+  };
+}
+
 export function computeUpdateMatchScore(
   state: GameState,
   matchId: string,
@@ -971,6 +1057,21 @@ export function updateMatchScore(
 ) {
   return mutateGameState(sessionId, (s) =>
     computeUpdateMatchScore(s, matchId, scoreA, scoreB, winner),
+  );
+}
+
+/**
+ * 履歴に取り残された ID を現在のメンバーへ割り当て直す（履歴画面の「未設定」修復）。
+ * `matchId` 未指定＝その ID の全試合をまとめて修復する。
+ */
+export function assignOrphanPlayer(
+  sessionId: string,
+  orphanId: string,
+  newPlayerId: string,
+  matchId?: string,
+) {
+  return mutateGameState(sessionId, (s) =>
+    computeAssignOrphanPlayer(s, orphanId, newPlayerId, matchId),
   );
 }
 

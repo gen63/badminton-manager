@@ -47,6 +47,9 @@ import {
   computeClearHistory,
   computeAddMatch,
   computeRemoveMatch,
+  computeAssignOrphanPlayer,
+  isOrphanPlayerId,
+  countOrphanMatches,
   computeUpdateMatchScore,
   computeAddReservation,
   computeRemoveReservation,
@@ -731,6 +734,152 @@ describe('sessionMutations - match history', () => {
     expect(next.players.find((p) => p.id === 'a')).toMatchObject({ gamesPlayed: 0, lastPlayedAt: 0 });
     expect(next.players.find((p) => p.id === 'b')).toMatchObject({ gamesPlayed: 0, lastPlayedAt: 0 });
     expect(next.players.find((p) => p.id === 'c')).toMatchObject({ gamesPlayed: 0, lastPlayedAt: 0 });
+  });
+});
+
+describe('sessionMutations - 「未設定」の修復（削除されたプレイヤーの割り当て）', () => {
+  // 同期事故で消された p9 の ID が履歴に残っている状態
+  const brokenState = () =>
+    baseState({
+      players: [makePlayer('p1'), makePlayer('p2'), makePlayer('p3')],
+      matchHistory: [
+        makeMatch('m1', { teamA: ['p1', 'p9'], teamB: ['p2', 'p3'], finishedAt: 1000 }),
+        makeMatch('m2', { teamA: ['p9', 'p2'], teamB: ['p1', 'p3'], finishedAt: 2000 }),
+        makeMatch('m3', { teamA: ['p1', 'p2'], teamB: ['p3', ''], finishedAt: 3000 }),
+      ],
+    });
+
+  describe('isOrphanPlayerId', () => {
+    it('名簿に居ない ID は orphan', () => {
+      expect(isOrphanPlayerId(brokenState(), 'p9')).toBe(true);
+    });
+
+    it('名簿に居る ID は orphan ではない', () => {
+      expect(isOrphanPlayerId(brokenState(), 'p1')).toBe(false);
+    });
+
+    it('空文字（3人試合の空きスロット）は orphan ではない', () => {
+      expect(isOrphanPlayerId(brokenState(), '')).toBe(false);
+    });
+  });
+
+  describe('countOrphanMatches', () => {
+    it('その ID が出場している試合数を数える', () => {
+      expect(countOrphanMatches(brokenState().matchHistory, 'p9')).toBe(2);
+    });
+
+    it('空文字は 0（空きスロットを数えない）', () => {
+      expect(countOrphanMatches(brokenState().matchHistory, '')).toBe(0);
+    });
+  });
+
+  describe('computeAssignOrphanPlayer', () => {
+    it('全試合の orphan ID を新しいプレイヤーへ差し替える', () => {
+      const state = { ...brokenState(), players: [...brokenState().players, makePlayer('pNew')] };
+      const next = computeAssignOrphanPlayer(state, 'p9', 'pNew');
+
+      expect(next.matchHistory[0].teamA).toEqual(['p1', 'pNew']);
+      expect(next.matchHistory[1].teamA).toEqual(['pNew', 'p2']);
+      expect(next.matchHistory[2]).toEqual(state.matchHistory[2]);
+    });
+
+    it('gamesPlayed / lastPlayedAt を履歴から再計算する', () => {
+      const state = { ...brokenState(), players: [...brokenState().players, makePlayer('pNew')] };
+      const next = computeAssignOrphanPlayer(state, 'p9', 'pNew');
+
+      expect(next.players.find((p) => p.id === 'pNew')).toMatchObject({
+        gamesPlayed: 2,
+        lastPlayedAt: 2000,
+      });
+    });
+
+    it('matchId 指定ならその試合だけ差し替える', () => {
+      const state = { ...brokenState(), players: [...brokenState().players, makePlayer('pNew')] };
+      const next = computeAssignOrphanPlayer(state, 'p9', 'pNew', 'm2');
+
+      expect(next.matchHistory[0].teamA).toEqual(['p1', 'p9']);
+      expect(next.matchHistory[1].teamA).toEqual(['pNew', 'p2']);
+      expect(next.players.find((p) => p.id === 'pNew')?.gamesPlayed).toBe(1);
+    });
+
+    it('名簿に居るプレイヤーは対象外（正しい記録は書き換えられない）', () => {
+      const state = brokenState();
+      const next = computeAssignOrphanPlayer(state, 'p1', 'p2');
+      expect(next).toBe(state);
+    });
+
+    it('割り当て先が名簿に居なければ no-op', () => {
+      const state = brokenState();
+      const next = computeAssignOrphanPlayer(state, 'p9', 'unknown');
+      expect(next).toBe(state);
+    });
+
+    it('同じ試合に既に出ている人へは寄せない（二重出場を作らない）', () => {
+      const state = brokenState();
+      // p2 は m1・m2 の両方に出ている
+      const next = computeAssignOrphanPlayer(state, 'p9', 'p2');
+
+      expect(next.matchHistory[0].teamA).toEqual(['p1', 'p9']);
+      expect(next.matchHistory[1].teamA).toEqual(['p9', 'p2']);
+      expect(next.players.find((p) => p.id === 'p2')?.gamesPlayed).toBe(3);
+    });
+
+    it('全試合モードではコート・予約の参照も差し替える', () => {
+      const state = baseState({
+        players: [makePlayer('p1'), makePlayer('pNew')],
+        courts: [makeCourt(1, { teamA: ['p9', 'p1'], restingPlayerIds: ['p9'] })],
+        matchHistory: [makeMatch('m1', { teamA: ['p9', 'p1'], teamB: ['', ''] })],
+        reservations: [
+          { id: 'r1', orderNumber: 1, playerIds: ['p9', 'p1'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+        ],
+      });
+
+      const next = computeAssignOrphanPlayer(state, 'p9', 'pNew');
+
+      expect(next.courts[0].teamA).toEqual(['pNew', 'p1']);
+      expect(next.courts[0].restingPlayerIds).toEqual(['pNew']);
+      expect(next.reservations[0].playerIds).toEqual(['pNew', 'p1']);
+    });
+
+    it('単一試合モードではコート・予約に触れない', () => {
+      const state = baseState({
+        players: [makePlayer('p1'), makePlayer('pNew')],
+        courts: [makeCourt(1, { teamA: ['p9', 'p1'] })],
+        matchHistory: [makeMatch('m1', { teamA: ['p9', 'p1'], teamB: ['', ''] })],
+      });
+
+      const next = computeAssignOrphanPlayer(state, 'p9', 'pNew', 'm1');
+
+      expect(next.courts[0].teamA).toEqual(['p9', 'p1']);
+      expect(next.matchHistory[0].teamA).toEqual(['pNew', 'p1']);
+    });
+
+    it('スコア・時刻・勝敗は変更しない', () => {
+      const state = baseState({
+        players: [makePlayer('pNew')],
+        matchHistory: [
+          makeMatch('m1', {
+            teamA: ['p9', ''],
+            teamB: ['', ''],
+            scoreA: 15,
+            scoreB: 12,
+            winner: 'A',
+            startedAt: 500,
+            finishedAt: 900,
+          }),
+        ],
+      });
+
+      const next = computeAssignOrphanPlayer(state, 'p9', 'pNew');
+
+      expect(next.matchHistory[0]).toMatchObject({
+        scoreA: 15,
+        scoreB: 12,
+        winner: 'A',
+        startedAt: 500,
+        finishedAt: 900,
+      });
+    });
   });
 });
 

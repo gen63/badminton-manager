@@ -80,3 +80,12 @@ Firestore への書き込み条件（追加/削除/レート更新のいずれ�
 ## 受け入れ確認
 
 - `npm run build` / `npm run lint` / `npm run test:run` が通ること
+
+## 事故の修復（発生済みセッションの復旧）
+
+この修正より前に削除されてしまったセッションは、**履歴画面の「未設定」タップ**で直せる。
+**試合記録そのもの（スコア・時刻・コート・勝敗・出場者の ID）は `matchHistory` に
+残っており、消えたのは `gameState.players` のレコードだけ**なので、ID を本人へ
+割り当て直せば履歴・成績・勝率がすべて元に戻る。
+
+詳細: `docs/plans/2026-08-15-history-orphan-player-repair.md`
