@@ -90,7 +90,7 @@ interface PlayerIssue {
 // Phase A: E-tomoスクレイピング
 // ============================================================
 
-export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, isRatingRequired, findUnratedParticipants, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName, AUTO_SESSION_ADMINS, computeRosterDiff, computeRosterSync, readTmpSheet, fetchWithRetry, fetchEventDetails, describeError };
+export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, isRatingRequired, findUnratedParticipants, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName, AUTO_SESSION_ADMINS, computeRosterDiff, computeRosterSync, hasSessionStarted, readTmpSheet, fetchWithRetry, fetchEventDetails, describeError };
 
 // ============================================================
 // リトライ付き fetch
@@ -695,20 +695,41 @@ interface RatingChange {
   to: number;
 }
 
-interface RosterSyncOptions {
-  /**
-   * 留任プレイヤーのレートを tmp シートの skill で上書きするか。
-   * 試合開始後は配置基準が途中で変わるため呼び出し側が false にする。
-   */
-  syncExistingRatings?: boolean;
-}
-
 interface RosterSyncResult {
   state: GameState;
   added: string[];
   removed: string[];
+  /** E-ToMo に居ないが保護されて削除しなかった名前（試合開始後 / 試合結果あり） */
+  skippedRemovals: string[];
+  /** セッションが開始済みか（削除・レート同期を止めた理由の判定に使う） */
+  sessionStarted: boolean;
   /** tmp シートの skill に合わせて更新した留任プレイヤー */
   ratingUpdated: RatingChange[];
+}
+
+/**
+ * セッションが開始済みか。試合履歴があるか、いずれかのコートにメンバーが乗っている
+ * （配置済み・試合中・タップ交換の休憩枠）状態を「開始済み」とみなす。
+ *
+ * 初回の配置直後（`matchHistory` はまだ空）でも既に当日の運用が始まっているので、
+ * 履歴の有無だけでは足りない。
+ */
+function hasSessionStarted(state: GameState): boolean {
+  if ((state.matchHistory?.length ?? 0) > 0) return true;
+  return (state.courts ?? []).some(
+    (c) =>
+      c.isPlaying ||
+      [...c.teamA, ...c.teamB].some((id) => id !== '') ||
+      (c.restingPlayerIds?.length ?? 0) > 0,
+  );
+}
+
+/** そのプレイヤーの試合結果が既に記録されているか */
+function hasMatchResults(player: Player, state: GameState): boolean {
+  if (player.gamesPlayed > 0) return true;
+  return (state.matchHistory ?? []).some((m) =>
+    [...m.teamA, ...m.teamB].includes(player.id),
+  );
 }
 
 /**
@@ -720,10 +741,20 @@ interface RosterSyncResult {
  *
  * レート未設定の新規参加者も**常に追加する**。`buildInitialOrder` は未設定者を
  * 序列の中位ブロックへ挿入するため実力不明のまま中位に配置されるが、tmp シートに
- * skill を入力して再実行すれば `syncExistingRatings` により留任プレイヤーとして
- * レートが反映される。止めるのではなく「通知して、シート更新＋再実行で直す」運用。
+ * skill を入力して**セッション開始前に**再実行すれば、留任プレイヤーとしてレートが
+ * 反映される。止めるのではなく「通知して、シート更新＋再実行で直す」運用。
  *
- * 留任プレイヤーのレートも tmp シートの skill へ追従させる（`syncExistingRatings`）。
+ * **削除はセッション開始前に限る（`hasSessionStarted`）。** 開始後の削除は取り返しが
+ * つかない副作用を持つため、E-ToMo に名前が無くても消さずに残す:
+ * - **ニックネームの表記揺れ**: 同期より前に管理者がアプリ側で手動追加した人は
+ *   E-ToMo の表記と一致しないことがあり、差分では「欠席」と区別が付かない。
+ * - **試合結果**: 既に試合に出ている人を消すと、`matchHistory` に ID だけが残って
+ *   名前を引けなくなる（履歴・成績・会計の整合が崩れる）。
+ * 開始後に本当に欠席した人は、アプリの名簿編集から手で削除する運用とする。
+ * 開始前でも試合結果を持つプレイヤー（`hasMatchResults`）は同じ理由で保護する。
+ * 追加（新規出席登録）は開始後も従来どおり反映する。
+ *
+ * 留任プレイヤーのレートも tmp シートの skill へ追従させる（開始前のみ）。
  * tmp シートは管理者の手入力を保持したまま再実行できる（`docs/webhook.js` の
  * `createOrUpdateTmpSheet_`）ので、「シートでレートを直す → 再実行」で既存
  * セッションのレートを更新できる。**シートが正**で、アプリ側で手編集したレートは
@@ -734,9 +765,11 @@ function computeRosterSync(
   state: GameState,
   event: EtomoEventDetail,
   memberMap: Map<string, MemberData>,
-  options: RosterSyncOptions = {},
 ): RosterSyncResult {
-  const { syncExistingRatings = true } = options;
+  const sessionStarted = hasSessionStarted(state);
+  // 開始後はレートも据え置く。序列は配置のたびに `buildInitialOrder` から作り直される
+  // ため、途中で書き換えると実力差の判定基準がその場で変わってしまう。
+  const syncExistingRatings = !sessionStarted;
   const currentNames = state.players.map((p) => p.name);
   const { toAdd, toRemove } = computeRosterDiff(currentNames, event.participants);
 
@@ -761,9 +794,12 @@ function computeRosterSync(
     };
   });
 
-  const removeIds = new Set(
-    state.players.filter((p) => toRemove.includes(p.name)).map((p) => p.id),
-  );
+  const toRemoveNames = new Set(toRemove);
+  const removalCandidates = state.players.filter((p) => toRemoveNames.has(p.name));
+  const isProtected = (p: Player) => sessionStarted || hasMatchResults(p, state);
+  const removedPlayers = removalCandidates.filter((p) => !isProtected(p));
+  const skippedRemovals = removalCandidates.filter(isProtected).map((p) => p.name);
+  const removeIds = new Set(removedPlayers.map((p) => p.id));
 
   const ratingUpdated: RatingChange[] = [];
   const retainedPlayers = state.players
@@ -781,6 +817,8 @@ function computeRosterSync(
     removeIds.has(team[1]) ? '' : team[1],
   ];
 
+  // コート上の参照掃除は「開始前は誰もコートに乗っていない」ため実際には効かないが、
+  // 保護条件が変わっても宙に浮いた ID を残さないための不変条件として残す。
   const nextState: GameState = {
     ...state,
     players: [...retainedPlayers, ...newPlayers],
@@ -795,7 +833,14 @@ function computeRosterSync(
       .filter((r) => r.playerIds.length > 0),
   };
 
-  return { state: nextState, added: toAdd, removed: toRemove, ratingUpdated };
+  return {
+    state: nextState,
+    added: toAdd,
+    removed: removedPlayers.map((p) => p.name),
+    skippedRemovals,
+    sessionStarted,
+    ratingUpdated,
+  };
 }
 
 // undefined値を除去（serverTimestamp()等のセンチネル値はsanitize対象外にする）
@@ -856,17 +901,16 @@ async function createFirestoreSession(
  * 既存セッションの gameState.players を E-ToMo の最新出席者リストへ同期する。
  * 変更（追加/削除/レート更新）があった場合のみ Firestore を更新する。
  *
- * **レートの更新は試合開始前（matchHistory が空）に限る。** 序列は配置のたびに
- * `buildInitialOrder` から作り直されるため、試合中にレートを書き換えると
- * その場で実力差の判定基準が変わってしまう。運用上も「開始前にシートを微調整して
- * 再実行する」のが想定フローなので、開始後は出欠（追加/削除）だけ同期する。
+ * **セッション開始後（`hasSessionStarted`）は追加のみ**で、削除もレート更新も行わない
+ * （理由は `computeRosterSync` のコメント参照）。運用上も「開始前にシートを微調整して
+ * 再実行する」のが想定フローなので、開始後は新規出席の取り込みだけを担う。
  */
 async function syncSessionRoster(
   db: ReturnType<typeof getFirestore>,
   sessionId: string,
   event: EtomoEventDetail,
   memberMap: Map<string, MemberData>,
-): Promise<RosterSyncResult & { ratingSyncSkipped: boolean }> {
+): Promise<RosterSyncResult> {
   const docRef = doc(db, 'sessions', sessionId);
 
   return await runTransaction(db, async (transaction) => {
@@ -880,10 +924,7 @@ async function syncSessionRoster(
       throw new Error(`Session ${sessionId} has no gameState`);
     }
 
-    const matchesStarted = (gameState.matchHistory?.length ?? 0) > 0;
-    const result = computeRosterSync(gameState, event, memberMap, {
-      syncExistingRatings: !matchesStarted,
-    });
+    const result = computeRosterSync(gameState, event, memberMap);
     const { state: nextState, added, removed, ratingUpdated } = result;
 
     if (added.length > 0 || removed.length > 0 || ratingUpdated.length > 0) {
@@ -894,7 +935,7 @@ async function syncSessionRoster(
       });
     }
 
-    return { ...result, ratingSyncSkipped: matchesStarted };
+    return result;
   });
 }
 
@@ -1035,14 +1076,16 @@ async function notifySessionSynced(
   detail: {
     added: string[];
     removed: string[];
+    skippedRemovals: string[];
+    sessionStarted: boolean;
     ratingUpdated: RatingChange[];
-    ratingSyncSkipped: boolean;
     unratedRemaining: string[];
     tmpSheetName: string;
   },
 ): Promise<void> {
   const summary = formatEventSummary(event, targetDate);
-  const { added, removed, ratingUpdated, ratingSyncSkipped, unratedRemaining } = detail;
+  const { added, removed, skippedRemovals, sessionStarted, ratingUpdated, unratedRemaining } =
+    detail;
   const bullets = (names: string[]) => names.map((name) => `  • ${name}`).join('\n');
   const lines = [
     unratedRemaining.length > 0 ? '⚠️ **メンバー同期完了（レート未設定あり）**' : '🔄 **メンバー同期完了**',
@@ -1056,6 +1099,16 @@ async function notifySessionSynced(
   }
   if (removed.length > 0) {
     lines.push('', '➖ **削除:**', bullets(removed));
+  }
+  if (skippedRemovals.length > 0) {
+    lines.push(
+      '',
+      sessionStarted
+        ? '⏸️ **削除を見送り（試合開始後）:**'
+        : '⏸️ **削除を見送り（試合結果あり）:**',
+      bullets(skippedRemovals),
+      '本当に欠席の場合はアプリの名簿編集から削除してください',
+    );
   }
   if (ratingUpdated.length > 0) {
     lines.push(
@@ -1072,7 +1125,7 @@ async function notifySessionSynced(
       `📝 tmpシート「${detail.tmpSheetName}」に入力後、再実行するとレートが反映されます`,
     );
   }
-  if (ratingSyncSkipped) {
+  if (sessionStarted) {
     lines.push('', '⏱️ 試合が開始済みのため、レーティングの更新は見送りました');
   }
 
@@ -1138,7 +1191,7 @@ async function processEvents(
           continue;
         }
         console.log(`  -> Already created (${existingSessionId}), syncing roster`);
-        const { added, removed, ratingUpdated, ratingSyncSkipped } =
+        const { added, removed, skippedRemovals, sessionStarted, ratingUpdated } =
           await syncSessionRoster(db, existingSessionId, event, memberMap);
         const changed = added.length > 0 || removed.length > 0 || ratingUpdated.length > 0;
         if (changed) {
@@ -1153,17 +1206,23 @@ async function processEvents(
         } else {
           console.log('  -> No roster changes');
         }
-        if (ratingSyncSkipped) console.log('  -> Rating sync skipped (matches already started)');
+        if (skippedRemovals.length > 0) {
+          console.log(
+            `  -> Removal skipped (${sessionStarted ? 'session already started' : 'has match results'}): ${skippedRemovals.join(', ')}`,
+          );
+        }
+        if (sessionStarted) console.log('  -> Rating sync skipped (session already started)');
 
         const unratedRemaining = isRatingRequired(event)
           ? findUnratedParticipants(event, memberMap)
           : [];
-        if (changed || unratedRemaining.length > 0) {
+        if (changed || skippedRemovals.length > 0 || unratedRemaining.length > 0) {
           await notifySessionSynced(event, existingSessionId, targetDate, {
             added,
             removed,
+            skippedRemovals,
+            sessionStarted,
             ratingUpdated,
-            ratingSyncSkipped,
             unratedRemaining,
             tmpSheetName,
           });
