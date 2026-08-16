@@ -1,4 +1,3 @@
-import { Sparkles } from 'lucide-react';
 import type { Player } from '../types/player';
 
 interface NextMatchPredictionBarProps {
@@ -26,12 +25,8 @@ export function NextMatchPredictionBar({ players, certainIds }: NextMatchPredict
 
   return (
     <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl px-3 py-2 flex flex-col gap-1.5">
-      <div className="flex items-center gap-1.5">
-        <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-        <span className="text-xs font-bold text-indigo-900">配置予測</span>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs font-bold text-indigo-900 shrink-0">配置予測</span>
         {players.map((player) => (
           <span
             key={player.id}

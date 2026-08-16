@@ -103,6 +103,8 @@ export function MainPage() {
   // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
   const gameMode = gameModeFromPracticeType(practiceType);
   const playersPerCourt = getPlayersPerCourt(gameMode);
+  // コートカードの最小高さ。シングルは選手行が2つ減るぶん低くする（配置済み・空きで揃える）
+  const courtBodyMinHeight = gameMode === 'singles' ? 'min-h-[156px]' : 'min-h-[220px]';
 
   // total active players cache used by flow-priority checks
   const totalActiveCount = players.filter(p => !p.isResting).length;
@@ -998,76 +1000,80 @@ export function MainPage() {
     <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-x-hidden overflow-y-auto scrollbar-hide text-foreground">
       <header className="sticky top-0 flex-none bg-background border-b border-border px-3 py-2.5 shadow-sm z-20">
         <div className="flex items-center justify-between gap-1">
-          <div className="flex items-center gap-1">
-            {isAdmin() && (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              {isAdmin() && (
+                <button
+                  onClick={() => void continuousModeToggle.run(!continuousMatchMode)}
+                  disabled={continuousModeToggle.isPending}
+                  className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
+                    continuousMatchMode
+                      ? 'bg-green-50 text-green-700 border border-green-200'
+                      : 'bg-muted text-muted-foreground border border-border'
+                  }`}
+                >
+                  <Repeat size={16} />
+                  <span>連続</span>
+                  <span className={`text-[10px] bg-green-200 py-0.5 rounded-full font-bold transition-all duration-150 ${
+                    continuousMatchMode
+                      ? 'opacity-100 max-w-[2rem] px-1.5'
+                      : 'opacity-0 max-w-0 overflow-hidden px-0'
+                  }`}>ON</span>
+                </button>
+              )}
               <button
-                onClick={() => void continuousModeToggle.run(!continuousMatchMode)}
-                disabled={continuousModeToggle.isPending}
-                className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
-                  continuousMatchMode
-                    ? 'bg-green-50 text-green-700 border border-green-200'
-                    : 'bg-muted text-muted-foreground border border-border'
-                }`}
+                onClick={() => handleAutoAssign()}
+                disabled={!canAutoAssign || assignmentGate === 'waiting'}
+                className="flex items-center gap-1 px-2 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
               >
-                <Repeat size={16} />
-                <span>連続</span>
-                <span className={`text-[10px] bg-green-200 py-0.5 rounded-full font-bold transition-all duration-150 ${
-                  continuousMatchMode
-                    ? 'opacity-100 max-w-[2rem] px-1.5'
-                    : 'opacity-0 max-w-0 overflow-hidden px-0'
-                }`}>ON</span>
+                <Users size={16} />
+                <span>一括</span>
               </button>
-            )}
-            <button
-              onClick={() => handleAutoAssign()}
-              disabled={!canAutoAssign || assignmentGate === 'waiting'}
-              className="flex items-center gap-1 px-2 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
-            >
-              <Users size={16} />
-              <span>一括</span>
-            </button>
-            {/* インフォメーションアイコン */}
-            {session && (
+            </div>
+            <div className="flex items-center gap-0.5">
+              {/* インフォメーションアイコン */}
+              {session && (
+                <button
+                  onClick={() => {
+                    // 管理者は周知事項がなくても編集モーダルを開ける
+                    if (isAdmin()) {
+                      setInformationText(session?.information?.text || '');
+                      setShowInformationModal(true);
+                    } else if (session?.information?.text) {
+                      // メンバーは周知事項がある場合のみ閲覧＋既読化
+                      setInformationText(session.information.text);
+                      setShowInformationModal(true);
+                      markInformationAsRead();
+                    }
+                  }}
+                  disabled={!isAdmin() && !session?.information?.text}
+                  className={`relative flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full transition-colors ${
+                    session?.information?.text || isAdmin()
+                      ? 'hover:bg-muted text-blue-600'
+                      : 'text-muted-foreground/30 cursor-not-allowed'
+                  }`}
+                  aria-label="お知らせ"
+                >
+                  <Info size={20} />
+                  {session?.information?.text && currentUser && !session.information.readBy?.includes(currentUser) && (
+                    <span className="absolute top-1 right-0 h-[16px] flex items-center justify-center px-1.5 text-[10px] font-bold text-red-500 bg-white rounded-full border border-red-500 leading-none">
+                      未読
+                    </span>
+                  )}
+                </button>
+              )}
+              {/* バグ報告アイコン（常時表示） */}
               <button
                 onClick={() => {
-                  // 管理者は周知事項がなくても編集モーダルを開ける
-                  if (isAdmin()) {
-                    setInformationText(session?.information?.text || '');
-                    setShowInformationModal(true);
-                  } else if (session?.information?.text) {
-                    // メンバーは周知事項がある場合のみ閲覧＋既読化
-                    setInformationText(session.information.text);
-                    setShowInformationModal(true);
-                    markInformationAsRead();
-                  }
+                  setBugReportText(BUG_REPORT_TEMPLATE);
+                  setShowBugReportModal(true);
                 }}
-                disabled={!isAdmin() && !session?.information?.text}
-                className={`relative flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full transition-colors ${
-                  session?.information?.text || isAdmin()
-                    ? 'hover:bg-muted text-blue-600'
-                    : 'text-muted-foreground/30 cursor-not-allowed'
-                }`}
-                aria-label="お知らせ"
+                className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-blue-600 transition-colors"
+                aria-label="バグ報告"
               >
-                <Info size={20} />
-                {session?.information?.text && currentUser && !session.information.readBy?.includes(currentUser) && (
-                  <span className="absolute top-1 right-0 h-[16px] flex items-center justify-center px-1.5 text-[10px] font-bold text-red-500 bg-white rounded-full border border-red-500 leading-none">
-                    未読
-                  </span>
-                )}
+                <MessageSquare size={20} />
               </button>
-            )}
-            {/* バグ報告アイコン（常時表示） */}
-            <button
-              onClick={() => {
-                setBugReportText(BUG_REPORT_TEMPLATE);
-                setShowBugReportModal(true);
-              }}
-              className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-blue-600 transition-colors"
-              aria-label="バグ報告"
-            >
-              <MessageSquare size={20} />
-            </button>
+            </div>
           </div>
           <div className="flex items-center gap-0.5">
             <button
@@ -1241,7 +1247,7 @@ export function MainPage() {
                   </div>
                   
                   {hasPlayers ? (
-                    <div className="p-2 flex flex-col gap-2 min-h-[220px]">
+                    <div className={`p-2 flex flex-col gap-2 ${courtBodyMinHeight}`}>
                       <div className="flex flex-col gap-1">
                         {court.teamA.filter((id) => id).map((playerId, idx) => {
                           const playerGender = getPlayerGender(playerId);
@@ -1320,7 +1326,7 @@ export function MainPage() {
                       )}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-4 gap-2 min-h-[220px]">
+                    <div className={`flex flex-col items-center justify-center py-4 gap-2 ${courtBodyMinHeight}`}>
                       <div className="flex flex-col items-center gap-0.5">
                         <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center text-muted-foreground">
                           <span className="font-bold text-xs">{court.id}</span>
@@ -1397,7 +1403,30 @@ export function MainPage() {
         {/* Waiting Players */}
         <section className="px-4 flex flex-col gap-4 transition-all duration-300" ref={playerCardRef}>
           <div className="flex flex-col gap-3">
-            <h3 className="text-sm font-bold text-foreground">待機中 ({sortedWaitingPlayers.length})</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-foreground">待機中 ({sortedWaitingPlayers.length})</h3>
+              <button
+                onClick={() => setShowAddPlayer(!showAddPlayer)}
+                className="shrink-0 text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1.5 rounded-lg hover:bg-primary/20 transition-colors flex items-center gap-1.5"
+              >
+                <Plus size={14} />
+                <span>{showAddPlayer ? '閉じる' : 'メンバー追加'}</span>
+                <ChevronDown size={14} className={`transition-transform ${showAddPlayer ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+
+            {showAddPlayer && (
+              <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
+                <PlayerAddInput
+                  onAdd={async (name, gender) => {
+                    const result = await writer.addPlayers([{ name, gender }]);
+                    if (result.skipped.length > 0) {
+                      toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
+                    }
+                  }}
+                />
+              </div>
+            )}
 
             <NextMatchPredictionBar
               players={predictedPlayers}
@@ -1472,31 +1501,6 @@ export function MainPage() {
                 );
               })}
             </div>
-          </div>
-
-          {/* Add Member - between Waiting and On Break */}
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={() => setShowAddPlayer(!showAddPlayer)}
-              className="self-start text-xs font-semibold text-primary bg-primary/10 px-2.5 py-1.5 rounded-lg hover:bg-primary/20 transition-colors flex items-center gap-1.5"
-            >
-              <Plus size={14} />
-              <span>{showAddPlayer ? '閉じる' : 'メンバー追加'}</span>
-              <ChevronDown size={14} className={`transition-transform ${showAddPlayer ? 'rotate-180' : ''}`} />
-            </button>
-
-            {showAddPlayer && (
-              <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
-                <PlayerAddInput
-                  onAdd={async (name, gender) => {
-                    const result = await writer.addPlayers([{ name, gender }]);
-                    if (result.skipped.length > 0) {
-                      toast.warning(`「${result.skipped[0]}」は既に登録済みです`);
-                    }
-                  }}
-                />
-              </div>
-            )}
           </div>
 
           {/* On Break */}
