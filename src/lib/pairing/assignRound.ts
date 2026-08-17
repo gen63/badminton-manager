@@ -24,16 +24,21 @@ export interface AssignRoundParams {
   candidates: Player[];
   /** 埋めるコート */
   courtIds: number[];
-  /** 実力の順位（`buildInitialOrder` 相当＝ハシゴ式適用**前**、0始まり）。
-   *  実力差のハード制約・`skillGap`・`variety` のスケールに使う。 */
+  /** 登録レートそのままの順位（ハシゴ式適用**前**、0始まり）。
+   *  **本物の最上位と本物の最下位を同居させない安全網にだけ使う。** */
   rankById: Map<string, number>;
   /**
    * ハシゴ式（`applyStreakSwaps`）適用**後**の順位。省略時は `rankById` と同じ。
    *
-   * 当日の連勝連敗で ±1グループ分まで動いた「今の調子」の序列で、コートの
-   * グループ分けとチームの釣り合い（`competitive`）に使う。実力差の判定に
-   * こちらを使わないのは、ハシゴ式が序列を撹拌するため上位×下位の同居を
-   * 検出できなくなるから（旧エンジンと同じ分離）。
+   * **これが実働の序列**。登録レートはこの序列の初期値でしかなく、以後は当日の
+   * 勝敗で上下する。帯の形成（`skillGap`）とチームの釣り合い（`competitive` /
+   * `normalizeSplit`）はこちらを使う。
+   *
+   * ただし**順位差のハード制約まわりは `rankById`（登録レート）**で扱う。撹拌後の
+   * 序列で見ると「本物の最上位と本物の最下位」の同居を検出できないため、安全網は
+   * 素の序列で張る（旧エンジンの `hasWideRankSpan` と同じ）。初期解の実現可能性
+   * 判定と `reachableCountById` も、この制約と基準を揃える必要があるので
+   * `rankById` を使う（揃えないと構築した解が自分で違反を作る）。
    */
   formRankById?: Map<string, number>;
   rosterSize: number;

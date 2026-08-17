@@ -113,11 +113,13 @@ export interface ObjectiveInput {
   priorityRankById: Map<string, number>;
   /** 優先度順位を計算した候補プールの人数（fairness/waiting の分母） */
   candidateCount: number;
-  /** 実力の順位（`baseRankById` 相当＝ハシゴ式適用**前**。0始まり）。
-   *  実力差の判定（skillGap / ハード制約 / variety のスケール）に使う。 */
+  /** 登録レートそのままの順位（ハシゴ式適用**前**。0始まり）。
+   *  **本物の最上位と本物の最下位を同居させない安全網にだけ使う。**
+   *  帯の形成そのものは `formRankById` が担う。 */
   rankById: Map<string, number>;
-  /** ハシゴ式（`applyStreakSwaps`）適用**後**の順位。チームの釣り合い（competitive）に使う。
-   *  当日の連勝連敗を反映した「今の調子」の序列。 */
+  /** ハシゴ式（`applyStreakSwaps`）適用**後**の順位＝**実働の序列**。
+   *  登録レートはこの序列の初期値でしかなく、以後は当日の勝敗で上下する。
+   *  帯の形成（skillGap）・チームの釣り合い（competitive）はこちらを使う。 */
   formRankById: Map<string, number>;
   /** ロースター人数（skillGap/competitive の分母 = ロースター人数 − 1） */
   rosterSize: number;
@@ -177,6 +179,11 @@ export function computeWaiting(
 
 /**
  * 目的3: skillGap — 各コートの「順位の最大 − 最小」÷（ロースター人数 − 1）の平均。
+ *
+ * 順位は**ハシゴ式適用後**（`formRankById`）を使う。新エンジンにはグループ分けの
+ * 独立した工程が無く、この項と順位差のハード制約が帯の形成を兼ねているため、
+ * ここで登録レートを見ると帯がハシゴ式に一切追随しなくなる（旧エンジンは
+ * `groupPlayers3Court` がハシゴ式適用後の序列で帯を作っていた）。
  */
 export function computeSkillGap(
   courts: CourtPlacement[],
@@ -327,7 +334,7 @@ export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
   return {
     fairness: computeFairness(input.courts, input.priorityRankById, input.candidateCount),
     waiting: computeWaiting(input.benchIds, input.priorityRankById, input.candidateCount),
-    skillGap: computeSkillGap(input.courts, input.rankById, input.rosterSize),
+    skillGap: computeSkillGap(input.courts, input.formRankById, input.rosterSize),
     competitive: computeCompetitive(input.courts, input.formRankById, input.rosterSize),
     gender: computeGender(input.courts, input.genderById, input.preferGenderMix),
     mixSplit: computeMixSplit(input.courts, input.genderById),
