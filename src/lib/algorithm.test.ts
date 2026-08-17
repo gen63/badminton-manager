@@ -2958,3 +2958,72 @@ describe('sortWaitingPlayers - 滞在時間モードの起点（opsCompletedAt�
     expect(sorted[0].id).toBe('unresolvedFirstTime');
   });
 });
+
+describe('assignCourts - ハシゴ式（applyStreakSwaps）が新エンジンにも効く', () => {
+  const NOW = 1_700_000_000_000;
+  const N = 17;
+
+  /** 対象者が全勝 / 全敗するセッションを回し、対戦相手の平均序列を返す */
+  const meanOpponentRank = (targetAlwaysWins: boolean): number => {
+    const target = 'p8'; // 序列9位（真ん中）
+    const players: Player[] = Array.from({ length: N }, (_, i) => ({
+      id: `p${i}`,
+      name: `P${i}`,
+      gender: i % 3 === 0 ? ('F' as const) : ('M' as const),
+      rating: 40 - i,
+      gamesPlayed: 0,
+      isResting: false,
+      lastPlayedAt: 0,
+      activatedAt: 0,
+      operationStatus: { payment: true, roster: true, checkin: true },
+      opsCompletedAt: NOW,
+    }));
+    const history: Match[] = [];
+    const opponents: number[] = [];
+
+    for (let round = 0; round < 25; round++) {
+      vi.spyOn(Date, 'now').mockReturnValue(NOW + round * 8 * 60_000);
+      const assignments = assignCourts(players, 3, history, {
+        totalCourtCount: 3,
+        targetCourtIds: [1, 2, 3],
+        practiceStartTime: NOW,
+        allPlayers: players,
+        useStayDurationPriority: true,
+      });
+      for (const c of assignments) {
+        const ids = [...c.teamA, ...c.teamB];
+        const inA = c.teamA.includes(target);
+        // 対象者の勝敗だけ固定する。対象者がいないコートは A の勝ちで揃える
+        const aWins = ids.includes(target) ? (targetAlwaysWins ? inA : !inA) : true;
+        if (ids.includes(target)) {
+          opponents.push(...(inA ? c.teamB : c.teamA).map(x => Number(x.slice(1)) + 1));
+        }
+        history.push({
+          id: `m${history.length}`,
+          courtId: c.courtId,
+          teamA: c.teamA,
+          teamB: c.teamB,
+          scoreA: aWins ? 21 : 15,
+          scoreB: aWins ? 15 : 21,
+          startedAt: 0,
+          finishedAt: 0,
+          winner: aWins ? 'A' : 'B',
+        } as Match);
+        for (const id of ids) {
+          const p = players.find(x => x.id === id)!;
+          p.gamesPlayed += 1;
+        }
+      }
+    }
+    return opponents.reduce((a, b) => a + b, 0) / opponents.length;
+  };
+
+  it('勝ち続けると対戦相手が強くなり、負け続けると弱くなる', () => {
+    const whenWinning = meanOpponentRank(true);
+    const whenLosing = meanOpponentRank(false);
+
+    // ハシゴ式が無いと勝敗が組み合わせに一切影響せず、両者は完全に一致する
+    // （実装前の実測では差 0.00 だった）。
+    expect(whenLosing - whenWinning).toBeGreaterThan(1);
+  });
+});

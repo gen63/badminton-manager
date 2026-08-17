@@ -113,8 +113,12 @@ export interface ObjectiveInput {
   priorityRankById: Map<string, number>;
   /** 優先度順位を計算した候補プールの人数（fairness/waiting の分母） */
   candidateCount: number;
-  /** 実力の順位（`baseRankById` 相当。0始まり） */
+  /** 実力の順位（`baseRankById` 相当＝ハシゴ式適用**前**。0始まり）。
+   *  実力差の判定（skillGap / ハード制約 / variety のスケール）に使う。 */
   rankById: Map<string, number>;
+  /** ハシゴ式（`applyStreakSwaps`）適用**後**の順位。チームの釣り合い（competitive）に使う。
+   *  当日の連勝連敗を反映した「今の調子」の序列。 */
+  formRankById: Map<string, number>;
   /** ロースター人数（skillGap/competitive の分母 = ロースター人数 − 1） */
   rosterSize: number;
   /** 性別（未設定は undefined） */
@@ -196,6 +200,9 @@ export function computeSkillGap(
  * 目的4: competitive — 各コートの
  * 「|チームAの順位合計 − チームBの順位合計| ÷（ロースター人数 − 1）」の平均。
  * 0 に近いほど競る試合（実力が拮抗している）。
+ *
+ * 順位は**ハシゴ式適用後**（`formRankById`）を使う。当日勝っている人を強めに、
+ * 負けている人を弱めに見積もることで、調子を反映した拮抗した組み合わせになる。
  */
 export function computeCompetitive(
   courts: CourtPlacement[],
@@ -321,7 +328,7 @@ export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
     fairness: computeFairness(input.courts, input.priorityRankById, input.candidateCount),
     waiting: computeWaiting(input.benchIds, input.priorityRankById, input.candidateCount),
     skillGap: computeSkillGap(input.courts, input.rankById, input.rosterSize),
-    competitive: computeCompetitive(input.courts, input.rankById, input.rosterSize),
+    competitive: computeCompetitive(input.courts, input.formRankById, input.rosterSize),
     gender: computeGender(input.courts, input.genderById, input.preferGenderMix),
     mixSplit: computeMixSplit(input.courts, input.genderById),
     variety: computeVariety(

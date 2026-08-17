@@ -126,6 +126,7 @@ interface RunResult {
   closeness: number;       // |真の勝率 − 0.5| の平均（低いほど競っている）
   // 目的5: 性別構成が偏らない
   genderSkewRate: number;  // 3-1 になった試合の割合（低いほど良い）
+  winRateSd: number;       // 勝率の標準偏差（低いほど全員が5割に近い）
   mvfRate: number;         // 目的5b: 男女戦（男男 vs 女女）の割合
   gamesByTrueRank: number[]; // 実力順位ごとの試合数（序列の端が損をしていないか）
   lateRatio: number;       // 遅参加者の「在席比例に対する倍率」（1.0 が理想）
@@ -254,6 +255,7 @@ function runOnce(
   let gapSum = 0;
   let closenessSum = 0;
   let genderSkewMatches = 0;
+  const winsById = new Map<string, number>(players.map(p => [p.id, 0]));
   let twoTwoMatches = 0;
   let mvfMatches = 0;
   const gamesByTrueRank = new Array(n).fill(0);
@@ -283,6 +285,10 @@ function runOnce(
     const diff = strength(m.teamA.map(id => byId.get(id)!)) -
       strength(m.teamB.map(id => byId.get(id)!));
     closenessSum += Math.abs(1 / (1 + Math.pow(10, -diff / 8)) - 0.5);
+
+    for (const id of (m.winner === 'A' ? m.teamA : m.teamB)) {
+      winsById.set(id, (winsById.get(id) ?? 0) + 1);
+    }
 
     // 目的5: 3-1 の性別構成
     const femaleCount = ids.filter(id => byId.get(id)!.gender === 'F').length;
@@ -339,6 +345,14 @@ function runOnce(
   const lateRatios = players.filter(p => p.joinAt > 0).map(ratioOf);
   const earlyRatios = players.filter(p => p.joinAt === 0).map(ratioOf);
 
+  // 勝率のばらつき（ハンデ装置＝ハシゴ式の効果を測る指標。低いほど勝率が均等）
+  const winRates = players.filter(p => p.gamesPlayed > 0)
+    .map(p => (winsById.get(p.id) ?? 0) / p.gamesPlayed);
+  const wrMean = winRates.reduce((a, b) => a + b, 0) / winRates.length;
+  const winRateSd = Math.sqrt(
+    winRates.reduce((a, b) => a + (b - wrMean) ** 2, 0) / winRates.length
+  );
+
   const games = players.map(p => p.gamesPlayed);
   const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
@@ -349,6 +363,7 @@ function runOnce(
     trueGap: history.length ? gapSum / history.length : 0,
     closeness: history.length ? closenessSum / history.length : 0,
     genderSkewRate: history.length ? genderSkewMatches / history.length : 0,
+    winRateSd,
     mvfRate: history.length ? mvfMatches / history.length : 0,
     gamesByTrueRank,
     lateRatio: meanOf(lateRatios),
@@ -382,7 +397,7 @@ if (LATE_JOIN > 0) console.log('  遅参加=在席時間に比例した期待値
 console.log('  （共演のみ高いほど良い。他はすべて低いほど良い）');
 console.log('');
 console.log(
-  '  条件      NOISE  幅広%  競り度  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち' +
+  '  条件      NOISE  幅広%  競り度  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち  勝率SD%' +
     (LATE_JOIN > 0 ? '  遅参加' : '')
 );
 console.log('  ' + '-'.repeat(72));
@@ -421,6 +436,7 @@ for (const { n, courtCount } of CONDITIONS) {
         `${avg(r => r.distinctMates).toFixed(2).padStart(5)}  ` +
         `${avg(r => r.gamesSpread).toFixed(2).padStart(8)}  ` +
         `${avg(r => r.maxIdle).toFixed(2).padStart(4)}` +
+        `  ${(avg(r => r.winRateSd) * 100).toFixed(1)}` +
         (LATE_JOIN > 0 ? `   ${avg(r => r.lateRatio).toFixed(2)}倍` : '')
     );
   }

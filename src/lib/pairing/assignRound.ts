@@ -24,8 +24,18 @@ export interface AssignRoundParams {
   candidates: Player[];
   /** 埋めるコート */
   courtIds: number[];
-  /** 実力の順位（`buildInitialOrder` 相当、0始まり） */
+  /** 実力の順位（`buildInitialOrder` 相当＝ハシゴ式適用**前**、0始まり）。
+   *  実力差のハード制約・`skillGap`・`variety` のスケールに使う。 */
   rankById: Map<string, number>;
+  /**
+   * ハシゴ式（`applyStreakSwaps`）適用**後**の順位。省略時は `rankById` と同じ。
+   *
+   * 当日の連勝連敗で ±1グループ分まで動いた「今の調子」の序列で、コートの
+   * グループ分けとチームの釣り合い（`competitive`）に使う。実力差の判定に
+   * こちらを使わないのは、ハシゴ式が序列を撹拌するため上位×下位の同居を
+   * 検出できなくなるから（旧エンジンと同じ分離）。
+   */
+  formRankById?: Map<string, number>;
   rosterSize: number;
   /** 低いほど優先。algorithm.ts の calculatePriorityScore を呼び出し側が渡す */
   priorityScoreOf: (p: Player) => number;
@@ -136,6 +146,8 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     lateBalanceMode = false,
   } = params;
 
+  const formRankById = params.formRankById ?? rankById;
+
   const weights: ObjectiveWeights = { ...DEFAULT_WEIGHTS, ...params.weights };
 
   const genderById = new Map<string, 'M' | 'F' | undefined>(
@@ -193,8 +205,8 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   let initialCourts: CourtState[];
   if (wideSpanThreshold === null) {
     const rankSortedSelected = [...selected].sort((a, b) => {
-      const rankA = rankById.get(a.id) ?? 0;
-      const rankB = rankById.get(b.id) ?? 0;
+      const rankA = formRankById.get(a.id) ?? 0;
+      const rankB = formRankById.get(b.id) ?? 0;
       if (rankA !== rankB) return rankA - rankB;
       return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     });
@@ -332,7 +344,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   // またげず、途中の悪い分け方に阻まれて入れ替え自体が却下される
   // （実測: 少数派2人を同じコートに集める修復が 3-1×2 のまま止まった）。
   const splitCost = (slots: CourtState['slots']): number => {
-    const rankOf = (id: string): number => rankById.get(id) ?? 0;
+    const rankOf = (id: string): number => formRankById.get(id) ?? 0;
     const diff = Math.abs(
       rankOf(slots[0]) + rankOf(slots[1]) - rankOf(slots[2]) - rankOf(slots[3])
     );
@@ -350,7 +362,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   /** コート4人を、コスト最小の分け方に並べ替える（同点は実力順で決定的に選ぶ） */
   const normalizeSplit = (slots: CourtState['slots']): CourtState['slots'] => {
     const [a, b, c, d] = [...slots].sort((x, y) => {
-      const rankDiff = (rankById.get(x) ?? 0) - (rankById.get(y) ?? 0);
+      const rankDiff = (formRankById.get(x) ?? 0) - (formRankById.get(y) ?? 0);
       if (rankDiff !== 0) return rankDiff;
       return x < y ? -1 : x > y ? 1 : 0;
     });
@@ -420,6 +432,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       pairCounts,
       pairKeyOf,
       reachableCountById,
+      formRankById,
     });
     return { violations, objective: weightedObjective(terms, weights) };
   };
