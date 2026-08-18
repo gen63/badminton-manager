@@ -27,6 +27,7 @@ import { UnrecordedMatchPrompt } from '../components/UnrecordedMatchPrompt';
 import { CourtTimer } from '../components/CourtTimer';
 import { CourtCardFrame } from '../components/CourtCardFrame';
 import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
+import { FinishOperationGuide } from '../components/FinishOperationGuide';
 import { predictNextMatchPlayers } from '../lib/nextMatchPrediction';
 import {
   shouldCallNextMatch,
@@ -43,7 +44,6 @@ import { withInProgressGames } from '../lib/effectiveGames';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 import { notifyNextMatchSoon } from '../lib/notifications';
 import { unlockMatchCallAudio, playMatchCallChime, vibrateMatchCall, fireMatchCallAlert, installMatchCallAudioUnlock, speakMatchCall, SPEECH_DELAY_MS } from '../lib/matchCallAlert';
-import { useNoticeStore } from '../stores/noticeStore';
 
 import { BottomNav } from '../components/BottomNav';
 
@@ -509,15 +509,14 @@ export function MainPage() {
         const selfName = myPlayerId !== null ? playerMap.get(myPlayerId)?.name : undefined;
         // 運用コートが1面のみのときは「1コート」が冗長なので番号を出さない
         const courtNumberForMessage = courts.length <= 1 ? null : basisCourtId;
-        const { body, toast: toastText, speech } = buildNextMatchCallMessage(
+        const { body, speech } = buildNextMatchCallMessage(
           courtNumberForMessage,
           names,
           selfName,
         );
-        // トースト → OS通知 → 音・振動・読み上げ の順で発火する。トーストを最初に
-        // 出すことで通知系（SW/Notification API・WebAudio・speechSynthesis）が
-        // 失敗しても画面表示だけは必ず残る。
-        useNoticeStore.getState().show(toastText, 'info', 8000);
+        // 画面表示は継続表示のガイド（`FinishOperationGuide`）が担うので、ここでは
+        // 「画面を見ていない人に気づかせる」チャネルだけを鳴らす。以前は8秒トースト
+        // も出していたが、ガイドと同じ情報が消えずに出るようになり重複したため廃止。
         notifyNextMatchSoon(body);
         fireMatchCallAlert(speech);
         calledForNextMatchRef.current = true;
@@ -539,13 +538,10 @@ export function MainPage() {
           .map((p) => p.name);
         // 運用コートが1面のみのときは「1コート」が冗長なので番号を出さない
         const courtNumberForMessage = courts.length <= 1 ? null : basisCourtId;
-        const { toast: adminToastText, speech: adminSpeech } = buildAdminMatchCallMessage(
-          courtNumberForMessage,
-          names,
-        );
-        // 管理者向けはトースト＋音・振動・読み上げのみ。OS 通知は出さない
-        // （管理者はアプリを開いて進行を見ている前提のため）。
-        useNoticeStore.getState().show(adminToastText, 'info', 8000);
+        const { speech: adminSpeech } = buildAdminMatchCallMessage(courtNumberForMessage, names);
+        // 管理者向けは音・振動・読み上げのみ。OS 通知は出さない（管理者はアプリを
+        // 開いて進行を見ている前提）。画面表示はガイドが常時出しているのでトーストも
+        // 出さない。
         fireMatchCallAlert(adminSpeech);
         announcedAdminKeyRef.current = adminAnnounceKey(courts, Date.now());
       }
@@ -1136,9 +1132,18 @@ export function MainPage() {
 
       {/* プレゼンス表示（他ユーザーが画面を開いている/操作中のとき） */}
       {session?.id && (
-        <div className="flex justify-center px-4 pt-2 pointer-events-none">
-          <PresenceIndicator presence={remotePresence} currentUser={currentUser} />
-        </div>
+        <PresenceIndicator presence={remotePresence} currentUser={currentUser} />
+      )}
+
+      {/* 終了操作の担当案内（次の試合に入るメンバーへ継続表示） */}
+      {session?.id && (
+        <FinishOperationGuide
+          courts={courts}
+          certainIds={nextMatchPrediction.certainIds}
+          players={predictedPlayers}
+          selfPlayerId={myPlayerId}
+          showCourtNumber={courts.length > 1}
+        />
       )}
 
       {/* 運営タスク（自分の分だけ、全て完了で非表示） */}

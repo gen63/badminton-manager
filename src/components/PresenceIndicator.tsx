@@ -7,7 +7,7 @@ const VIEWING_WINDOW_MS = 45_000;
 /** 最後のタップから「操作中」と表示し続ける時間 */
 const ACTING_WINDOW_MS = 10_000;
 /** 名前表示の最大文字数（超過時は末尾 … ） */
-const NAME_MAX = 12;
+const NAME_MAX = 8;
 /** UI 再評価の tick 間隔 */
 const TICK_MS = 1_000;
 
@@ -21,11 +21,15 @@ function truncate(name: string): string {
   return `${name.slice(0, NAME_MAX)}…`;
 }
 
+/**
+ * 「たろう 操作中」「たろう・はなこ 閲覧中」「たろう 他2名 閲覧中」。
+ * 画面上部は情報が多いので「〜さんが」の助詞・敬称を省いて幅を詰める。
+ */
 function formatNames(names: string[], suffix: string): string {
   if (names.length === 0) return '';
-  if (names.length === 1) return `${truncate(names[0])}さんが${suffix}`;
-  if (names.length === 2) return `${truncate(names[0])}さんと${truncate(names[1])}さんが${suffix}`;
-  return `${truncate(names[0])}さん 他${names.length - 1}名が${suffix}`;
+  if (names.length === 1) return `${truncate(names[0])} ${suffix}`;
+  if (names.length === 2) return `${truncate(names[0])}・${truncate(names[1])} ${suffix}`;
+  return `${truncate(names[0])} 他${names.length - 1}名 ${suffix}`;
 }
 
 /**
@@ -36,6 +40,10 @@ function formatNames(names: string[], suffix: string): string {
  * - タブを閉じる/非可視化/45秒無反応で presence ごと消え、再訪時は閲覧中に戻る
  * - 自分自身は除外
  * - 該当者ゼロなら何も描画しない
+ *
+ * 画面上部には終了操作ガイド（`FinishOperationGuide`）も並ぶため、こちらは
+ * 幅・高さともに最小限のチップにとどめる。外側の余白まで自前で描画するのは、
+ * 非表示のときに空の余白行を残さないため（ガイド側と同じ方針）。
  */
 export function PresenceIndicator({ presence, currentUser }: Props) {
   const [now, setNow] = useState<number>(() => Date.now());
@@ -57,20 +65,25 @@ export function PresenceIndicator({ presence, currentUser }: Props) {
     .filter(([, e]) => typeof e.lastTapAt === 'number' && now - e.lastTapAt <= ACTING_WINDOW_MS)
     .map(([name]) => name);
 
-  if (acting.length > 0) {
-    return (
-      <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 text-orange-700 rounded-full px-4 py-2 text-sm shadow-md">
-        <Hand className="w-4 h-4 shrink-0 animate-pulse" aria-hidden />
-        <span className="truncate">{formatNames(acting, '操作中')}</span>
-      </div>
-    );
-  }
+  const isActing = acting.length > 0;
+  const names = isActing ? acting : entries.map(([name]) => name);
 
-  const viewing = entries.map(([name]) => name);
   return (
-    <div className="flex items-center gap-2 bg-card border border-border text-muted-foreground rounded-full px-4 py-2 text-sm shadow-md">
-      <Eye className="w-4 h-4 shrink-0" aria-hidden />
-      <span className="truncate">{formatNames(viewing, '閲覧中')}</span>
+    <div className="px-4 pt-2 flex justify-center pointer-events-none">
+      <div
+        className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] leading-tight shadow-sm max-w-full ${
+          isActing
+            ? 'bg-orange-50 border border-orange-200 text-orange-700'
+            : 'bg-card border border-border text-muted-foreground'
+        }`}
+      >
+        {isActing ? (
+          <Hand className="w-3 h-3 shrink-0 animate-pulse" aria-hidden />
+        ) : (
+          <Eye className="w-3 h-3 shrink-0" aria-hidden />
+        )}
+        <span className="truncate">{formatNames(names, isActing ? '操作中' : '閲覧中')}</span>
+      </div>
     </div>
   );
 }
