@@ -111,25 +111,25 @@ describe('buildFinishOperationGuide', () => {
 describe('buildFinishOperationGuideHeadline', () => {
   it('コート番号は丸数字（コートカードの丸バッジと揃える）', () => {
     expect(buildFinishOperationGuideHeadline({ courtId: 1, playerIds: ['w1'] })).toBe(
-      '①付近待機 操作担当',
+      '①付近待機',
     );
     expect(buildFinishOperationGuideHeadline({ courtId: 2, playerIds: ['w1'] })).toBe(
-      '②付近待機 操作担当',
+      '②付近待機',
     );
     expect(buildFinishOperationGuideHeadline({ courtId: 3, playerIds: ['w1'] })).toBe(
-      '③付近待機 操作担当',
+      '③付近待機',
     );
   });
 
   it('丸数字が無い範囲は素の数字＋コートに戻す', () => {
     expect(buildFinishOperationGuideHeadline({ courtId: 21, playerIds: ['w1'] })).toBe(
-      '21コート付近待機 操作担当',
+      '21コート付近待機',
     );
   });
 
   it('コート番号が無ければ番号を省く（1面運用）', () => {
     expect(buildFinishOperationGuideHeadline({ courtId: null, playerIds: ['w1'] })).toBe(
-      'コート付近待機 操作担当',
+      'コート付近待機',
     );
   });
 });

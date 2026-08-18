@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { StopCircle } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import type { Court } from '../types/court';
 import type { Player } from '../types/player';
 import {
@@ -24,16 +24,15 @@ interface FinishOperationGuideProps {
 }
 
 /**
- * 「②付近待機 操作担当」の継続表示。
+ * 「②付近待機」の継続表示。
  *
  * 「気づいた人が終了操作をする」運用から「次の試合に入るメンバー（配置予測の
- * 濃い青）が操作する」運用へ変えるための案内。担当に期待するのは終了 → 配置 →
- * 開始の一連なのでラベルは「操作担当」。アイコンだけ `StopCircle`
- * （`FinishGameButton` と同じ）にして、起点が終了ボタンであることを示す。
+ * 濃い青）が操作する」運用へ変えるための案内のうち、**待機場所**を担う部分。
+ * 「操作担当」であることは配置予測バー（`NextMatchPredictionBar`）の見出しが
+ * 常時示しているので文言では繰り返さず、アイコンも場所を表す `MapPin` にする。
  *
- * **出るのは 4:30 を過ぎてから**。「誰が担当か」は配置予測バー
- * （`NextMatchPredictionBar`）が常時出しているので、ここでしか言えない
- * 「どのコート脇で待つか」が決まってから出す。出た瞬間だけ一度光らせて気づかせる
+ * **出るのは 4:30 を過ぎてから**。それ以前は待つ場所が決まらず、担当の顔ぶれは
+ * 配置予測バーと重複するだけだから。出た瞬間だけ一度光らせて気づかせる
  * （以前この時刻に出していた8秒トーストの代わり）。
  *
  * 4:30 まで毎秒 tick はせず、`CourtCardFrame` と同様に閾値までの `setTimeout` を
@@ -106,7 +105,7 @@ export function FinishOperationGuide({
         data-testid="finish-operation-guide"
         role="status"
       >
-        <StopCircle size={14} className="shrink-0 text-orange-600" aria-hidden />
+        <MapPin size={14} className="shrink-0 text-orange-600" aria-hidden />
         <span className="text-xs font-bold">{buildFinishOperationGuideHeadline(guide)}</span>
         <span className="flex items-center gap-1 flex-wrap">
           {targets.map((player) => {

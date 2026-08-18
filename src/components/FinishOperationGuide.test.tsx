@@ -65,7 +65,7 @@ describe('FinishOperationGuide', () => {
     expect(guide()).toBeNull();
   });
 
-  it('4:30 未満は出さず、4:30 で「①付近待機 操作担当」が出る', () => {
+  it('4:30 未満は出さず、4:30 で「①付近待機」が出る', () => {
     render(
       <FinishOperationGuide
         courts={[playingCourt(1, Date.now() - 60_000), playingCourt(2, Date.now())]}
@@ -85,7 +85,7 @@ describe('FinishOperationGuide', () => {
       vi.advanceTimersByTime(3.5 * 60 * 1000 + 100);
     });
     expect(guide()).not.toBeNull();
-    expect(screen.getByText('①付近待機 操作担当')).toBeInTheDocument();
+    expect(screen.getByText('①付近待機')).toBeInTheDocument();
     expect(screen.getByText('たろう')).toBeInTheDocument();
     expect(screen.getByText('はなこ')).toBeInTheDocument();
   });
@@ -100,7 +100,7 @@ describe('FinishOperationGuide', () => {
         showCourtNumber={false}
       />,
     );
-    expect(screen.getByText('コート付近待機 操作担当')).toBeInTheDocument();
+    expect(screen.getByText('コート付近待機')).toBeInTheDocument();
   });
 
   it('自分が担当なら枠を強調し自分のチップを塗る', () => {
