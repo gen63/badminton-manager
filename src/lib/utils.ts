@@ -47,6 +47,21 @@ export function generateSessionId(): string {
 }
 
 /**
+ * セッション参加 URL を組み立てる。
+ *
+ * 共有 UI は 2026-05-07 に撤去したが、一覧の自動非表示（最後の試合から30分）で
+ * 見つけられなくなったメンバーへ連携するための緊急避難措置として設定画面に復活させた。
+ * `base` は BrowserRouter の basename と同じ `import.meta.env.BASE_URL` を渡す想定で、
+ * 前後のスラッシュ有無に関わらず `<origin>/<base>/session/<id>` になるよう正規化する。
+ */
+export function buildSessionUrl(origin: string, base: string, sessionId: string): string {
+  const trimmedOrigin = origin.replace(/\/+$/, '');
+  const trimmedBase = base.replace(/^\/+|\/+$/g, '');
+  const prefix = trimmedBase ? `${trimmedOrigin}/${trimmedBase}` : trimmedOrigin;
+  return `${prefix}/session/${sessionId}`;
+}
+
+/**
  * Copy text to clipboard (with legacy fallback for older browsers)
  */
 export async function copyToClipboard(text: string): Promise<boolean> {

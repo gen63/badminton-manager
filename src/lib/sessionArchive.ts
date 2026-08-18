@@ -73,3 +73,24 @@ export function isSessionVisible(
   if (now < startTime - VISIBLE_BEFORE_START_MS) return false;
   return formatLocalDate(startTime) >= formatLocalDate(now);
 }
+
+/**
+ * 練習が終わったのでセッションから自動退出すべきか。
+ *
+ * 判定は一覧の非表示条件（`isSessionVisible`）と同じものを使うが、**試合開始済みの
+ * セッションだけ**を対象にする。試合未開始の「開始90分前まで非表示」は
+ * *一覧に出さない* だけのルールで（`docs/plans/2026-05-19-hide-sessions-until-90min-before-start.md`）、
+ * 開始前に入っている作成者や早く来た人を追い出す意図ではないため対象外。
+ */
+export function shouldAutoExitSession(
+  session: {
+    firstMatchStartedAt?: number | null;
+    lastMatchFinishedAt?: number | null;
+    hasActiveCourt?: boolean;
+    config?: { practiceStartTime?: number };
+  },
+  now: number = Date.now(),
+): boolean {
+  if (!session.firstMatchStartedAt) return false;
+  return !isSessionVisible(session, now);
+}
