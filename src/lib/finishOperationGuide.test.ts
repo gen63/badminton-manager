@@ -118,19 +118,19 @@ describe('buildFinishOperationGuideHeadline', () => {
   it('waiting はコートに触れない', () => {
     expect(
       buildFinishOperationGuideHeadline({ phase: 'waiting', courtId: null, playerIds: ['w1'] }),
-    ).toBe('終了操作をお願いします');
+    ).toBe('終了操作担当');
   });
 
   it('imminent はコート番号付き', () => {
     expect(
       buildFinishOperationGuideHeadline({ phase: 'imminent', courtId: 2, playerIds: ['w1'] }),
-    ).toBe('2コート脇で終了操作をお願いします');
+    ).toBe('2コート脇待機 終了操作担当');
   });
 
   it('imminent でコート番号が無ければ番号を省く（1面運用）', () => {
     expect(
       buildFinishOperationGuideHeadline({ phase: 'imminent', courtId: null, playerIds: ['w1'] }),
-    ).toBe('コート脇で終了操作をお願いします');
+    ).toBe('コート脇待機 終了操作担当');
   });
 });
 

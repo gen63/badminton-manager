@@ -1,5 +1,5 @@
 /**
- * 「終了操作をお願いします」ガイドの判定
+ * 「終了操作担当」ガイドの判定
  *
  * 「気づいた人が終了操作をする」運用を「次の試合に入るメンバー（配置予測の
  * ほぼ確定＝濃い青）が終了操作をする」運用へ変えるため、画面上部に消えない
@@ -33,7 +33,7 @@ export interface FinishOperationGuide {
    * `waiting` のとき、および 1 面運用（`showCourtNumber === false`）なら null。
    */
   courtId: number | null;
-  /** 終了操作をお願いする担当（`certainIds` のうちまだコートに乗っていない人） */
+  /** 終了操作の担当（`certainIds` のうちまだコートに乗っていない人） */
   playerIds: string[];
 }
 
@@ -82,14 +82,17 @@ export function buildFinishOperationGuide(
 
 /**
  * ガイドの見出し文言。名前は表示側がチップで描くのでここには含めない。
- * 語彙は呼び出し通知（`buildNextMatchCallMessage`）の「コート付近で〜」と
- * 揃えつつ、こちらは操作の依頼なので「コート脇で終了操作をお願いします」にする。
+ *
+ * 常時表示なので「〜をお願いします」という依頼文ではなく**役割ラベル**にする。
+ * 毎試合ずっと目に入る文言としては依頼文は冗長で、「終了操作担当」の方が
+ * 「その人がやるもの」という運用として伝わる。短いぶん 390px 幅でも
+ * 見出しと名前チップが1行に収まる。
  */
 export function buildFinishOperationGuideHeadline(guide: FinishOperationGuide): string {
-  if (guide.phase === 'waiting') return '終了操作をお願いします';
+  if (guide.phase === 'waiting') return '終了操作担当';
   return guide.courtId === null
-    ? 'コート脇で終了操作をお願いします'
-    : `${guide.courtId}コート脇で終了操作をお願いします`;
+    ? 'コート脇待機 終了操作担当'
+    : `${guide.courtId}コート脇待機 終了操作担当`;
 }
 
 /**
