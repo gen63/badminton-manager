@@ -27,6 +27,7 @@ import { UnrecordedMatchPrompt } from '../components/UnrecordedMatchPrompt';
 import { CourtTimer } from '../components/CourtTimer';
 import { CourtCardFrame } from '../components/CourtCardFrame';
 import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
+import { FinishOperationGuide } from '../components/FinishOperationGuide';
 import { predictNextMatchPlayers } from '../lib/nextMatchPrediction';
 import {
   shouldCallNextMatch,
@@ -1139,6 +1140,17 @@ export function MainPage() {
         <div className="flex justify-center px-4 pt-2 pointer-events-none">
           <PresenceIndicator presence={remotePresence} currentUser={currentUser} />
         </div>
+      )}
+
+      {/* 終了操作の担当案内（次の試合に入るメンバーへ継続表示） */}
+      {session?.id && (
+        <FinishOperationGuide
+          courts={courts}
+          certainIds={nextMatchPrediction.certainIds}
+          players={predictedPlayers}
+          selfPlayerId={myPlayerId}
+          showCourtNumber={courts.length > 1}
+        />
       )}
 
       {/* 運営タスク（自分の分だけ、全て完了で非表示） */}

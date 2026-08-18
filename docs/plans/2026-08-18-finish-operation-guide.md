@@ -1,0 +1,100 @@
+# 終了操作の担当を継続表示する（配置予測「ほぼ確定」メンバーへの案内）
+
+## 背景 / 課題
+
+試合経過 4:30 で、配置予測の「ほぼ確定」メンバー（`NextMatchPredictionBar` の濃い青）へ
+事前呼び出しのトースト・OS 通知・読み上げが出る
+（`docs/plans/2026-08-13-next-match-call-notification.md`）。
+しかしトーストは 8 秒で消えるため、**見逃すと誰が終了操作の担当なのか画面から分からない**。
+
+これまでは「気づいた人が終了操作をする」運用だったが、今後は
+**「濃い青＝次の試合に入るメンバーが終了操作をする」を継続的に明示する運用**にしたい。
+
+## 要件
+
+1. 消えないガイドを画面上部（`PresenceIndicator` の直下）に置く。
+2. 2 段階で案内する。
+   - どのコートが先に終わるか未定の間 → `終了操作をお願いします` ＋ 担当の名前
+   - どこかのコートが 4:30 を超えたら → `2コート脇で終了操作をお願いします`（継続表示）
+3. 表示対象は全員。**自分が担当のときだけ強調**する。
+4. プレイ中コートがある間は常時表示する（段階1から出す）。
+5. 既存の 4:30 トースト／OS 通知／読み上げ／管理者アナウンス（5:00）は**変更しない**。
+   あちらは「気づかせる」、こちらは「いつでも確認できる」で補完関係にある。
+
+## 表示領域の扱い
+
+上部は既に情報が多いため、占有を最小にする。
+
+- 段階1（4:30 未満）は `text-xs` / `px-3 py-1.5` の控えめな 1 行（約 28px）。
+- 4:30 以降だけ色（オレンジ）と太字で強調する。コートカードの外枠が太くなる閾値
+  （`COURT_EMPHASIS_THICK_MS`）と同じ 4:30 なので、上部とコートの見た目が連動する。
+- 出す必要が無いときは**外側の余白ごと描画しない**。そのため `px-4 pt-2` は呼び出し側
+  ではなくコンポーネント側に持たせている（`PresenceIndicator` の行のように空の余白が
+  残るのを避ける）。
+
+## 設計
+
+### 判定は純粋関数（`src/lib/finishOperationGuide.ts`）
+
+```ts
+export type FinishGuidePhase = 'waiting' | 'imminent';
+
+export function buildFinishOperationGuide(args: {
+  courts: Court[];
+  certainIds: Set<string>;
+  now: number;
+  showCourtNumber: boolean;
+}): FinishOperationGuide | null;
+
+export function buildFinishOperationGuideHeadline(guide: FinishOperationGuide): string;
+export function getNextFinishGuideDelay(courts: Court[], now: number): number | null;
+```
+
+- 「経過最大のプレイ中コート」は `nextMatchCall.ts` の `maxPlayingCourt` /
+  `maxPlayingElapsedMs` を再利用する。閾値も `MATCH_CALL_THRESHOLD_MS`（4:30）を共有し、
+  呼び出し通知と必ず同じタイミングで切り替わるようにする。
+- 非表示（`null`）の条件は 2 つ。
+  1. プレイ中コート（`isPlaying && startedAt > 0`）が 1 面も無い
+  2. `certainIds` のうちコートに乗っていない人が 0 人
+     （促す相手がいない。`shouldAnnounceToAdmin` の `allOnCourt` 条件と同じ考え方）
+- **`callBasisCourtId` は使わない**。あれは「次に配置される先」なので空きコートを
+  優先するが、ここで欲しいのは「終了操作の対象＝もうすぐ終わるプレイ中コート」で別物。
+  空きコートがある状況でも、指すのはプレイ中コートでなければならない。
+- コート番号を出すかは呼び出し側が `courts.length > 1` で決める
+  （`docs/plans/2026-08-14-single-court-message.md` と同じ方針）。
+  1 面運用では `コート脇で終了操作をお願いします` になる。
+
+### 表示（`src/components/FinishOperationGuide.tsx`）
+
+`CourtCardFrame` と同じく**毎秒 tick せず**、`getNextFinishGuideDelay` が返す
+4:30 までの残り時間で `setTimeout` を 1 本だけ張る（+50ms の余裕）。
+
+| 段階 | スタイル |
+|------|----------|
+| `waiting` | `bg-muted/40 border-border text-muted-foreground` の 1 行 |
+| `imminent` | `bg-orange-50 border-orange-300 text-orange-800` ＋ 見出し太字 |
+| 自分が担当 | 上記に `ring-1 ring-orange-400`、自分の名前チップを `bg-orange-600 text-white` |
+
+- 名前の表示順は `predictedPlayers`（入りやすい順）をそのまま使う。
+- アイコンは `StopCircle`（`FinishGameButton` と同じ）で「終了操作」と結びつける。
+- 読み上げはしない（既存の呼び出し通知が担当。二重に鳴らさない）。
+
+### 組み込み（`src/pages/MainPage.tsx`）
+
+`PresenceIndicator` の行の直下に追加するのみ。`nextMatchPrediction` /
+`predictedPlayers` / `myPlayerId` は既にある値をそのまま渡し、計算は増やさない。
+既存の 4:30 通知 `useEffect` は無変更。
+
+## テスト
+
+- `src/lib/finishOperationGuide.test.ts`（17 件）— 非表示条件、4:30 境界、
+  経過最大コートの選択、空きコートがあってもプレイ中コートを指すこと、
+  1 面運用の文言、`getNextFinishGuideDelay` の残り時間。
+- `src/components/FinishOperationGuide.test.tsx`（5 件）— フェイクタイマーで
+  `waiting → imminent` の切り替わり、自分強調、全員コート上で消えること。
+
+## スコープ外
+
+- `PresenceIndicator` の compact 化・レイアウト変更（今回は行を分けて置くだけ）。
+- 終了操作そのものの権限制御（誰でも押せる点は変更しない。CLAUDE.md の信頼モデル通り
+  これは UX 上の案内であって強制ではない）。
