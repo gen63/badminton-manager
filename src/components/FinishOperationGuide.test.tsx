@@ -133,6 +133,53 @@ describe('FinishOperationGuide', () => {
     expect(screen.getByText('はなこ').className).toContain('bg-indigo-600');
   });
 
+  it('4:30 を跨いだ瞬間だけ光る', () => {
+    render(
+      <FinishOperationGuide
+        courts={[playingCourt(1, Date.now() - 60_000)]}
+        certainIds={new Set(['w1'])}
+        players={waitingPlayers}
+        selfPlayerId={null}
+        showCourtNumber
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    expect(guide()?.className).not.toContain('finish-guide-flash');
+
+    act(() => {
+      vi.advanceTimersByTime(3.5 * 60 * 1000 + 100);
+    });
+    // 点灯は effect 内の setTimeout(0) 経由なので1tick進める
+    act(() => {
+      vi.advanceTimersByTime(10);
+    });
+    expect(guide()?.className).toContain('finish-guide-flash');
+
+    // 光りは一度きり。1.2 秒で戻る
+    act(() => {
+      vi.advanceTimersByTime(1_300);
+    });
+    expect(guide()?.className).not.toContain('finish-guide-flash');
+  });
+
+  it('最初から 4:30 を超えている場合は光らせない', () => {
+    render(
+      <FinishOperationGuide
+        courts={[playingCourt(1, Date.now() - 5 * 60 * 1000)]}
+        certainIds={new Set(['w1'])}
+        players={waitingPlayers}
+        selfPlayerId={null}
+        showCourtNumber
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    expect(guide()?.className).not.toContain('finish-guide-flash');
+  });
+
   it('対象が全員コートに乗ったら消える', () => {
     render(
       <FinishOperationGuide

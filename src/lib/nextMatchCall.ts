@@ -156,7 +156,7 @@ const SPEECH_IGNORED_NAME_PREFIXES = ['外部'];
 /**
  * 読み上げ（TTS）用に名前から記号・絵文字・空白を除去し、ゲスト参加者を表す
  * 接頭辞（`外部` 等）を取り除く。残すのはひらがな・カタカナ・漢字・英数字・
- * 長音符（ー）・々のみ。表示用の body / toast には影響させない（読み上げ専用の加工）。
+ * 長音符（ー）・々のみ。表示用の body には影響させない（読み上げ専用の加工）。
  * 絵文字はサロゲートペアだが、否定文字クラスなのでペアの各コードユニットが
  * 個別に除去対象となり結果として消える（u フラグは不要）。
  *
@@ -176,26 +176,29 @@ export function sanitizeNameForSpeech(name: string): string {
 }
 
 /**
- * 呼び出し通知の本文。notification は改行あり、toast は1行。
+ * 呼び出し通知の本文（OS 通知の body と読み上げ）。
+ *
+ * 以前は画面表示用の `toast` も返していたが、継続表示のガイド
+ * （`FinishOperationGuide`）が同じ情報を消えずに出すようになったため廃止した。
  *
  * `courtNumber` は「コート番号を見出しに含めるか」の指示を呼び出し側から
  * 受け取るだけで、この関数自身は運用コート数などを判断しない。`null` を
  * 渡すと見出しからコート番号が消え `コート付近で試合終了をお待ちください` になる
  * （運用コートが1面のみで番号が冗長なケースを想定）。数値を渡した場合は
  * 従来どおり `${courtNumber}コート付近で試合終了をお待ちください`。
- * この差し替えは body / toast / speech の3つすべての見出しに反映される。
+ * この差し替えは body / speech の両方の見出しに反映される。
  *
  * `selfName` は読み上げ（speech）専用の引数。カクテルパーティ効果（雑音下でも
  * 自分の名前だけは注意を引く）を活かすため、speech だけは「名前 → 用件」の
  * 順に反転し、かつ自分の名前を先頭に寄せる。体育館の喧騒で聞き始めが遅れたり
  * 頭の用件部分を聞き流したりしても、最初の一言で自分宛だと気づけるようにする。
- * body / toast は表示なので聞き逃しの心配が無く、順序は変更しない。
+ * body は表示なので聞き逃しの心配が無く、順序は変更しない。
  */
 export function buildNextMatchCallMessage(
   courtNumber: number | null,
   names: string[],
   selfName?: string,
-): { body: string; toast: string; speech: string } {
+): { body: string; speech: string } {
   const namesText = names.map((n) => `${n}さん`).join('・');
   const headline =
     courtNumber === null
@@ -224,25 +227,21 @@ export function buildNextMatchCallMessage(
       : `${speechNames.map((n) => `${n}さん`).join('、')}。${headline}`;
 
   if (names.length === 0) {
-    return { body: headline, toast: headline, speech };
+    return { body: headline, speech };
   }
 
-  return {
-    body: `${headline}\n${namesText}`,
-    toast: `${headline}（${namesText}）`,
-    speech,
-  };
+  return { body: `${headline}\n${namesText}`, speech };
 }
 
 /**
  * 管理者向け「もうすぐ試合です」アナウンスの文言。
  *
- * 本人向け（`buildNextMatchCallMessage`）と違い OS 通知は出さないため body は無く、
- * `{ toast, speech }` のみを返す。`shouldAnnounceToAdmin` の条件5により自分は
- * 対象メンバーに含まれないため、`selfName` の先頭寄せは行わない。
+ * 本人向け（`buildNextMatchCallMessage`）と違い OS 通知も出さないため、返すのは
+ * `{ speech }` だけ（画面表示は継続表示のガイドが担う）。`shouldAnnounceToAdmin` の
+ * 条件5により自分は対象メンバーに含まれないため、`selfName` の先頭寄せは行わない。
  *
- * speech 側の名前だけ `sanitizeNameForSpeech` を通し、除去後に空文字になった
- * 名前は読み上げ対象から外す。toast は表示用なので無加工。
+ * 名前は `sanitizeNameForSpeech` を通し、除去後に空文字になった名前は読み上げ
+ * 対象から外す。
  *
  * `names` が空になるのは呼び出し側が呼ばない前提（`shouldAnnounceToAdmin` が
  * 対象0人なら false を返す）。ここでも `buildNextMatchCallMessage` と同様、
@@ -251,23 +250,19 @@ export function buildNextMatchCallMessage(
 export function buildAdminMatchCallMessage(
   courtNumber: number | null,
   names: string[],
-): { toast: string; speech: string } {
+): { speech: string } {
   const headline =
     courtNumber === null ? 'もうすぐ試合です' : `もうすぐ${courtNumber}コートで試合です`;
 
   if (names.length === 0) {
-    return { toast: headline, speech: headline };
+    return { speech: headline };
   }
 
-  const namesText = names.map((n) => `${n}さん`).join('・');
   const speechNames = names.map((n) => sanitizeNameForSpeech(n)).filter((n) => n !== '');
   const speech =
     speechNames.length === 0
       ? headline
       : `${speechNames.map((n) => `${n}さん`).join('、')}、${headline}`;
 
-  return {
-    toast: `${namesText}が${headline}`,
-    speech,
-  };
+  return { speech };
 }

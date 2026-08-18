@@ -219,16 +219,14 @@ describe('callBasisCourtId', () => {
 });
 
 describe('buildNextMatchCallMessage', () => {
-  it('名前ありのとき body は改行区切り、toast は括弧付き1行', () => {
+  it('名前ありのとき body は改行区切り', () => {
     const result = buildNextMatchCallMessage(3, ['太郎', '花子']);
     expect(result.body).toBe('3コート付近で試合終了をお待ちください\n太郎さん・花子さん');
-    expect(result.toast).toBe('3コート付近で試合終了をお待ちください（太郎さん・花子さん）');
   });
 
-  it('名前なしのとき body・toast とも見出しのみ', () => {
+  it('名前なしのとき body は見出しのみ', () => {
     const result = buildNextMatchCallMessage(3, []);
     expect(result.body).toBe('3コート付近で試合終了をお待ちください');
-    expect(result.toast).toBe('3コート付近で試合終了をお待ちください');
   });
 
   it('名前ありのとき speech は「名前 → 用件」・「。」区切り・「、」連結', () => {
@@ -245,9 +243,8 @@ describe('buildNextMatchCallMessage', () => {
     const result = buildNextMatchCallMessage(3, ['ゆうき★', 'たろう(2)']);
     // 数字は残す文字クラスに含まれるため 2 はそのまま残り、括弧のみ除去される
     expect(result.speech).toBe('ゆうきさん、たろう2さん。3コート付近で試合終了をお待ちください');
-    // body / toast には記号がそのまま残る（読み上げ専用の加工であることの確認）
+    // body には記号がそのまま残る（読み上げ専用の加工であることの確認）
     expect(result.body).toBe('3コート付近で試合終了をお待ちください\nゆうき★さん・たろう(2)さん');
-    expect(result.toast).toBe('3コート付近で試合終了をお待ちください（ゆうき★さん・たろう(2)さん）');
   });
 
   it('記号のみの名前は読み上げ対象から外れる', () => {
@@ -292,17 +289,15 @@ describe('buildNextMatchCallMessage', () => {
     expect(result.speech).toBe('太郎さん、花子さん。3コート付近で試合終了をお待ちください');
   });
 
-  it('courtNumber が null のとき、名前ありで body・toast・speech すべてコート番号なしの見出しになる', () => {
+  it('courtNumber が null のとき、名前ありで body・speech ともコート番号なしの見出しになる', () => {
     const result = buildNextMatchCallMessage(null, ['太郎', '花子']);
     expect(result.body).toBe('コート付近で試合終了をお待ちください\n太郎さん・花子さん');
-    expect(result.toast).toBe('コート付近で試合終了をお待ちください（太郎さん・花子さん）');
     expect(result.speech).toBe('太郎さん、花子さん。コート付近で試合終了をお待ちください');
   });
 
-  it('courtNumber が null のとき、名前なしで body・toast・speech すべて見出しのみになる', () => {
+  it('courtNumber が null のとき、名前なしで body・speech とも見出しのみになる', () => {
     const result = buildNextMatchCallMessage(null, []);
     expect(result.body).toBe('コート付近で試合終了をお待ちください');
-    expect(result.toast).toBe('コート付近で試合終了をお待ちください');
     expect(result.speech).toBe('コート付近で試合終了をお待ちください');
   });
 
@@ -321,11 +316,10 @@ describe('buildNextMatchCallMessage', () => {
     expect(result.speech).toBe('たろうさん、太郎さん、花子さん。3コート付近で試合終了をお待ちください');
   });
 
-  it('speech からは「外部」が消える一方、body / toast には残る（読み上げ専用の加工であることの確認）', () => {
+  it('speech からは「外部」が消える一方、body には残る（読み上げ専用の加工であることの確認）', () => {
     const result = buildNextMatchCallMessage(3, ['外部たろう']);
     expect(result.speech).toBe('たろうさん。3コート付近で試合終了をお待ちください');
     expect(result.body).toBe('3コート付近で試合終了をお待ちください\n外部たろうさん');
-    expect(result.toast).toBe('3コート付近で試合終了をお待ちください（外部たろうさん）');
   });
 });
 
@@ -459,27 +453,23 @@ describe('shouldAnnounceToAdmin', () => {
 });
 
 describe('buildAdminMatchCallMessage', () => {
-  it('コート番号ありのとき toast・speech とも指定の文言になる', () => {
+  it('コート番号ありのとき指定の文言になる', () => {
     const result = buildAdminMatchCallMessage(3, ['太郎', '花子']);
-    expect(result.toast).toBe('太郎さん・花子さんがもうすぐ3コートで試合です');
     expect(result.speech).toBe('太郎さん、花子さん、もうすぐ3コートで試合です');
   });
 
-  it('コート番号なしのとき toast・speech とも指定の文言になる', () => {
+  it('コート番号なしのとき指定の文言になる', () => {
     const result = buildAdminMatchCallMessage(null, ['太郎', '花子']);
-    expect(result.toast).toBe('太郎さん・花子さんがもうすぐ試合です');
     expect(result.speech).toBe('太郎さん、花子さん、もうすぐ試合です');
   });
 
-  it('speech 側だけ記号・絵文字が除去される（toast は無加工）', () => {
+  it('記号・絵文字は読み上げから除去される', () => {
     const result = buildAdminMatchCallMessage(3, ['ゆうき★', '太郎🏸']);
     expect(result.speech).toBe('ゆうきさん、太郎さん、もうすぐ3コートで試合です');
-    expect(result.toast).toBe('ゆうき★さん・太郎🏸さんがもうすぐ3コートで試合です');
   });
 
-  it('speech 側だけ「外部」接頭辞が除去される（toast は無加工）', () => {
+  it('「外部」接頭辞は読み上げから除去される', () => {
     const result = buildAdminMatchCallMessage(3, ['外部たろう', '花子']);
     expect(result.speech).toBe('たろうさん、花子さん、もうすぐ3コートで試合です');
-    expect(result.toast).toBe('外部たろうさん・花子さんがもうすぐ3コートで試合です');
   });
 });

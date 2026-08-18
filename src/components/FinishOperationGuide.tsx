@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StopCircle } from 'lucide-react';
 import type { Court } from '../types/court';
 import type { Player } from '../types/player';
@@ -6,7 +6,11 @@ import {
   buildFinishOperationGuide,
   buildFinishOperationGuideHeadline,
   getNextFinishGuideDelay,
+  type FinishGuidePhase,
 } from '../lib/finishOperationGuide';
+
+/** 4:30 を跨いだ瞬間に光らせる時間（CSS の finish-guide-flash 0.6s × 2 回分） */
+const FLASH_MS = 1_200;
 
 interface FinishOperationGuideProps {
   courts: Court[];
@@ -24,8 +28,8 @@ interface FinishOperationGuideProps {
  * 「終了操作担当」の継続表示。
  *
  * 「気づいた人が終了操作をする」運用から「次の試合に入るメンバー（配置予測の
- * 濃い青）が終了操作をする」運用へ変えるための常時案内。4:30 の呼び出しトーストは
- * 8秒で消えてしまうため、担当が誰かをいつでも確認できる場所として画面上部に置く。
+ * 濃い青）が終了操作をする」運用へ変えるための常時案内。担当が誰かをいつでも
+ * 確認できる場所として画面上部に置く。
  *
  * - 4:30 未満: 控えめな1行で担当だけ示す（どのコートが終わるかはまだ分からない）
  * - 4:30 以降: オレンジで強調し「②付近待機 終了操作担当」に変える
@@ -33,7 +37,8 @@ interface FinishOperationGuideProps {
  * - 自分が担当なら枠を強調し、自分の名前チップを塗る
  *
  * 見た目が変わるのは閾値を跨ぐ瞬間だけなので、`CourtCardFrame` と同様に毎秒
- * tick せず次の閾値までの `setTimeout` を1本だけ張る。
+ * tick せず次の閾値までの `setTimeout` を1本だけ張る。その瞬間だけ一度光らせて
+ * 変化に気づけるようにする（以前この時刻に出していた8秒トーストの代わり）。
  */
 export function FinishOperationGuide({
   courts,
@@ -43,6 +48,10 @@ export function FinishOperationGuide({
   showCourtNumber,
 }: FinishOperationGuideProps) {
   const [now, setNow] = useState<number>(() => Date.now());
+  const [flashing, setFlashing] = useState(false);
+
+  const guide = buildFinishOperationGuide({ courts, certainIds, now, showCourtNumber });
+  const phase: FinishGuidePhase | null = guide === null ? null : guide.phase;
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -62,7 +71,22 @@ export function FinishOperationGuide({
     };
   }, [courts]);
 
-  const guide = buildFinishOperationGuide({ courts, certainIds, now, showCourtNumber });
+  // 光らせるのは waiting → imminent へ「変わった」ときだけ。開き直しや画面復帰で
+  // 最初から imminent の場合は光らせない（毎回光ると通知の意味が薄れる）。
+  const prevPhaseRef = useRef<FinishGuidePhase | null>(null);
+  useEffect(() => {
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = phase;
+    if (prev !== 'waiting' || phase !== 'imminent') return;
+    // 点灯・消灯とも setTimeout 経由（effect 本体での同期 setState は避ける）
+    const on = setTimeout(() => setFlashing(true), 0);
+    const off = setTimeout(() => setFlashing(false), FLASH_MS);
+    return () => {
+      clearTimeout(on);
+      clearTimeout(off);
+    };
+  }, [phase]);
+
   if (guide === null) return null;
 
   const targetIds = new Set(guide.playerIds);
@@ -89,7 +113,7 @@ export function FinishOperationGuide({
       <div
         className={`rounded-xl border px-3 py-1.5 flex items-center gap-2 flex-wrap ${containerClass} ${
           isSelfTarget ? selfRingClass : ''
-        }`}
+        } ${flashing ? 'finish-guide-flash' : ''}`}
         data-phase={guide.phase}
         role="status"
       >

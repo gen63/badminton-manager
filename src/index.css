@@ -347,3 +347,28 @@ body {
     animation: none;
   }
 }
+
+/* 終了操作ガイドが 4:30 を跨いだ瞬間の一瞬の光り。
+   src/components/FinishOperationGuide.tsx から使う。
+   以前はこのタイミングで8秒トーストが出ていたが、継続表示のガイドと情報が重複する
+   ため廃止した。代わりに「変化に気づかせる」役割だけをこの2往復の明滅で担う。 */
+@keyframes finish-guide-flash {
+  0%,
+  100% {
+    background-color: var(--color-orange-50);
+  }
+  50% {
+    background-color: var(--color-orange-200);
+  }
+}
+
+.finish-guide-flash {
+  animation: finish-guide-flash 0.6s ease-in-out 2;
+}
+
+/* 動きを減らす設定では光らせない（オレンジの通常表示のまま） */
+@media (prefers-reduced-motion: reduce) {
+  .finish-guide-flash {
+    animation: none;
+  }
+}
