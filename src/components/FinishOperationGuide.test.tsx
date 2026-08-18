@@ -104,7 +104,7 @@ describe('FinishOperationGuide', () => {
     expect(screen.getByText('コート脇で終了操作をお願いします')).toBeInTheDocument();
   });
 
-  it('自分が担当なら枠を強調し自分のチップを塗る', () => {
+  it('自分が担当なら枠を強調し自分のチップを塗る（4:30 以降はオレンジ）', () => {
     render(
       <FinishOperationGuide
         courts={[playingCourt(1, Date.now() - 5 * 60 * 1000)]}
@@ -117,6 +117,20 @@ describe('FinishOperationGuide', () => {
     expect(guide()?.className).toContain('ring-orange-400');
     expect(screen.getByText('はなこ').className).toContain('bg-orange-600');
     expect(screen.getByText('たろう').className).not.toContain('bg-orange-600');
+  });
+
+  it('4:30 未満の自分強調は配置予測と同じ濃い青', () => {
+    render(
+      <FinishOperationGuide
+        courts={[playingCourt(1, Date.now() - 60_000)]}
+        certainIds={new Set(['w1', 'w2'])}
+        players={waitingPlayers}
+        selfPlayerId="w2"
+        showCourtNumber
+      />,
+    );
+    expect(guide()?.className).toContain('ring-indigo-300');
+    expect(screen.getByText('はなこ').className).toContain('bg-indigo-600');
   });
 
   it('対象が全員コートに乗ったら消える', () => {

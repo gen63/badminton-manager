@@ -73,11 +73,30 @@ export function getNextFinishGuideDelay(courts: Court[], now: number): number | 
 |------|----------|
 | `waiting` | `bg-muted/40 border-border text-muted-foreground` の 1 行 |
 | `imminent` | `bg-orange-50 border-orange-300 text-orange-800` ＋ 見出し太字 |
-| 自分が担当 | 上記に `ring-1 ring-orange-400`、自分の名前チップを `bg-orange-600 text-white` |
+| 自分が担当（`waiting`） | `ring-1 ring-indigo-300` ＋ 自分のチップを `bg-indigo-600 text-white` |
+| 自分が担当（`imminent`） | `ring-1 ring-orange-400` ＋ 自分のチップを `bg-orange-600 text-white` |
+
+自分強調の色は段階に合わせる。待機段階からオレンジにすると「もう終わりそう」に
+見えてしまうため、待機段階は配置予測の「濃い青」（`NextMatchPredictionBar` の
+indigo）に揃え、4:30 以降だけオレンジにする。
 
 - 名前の表示順は `predictedPlayers`（入りやすい順）をそのまま使う。
 - アイコンは `StopCircle`（`FinishGameButton` と同じ）で「終了操作」と結びつける。
 - 読み上げはしない（既存の呼び出し通知が担当。二重に鳴らさない）。
+
+### `PresenceIndicator` の縮小
+
+ガイドと2行並ぶため、「操作中」表示は幅・高さとも最小限のチップにする。
+
+- `px-4 py-2 text-sm shadow-md` → `px-2.5 py-0.5 text-[11px] shadow-sm`、アイコン `w-4` → `w-3`
+- 文言から助詞・敬称を省く。`たろうさんが操作中` → `たろう 操作中`、
+  2人は `たろう・はなこ 操作中`、3人以上は `たろう 他2名 操作中`。`NAME_MAX` は 12 → 8
+- 操作中/閲覧中で分岐していた JSX を1つにまとめ、色だけ切り替える
+- ガイドと同じく外側の余白（`px-4 pt-2`）をコンポーネント側に移し、非表示時に
+  空の余白行を残さない（`MainPage` 側のラッパー div は削除）
+
+実測（390px 幅、余白込み）: プレゼンス 48px → **28px**、
+ガイドは `waiting` 44px / `imminent` 68px（見出しと名前で2行になる）。
 
 ### 組み込み（`src/pages/MainPage.tsx`）
 
@@ -90,11 +109,11 @@ export function getNextFinishGuideDelay(courts: Court[], now: number): number | 
 - `src/lib/finishOperationGuide.test.ts`（17 件）— 非表示条件、4:30 境界、
   経過最大コートの選択、空きコートがあってもプレイ中コートを指すこと、
   1 面運用の文言、`getNextFinishGuideDelay` の残り時間。
-- `src/components/FinishOperationGuide.test.tsx`（5 件）— フェイクタイマーで
-  `waiting → imminent` の切り替わり、自分強調、全員コート上で消えること。
+- `src/components/FinishOperationGuide.test.tsx`（6 件）— フェイクタイマーで
+  `waiting → imminent` の切り替わり、段階別の自分強調（indigo / orange）、
+  全員コート上で消えること。
 
 ## スコープ外
 
-- `PresenceIndicator` の compact 化・レイアウト変更（今回は行を分けて置くだけ）。
 - 終了操作そのものの権限制御（誰でも押せる点は変更しない。CLAUDE.md の信頼モデル通り
   これは UX 上の案内であって強制ではない）。

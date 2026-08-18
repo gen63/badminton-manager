@@ -76,6 +76,11 @@ export function FinishOperationGuide({
   const containerClass = imminent
     ? 'bg-orange-50 border-orange-300 text-orange-800'
     : 'bg-muted/40 border-border text-muted-foreground';
+  // 自分が担当のときのリング色は段階に合わせる。待機段階は配置予測の「濃い青」
+  // （`NextMatchPredictionBar` の indigo）に揃え、4:30 以降だけオレンジにする。
+  // 待機段階からオレンジにすると「もう終わりそう」に見えてしまう。
+  const selfRingClass = imminent ? 'ring-1 ring-orange-400' : 'ring-1 ring-indigo-300';
+  const selfChipClass = imminent ? 'bg-orange-600 text-white' : 'bg-indigo-600 text-white';
 
   // 外側の余白まで含めて描画する。ガイドが無いとき（null 復帰）に空の余白行が
   // 残らないよう、呼び出し側ではなくこのコンポーネントが px/pt を持つ。
@@ -83,7 +88,7 @@ export function FinishOperationGuide({
     <div className="px-4 pt-2">
       <div
         className={`rounded-xl border px-3 py-1.5 flex items-center gap-2 flex-wrap ${containerClass} ${
-          isSelfTarget ? 'ring-1 ring-orange-400' : ''
+          isSelfTarget ? selfRingClass : ''
         }`}
         data-phase={guide.phase}
         role="status"
@@ -96,7 +101,7 @@ export function FinishOperationGuide({
           {targets.map((player) => {
             const isSelf = player.id === selfPlayerId;
             const chipClass = isSelf
-              ? 'bg-orange-600 text-white font-semibold'
+              ? `${selfChipClass} font-semibold`
               : imminent
                 ? 'bg-card border border-orange-300 text-orange-800 font-medium'
                 : 'bg-card border border-border text-foreground font-medium';

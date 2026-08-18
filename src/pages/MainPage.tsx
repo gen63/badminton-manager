@@ -1137,9 +1137,7 @@ export function MainPage() {
 
       {/* プレゼンス表示（他ユーザーが画面を開いている/操作中のとき） */}
       {session?.id && (
-        <div className="flex justify-center px-4 pt-2 pointer-events-none">
-          <PresenceIndicator presence={remotePresence} currentUser={currentUser} />
-        </div>
+        <PresenceIndicator presence={remotePresence} currentUser={currentUser} />
       )}
 
       {/* 終了操作の担当案内（次の試合に入るメンバーへ継続表示） */}
