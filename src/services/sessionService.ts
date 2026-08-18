@@ -30,7 +30,12 @@ import type { Reservation } from '../types/reservation';
 import { SessionError } from '../lib/errorHandler';
 import { requireDb, sanitize } from '../lib/firestoreUtils';
 import { medianGamesPlayed } from '../lib/median';
-import { computeFirstMatchStartedAt, isSessionVisible } from '../lib/sessionArchive';
+import {
+  computeFirstMatchStartedAt,
+  computeHasActiveCourt,
+  computeLastMatchFinishedAt,
+  isSessionVisible,
+} from '../lib/sessionArchive';
 import { AUTO_SESSION_BOT_CREATOR } from '../constants/autoSession';
 
 /** セッションレベルの設定（Firebase同期対象） */
@@ -127,11 +132,14 @@ export function computeDerivedIncomeTotal(
 function docToSession(id: string, data: Record<string, unknown>): Session {
   const gameState = data.gameState as
     | {
-        matchHistory?: unknown[];
+        matchHistory?: Match[];
+        courts?: Court[];
         players?: Player[];
         settings?: { practiceType?: '単' | '複' | '楽'; recordScores?: boolean };
       }
     | undefined;
+  const matchHistory = Array.isArray(gameState?.matchHistory) ? gameState.matchHistory : [];
+  const courts = Array.isArray(gameState?.courts) ? gameState.courts : [];
   const paidCount = Array.isArray(gameState?.players)
     ? gameState.players.filter((p) => p?.operationStatus?.payment === true).length
     : 0;
@@ -158,7 +166,9 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
     presence: data.presence as Session['presence'],
     lastSeen: data.lastSeen as Session['lastSeen'],
     firstMatchStartedAt: (data.firstMatchStartedAt as number | null | undefined) ?? null,
-    matchCount: Array.isArray(gameState?.matchHistory) ? gameState.matchHistory.length : 0,
+    matchCount: matchHistory.length,
+    lastMatchFinishedAt: computeLastMatchFinishedAt(matchHistory),
+    hasActiveCourt: computeHasActiveCourt(courts),
     paidCount,
     incomeTotal,
     medianGamesPlayed: medianGamesPlayed(gameState?.players ?? []),
@@ -422,7 +432,7 @@ export function subscribeToGameState(
  *
  * - status フィルターなし（現状セッション終了機能が未実装で全セッションが active）
  * - 単一フィールド orderBy のみで複合インデックス不要
- * - 12h 自動アーカイブ判定はクライアント側でフィルタ（Firestore OR query を避ける）
+ * - 自動アーカイブ判定（最終試合から30分）はクライアント側でフィルタ（Firestore OR query を避ける）
  */
 export function subscribeToRecentActiveSessions(
   count: number,

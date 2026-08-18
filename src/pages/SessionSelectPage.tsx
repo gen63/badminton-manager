@@ -297,7 +297,7 @@ export function SessionSelectPage() {
     return () => clearInterval(id);
   }, []);
 
-  // dev モードは全件、それ以外は isSessionVisible で 90分前 / 12h アーカイブ判定。
+  // dev モードは全件、それ以外は isSessionVisible で 90分前 / 最終試合から30分の判定。
   const visibleSessions = useMemo(
     () => (devMode ? sessions : sessions.filter((s) => isSessionVisible(s, now))),
     [sessions, devMode, now],
