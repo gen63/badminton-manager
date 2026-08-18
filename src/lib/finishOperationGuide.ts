@@ -2,17 +2,19 @@
  * 「操作担当」ガイドの判定
  *
  * 「気づいた人が終了操作をする」運用を「次の試合に入るメンバー（配置予測の
- * ほぼ確定＝濃い青）が操作する」運用へ変えるため、画面上部に消えない案内を出す。
- * 担当に期待するのは終了ボタンだけでなく **終了 → 配置 → 開始** の一連なので、
- * ラベルは「終了操作担当」ではなく「操作担当」にしている。
+ * ほぼ確定＝濃い青）が操作する」運用へ変えるための案内。担当に期待するのは
+ * 終了ボタンだけでなく **終了 → 配置 → 開始** の一連なので、ラベルは
+ * 「終了操作担当」ではなく「操作担当」にしている。
+ *
+ * **出すのは 4:30（`MATCH_CALL_THRESHOLD_MS`）を過ぎてから**。それ以前は
+ * 「誰が担当か」しか言えず、同じ顔ぶれを常時出している配置予測バー
+ * （`NextMatchPredictionBar`、見出しに「操作担当」と明記）と情報が重複する。
+ * このガイドの固有の価値は **どのコート脇で待てばいいか** が決まってから出る点で、
+ * それが分かるのが 4:30 以降だけだから。
  *
  * 4:30 の呼び出し通知（`nextMatchCall.ts`）は OS 通知・チャイム・読み上げで
- * 「画面を見ていない人に気づかせる」役割、こちらは「いつでも確認できる」役割で
- * 補完する。
- *
- * 2段階で案内する:
- *   - `waiting`: まだどのコートが先に終わるか分からない。担当だけ示す。
- *   - `imminent`: どこかのコートが 4:30 を超えた。コート番号まで示す。
+ * 「画面を見ていない人に気づかせる」役割、こちらは同じ時刻に画面上へ出て
+ * 「いつでも確認できる」役割で補完する。
  *
  * 判定に必要な「経過最大のプレイ中コート」は `nextMatchCall.ts` の
  * `maxPlayingCourt` / `maxPlayingElapsedMs` をそのまま再利用する。
@@ -23,18 +25,10 @@ import type { Court } from '../types/court';
 import { MATCH_CALL_THRESHOLD_MS } from './gameOperations';
 import { maxPlayingCourt, maxPlayingElapsedMs } from './nextMatchCall';
 
-/**
- * ガイドの段階。
- * - `waiting`: プレイ中だがまだ 4:30 未満（終わるコートが未定）
- * - `imminent`: 経過最大のコートが 4:30 を超えた（もうすぐ終わる）
- */
-export type FinishGuidePhase = 'waiting' | 'imminent';
-
 export interface FinishOperationGuide {
-  phase: FinishGuidePhase;
   /**
-   * `imminent` のとき最も早く終わりそうなプレイ中コートの ID。
-   * `waiting` のとき、および 1 面運用（`showCourtNumber === false`）なら null。
+   * 最も早く終わりそうなプレイ中コートの ID。
+   * 1 面運用（`showCourtNumber === false`）なら null。
    */
   courtId: number | null;
   /** 操作の担当（`certainIds` のうちまだコートに乗っていない人） */
@@ -70,16 +64,16 @@ export function buildFinishOperationGuide(
   const basis = maxPlayingCourt(courts, now);
   if (basis === null) return null;
 
+  // 4:30 未満は出さない（配置予測バーと情報が重複するだけなので）
+  if (maxPlayingElapsedMs(courts, now) < MATCH_CALL_THRESHOLD_MS) return null;
+
   // 既にコートに乗っている人は促す相手にならない（`shouldAnnounceToAdmin` の
   // allOnCourt 条件と同じ考え方）。全員乗っていれば出す意味が無い。
   const playerIds = Array.from(certainIds).filter((id) => !isOnAnyCourt(courts, id));
   if (playerIds.length === 0) return null;
 
-  const imminent = maxPlayingElapsedMs(courts, now) >= MATCH_CALL_THRESHOLD_MS;
-
   return {
-    phase: imminent ? 'imminent' : 'waiting',
-    courtId: imminent && showCourtNumber ? basis.id : null,
+    courtId: showCourtNumber ? basis.id : null,
     playerIds,
   };
 }
@@ -97,27 +91,20 @@ function circledCourt(courtId: number): string {
 /**
  * ガイドの見出し文言。名前は表示側がチップで描くのでここには含めない。
  *
- * 常時表示なので「〜をお願いします」という依頼文ではなく**役割ラベル**にする。
- * 毎試合ずっと目に入る文言としては依頼文は冗長で、「操作担当」の方が
- * 「その人がやるもの」という運用として伝わる。短いぶん 390px 幅でも
- * 見出しと名前チップが1行に収まる。
- *
- * 「終了操作担当」ではなく「操作担当」なのは、担当に期待するのが終了ボタンだけで
- * なく終了→配置→開始の一連だから。
- *
- * 「付近」は呼び出し通知（`buildNextMatchCallMessage` の
- * `Nコート付近で試合終了をお待ちください`）と同じ語彙に揃えている。
+ * 「〜をお願いします」という依頼文ではなく**役割ラベル**にする。依頼文は冗長で、
+ * 「操作担当」の方が「その人がやるもの」という運用として伝わり、短いぶん 390px
+ * 幅でも見出しと名前チップが1行に収まる。
+ * 「付近」は呼び出し通知（`Nコート付近で試合終了をお待ちください`）と同じ語彙。
  */
 export function buildFinishOperationGuideHeadline(guide: FinishOperationGuide): string {
-  if (guide.phase === 'waiting') return '操作担当';
   return guide.courtId === null
     ? 'コート付近待機 操作担当'
     : `${circledCourt(guide.courtId)}付近待機 操作担当`;
 }
 
 /**
- * `waiting` から `imminent` に変わるまでの待ち時間（ms）。
- * 既に `imminent`、またはプレイ中コートが無ければ null（タイマー不要）。
+ * ガイドが出るまで（4:30 に達するまで）の待ち時間（ms）。
+ * 既に 4:30 を超えている、またはプレイ中コートが無ければ null（タイマー不要）。
  * 毎秒 tick する代わりに閾値ちょうどで1回だけ再評価させるために使う
  * （`courtEmphasis.ts` の `getNextCourtEmphasisDelay` と同じ考え方）。
  */

@@ -29,12 +29,12 @@ const playingCourt = (
   restingPlayerIds: [],
 });
 
-/** 4:30 に対して `offset` ms ずれた開始時刻のコートを作る（+ で超過） */
+/** 経過 `elapsed` ms のコートになる開始時刻 */
 const startedAtForElapsed = (elapsed: number) => NOW - elapsed;
 
 describe('buildFinishOperationGuide', () => {
   const args = (over: Partial<Parameters<typeof buildFinishOperationGuide>[0]> = {}) => ({
-    courts: [playingCourt(1, startedAtForElapsed(60_000))],
+    courts: [playingCourt(1, startedAtForElapsed(MATCH_CALL_THRESHOLD_MS))],
     certainIds: new Set(['w1', 'w2']),
     now: NOW,
     showCourtNumber: true,
@@ -50,6 +50,21 @@ describe('buildFinishOperationGuide', () => {
     expect(buildFinishOperationGuide(args({ courts: [notStarted] }))).toBeNull();
   });
 
+  it('4:30 の1ms手前は出さない（配置予測バーと重複するため）', () => {
+    const guide = buildFinishOperationGuide(
+      args({ courts: [playingCourt(1, startedAtForElapsed(MATCH_CALL_THRESHOLD_MS - 1))] }),
+    );
+    expect(guide).toBeNull();
+  });
+
+  it('4:30 ちょうどで出る', () => {
+    const guide = buildFinishOperationGuide(
+      args({ courts: [playingCourt(2, startedAtForElapsed(MATCH_CALL_THRESHOLD_MS))] }),
+    );
+    expect(guide?.courtId).toBe(2);
+    expect(guide?.playerIds).toEqual(['w1', 'w2']);
+  });
+
   it('certainIds が空なら null', () => {
     expect(buildFinishOperationGuide(args({ certainIds: new Set() }))).toBeNull();
   });
@@ -62,22 +77,6 @@ describe('buildFinishOperationGuide', () => {
   it('コートに乗っている人を除いた残りが担当になる', () => {
     const guide = buildFinishOperationGuide(args({ certainIds: new Set(['p1', 'w1']) }));
     expect(guide?.playerIds).toEqual(['w1']);
-  });
-
-  it('4:30 の1ms手前は waiting でコート番号を出さない', () => {
-    const guide = buildFinishOperationGuide(
-      args({ courts: [playingCourt(2, startedAtForElapsed(MATCH_CALL_THRESHOLD_MS - 1))] }),
-    );
-    expect(guide?.phase).toBe('waiting');
-    expect(guide?.courtId).toBeNull();
-  });
-
-  it('4:30 ちょうどで imminent になりコート番号が付く', () => {
-    const guide = buildFinishOperationGuide(
-      args({ courts: [playingCourt(2, startedAtForElapsed(MATCH_CALL_THRESHOLD_MS))] }),
-    );
-    expect(guide?.phase).toBe('imminent');
-    expect(guide?.courtId).toBe(2);
   });
 
   it('複数コートがプレイ中なら経過時間が最大のコートを指す', () => {
@@ -102,50 +101,36 @@ describe('buildFinishOperationGuide', () => {
     expect(guide?.courtId).toBe(2);
   });
 
-  it('showCourtNumber が false なら imminent でも courtId は null', () => {
-    const guide = buildFinishOperationGuide(
-      args({
-        courts: [playingCourt(1, startedAtForElapsed(MATCH_CALL_THRESHOLD_MS))],
-        showCourtNumber: false,
-      }),
-    );
-    expect(guide?.phase).toBe('imminent');
+  it('showCourtNumber が false なら courtId は null', () => {
+    const guide = buildFinishOperationGuide(args({ showCourtNumber: false }));
+    expect(guide).not.toBeNull();
     expect(guide?.courtId).toBeNull();
   });
 });
 
 describe('buildFinishOperationGuideHeadline', () => {
-  it('waiting はコートに触れない', () => {
-    expect(
-      buildFinishOperationGuideHeadline({ phase: 'waiting', courtId: null, playerIds: ['w1'] }),
-    ).toBe('操作担当');
-  });
-
-  it('imminent はコート番号付き', () => {
-    expect(
-      buildFinishOperationGuideHeadline({ phase: 'imminent', courtId: 2, playerIds: ['w1'] }),
-    ).toBe('②付近待機 操作担当');
-  });
-
   it('コート番号は丸数字（コートカードの丸バッジと揃える）', () => {
-    expect(
-      buildFinishOperationGuideHeadline({ phase: 'imminent', courtId: 1, playerIds: ['w1'] }),
-    ).toBe('①付近待機 操作担当');
-    expect(
-      buildFinishOperationGuideHeadline({ phase: 'imminent', courtId: 3, playerIds: ['w1'] }),
-    ).toBe('③付近待機 操作担当');
+    expect(buildFinishOperationGuideHeadline({ courtId: 1, playerIds: ['w1'] })).toBe(
+      '①付近待機 操作担当',
+    );
+    expect(buildFinishOperationGuideHeadline({ courtId: 2, playerIds: ['w1'] })).toBe(
+      '②付近待機 操作担当',
+    );
+    expect(buildFinishOperationGuideHeadline({ courtId: 3, playerIds: ['w1'] })).toBe(
+      '③付近待機 操作担当',
+    );
   });
 
   it('丸数字が無い範囲は素の数字＋コートに戻す', () => {
-    expect(
-      buildFinishOperationGuideHeadline({ phase: 'imminent', courtId: 21, playerIds: ['w1'] }),
-    ).toBe('21コート付近待機 操作担当');
+    expect(buildFinishOperationGuideHeadline({ courtId: 21, playerIds: ['w1'] })).toBe(
+      '21コート付近待機 操作担当',
+    );
   });
 
-  it('imminent でコート番号が無ければ番号を省く（1面運用）', () => {
-    expect(
-      buildFinishOperationGuideHeadline({ phase: 'imminent', courtId: null, playerIds: ['w1'] }),
-    ).toBe('コート付近待機 操作担当');
+  it('コート番号が無ければ番号を省く（1面運用）', () => {
+    expect(buildFinishOperationGuideHeadline({ courtId: null, playerIds: ['w1'] })).toBe(
+      'コート付近待機 操作担当',
+    );
   });
 });
 

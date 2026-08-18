@@ -35,9 +35,9 @@ const player = (id: string, name: string): Player => ({
 
 const waitingPlayers = [player('w1', 'たろう'), player('w2', 'はなこ')];
 
-/** data-phase を持つガイド要素。未表示なら null */
+/** ガイド要素。未表示なら null */
 function guide(): HTMLElement | null {
-  return document.querySelector('[data-phase]');
+  return screen.queryByTestId('finish-operation-guide');
 }
 
 describe('FinishOperationGuide', () => {
@@ -65,7 +65,7 @@ describe('FinishOperationGuide', () => {
     expect(guide()).toBeNull();
   });
 
-  it('4:30 未満は担当だけ示し、4:30 で「Nコート脇で」に変わる', () => {
+  it('4:30 未満は出さず、4:30 で「①付近待機 操作担当」が出る', () => {
     render(
       <FinishOperationGuide
         courts={[playingCourt(1, Date.now() - 60_000), playingCourt(2, Date.now())]}
@@ -78,17 +78,16 @@ describe('FinishOperationGuide', () => {
     act(() => {
       vi.advanceTimersByTime(0);
     });
-    expect(guide()).toHaveAttribute('data-phase', 'waiting');
-    expect(screen.getByText('操作担当')).toBeInTheDocument();
-    expect(screen.getByText('たろう')).toBeInTheDocument();
-    expect(screen.getByText('はなこ')).toBeInTheDocument();
+    expect(guide()).toBeNull();
 
     act(() => {
       // 経過最大はコート1（既に1分経過）なので、残り 3分30秒 + タイマーの余裕分
       vi.advanceTimersByTime(3.5 * 60 * 1000 + 100);
     });
-    expect(guide()).toHaveAttribute('data-phase', 'imminent');
+    expect(guide()).not.toBeNull();
     expect(screen.getByText('①付近待機 操作担当')).toBeInTheDocument();
+    expect(screen.getByText('たろう')).toBeInTheDocument();
+    expect(screen.getByText('はなこ')).toBeInTheDocument();
   });
 
   it('1面運用ではコート番号を出さない', () => {
@@ -104,7 +103,7 @@ describe('FinishOperationGuide', () => {
     expect(screen.getByText('コート付近待機 操作担当')).toBeInTheDocument();
   });
 
-  it('自分が担当なら枠を強調し自分のチップを塗る（4:30 以降はオレンジ）', () => {
+  it('自分が担当なら枠を強調し自分のチップを塗る', () => {
     render(
       <FinishOperationGuide
         courts={[playingCourt(1, Date.now() - 5 * 60 * 1000)]}
@@ -119,21 +118,7 @@ describe('FinishOperationGuide', () => {
     expect(screen.getByText('たろう').className).not.toContain('bg-orange-600');
   });
 
-  it('4:30 未満の自分強調は配置予測と同じ濃い青', () => {
-    render(
-      <FinishOperationGuide
-        courts={[playingCourt(1, Date.now() - 60_000)]}
-        certainIds={new Set(['w1', 'w2'])}
-        players={waitingPlayers}
-        selfPlayerId="w2"
-        showCourtNumber
-      />,
-    );
-    expect(guide()?.className).toContain('ring-indigo-300');
-    expect(screen.getByText('はなこ').className).toContain('bg-indigo-600');
-  });
-
-  it('4:30 を跨いだ瞬間だけ光る', () => {
+  it('出た瞬間だけ光る', () => {
     render(
       <FinishOperationGuide
         courts={[playingCourt(1, Date.now() - 60_000)]}
@@ -146,7 +131,7 @@ describe('FinishOperationGuide', () => {
     act(() => {
       vi.advanceTimersByTime(0);
     });
-    expect(guide()?.className).not.toContain('finish-guide-flash');
+    expect(guide()).toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(3.5 * 60 * 1000 + 100);
@@ -175,15 +160,16 @@ describe('FinishOperationGuide', () => {
       />,
     );
     act(() => {
-      vi.advanceTimersByTime(0);
+      vi.advanceTimersByTime(10);
     });
+    expect(guide()).not.toBeNull();
     expect(guide()?.className).not.toContain('finish-guide-flash');
   });
 
   it('対象が全員コートに乗ったら消える', () => {
     render(
       <FinishOperationGuide
-        courts={[playingCourt(1, Date.now(), ['w1', 'w2'], ['p3', 'p4'])]}
+        courts={[playingCourt(1, Date.now() - 5 * 60 * 1000, ['w1', 'w2'], ['p3', 'p4'])]}
         certainIds={new Set(['w1', 'w2'])}
         players={waitingPlayers}
         selfPlayerId="w2"
