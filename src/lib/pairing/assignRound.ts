@@ -24,8 +24,23 @@ export interface AssignRoundParams {
   candidates: Player[];
   /** 埋めるコート */
   courtIds: number[];
-  /** 実力の順位（`buildInitialOrder` 相当、0始まり） */
+  /** 登録レートそのままの順位（ハシゴ式適用**前**、0始まり）。
+   *  **本物の最上位と本物の最下位を同居させない安全網にだけ使う。** */
   rankById: Map<string, number>;
+  /**
+   * ハシゴ式（`applyStreakSwaps`）適用**後**の順位。省略時は `rankById` と同じ。
+   *
+   * **これが実働の序列**。登録レートはこの序列の初期値でしかなく、以後は当日の
+   * 勝敗で上下する。帯の形成（`skillGap`）とチームの釣り合い（`competitive` /
+   * `normalizeSplit`）はこちらを使う。
+   *
+   * ただし**順位差のハード制約まわりは `rankById`（登録レート）**で扱う。撹拌後の
+   * 序列で見ると「本物の最上位と本物の最下位」の同居を検出できないため、安全網は
+   * 素の序列で張る（旧エンジンの `hasWideRankSpan` と同じ）。初期解の実現可能性
+   * 判定と `reachableCountById` も、この制約と基準を揃える必要があるので
+   * `rankById` を使う（揃えないと構築した解が自分で違反を作る）。
+   */
+  formRankById?: Map<string, number>;
   rosterSize: number;
   /** 低いほど優先。algorithm.ts の calculatePriorityScore を呼び出し側が渡す */
   priorityScoreOf: (p: Player) => number;
@@ -136,6 +151,8 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     lateBalanceMode = false,
   } = params;
 
+  const formRankById = params.formRankById ?? rankById;
+
   const weights: ObjectiveWeights = { ...DEFAULT_WEIGHTS, ...params.weights };
 
   const genderById = new Map<string, 'M' | 'F' | undefined>(
@@ -193,8 +210,8 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   let initialCourts: CourtState[];
   if (wideSpanThreshold === null) {
     const rankSortedSelected = [...selected].sort((a, b) => {
-      const rankA = rankById.get(a.id) ?? 0;
-      const rankB = rankById.get(b.id) ?? 0;
+      const rankA = formRankById.get(a.id) ?? 0;
+      const rankB = formRankById.get(b.id) ?? 0;
       if (rankA !== rankB) return rankA - rankB;
       return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     });
@@ -332,7 +349,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   // またげず、途中の悪い分け方に阻まれて入れ替え自体が却下される
   // （実測: 少数派2人を同じコートに集める修復が 3-1×2 のまま止まった）。
   const splitCost = (slots: CourtState['slots']): number => {
-    const rankOf = (id: string): number => rankById.get(id) ?? 0;
+    const rankOf = (id: string): number => formRankById.get(id) ?? 0;
     const diff = Math.abs(
       rankOf(slots[0]) + rankOf(slots[1]) - rankOf(slots[2]) - rankOf(slots[3])
     );
@@ -350,7 +367,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   /** コート4人を、コスト最小の分け方に並べ替える（同点は実力順で決定的に選ぶ） */
   const normalizeSplit = (slots: CourtState['slots']): CourtState['slots'] => {
     const [a, b, c, d] = [...slots].sort((x, y) => {
-      const rankDiff = (rankById.get(x) ?? 0) - (rankById.get(y) ?? 0);
+      const rankDiff = (formRankById.get(x) ?? 0) - (formRankById.get(y) ?? 0);
       if (rankDiff !== 0) return rankDiff;
       return x < y ? -1 : x > y ? 1 : 0;
     });
@@ -420,6 +437,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       pairCounts,
       pairKeyOf,
       reachableCountById,
+      formRankById,
     });
     return { violations, objective: weightedObjective(terms, weights) };
   };

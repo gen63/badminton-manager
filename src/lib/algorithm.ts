@@ -2270,8 +2270,20 @@ export function assignCourts(
   // 修復パス群には一切触れない。以降の旧エンジンは useObjectiveEngine: false を
   // 明示したとき（主にテスト・bench の比較用）だけ通る。
   if (options?.useObjectiveEngine ?? true) {
+    const objectiveInitialOrder = buildInitialOrder(groupingPlayers);
     const objectiveBaseRankById = new Map(
-      buildInitialOrder(groupingPlayers).map((id, index) => [id, index] as const)
+      objectiveInitialOrder.map((id, index) => [id, index] as const)
+    );
+    // ハシゴ式（当日の連勝連敗で ±1グループ分まで序列が動く）。旧エンジンから
+    // 移植し忘れていた仕組みで、「勝てば上の帯へ、負ければ下の帯へ」という
+    // 昇降格を担う。実力差の判定には使わず（撹拌後の序列では上位×下位の同居を
+    // 検出できない）、コートのグループ分けとチームの釣り合いにだけ使う。
+    const objectiveFormRankById = new Map(
+      applyStreakSwaps(
+        objectiveInitialOrder,
+        matchHistory,
+        totalCourtCount >= 3 ? 3 : 2
+      ).map((id, index) => [id, index] as const)
     );
     const objectiveRosterSize = objectiveBaseRankById.size;
     const objectiveWideSpanThreshold =
@@ -2282,6 +2294,7 @@ export function assignCourts(
       candidates: normalCandidates,
       courtIds: normalCourtIds,
       rankById: objectiveBaseRankById,
+      formRankById: objectiveFormRankById,
       rosterSize: objectiveRosterSize,
       priorityScoreOf: (p) =>
         calculatePriorityScore(p, practiceStartTime, useStayDuration, lateBalance),

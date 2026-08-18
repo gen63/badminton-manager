@@ -237,6 +237,7 @@ describe('computeObjectiveTerms（0〜1に収まること）', () => {
       pairCounts,
       pairKeyOf: pairKey,
       reachableCountById: new Map(ids.map(id => [id, ids.length - 1])),
+      formRankById: rankById,
     });
 
     for (const [key, value] of Object.entries(terms)) {
@@ -258,6 +259,7 @@ describe('computeObjectiveTerms（0〜1に収まること）', () => {
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
       reachableCountById: new Map(),
+      formRankById: new Map(),
     });
 
     for (const value of Object.values(terms)) {
