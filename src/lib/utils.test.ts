@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { cn, formatDate, formatTime, formatDuration, generateSessionId, copyToClipboard, parsePlayerInput, getRecommendedCourtCount, getAssignmentGate } from './utils';
+import { cn, formatDate, formatTime, formatDuration, generateSessionId, copyToClipboard, parsePlayerInput, getRecommendedCourtCount, getAssignmentGate, buildSessionUrl } from './utils';
 
 describe('cn', () => {
   it('単一のクラス名を返す', () => {
@@ -247,5 +247,33 @@ describe('getRecommendedCourtCount', () => {
 
   it('最大コート数を制限する', () => {
     expect(getRecommendedCourtCount(20, 2)).toBe(2); // max 2
+  });
+});
+
+describe('buildSessionUrl', () => {
+  it('base 付きの URL を組み立てる', () => {
+    expect(buildSessionUrl('https://gen63.github.io', '/badminton-manager/', 'ABC123')).toBe(
+      'https://gen63.github.io/badminton-manager/session/ABC123',
+    );
+  });
+
+  it('base のスラッシュ有無に関わらず同じ結果になる', () => {
+    const expected = 'https://example.com/app/session/XYZ789';
+    expect(buildSessionUrl('https://example.com', 'app', 'XYZ789')).toBe(expected);
+    expect(buildSessionUrl('https://example.com', '/app', 'XYZ789')).toBe(expected);
+    expect(buildSessionUrl('https://example.com', 'app/', 'XYZ789')).toBe(expected);
+    expect(buildSessionUrl('https://example.com', '/app/', 'XYZ789')).toBe(expected);
+  });
+
+  it('base がルート（/）ならセグメントを足さない', () => {
+    expect(buildSessionUrl('http://localhost:5173', '/', 'ABC123')).toBe(
+      'http://localhost:5173/session/ABC123',
+    );
+  });
+
+  it('origin の末尾スラッシュを重複させない', () => {
+    expect(buildSessionUrl('http://localhost:5173/', '/app/', 'ABC123')).toBe(
+      'http://localhost:5173/app/session/ABC123',
+    );
   });
 });

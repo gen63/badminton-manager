@@ -10,10 +10,11 @@ import { useReservationStore } from '../stores/reservationStore';
 import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { deleteSession, updateSession as updateFirebaseSession, updateCreator } from '../services/sessionService';
 import { clearAppBadge } from '../lib/badge';
+import { buildSessionUrl, copyToClipboard } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2 } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2, Link as LinkIcon, Copy } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -25,6 +26,7 @@ export function SettingsPage() {
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
   const [selectedAdmins, setSelectedAdmins] = useState<string[]>([]);
   const [isAddingAdmins, setIsAddingAdmins] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
   const [showChangeCreatorModal, setShowChangeCreatorModal] = useState(false);
   const [selectedNewCreator, setSelectedNewCreator] = useState<string | null>(null);
   const [isChangingCreator, setIsChangingCreator] = useState(false);
@@ -68,6 +70,26 @@ export function SettingsPage() {
     navigate('/main');
     return null;
   }
+
+  // セッション URL。共有 UI は 2026-05-07 に撤去したが、一覧の自動非表示
+  // （最後の試合から30分）で見つけられなくなった場合の緊急避難措置として復活させた。
+  // BrowserRouter の basename と同じ import.meta.env.BASE_URL を使う。
+  const sessionUrl = buildSessionUrl(
+    window.location.origin,
+    import.meta.env.BASE_URL,
+    session.id,
+  );
+
+  const handleCopyUrl = async () => {
+    const ok = await copyToClipboard(sessionUrl);
+    if (!ok) {
+      toast.error('コピーに失敗しました');
+      return;
+    }
+    setUrlCopied(true);
+    toast.success('セッションURLをコピーしました');
+    setTimeout(() => setUrlCopied(false), 2000);
+  };
 
   const handleMatchReset = async () => {
     const confirmed = window.confirm(
@@ -523,6 +545,29 @@ export function SettingsPage() {
             </div>
           </div>
         )}
+
+        {/* セッションURL共有 */}
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+            <span className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center">
+              <LinkIcon size={14} className="text-blue-600" />
+            </span>
+            セッションURL
+          </h2>
+          <p className="text-[11px] text-muted-foreground mb-3">
+            一覧から見つけられないメンバーへ、このURLを送れば参加できます。
+          </p>
+          <div className="bg-muted rounded-xl p-3 mb-3">
+            <p className="text-xs font-mono break-all text-foreground">{sessionUrl}</p>
+          </div>
+          <button
+            onClick={handleCopyUrl}
+            className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 border-2 border-blue-200 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98] min-h-[44px]"
+          >
+            {urlCopied ? <Check size={16} /> : <Copy size={16} />}
+            {urlCopied ? 'コピーしました' : 'URLをコピー'}
+          </button>
+        </div>
 
         {/* アクション */}
         {userIsAdmin && (
