@@ -15,14 +15,15 @@ interface CourtCardFrameProps {
 const FRAME_CLASS: Record<CourtEmphasisLevel, string> = {
   none: 'border border-border',
   thick: 'border-2 border-orange-500',
-  blink: 'border-2 border-destructive court-frame-blink',
+  blink: 'border-2 border-dashed border-destructive court-frame-blink',
 };
 
 /**
  * コートカードの外枠。試合の経過時間に応じて枠を強調する。
  *
  * - 4分30秒超: 枠を太くする
- * - 6分超: さらに枠を点滅させる（`prefers-reduced-motion` 時は点滅せず太枠のまま）
+ * - 6分超: さらに枠を破線にして点滅させる
+ *   （`prefers-reduced-motion` 時は点滅せず赤い破線の太枠のまま）
  *
  * 経過時間そのものは `CourtTimer` が毎秒描画するが、こちらは閾値を跨ぐ瞬間しか
  * 見た目が変わらないため、毎秒 tick せず次の閾値までの `setTimeout` を張る。

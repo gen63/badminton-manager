@@ -324,8 +324,9 @@ body {
   }
 }
 
-/* コート枠の点滅（試合経過6分超の強調）。src/components/CourtCardFrame.tsx から使う。
-   Tailwind の border-* より animation が優先されるため色指定はここで完結する。 */
+/* コート枠の破線点滅（試合経過6分超の強調）。src/components/CourtCardFrame.tsx から使う。
+   破線は Tailwind の border-dashed 側で付け、ここは色の明滅だけを担う
+   （Tailwind の border-* より animation が優先されるため色指定はここで完結する）。 */
 @keyframes court-frame-blink {
   0%,
   100% {
@@ -340,7 +341,7 @@ body {
   animation: court-frame-blink 1.2s ease-in-out infinite;
 }
 
-/* 動きを減らす設定では点滅させず、赤い太枠のまま据え置く */
+/* 動きを減らす設定では点滅させず、赤い破線の太枠のまま据え置く */
 @media (prefers-reduced-motion: reduce) {
   .court-frame-blink {
     animation: none;
