@@ -88,7 +88,7 @@ describe('FinishOperationGuide', () => {
       vi.advanceTimersByTime(3.5 * 60 * 1000 + 100);
     });
     expect(guide()).toHaveAttribute('data-phase', 'imminent');
-    expect(screen.getByText('1コート脇待機 終了操作担当')).toBeInTheDocument();
+    expect(screen.getByText('①付近待機 終了操作担当')).toBeInTheDocument();
   });
 
   it('1面運用ではコート番号を出さない', () => {
@@ -101,7 +101,7 @@ describe('FinishOperationGuide', () => {
         showCourtNumber={false}
       />,
     );
-    expect(screen.getByText('コート脇待機 終了操作担当')).toBeInTheDocument();
+    expect(screen.getByText('コート付近待機 終了操作担当')).toBeInTheDocument();
   });
 
   it('自分が担当なら枠を強調し自分のチップを塗る（4:30 以降はオレンジ）', () => {

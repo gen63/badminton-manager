@@ -81,18 +81,31 @@ export function buildFinishOperationGuide(
 }
 
 /**
+ * コート番号の丸数字表記（1 → `①`）。コートカードのヘッダーが番号を丸バッジで
+ * 出しているので、丸数字だけで「どのコートか」は十分伝わり、`コート` の3文字を
+ * 省ける。Unicode に丸数字がある 1〜20 の範囲外は素の数字＋`コート` に戻す。
+ */
+function circledCourt(courtId: number): string {
+  if (!Number.isInteger(courtId) || courtId < 1 || courtId > 20) return `${courtId}コート`;
+  return String.fromCharCode(0x2460 + courtId - 1);
+}
+
+/**
  * ガイドの見出し文言。名前は表示側がチップで描くのでここには含めない。
  *
  * 常時表示なので「〜をお願いします」という依頼文ではなく**役割ラベル**にする。
  * 毎試合ずっと目に入る文言としては依頼文は冗長で、「終了操作担当」の方が
  * 「その人がやるもの」という運用として伝わる。短いぶん 390px 幅でも
  * 見出しと名前チップが1行に収まる。
+ *
+ * 「付近」は呼び出し通知（`buildNextMatchCallMessage` の
+ * `Nコート付近で試合終了をお待ちください`）と同じ語彙に揃えている。
  */
 export function buildFinishOperationGuideHeadline(guide: FinishOperationGuide): string {
   if (guide.phase === 'waiting') return '終了操作担当';
   return guide.courtId === null
-    ? 'コート脇待機 終了操作担当'
-    : `${guide.courtId}コート脇待機 終了操作担当`;
+    ? 'コート付近待機 終了操作担当'
+    : `${circledCourt(guide.courtId)}付近待機 終了操作担当`;
 }
 
 /**
