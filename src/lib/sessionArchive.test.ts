@@ -9,6 +9,7 @@ import {
   computeHasActiveCourt,
   computeLastMatchFinishedAt,
   isSessionVisible,
+  shouldAutoExitSession,
 } from './sessionArchive';
 
 function makeMatch(startedAt: number, id = `m-${startedAt}`): Match {
@@ -260,5 +261,73 @@ describe('isSessionVisible', () => {
       const startTime = now - 60 * 60 * 1000;
       expect(isSessionVisible({ config: { practiceStartTime: startTime } }, now)).toBe(true);
     });
+  });
+});
+
+describe('shouldAutoExitSession', () => {
+  const now = 1_700_000_000_000;
+  const firstMatchStartedAt = now - 3 * 60 * 60 * 1000;
+
+  it('試合未開始なら退出しない（開始90分前ルールは追い出しに使わない）', () => {
+    expect(
+      shouldAutoExitSession(
+        { config: { practiceStartTime: now + 5 * 60 * 60 * 1000 } },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it('firstMatchStartedAt=null なら退出しない', () => {
+    expect(
+      shouldAutoExitSession(
+        { firstMatchStartedAt: null, config: { practiceStartTime: now } },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it('最後の試合から29分なら退出しない', () => {
+    const lastMatchFinishedAt = now - VISIBLE_AFTER_LAST_MATCH_MS + 60_000;
+    expect(shouldAutoExitSession({ firstMatchStartedAt, lastMatchFinishedAt }, now)).toBe(false);
+  });
+
+  it('最後の試合から31分なら退出する', () => {
+    const lastMatchFinishedAt = now - VISIBLE_AFTER_LAST_MATCH_MS - 60_000;
+    expect(shouldAutoExitSession({ firstMatchStartedAt, lastMatchFinishedAt }, now)).toBe(true);
+  });
+
+  it('コートが進行中なら退出しない', () => {
+    const lastMatchFinishedAt = now - 3 * 60 * 60 * 1000;
+    expect(
+      shouldAutoExitSession(
+        { firstMatchStartedAt, lastMatchFinishedAt, hasActiveCourt: true },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it('12時間の絶対上限を超えていれば進行中でも退出する', () => {
+    expect(
+      shouldAutoExitSession(
+        {
+          firstMatchStartedAt: now - ARCHIVE_THRESHOLD_MS - 1000,
+          lastMatchFinishedAt: now - 1000,
+          hasActiveCourt: true,
+        },
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it('一覧の表示条件と常に裏返しの関係（試合開始済みの場合）', () => {
+    const cases = [
+      { firstMatchStartedAt, lastMatchFinishedAt: now - 60_000 },
+      { firstMatchStartedAt, lastMatchFinishedAt: now - 60 * 60 * 1000 },
+      { firstMatchStartedAt, lastMatchFinishedAt: now - 60 * 60 * 1000, hasActiveCourt: true },
+      { firstMatchStartedAt: now - ARCHIVE_THRESHOLD_MS - 1, lastMatchFinishedAt: now },
+    ];
+    for (const c of cases) {
+      expect(shouldAutoExitSession(c, now)).toBe(!isSessionVisible(c, now));
+    }
   });
 });
