@@ -118,34 +118,34 @@ describe('buildFinishOperationGuideHeadline', () => {
   it('waiting はコートに触れない', () => {
     expect(
       buildFinishOperationGuideHeadline({ phase: 'waiting', courtId: null, playerIds: ['w1'] }),
-    ).toBe('終了操作担当');
+    ).toBe('操作担当');
   });
 
   it('imminent はコート番号付き', () => {
     expect(
       buildFinishOperationGuideHeadline({ phase: 'imminent', courtId: 2, playerIds: ['w1'] }),
-    ).toBe('②付近待機 終了操作担当');
+    ).toBe('②付近待機 操作担当');
   });
 
   it('コート番号は丸数字（コートカードの丸バッジと揃える）', () => {
     expect(
       buildFinishOperationGuideHeadline({ phase: 'imminent', courtId: 1, playerIds: ['w1'] }),
-    ).toBe('①付近待機 終了操作担当');
+    ).toBe('①付近待機 操作担当');
     expect(
       buildFinishOperationGuideHeadline({ phase: 'imminent', courtId: 3, playerIds: ['w1'] }),
-    ).toBe('③付近待機 終了操作担当');
+    ).toBe('③付近待機 操作担当');
   });
 
   it('丸数字が無い範囲は素の数字＋コートに戻す', () => {
     expect(
       buildFinishOperationGuideHeadline({ phase: 'imminent', courtId: 21, playerIds: ['w1'] }),
-    ).toBe('21コート付近待機 終了操作担当');
+    ).toBe('21コート付近待機 操作担当');
   });
 
   it('imminent でコート番号が無ければ番号を省く（1面運用）', () => {
     expect(
       buildFinishOperationGuideHeadline({ phase: 'imminent', courtId: null, playerIds: ['w1'] }),
-    ).toBe('コート付近待機 終了操作担当');
+    ).toBe('コート付近待機 操作担当');
   });
 });
 
