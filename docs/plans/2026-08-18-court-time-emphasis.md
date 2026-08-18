@@ -1,4 +1,4 @@
-# 経過時間によるコート枠の強調（4:30 で太枠 / 6:00 で点滅）
+# 経過時間によるコート枠の強調（4:30 で太枠 / 6:00 で破線点滅）
 
 ## 背景 / 課題
 
@@ -10,7 +10,7 @@
 ## 要件
 
 1. 試合時間が **4分30秒** を超えたコートは、カードの外枠を太くして強調する。
-2. **6分** を超えたコートは、外枠を点滅させてさらに強調する。
+2. **6分** を超えたコートは、外枠を**破線にして点滅**させ、さらに強調する。
 3. 対象は試合中（`isPlaying` かつ `startedAt > 0`）のコートのみ。
    配置済み・未開始（「準備中」）のコートは対象外。
 
@@ -50,14 +50,15 @@ export function getNextCourtEmphasisDelay(startedAt: number, now: number): numbe
   |--------|--------|--------|
   | `none` | `border border-border` | 通常 |
   | `thick` | `border-2 border-orange-500` | 太いオレンジ枠（DESIGN.md: 警告） |
-  | `blink` | `border-2 border-destructive court-frame-blink` | 太い赤枠＋点滅（DESIGN.md: 危険） |
+  | `blink` | `border-2 border-dashed border-destructive court-frame-blink` | 太い赤の破線枠＋点滅（DESIGN.md: 危険） |
 
-### 点滅は CSS アニメーション（`src/index.css`）
+### 破線点滅は Tailwind + CSS アニメーション（`src/index.css`）
 
 `@keyframes court-frame-blink` で `border-color` を 1.2s ease-in-out で
 `var(--color-destructive)` ⇄ 淡赤（#fecaca）に往復させる。`animation` は Tailwind の
 `border-*` より優先されるため、点滅中の色指定は CSS 側で完結する。
-`prefers-reduced-motion: reduce` では `animation: none` とし、**赤い太枠のまま据え置く**
+破線そのものは Tailwind の `border-dashed` で付けるため、アニメーションは色の明滅だけを担う。
+`prefers-reduced-motion: reduce` では `animation: none` とし、**赤い破線の太枠のまま据え置く**
 （強調自体は失わない）。
 
 ## テスト

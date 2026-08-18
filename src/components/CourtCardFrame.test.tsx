@@ -52,6 +52,7 @@ describe('CourtCardFrame', () => {
     expect(frame()).toHaveAttribute('data-emphasis', 'blink');
     expect(frame().className).toContain('court-frame-blink');
     expect(frame().className).toContain('border-destructive');
+    expect(frame().className).toContain('border-dashed');
   });
 
   it('既に6分を超えて開始済みのコートは初回描画で blink', () => {
