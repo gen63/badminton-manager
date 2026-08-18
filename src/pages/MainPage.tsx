@@ -25,6 +25,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { FinishGameButton } from '../components/FinishGameButton';
 import { UnrecordedMatchPrompt } from '../components/UnrecordedMatchPrompt';
 import { CourtTimer } from '../components/CourtTimer';
+import { CourtCardFrame } from '../components/CourtCardFrame';
 import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { predictNextMatchPlayers } from '../lib/nextMatchPrediction';
 import {
@@ -1201,7 +1202,7 @@ export function MainPage() {
                 : null;
 
               return (
-                <div key={court.id} className="w-full bg-card border border-border rounded-xl shadow-sm flex flex-col overflow-hidden min-w-0">
+                <CourtCardFrame key={court.id} startedAt={court.isPlaying ? court.startedAt : 0}>
                   <div className="flex items-center justify-between px-2 py-2 border-b border-border bg-muted/20">
                     <div className="flex items-center gap-1.5">
                       <span className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
@@ -1360,7 +1361,7 @@ export function MainPage() {
                       </div>
                     </div>
                   )}
-                </div>
+                </CourtCardFrame>
               );
             })}
             {courts.length < 3 && isAdmin() && (

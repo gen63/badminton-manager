@@ -323,3 +323,26 @@ body {
     box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.1);
   }
 }
+
+/* コート枠の点滅（試合経過6分超の強調）。src/components/CourtCardFrame.tsx から使う。
+   Tailwind の border-* より animation が優先されるため色指定はここで完結する。 */
+@keyframes court-frame-blink {
+  0%,
+  100% {
+    border-color: var(--color-destructive); /* #ef4444 */
+  }
+  50% {
+    border-color: #fecaca; /* red-200 相当の淡色 */
+  }
+}
+
+.court-frame-blink {
+  animation: court-frame-blink 1.2s ease-in-out infinite;
+}
+
+/* 動きを減らす設定では点滅させず、赤い太枠のまま据え置く */
+@media (prefers-reduced-motion: reduce) {
+  .court-frame-blink {
+    animation: none;
+  }
+}
