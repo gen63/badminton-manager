@@ -13,21 +13,42 @@
 ## 要件
 
 1. 消えないガイドを画面上部（`PresenceIndicator` の直下）に置く。
-2. 2 段階で案内する。
-   - どのコートが先に終わるか未定の間 → `操作担当` ＋ 担当の名前
-   - どこかのコートが 4:30 を超えたら → `②付近待機 操作担当` ＋ 担当の名前
+2. 文言は `②付近待機` ＋ 担当の名前（役割は言わない。下記の改訂を参照）。
 3. 表示対象は全員。**自分が担当のときだけ強調**する。
-4. プレイ中コートがある間は常時表示する（段階1から出す）。
+4. 出すのは **4:30 以降だけ**（改訂。理由は下記「## 改訂: 4:30 以降のみに絞る」）。
 5. 4:30 の**トーストは廃止**する（本人向け・管理者向けとも）。OS 通知／チャイム／
    振動／読み上げは残す。
+
+## 改訂: 4:30 以降のみに絞る
+
+当初は「プレイ中コートがある間は常時表示」（4:30 未満は `操作担当` ＋ 名前だけ）と
+したが、実機で見ると**同じ顔ぶれが画面の上下2箇所に出て冗長**だった。下段の
+配置予測バー（`NextMatchPredictionBar`）が既に同じメンバーを濃い青で出しており、
+4:30 未満のガイドはそこに情報を足していない。
+
+そこで担当の周知は配置予測バー側に寄せ、ガイドはこのコンポーネントでしか言えない
+**「どのコート付近で待てばいいか」が決まってから**＝ 4:30 以降だけ出すことにした。
+文言からも「操作担当」を落とし、ガイドは**待機場所だけ**を言う（役割は配置予測バーの
+見出しが常時示している）。アイコンも `StopCircle`（終了ボタンと同じ）から場所を表す
+`MapPin` に変えた。
+
+- `NextMatchPredictionBar` の見出しを `配置予測（操作担当）` にし、凡例の
+  「ほぼ確定」を「ほぼ確定＝操作担当」にする（枠線＝候補まで担当と読まれないため）。
+- ガイドは 4:30 未満なら `null`。`waiting` / `imminent` の 2 段階（`FinishGuidePhase`）は
+  概念ごと廃止し、`FinishOperationGuide` は `{ courtId, playerIds }` だけになった。
+- 明滅（`finish-guide-flash`）の起点も「段階の変化」から「**非表示 → 表示**」に変更。
+  開き直しで最初から表示されている場合は光らせない点は据え置き。
+
+これにより上部の常時占有はゼロになり、4:30 以降だけ 44px を使う。
 
 ## 表示領域の扱い
 
 上部は既に情報が多いため、占有を最小にする。
 
-- 段階1（4:30 未満）は `text-xs` / `px-3 py-1.5` の控えめな 1 行（約 28px）。
-- 4:30 以降だけ色（オレンジ）と太字で強調する。コートカードの外枠が太くなる閾値
-  （`COURT_EMPHASIS_THICK_MS`）と同じ 4:30 なので、上部とコートの見た目が連動する。
+- 4:30 未満は何も描画しない（占有ゼロ）。
+- 4:30 以降だけ `text-xs` / `px-3 py-1.5` のオレンジ1行（44px）。コートカードの外枠が
+  太くなる閾値（`COURT_EMPHASIS_THICK_MS`）と同じ 4:30 なので、上部とコートの
+  見た目が連動する。
 - 出す必要が無いときは**外側の余白ごと描画しない**。そのため `px-4 pt-2` は呼び出し側
   ではなくコンポーネント側に持たせている（`PresenceIndicator` の行のように空の余白が
   残るのを避ける）。
@@ -59,8 +80,6 @@
 ### 判定は純粋関数（`src/lib/finishOperationGuide.ts`）
 
 ```ts
-export type FinishGuidePhase = 'waiting' | 'imminent';
-
 export function buildFinishOperationGuide(args: {
   courts: Court[];
   certainIds: Set<string>;
@@ -75,16 +94,17 @@ export function getNextFinishGuideDelay(courts: Court[], now: number): number | 
 - 「経過最大のプレイ中コート」は `nextMatchCall.ts` の `maxPlayingCourt` /
   `maxPlayingElapsedMs` を再利用する。閾値も `MATCH_CALL_THRESHOLD_MS`（4:30）を共有し、
   呼び出し通知と必ず同じタイミングで切り替わるようにする。
-- 非表示（`null`）の条件は 2 つ。
+- 非表示（`null`）の条件は 3 つ。
   1. プレイ中コート（`isPlaying && startedAt > 0`）が 1 面も無い
-  2. `certainIds` のうちコートに乗っていない人が 0 人
+  2. 経過最大のコートがまだ 4:30 に達していない
+  3. `certainIds` のうちコートに乗っていない人が 0 人
      （促す相手がいない。`shouldAnnounceToAdmin` の `allOnCourt` 条件と同じ考え方）
 - **`callBasisCourtId` は使わない**。あれは「次に配置される先」なので空きコートを
   優先するが、ここで欲しいのは「終了操作の対象＝もうすぐ終わるプレイ中コート」で別物。
   空きコートがある状況でも、指すのはプレイ中コートでなければならない。
 - コート番号を出すかは呼び出し側が `courts.length > 1` で決める
   （`docs/plans/2026-08-14-single-court-message.md` と同じ方針）。
-  1 面運用では `コート付近待機 操作担当` になる。
+  1 面運用では `コート付近待機` になる。
 
 コート番号は**丸数字**（`②`）で出す。コートカードのヘッダーが番号を丸バッジで
 出しているので丸数字だけでどのコートかは十分伝わり、`コート` の3文字を省ける。
@@ -107,19 +127,13 @@ Unicode に丸数字がある 1〜20 の範囲外は素の数字＋`コート` �
 `CourtCardFrame` と同じく**毎秒 tick せず**、`getNextFinishGuideDelay` が返す
 4:30 までの残り時間で `setTimeout` を 1 本だけ張る（+50ms の余裕）。
 
-| 段階 | スタイル |
+| 対象 | スタイル |
 |------|----------|
-| `waiting` | `bg-muted/40 border-border text-muted-foreground` の 1 行 |
-| `imminent` | `bg-orange-50 border-orange-300 text-orange-800` ＋ 見出し太字 |
-| 自分が担当（`waiting`） | `ring-1 ring-indigo-300` ＋ 自分のチップを `bg-indigo-600 text-white` |
-| 自分が担当（`imminent`） | `ring-1 ring-orange-400` ＋ 自分のチップを `bg-orange-600 text-white` |
-
-自分強調の色は段階に合わせる。待機段階からオレンジにすると「もう終わりそう」に
-見えてしまうため、待機段階は配置予測の「濃い青」（`NextMatchPredictionBar` の
-indigo）に揃え、4:30 以降だけオレンジにする。
+| 本体 | `bg-orange-50 border-orange-300 text-orange-800` ＋ 見出し太字 |
+| 自分が担当 | `ring-1 ring-orange-400` ＋ 自分のチップを `bg-orange-600 text-white` |
 
 - 名前の表示順は `predictedPlayers`（入りやすい順）をそのまま使う。
-- アイコンは `StopCircle`（`FinishGameButton` と同じ）で「終了操作」と結びつける。
+- アイコンは `MapPin`（待機場所）。
 - 読み上げはしない（既存の呼び出し通知が担当。二重に鳴らさない）。
 
 ### `PresenceIndicator` の縮小
@@ -133,9 +147,8 @@ indigo）に揃え、4:30 以降だけオレンジにする。
 - ガイドと同じく外側の余白（`px-4 pt-2`）をコンポーネント側に移し、非表示時に
   空の余白行を残さない（`MainPage` 側のラッパー div は削除）
 
-実測（390px 幅、余白込み）: プレゼンス 48px → **28px**、
-ガイドは `waiting` / `imminent` とも 44px（どちらも1行）。
-両方出ていても上部の増分は 72px に収まる。
+実測（390px 幅、余白込み）: プレゼンス 48px → **28px**、ガイドは 44px（1行）。
+ガイドは 4:30 以降しか出ないので、通常時の上部の増分はゼロ。
 
 ### 組み込み（`src/pages/MainPage.tsx`）
 
@@ -146,12 +159,12 @@ indigo）に揃え、4:30 以降だけオレンジにする。
 
 ## テスト
 
-- `src/lib/finishOperationGuide.test.ts`（19 件）— 非表示条件、4:30 境界、
-  経過最大コートの選択、空きコートがあってもプレイ中コートを指すこと、
-  1 面運用の文言、`getNextFinishGuideDelay` の残り時間。
-- `src/components/FinishOperationGuide.test.tsx`（8 件）— フェイクタイマーで
-  `waiting → imminent` の切り替わり、段階別の自分強調（indigo / orange）、
-  切替時だけ光ること（初回から `imminent` なら光らない）、全員コート上で消えること。
+- `src/lib/finishOperationGuide.test.ts`（17 件）— 非表示条件（4:30 未満を含む）、
+  4:30 境界、経過最大コートの選択、空きコートがあってもプレイ中コートを指すこと、
+  丸数字、1 面運用の文言、`getNextFinishGuideDelay` の残り時間。
+- `src/components/FinishOperationGuide.test.tsx`（7 件）— フェイクタイマーで
+  4:30 未満は出ない／4:30 で出る、自分強調、出た瞬間だけ光ること（最初から 4:30 超なら
+  光らない）、全員コート上で消えること。
 
 ## スコープ外
 
