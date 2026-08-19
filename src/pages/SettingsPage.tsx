@@ -569,15 +569,16 @@ export function SettingsPage() {
           </button>
         </div>
 
-        {/* アクション */}
-        {userIsAdmin && (
-          <div className="card p-4">
+        {/* アクション（開発モード限定） */}
+        {userIsAdmin && devMode && (
+          <div className="card p-4 border-2 border-dashed border-gray-400">
             <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
               <span className="w-6 h-6 rounded-lg bg-red-100 flex items-center justify-center">
                 <Trash2 size={14} className="text-red-600" />
               </span>
               リセット
               <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">管理者</span>
+              <span className="text-[10px] bg-gray-700 text-white px-1.5 py-0.5 rounded-full">DEV</span>
             </h2>
             <div className="flex gap-2">
               <button
