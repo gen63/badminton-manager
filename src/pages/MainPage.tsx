@@ -1202,10 +1202,6 @@ export function MainPage() {
           <div className="grid grid-cols-3 gap-2">
             {courts.map((court) => {
               const hasPlayers = court.teamA[0] && court.teamA[0] !== '';
-              const matchNumber = court.isPlaying && court.startedAt
-                ? matchHistory.filter(m => m.finishedAt && m.finishedAt <= court.startedAt!).length + courts.filter(c => c.isPlaying && c.id < court.id).length + 1
-                : null;
-
               return (
                 <CourtCardFrame key={court.id} startedAt={court.isPlaying ? court.startedAt : 0}>
                   <div className="flex items-center justify-between px-2 py-2 border-b border-border bg-muted/20">
@@ -1215,18 +1211,21 @@ export function MainPage() {
                       }`}>
                         {court.id}
                       </span>
-                      <span className={`text-xs font-semibold whitespace-nowrap ${!court.isPlaying && !hasPlayers ? 'text-muted-foreground' : ''}`}>
-                        {court.isPlaying && matchNumber ? `#${matchNumber}` : hasPlayers ? '準備中' : '空き'}
-                      </span>
+                      {/* 試合中は経過時間に場所を譲る（何試合目かは運用上使われていない） */}
+                      {!court.isPlaying && (
+                        <span className={`text-xs font-semibold whitespace-nowrap ${!hasPlayers ? 'text-muted-foreground' : ''}`}>
+                          {hasPlayers ? '準備中' : '空き'}
+                        </span>
+                      )}
                     </div>
                     <div className="shrink-0 flex justify-end">
                       {court.isPlaying && court.startedAt ? (
-                        <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tabular-nums whitespace-nowrap">
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <circle cx="12" cy="12" r="10" strokeWidth="2"/>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
-                          </svg>
-                          <CourtTimer startedAt={court.startedAt} />
+                        // 時計アイコンは置かない（青いピルの mm:ss は自明）。空いた幅は
+                        // 数字の大きさに回す。サイズは `9:59` が3コート幅（360px 画面で
+                        // 〜99px）に収まる text-xl 基準で、10 分を超えて桁が増えたときだけ
+                        // CourtTimer 側で text-base に縮める。
+                        <div className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md text-xl font-mono font-bold tabular-nums whitespace-nowrap leading-tight">
+                          <CourtTimer startedAt={court.startedAt} longClassName="text-base" />
                         </div>
                       ) : hasPlayers && (court.assignedAt ?? 0) > 0 ? (
                         // 配置済み・未開始。3 分経過で配置時刻から自動開始される
