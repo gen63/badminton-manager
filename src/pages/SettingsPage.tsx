@@ -41,6 +41,7 @@ export function SettingsPage() {
   const forceBulkAssignment = useSettingsStore((s) => s.forceBulkAssignment);
   const practiceType = useSettingsStore((s) => s.practiceType);
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
+  const genderBalanceMode = useSettingsStore((s) => s.genderBalanceMode);
   const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
   const adminMatchCallAnnounce = useSettingsStore((s) => s.adminMatchCallAnnounce);
   const setAdminMatchCallAnnounce = useSettingsStore((s) => s.setAdminMatchCallAnnounce);
@@ -355,6 +356,39 @@ export function SettingsPage() {
                 {recordScores
                   ? '終了時に勝敗を記録'
                   : '終了時に勝敗を記録しない'}
+              </p>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">男女比調整</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => void writer.setGenderBalanceMode(true)}
+                  className={`flex-1 select-button text-xs px-2 ${
+                    genderBalanceMode
+                      ? 'select-button-active'
+                      : 'select-button-inactive'
+                  }`}
+                >
+                  {genderBalanceMode && <span className="mr-1">✓</span>}
+                  ON
+                </button>
+                <button
+                  onClick={() => void writer.setGenderBalanceMode(false)}
+                  className={`flex-1 select-button text-xs px-2 ${
+                    !genderBalanceMode
+                      ? 'select-button-active'
+                      : 'select-button-inactive'
+                  }`}
+                >
+                  {!genderBalanceMode && <span className="mr-1">✓</span>}
+                  OFF
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {genderBalanceMode
+                  ? '各コートの男女比をできるだけ揃える'
+                  : '実力差で釣り合うなら、男女比が偏ったコートや男女対抗も作る'}
               </p>
             </div>
 

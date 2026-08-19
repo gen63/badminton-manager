@@ -272,6 +272,11 @@ export function useFirebaseSync() {
           if (remoteLateBalance !== s.lateBalanceMode) {
             s.setLateBalanceMode(remoteLateBalance);
           }
+          // genderBalanceMode は未設定なら true 扱い（旧セッション互換）
+          const remoteGenderBalance = gameState.settings.genderBalanceMode ?? true;
+          if (remoteGenderBalance !== s.genderBalanceMode) {
+            s.setGenderBalanceMode(remoteGenderBalance);
+          }
           const remoteAutoFired = gameState.settings.lateBalanceAutoFired ?? false;
           if (remoteAutoFired !== s.lateBalanceAutoFired) {
             s.setLateBalanceAutoFired(remoteAutoFired);

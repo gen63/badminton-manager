@@ -18,6 +18,13 @@ interface SettingsState {
   setPracticeType: (value: '単' | '複' | '楽') => void;
   lateBalanceMode: boolean;
   setLateBalanceMode: (value: boolean) => void;
+  /**
+   * 男女比調整。オンなら 3-1 のコートと男女戦（男男 vs 女女）を強く避ける。
+   * オフでも完全には無効化せず、実力の釣り合いが明確に良くなるときだけ許容する。
+   * Firestore 同期（persist しない）。
+   */
+  genderBalanceMode: boolean;
+  setGenderBalanceMode: (value: boolean) => void;
   lateBalanceAutoFired: boolean;
   setLateBalanceAutoFired: (value: boolean) => void;
   /** 予約保留の閾値（中央値+この値以上の試合数のメンバーを含む予約を保留）。Firestore 同期。 */
@@ -59,6 +66,8 @@ export const useSettingsStore = create<SettingsState>()(
         }),
       lateBalanceMode: false,
       setLateBalanceMode: (value) => set({ lateBalanceMode: value }),
+      genderBalanceMode: true,
+      setGenderBalanceMode: (value) => set({ genderBalanceMode: value }),
       lateBalanceAutoFired: false,
       setLateBalanceAutoFired: (value) => set({ lateBalanceAutoFired: value }),
       reservationBlockThreshold: DEFAULT_RESERVATION_BLOCK_THRESHOLD,

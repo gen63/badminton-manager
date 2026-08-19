@@ -1168,6 +1168,17 @@ export function setUseStayDurationPriority(sessionId: string, value: boolean) {
   );
 }
 
+/**
+ * 男女比調整の ON/OFF。OFF にすると目的関数の gender / mixSplit の重みが下がり、
+ * 3-1 コートや男女対抗が「実力差で正当化できるとき」に作られやすくなる。
+ * 詳細: docs/plans/2026-08-05-pairing-goals-and-rewrite.md
+ */
+export function setGenderBalanceMode(sessionId: string, value: boolean) {
+  return mutateGameState(sessionId, (s) =>
+    computeSetSetting(s, 'genderBalanceMode', value),
+  );
+}
+
 export function setForceBulkAssignment(sessionId: string, value: boolean) {
   return mutateGameState(sessionId, (s) =>
     computeSetSetting(s, 'forceBulkAssignment', value),
@@ -1659,6 +1670,8 @@ export async function finishMatchAndContinue(
         gameMode,
         matchId: options.matchId,
         lateBalanceMode: remoteSettings?.lateBalanceMode ?? false,
+        // 旧セッション（未設定）は ON 扱い＝従来どおりの男女比重視
+        genderBalanceMode: remoteSettings?.genderBalanceMode ?? true,
         reservationBlockThreshold: remoteSettings?.reservationBlockThreshold,
         practiceStartTime: remoteConfig?.practiceStartTime,
         skipContinuous: options.skipContinuous,

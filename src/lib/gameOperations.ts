@@ -134,6 +134,7 @@ export function computeFinishAndContinue(
     gameMode: 'singles' | 'doubles';
     matchId?: string;
     lateBalanceMode?: boolean;
+    genderBalanceMode?: boolean;
     reservationBlockThreshold?: number;
     /**
      * 練習開始日時（`sessions/{id}.config.practiceStartTime`）。
@@ -289,6 +290,7 @@ export function computeFinishAndContinue(
           reservations: reservationsAfterFinish,
           gameMode: options.gameMode,
           lateBalanceMode: options.lateBalanceMode,
+          genderBalanceMode: options.genderBalanceMode,
           reservationBlockThreshold: options.reservationBlockThreshold,
           // 予約は休憩中メンバーも呼び出せる（プレイ中でない休憩者）
           restingPlayers: effectivePlayers.filter((p) => p.isResting && !playersInCourts.has(p.id)),

@@ -4,6 +4,7 @@ import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import { SessionError } from './errorHandler';
 import { assignRoundByObjective } from './pairing/assignRound';
+import { GENDER_BALANCE_OFF_WEIGHTS } from './pairing/objective';
 import { median } from './median';
 
 type RatingGroup = 'upper' | 'middle' | 'lower';
@@ -1951,6 +1952,8 @@ export function assignCourts(
     reservations?: Reservation[];
     gameMode?: 'singles' | 'doubles'; // シングルス/ダブルス（デフォルト: doubles）
     lateBalanceMode?: boolean; // 後半均等化モード（試合数の少ない人を強く優先）
+    /** 男女比調整。false なら 3-1 や男女戦を実力の釣り合い次第で許容する */
+    genderBalanceMode?: boolean;
     reservationBlockThreshold?: number; // 予約保留の閾値（中央値+この値以上のメンバーを含む予約を保留）
     restingPlayers?: Player[]; // 休憩中で予約により呼び出せるメンバー（通常配置の対象外）
     /**
@@ -2304,6 +2307,8 @@ export function assignCourts(
       wideSpanThreshold: objectiveWideSpanThreshold,
       preferGenderMix,
       lateBalanceMode: options?.lateBalanceMode ?? false,
+      weights:
+        (options?.genderBalanceMode ?? true) ? undefined : GENDER_BALANCE_OFF_WEIGHTS,
     });
     return [...reservationAssignments, ...assigned];
   }
