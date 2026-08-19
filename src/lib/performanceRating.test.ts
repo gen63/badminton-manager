@@ -129,9 +129,12 @@ describe('computePerformanceRatings', () => {
     // 勝率だけ見ると F(100%) > S(75%)
     expect(findPerformance(result, 'F')!.winRate).toBe(100);
     expect(findPerformance(result, 'S')!.winRate).toBe(75);
-    // 相手の強さを補正すると逆転する
+    // 相手の強さを補正すると逆転する。
+    // `deviation` は整数に丸めているため、この規模の差では同値になることがある
+    // （実測の誤差が ±5.5 ポイントあるので丸めは意図的）。逆転そのものは丸める前の
+    // `rating` で検証する。
     expect(ratingOf(result, 'S')).toBeGreaterThan(ratingOf(result, 'F'));
-    expect(findPerformance(result, 'S')!.deviation).toBeGreaterThan(
+    expect(findPerformance(result, 'S')!.deviation).toBeGreaterThanOrEqual(
       findPerformance(result, 'F')!.deviation
     );
     // D は最下位
@@ -190,7 +193,7 @@ describe('computePerformanceRatings', () => {
     expect(totalExpected).toBeCloseTo(6, 0);
   });
 
-  it('偏差値の平均は 50、母標準偏差は 10', () => {
+  it('偏差値は平均 50 / 母標準偏差 10 に概ね揃う（整数丸めのぶん誤差が出る）', () => {
     const players = playersOf('A', 'B', 'C', 'D', 'E', 'F');
     const matches = [
       match(['A', 'B'], ['C', 'D'], 'A'),
@@ -206,8 +209,44 @@ describe('computePerformanceRatings', () => {
     const sd = Math.sqrt(
       deviations.reduce((s, v) => s + (v - mean) ** 2, 0) / deviations.length
     );
-    expect(mean).toBeCloseTo(50, 1);
-    expect(sd).toBeCloseTo(10, 1);
+    // `deviation` は整数に丸めているので厳密には 50 / 10 にならない。
+    // 丸め幅（±0.5）の範囲で一致していればよい。
+    expect(mean).toBeGreaterThan(49.5);
+    expect(mean).toBeLessThan(50.5);
+    expect(sd).toBeGreaterThan(9.5);
+    expect(sd).toBeLessThan(10.5);
+  });
+
+  it('同じ偏差値は同順位になり、次の順位は人数分飛ぶ（1,2,2,4 形式）', () => {
+    // 全員が1勝1敗で完全に対称 → 偏差値は全員 50 に潰れる
+    const players = playersOf('A', 'B', 'C', 'D');
+    const result = computePerformanceRatings(
+      [
+        match(['A', 'B'], ['C', 'D'], 'A'),
+        match(['C', 'D'], ['A', 'B'], 'A'),
+      ],
+      players
+    );
+    expect(result.players.every((p) => p.deviation === 50)).toBe(true);
+    expect(result.players.map((p) => p.displayRank)).toEqual([1, 1, 1, 1]);
+  });
+
+  it('同じ偏差値のときは登録レートが高い方を上に表示する', () => {
+    // 上と同じ対称なデータ。登録レートだけ差をつける
+    const players = [
+      { ...playersOf('A')[0], rating: 10 },
+      { ...playersOf('B')[0], rating: 40 },
+      { ...playersOf('C')[0], rating: 20 },
+      { ...playersOf('D')[0], rating: 30 },
+    ];
+    const result = computePerformanceRatings(
+      [
+        match(['A', 'B'], ['C', 'D'], 'A'),
+        match(['C', 'D'], ['A', 'B'], 'A'),
+      ],
+      players
+    );
+    expect(result.players.map((p) => p.name)).toEqual(['B', 'D', 'C', 'A']);
   });
 
   it('レート降順に並び、同レートは勝ち数→五十音で安定する', () => {

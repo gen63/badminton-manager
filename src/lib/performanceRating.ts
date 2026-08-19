@@ -34,14 +34,32 @@ export interface PlayerPerformance {
   total: number;
   /** 勝率（%、0-100 の整数）。total が 0 のときは null。 */
   winRate: number | null;
-  /** 本日のパフォーマンスレート（1500 基準の整数）。 */
+  /**
+   * 本日のパフォーマンスレート（1500 基準の整数）。
+   *
+   * **`deviation` と同じ情報**（どちらも推定した強さ θ の一次変換）で、順位も一致する。
+   * 1500 は「その日の平均」なのでセッションを跨いだ比較には使えない。UI では
+   * 誤解を避けるため表示しておらず、並び替えの内部処理にのみ使う。
+   */
   rating: number;
-  /** 強さ偏差値（平均 50 / 標準偏差 10、小数第1位まで）。 */
+  /**
+   * 強さ偏差値（平均 50 / 標準偏差 10 の**整数**）。
+   *
+   * 真の実力が既知の集団で 200 セッション測ると**誤差は ±5.5 ポイント**あるため、
+   * 小数を出すと精度を大きく偽ることになる。整数に丸めて、誤差の範囲内の人が
+   * 同じ値になるようにしている。
+   */
   deviation: number;
+  /** 同じ `deviation` なら同順位（1,2,2,4 形式）。 */
+  displayRank: number;
   /** 対戦した相手チームの平均レート（整数）。 */
   opponentRating: number;
+  /** 対戦した相手チームの平均を偏差値スケールにしたもの（整数）。 */
+  opponentDeviation: number;
   /** 味方（ペア相手）の平均レート。シングルスのみの場合は null。 */
   partnerRating: number | null;
+  /** 味方の平均を偏差値スケールにしたもの。シングルスのみの場合は null。 */
+  partnerDeviation: number | null;
   /** その枠に平均的な選手が入った場合の期待勝利数（小数第1位まで）。 */
   expectedWins: number;
   /** 同じく期待勝率（%、0-100 の整数）。total が 0 のときは null。 */
@@ -268,6 +286,9 @@ export function computePerformanceRatings(
     const rating = Math.round(ratingOf(name));
     const deviation =
       sd > 1e-9 ? 50 + (10 * ((theta.get(name) ?? 0) - mean)) / sd : 50;
+    // レート → 偏差値スケールの変換。相手/味方の平均も同じ物差しに載せる
+    const toDeviation = (r: number): number =>
+      sd > 1e-9 ? 50 + (10 * ((r - BASE_RATING) / RATING_SCALE - mean)) / sd : 50;
     return {
       name,
       wins: stat.wins,
@@ -275,11 +296,17 @@ export function computePerformanceRatings(
       total,
       winRate: total > 0 ? Math.round((stat.wins / total) * 100) : null,
       rating,
-      deviation: round1(deviation),
+      deviation: Math.round(deviation),
+      displayRank: 0, // ソート後に採番する
       opponentRating: Math.round(stat.opponentRatingSum / total),
+      opponentDeviation: Math.round(toDeviation(stat.opponentRatingSum / total)),
       partnerRating:
         stat.partnerCount > 0
           ? Math.round(stat.partnerRatingSum / stat.partnerCount)
+          : null,
+      partnerDeviation:
+        stat.partnerCount > 0
+          ? Math.round(toDeviation(stat.partnerRatingSum / stat.partnerCount))
           : null,
       expectedWins: round1(stat.expectedWins),
       expectedWinRate:
@@ -297,10 +324,28 @@ export function computePerformanceRatings(
     };
   });
 
+  // 表示は偏差値（整数）順。同じ偏差値のときは**登録レートが高い方**を上にする。
+  // 日次の推定は誤差 ±5.5 と粗く、同値なら事前情報（登録レート）に従うのが
+  // 納得感が高いため。登録レートが無い/同値なら勝ち数 → 五十音。
+  const registeredRating = new Map<string, number>();
+  for (const p of players) {
+    if (p.name) registeredRating.set(p.name, p.rating ?? 0);
+  }
   result.sort((a, b) => {
-    if (b.rating !== a.rating) return b.rating - a.rating;
+    if (b.deviation !== a.deviation) return b.deviation - a.deviation;
+    const ra = registeredRating.get(a.name) ?? 0;
+    const rb = registeredRating.get(b.name) ?? 0;
+    if (rb !== ra) return rb - ra;
     if (b.wins !== a.wins) return b.wins - a.wins;
     return a.name.localeCompare(b.name, 'ja');
+  });
+
+  // 同じ偏差値は同順位。次の順位は人数分飛ばす（1, 2, 2, 4 形式）
+  result.forEach((p, index) => {
+    p.displayRank =
+      index > 0 && result[index - 1].deviation === p.deviation
+        ? result[index - 1].displayRank
+        : index + 1;
   });
 
   return { players: result, ratedMatchCount: ratedMatches.length };
