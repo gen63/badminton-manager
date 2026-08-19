@@ -1227,18 +1227,6 @@ export function MainPage() {
                         <div className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md text-xl font-mono font-bold tabular-nums whitespace-nowrap leading-tight">
                           <CourtTimer startedAt={court.startedAt} longClassName="text-base" />
                         </div>
-                      ) : hasPlayers && (court.assignedAt ?? 0) > 0 ? (
-                        // 配置済み・未開始。3 分経過で配置時刻から自動開始される
-                        <div
-                          className="flex items-center gap-1 bg-muted text-muted-foreground px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tabular-nums whitespace-nowrap"
-                          title="配置から3分経過すると自動で開始します"
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <circle cx="12" cy="12" r="10" strokeWidth="2"/>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6l4 2"/>
-                          </svg>
-                          <CourtTimer startedAt={court.assignedAt ?? 0} />
-                        </div>
                       ) : !hasPlayers && courts.length > 1 && isAdmin() && (
                         <button
                           onClick={() => handleRemoveCourt(court.id)}
@@ -1309,8 +1297,8 @@ export function MainPage() {
                       
                       {court.isPlaying ? (
                         <FinishGameButton
-                          key={court.startedAt}
-                          startedAt={court.startedAt}
+                          key={court.startPressedAt ?? court.startedAt}
+                          startPressedAt={court.startPressedAt ?? court.startedAt}
                           onFinish={() => handleFinishGameClick(court.id)}
                         />
                       ) : (

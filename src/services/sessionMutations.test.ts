@@ -553,11 +553,31 @@ describe('sessionMutations - courts', () => {
     expect(next.courts[0].teamA).toEqual(['p1', 'p2']);
   });
 
-  it('computeStartGame: isPlaying=true + startedAt', () => {
+  it('computeStartGame: assignedAt があればそれを startedAt にする（自動開始と揃える）', () => {
+    const state = baseState({
+      courts: [makeCourt(1, { teamA: ['p1', 'p2'], assignedAt: 5000 })],
+    });
+    const next = computeStartGame(state, 1, 9000);
+    expect(next.courts[0].isPlaying).toBe(true);
+    expect(next.courts[0].startedAt).toBe(5000);
+    // 押した時刻は別に残す（終了ボタンのロックはこちらが起点）
+    expect(next.courts[0].startPressedAt).toBe(9000);
+  });
+
+  it('computeStartGame: assignedAt が無ければ now を startedAt にする（旧データ）', () => {
     const state = baseState({ courts: [makeCourt(1, { teamA: ['p1', 'p2'] })] });
     const next = computeStartGame(state, 1, 5000);
     expect(next.courts[0].isPlaying).toBe(true);
     expect(next.courts[0].startedAt).toBe(5000);
+  });
+
+  it('computeAutoStartGame: 自動開始が走った時刻を startPressedAt に残す', () => {
+    const state = baseState({
+      courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'], assignedAt: 5000 })],
+    });
+    const next = computeAutoStartGame(state, 1, 5000, 9000);
+    expect(next?.courts[0].startedAt).toBe(5000);
+    expect(next?.courts[0].startPressedAt).toBe(9000);
   });
 
   it('computeAutoStartGame: 配置時刻をそのまま startedAt にして開始する', () => {

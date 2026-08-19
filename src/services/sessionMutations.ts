@@ -556,6 +556,20 @@ export function computeUpdateCourt(
   };
 }
 
+/**
+ * 手動「開始」。開始時刻は自動開始（`computeAutoStartGame`）と同じく
+ * **配置時刻 (`assignedAt`)** を採用する。
+ *
+ * 以前は押した時刻を `startedAt` にしていたため、同じ「準備中」から開始しても
+ * 手動か自動かで試合開始時刻が変わり、準備中に数えていた時間も押した瞬間に
+ * 捨てられていた（＝経過時間の意味が経路によって違う状態だった）。
+ * 配置時刻に揃えることで、どちらの経路でも「配置した時刻＝試合開始」になる。
+ *
+ * `assignedAt` を持たない場合（旧データ・一括配置以外の経路）は従来どおり `now`。
+ *
+ * 押した時刻そのものは `startPressedAt` に残す。終了ボタンの誤タップ防止ロックは
+ * 「操作からの経過」で判断するため、経過時間の起点（`startedAt`）とは別に要る。
+ */
 export function computeStartGame(
   state: GameState,
   courtId: number,
@@ -564,7 +578,14 @@ export function computeStartGame(
   return {
     ...state,
     courts: state.courts.map((c) =>
-      c.id === courtId ? { ...c, isPlaying: true, startedAt: now } : c,
+      c.id === courtId
+        ? {
+            ...c,
+            isPlaying: true,
+            startedAt: (c.assignedAt ?? 0) > 0 ? c.assignedAt! : now,
+            startPressedAt: now,
+          }
+        : c,
     ),
   };
 }
@@ -582,6 +603,7 @@ export function computeAutoStartGame(
   state: GameState,
   courtId: number,
   assignedAt: number,
+  now: number = Date.now(),
 ): GameState | null {
   if (assignedAt <= 0) return null;
   const court = state.courts.find((c) => c.id === courtId);
@@ -589,7 +611,13 @@ export function computeAutoStartGame(
   if (court.isPlaying) return null;
   if (!court.teamA[0]) return null;
   if ((court.assignedAt ?? 0) !== assignedAt) return null;
-  return computeUpdateCourt(state, courtId, { isPlaying: true, startedAt: assignedAt });
+  // 自動開始でも「操作が起きた時刻」は now（＝自動開始が走った時刻）。切り替わった
+  // 直後の誤タップを終了ボタンのロックで防ぐため、手動開始と同じ扱いにする。
+  return computeUpdateCourt(state, courtId, {
+    isPlaying: true,
+    startedAt: assignedAt,
+    startPressedAt: now,
+  });
 }
 
 export function computeClearCourt(state: GameState, courtId: number): GameState {
@@ -1288,6 +1316,8 @@ export function autoAssignAndFulfill(
         isPlaying: a.isPlaying,
         startedAt: a.startedAt,
         assignedAt: a.assignedAt,
+        // 一括配置は即開始なので、配置＝開始操作の時刻。単体配置は「開始」待ち
+        startPressedAt: a.isPlaying ? a.startedAt : 0,
         finishedAt: 0,
         // 新しい試合の配置なので、前の試合の「休憩へ戻す」フラグは持ち越さない
         restingPlayerIds: [],

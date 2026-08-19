@@ -158,7 +158,7 @@
 - `2026-08-11-auto-session-retry.md` — オートセッション自動作成が時々失敗する問題の対策: E-ToMo/GAS/Discord への fetch を指数バックオフでリトライ + 失敗時の Discord 通知。併せて詳細取得失敗を「参加者0名」と誤認して空セッション作成・登録メンバー全員削除を起こす経路を封じる
 - `2026-08-11-stay-duration-mode-not-applied.md` — 待機時間優先モードが実質効いていない問題の修正: (1) 連続配置経路 (`computeFinishAndContinue`) に `practiceStartTime` が渡っておらず全員の滞在時間が下限5分に潰れてモードが no-op 化していたバグ、(2) `useStayDurationPriority` を端末ローカル persist から Firestore 同期設定へ移行
 - `2026-08-12-history-name-overflow.md` — 試合履歴カードの名前見切れ解消: チームの左右並びをやめて上下2段にし、`truncate` を廃止（折り返しは名前の区切り優先）
-- `2026-08-13-auto-start-after-assign.md` — 配置後3分での試合自動開始（開始押し忘れ対策）。開始時刻は配置時刻を採用し、`Court.assignedAt` をべき等キーにする
+- `2026-08-13-auto-start-after-assign.md` — 配置後3分での試合自動開始（開始押し忘れ対策）。開始時刻は配置時刻を採用し、`Court.assignedAt` をべき等キーにする（2026-08-19 改訂: 手動「開始」も `assignedAt` を採用して自動開始と揃え、準備中のタイマー表示は削除。操作からの経過が必要な終了ボタンのロックは `Court.startPressedAt`（開始操作の時刻）起点にして 5 秒へ短縮）
 - `2026-08-13-next-match-prediction.md` — 次の試合に入るメンバーの予測表示: 配置アルゴリズムを空打ちして「どのコートが終わってもほぼ確定」/「候補」の2段階を待機中セクションに表示。実測で確定4人は原理的に出せない（3コートで平均2人）ことを確認し出現率ランク方式を採用
 - `2026-08-13-auto-session-rating-sync.md` — 自動セッション再実行で tmp シートの skill を既存プレイヤーの rating へ反映（試合開始後は据え置き）+ レート未設定は作成・追加をブロックせず通知のみ（FORCE_CREATE 廃止）。17:30 JST の定期実行（TARGET_DATE=nearest）を追加
 - `2026-08-13-in-progress-games-in-fairness.md` — 配置済みコートに乗っているメンバーを `gamesPlayed + 1` として公平性の母集団（後半均等化の最大値・予約保留の中央値）に数える。保存値と表示は据え置きで導出値のみ変更するため減算・ロールバック不要
