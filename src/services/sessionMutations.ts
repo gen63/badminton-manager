@@ -556,6 +556,17 @@ export function computeUpdateCourt(
   };
 }
 
+/**
+ * 手動「開始」。開始時刻は自動開始（`computeAutoStartGame`）と同じく
+ * **配置時刻 (`assignedAt`)** を採用する。
+ *
+ * 以前は押した時刻を `startedAt` にしていたため、同じ「準備中」から開始しても
+ * 手動か自動かで試合開始時刻が変わり、準備中に数えていた時間も押した瞬間に
+ * 捨てられていた（＝経過時間の意味が経路によって違う状態だった）。
+ * 配置時刻に揃えることで、どちらの経路でも「配置した時刻＝試合開始」になる。
+ *
+ * `assignedAt` を持たない場合（旧データ・一括配置以外の経路）は従来どおり `now`。
+ */
 export function computeStartGame(
   state: GameState,
   courtId: number,
@@ -564,7 +575,9 @@ export function computeStartGame(
   return {
     ...state,
     courts: state.courts.map((c) =>
-      c.id === courtId ? { ...c, isPlaying: true, startedAt: now } : c,
+      c.id === courtId
+        ? { ...c, isPlaying: true, startedAt: (c.assignedAt ?? 0) > 0 ? c.assignedAt! : now }
+        : c,
     ),
   };
 }
