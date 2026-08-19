@@ -11,11 +11,7 @@ import { sendMatchesToSheets } from '../lib/sheetsApi';
 import { updateSession } from '../services/sessionService';
 import { isMatchOfPlayer, computePlayerRecord } from '../lib/matchFilter';
 import type { PlayerRecord } from '../lib/matchFilter';
-import {
-  computePerformanceRatings,
-  findPerformance,
-  BASE_RATING,
-} from '../lib/performanceRating';
+import { computePerformanceRatings, findPerformance } from '../lib/performanceRating';
 import type { PlayerPerformance } from '../lib/performanceRating';
 import { useDevMode } from '../hooks/useDevMode';
 import { Copy, Trash2, Edit3, Clock, Upload, History, ChevronDown, ChevronUp, User, AlertTriangle, BarChart3 } from 'lucide-react';
@@ -373,20 +369,16 @@ function PlayerRecordSummary({
         <div className="border-t border-indigo-200 pt-2 space-y-1">
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
             <span className="text-sm">
-              レート{' '}
-              <span className="text-base font-bold">{performance.rating}</span>
-            </span>
-            <span className="text-sm">
               偏差値{' '}
               <span className="text-base font-bold">
-                {performance.deviation.toFixed(1)}
+                {performance.deviation}
               </span>
             </span>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs opacity-90">
-            <span>相手平均 {performance.opponentRating}</span>
-            {performance.partnerRating !== null && (
-              <span>味方平均 {performance.partnerRating}</span>
+            <span>相手平均 偏差{performance.opponentDeviation}</span>
+            {performance.partnerDeviation !== null && (
+              <span>味方平均 偏差{performance.partnerDeviation}</span>
             )}
             <span>
               期待勝率 {performance.expectedWinRate ?? '—'}% →{' '}
@@ -406,8 +398,12 @@ function PlayerRecordSummary({
 
 /**
  * 本日の強さランキング（開発モード限定）。
- * 対戦相手・味方の強さを加味したレート順に並べる。単純な勝率順ではないため、
+ * 対戦相手・味方の強さを加味した偏差値順に並べる。単純な勝率順ではないため、
  * 弱い相手にだけ勝った人は上位に来ない。
+ *
+ * **偏差値は整数**で、同じ値なら同順位（1, 2, 2, 4 形式）。日次の推定は誤差が
+ * ±5.5 ポイントあり、小数まで出すと精度を偽ることになるため。同値の並び順は
+ * 登録レートが高い方を上にする。
  */
 function PerformanceRanking({
   players,
@@ -444,10 +440,11 @@ function PerformanceRanking({
       {!collapsed && (
         <div className="space-y-1">
           <p className="text-[11px] text-muted-foreground leading-snug px-1">
-            対戦相手と味方の強さを加味した本日限定の推定値です（平均 {BASE_RATING} /
-            偏差値 50）。試合数が少ない人ほど平均寄りになります。
+            対戦相手と味方の強さを加味した本日限定の推定値です（偏差値
+            50 がその日の平均）。1日分では誤差が ±5 前後あるため、同じ偏差値は
+            同順位にしています。試合数が少ない人ほど平均寄りになります。
           </p>
-          {players.map((p, index) => {
+          {players.map((p) => {
             const isSelected = p.name === selectedName;
             return (
               <button
@@ -461,7 +458,7 @@ function PerformanceRanking({
               >
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
-                    {index + 1}
+                    {p.displayRank}
                   </span>
                   <span className="flex-1 min-w-0 truncate text-sm font-bold text-foreground">
                     {p.name}
@@ -472,10 +469,7 @@ function PerformanceRanking({
                     )}
                   </span>
                   <span className="text-sm font-bold text-foreground flex-shrink-0">
-                    {p.rating}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground w-12 text-right flex-shrink-0">
-                    偏差 {p.deviation.toFixed(1)}
+                    偏差 {p.deviation}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 pl-7 text-[11px] text-muted-foreground">
@@ -483,7 +477,7 @@ function PerformanceRanking({
                     {p.wins}勝{p.losses}敗（{p.winRate}%）
                   </span>
                   <span className="whitespace-nowrap">
-                    相手平均 {p.opponentRating}
+                    相手平均 偏差{p.opponentDeviation}
                   </span>
                   <span
                     className={`whitespace-nowrap ${
