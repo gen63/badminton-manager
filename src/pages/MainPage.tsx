@@ -1297,8 +1297,8 @@ export function MainPage() {
                       
                       {court.isPlaying ? (
                         <FinishGameButton
-                          key={court.startedAt}
-                          startedAt={court.startedAt}
+                          key={court.startPressedAt ?? court.startedAt}
+                          startPressedAt={court.startPressedAt ?? court.startedAt}
                           onFinish={() => handleFinishGameClick(court.id)}
                         />
                       ) : (

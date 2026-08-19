@@ -14,6 +14,15 @@ export interface Court {
    * 旧データには存在しないため読み出しは `?? 0`。
    */
   assignedAt?: number;
+  /**
+   * 「開始」の操作が行われた時刻（Unix timestamp、未設定時は0）。手動「開始」を
+   * 押した時刻・自動開始が走った時刻・一括配置で即開始した時刻。
+   *
+   * `startedAt` は配置時刻（`assignedAt`）を採るため「試合の経過時間」の起点であり、
+   * 操作の瞬間とはずれる。終了ボタンの誤タップ防止ロックのように **操作からの経過**
+   * で判断したいものはこちらを使う。旧データには存在しないため読み出しは `?? 0`。
+   */
+  startPressedAt?: number;
   /** 休憩からタップ交換で出場したメンバー。試合終了時に休憩へ戻す。 */
   restingPlayerIds?: string[];
 }
@@ -28,6 +37,7 @@ export const EMPTY_COURT_STATE = {
   startedAt: 0,
   finishedAt: 0,
   assignedAt: 0,
+  startPressedAt: 0,
   restingPlayerIds: [] as string[],
 } as const satisfies Omit<Court, 'id'>;
 
