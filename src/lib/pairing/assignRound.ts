@@ -24,8 +24,13 @@ export interface AssignRoundParams {
   candidates: Player[];
   /** 埋めるコート */
   courtIds: number[];
-  /** 登録レートそのままの順位（ハシゴ式適用**前**、0始まり）。
-   *  **本物の最上位と本物の最下位を同居させない安全網にだけ使う。** */
+  /**
+   * 登録レートそのままの順位（ハシゴ式適用**前**、0始まり）。
+   *
+   * **登録レートは `formRankById` の初期値を決めるためだけに存在する**という方針に
+   * したため、この engine の中では現在どこにも使っていない。`formRankById` を
+   * 省略したときのフォールバックとしてのみ残している。
+   */
   rankById: Map<string, number>;
   /**
    * ハシゴ式（`applyStreakSwaps`）適用**後**の順位。省略時は `rankById` と同じ。
@@ -34,11 +39,16 @@ export interface AssignRoundParams {
    * 勝敗で上下する。帯の形成（`skillGap`）とチームの釣り合い（`competitive` /
    * `normalizeSplit`）はこちらを使う。
    *
-   * ただし**順位差のハード制約まわりは `rankById`（登録レート）**で扱う。撹拌後の
-   * 序列で見ると「本物の最上位と本物の最下位」の同居を検出できないため、安全網は
-   * 素の序列で張る（旧エンジンの `hasWideRankSpan` と同じ）。初期解の実現可能性
-   * 判定と `reachableCountById` も、この制約と基準を揃える必要があるので
-   * `rankById` を使う（揃えないと構築した解が自分で違反を作る）。
+   * 順位差のハード制約・初期解の実現可能性判定・`reachableCountById` も含めて
+   * **すべてこの序列で判定する**。登録レートは初期値を与えるだけで、以後は
+   * 参照しない。
+   *
+   * 旧エンジンは安全網（`hasWideRankSpan`）を登録序列で張っていたが、それだと
+   * 登録レートが実力とズレている人が実力相応の帯まで降りられない（登録4位の人は
+   * ハシゴ式で13位まで沈んでも 16位以降と同居できず、勝率が23%で頭打ちになった）。
+   * 「本当に上位だが連敗している人」と「そもそも上位ではない人」を登録序列からは
+   * 区別できない以上、安全網を登録序列で張ると後者が救えない。ハシゴ式の
+   * `maxDrift`（±1グループ）が振れ幅を抑えるので、そちらで安全側を担保する。
    */
   formRankById?: Map<string, number>;
   rosterSize: number;
@@ -169,7 +179,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   const sortedCandidates = [...candidates].sort((a, b) => {
     const diff = priorityScoreOf(a) - priorityScoreOf(b);
     if (diff !== 0) return diff;
-    const rankDiff = (rankById.get(a.id) ?? 0) - (rankById.get(b.id) ?? 0);
+    const rankDiff = (formRankById.get(a.id) ?? 0) - (formRankById.get(b.id) ?? 0);
     if (rankDiff !== 0) return rankDiff;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
@@ -180,9 +190,9 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   const reachableCountById = new Map<string, number>(
     candidates.map(p => {
       if (wideSpanThreshold === null) return [p.id, candidates.length - 1] as const;
-      const rank = rankById.get(p.id) ?? 0;
+      const rank = formRankById.get(p.id) ?? 0;
       const count = candidates.filter(
-        q => q.id !== p.id && Math.abs((rankById.get(q.id) ?? 0) - rank) < wideSpanThreshold
+        q => q.id !== p.id && Math.abs((formRankById.get(q.id) ?? 0) - rank) < wideSpanThreshold
       ).length;
       return [p.id, count] as const;
     })
@@ -227,7 +237,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     const pool = [...sortedCandidates]; // 優先度順。消費した人を都度取り除く。
     initialCourts = usedCourtIds.map(courtId => {
       const chosenIndices: number[] = [0];
-      const courtRanks: number[] = [rankById.get(pool[0].id) ?? 0];
+      const courtRanks: number[] = [formRankById.get(pool[0].id) ?? 0];
 
       // 制約を満たす範囲で優先度順に3人追加。
       //
@@ -235,7 +245,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       // 「出場者⇔控えの1人スワップ」しか無いため、4人中2人を同時に入れ替えないと
       // 直らない重複は初期解から抜け出せない。順位差と同じく初期解の段階で避ける。
       for (let i = 1; i < pool.length && chosenIndices.length < 4; i++) {
-        const rank = rankById.get(pool[i].id) ?? 0;
+        const rank = formRankById.get(pool[i].id) ?? 0;
         const gap = Math.max(...courtRanks, rank) - Math.min(...courtRanks, rank);
         if (gap >= threshold) continue;
         if (chosenIndices.length === 3) {
@@ -282,7 +292,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       const acceptable = (trial: CourtState['slots']): boolean => {
         if (isRecentDuplicate([...trial])) return false;
         if (wideSpanThreshold === null) return true;
-        const ranks = trial.map(id => rankById.get(id) ?? 0);
+        const ranks = trial.map(id => formRankById.get(id) ?? 0);
         return Math.max(...ranks) - Math.min(...ranks) < wideSpanThreshold;
       };
       const apply = (trial: CourtState['slots'], slots: number[], picks: number[]): void => {
@@ -402,7 +412,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       const members = courtMembers(court);
       if (wideSpanThreshold !== null) {
         const ranks = members
-          .map(id => rankById.get(id))
+          .map(id => formRankById.get(id))
           .filter((r): r is number => r !== undefined);
         if (ranks.length === members.length) {
           const gap = Math.max(...ranks) - Math.min(...ranks);
