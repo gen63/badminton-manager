@@ -114,8 +114,8 @@ export interface ObjectiveInput {
   /** 優先度順位を計算した候補プールの人数（fairness/waiting の分母） */
   candidateCount: number;
   /** 登録レートそのままの順位（ハシゴ式適用**前**。0始まり）。
-   *  **本物の最上位と本物の最下位を同居させない安全網にだけ使う。**
-   *  帯の形成そのものは `formRankById` が担う。 */
+   *  登録レートは `formRankById` の初期値を決めるためだけに存在するので、
+   *  目的関数はこれを参照しない（互換のため型には残している）。 */
   rankById: Map<string, number>;
   /** ハシゴ式（`applyStreakSwaps`）適用**後**の順位＝**実働の序列**。
    *  登録レートはこの序列の初期値でしかなく、以後は当日の勝敗で上下する。
