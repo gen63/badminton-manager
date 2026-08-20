@@ -189,6 +189,39 @@ export function getStreaks(matchHistory: Match[]): Map<string, number> {
 }
 
 /**
+ * 序列（並び）から順位を作る。**同点レートで隣り合う人は同順位**にする。
+ *
+ * 素直に index を順位にすると、レートが同じ人にも別々の順位が振られ、
+ * `computeSkillGap`（順位の最大−最小）と `computeCompetitive`（順位和の差）が
+ * **実体の無い差**にペナルティを課す。全員 1500 のセッションでは順位差が丸ごと
+ * ノイズになるし、社会人サークルで同レートがまとまるのは普通のこと。
+ *
+ * 未設定レート（0 / undefined）どうしも同点として扱う。「まだ分からない」人の
+ * あいだに実力差を仮定する理由が無いため。
+ *
+ * ハシゴ式で引き離された人は隣り合わなくなるので同順位にはならない。
+ * **「当日の勝敗による差」は残し、「登録レートが同じなだけの差」だけを消す。**
+ *
+ * 目盛りは 0..n-1 のまま（同点の次は index に戻る競技順位方式）なので、
+ * `rosterSize - 1` での正規化も順位差のハード制約の閾値もそのまま使える。
+ */
+export function buildRanksWithTies(
+  order: string[],
+  players: Player[],
+): Map<string, number> {
+  const ratingById = new Map(players.map(p => [p.id, p.rating ?? 0] as const));
+  const ranks = new Map<string, number>();
+  let currentRank = 0;
+  for (let i = 0; i < order.length; i++) {
+    if (i > 0 && ratingById.get(order[i]) !== ratingById.get(order[i - 1])) {
+      currentRank = i;
+    }
+    ranks.set(order[i], currentRank);
+  }
+  return ranks;
+}
+
+/**
  * 初期序列を構築（レーティング降順、0はmiddleに挿入）
  */
 export function buildInitialOrder(players: Player[]): string[] {
@@ -2274,19 +2307,21 @@ export function assignCourts(
   // 明示したとき（主にテスト・bench の比較用）だけ通る。
   if (options?.useObjectiveEngine ?? true) {
     const objectiveInitialOrder = buildInitialOrder(groupingPlayers);
-    const objectiveBaseRankById = new Map(
-      objectiveInitialOrder.map((id, index) => [id, index] as const)
+    const objectiveBaseRankById = buildRanksWithTies(
+      objectiveInitialOrder,
+      groupingPlayers
     );
     // ハシゴ式（当日の連勝連敗で ±1グループ分まで序列が動く）。旧エンジンから
     // 移植し忘れていた仕組みで、「勝てば上の帯へ、負ければ下の帯へ」という
     // 昇降格を担う。実力差の判定には使わず（撹拌後の序列では上位×下位の同居を
     // 検出できない）、コートのグループ分けとチームの釣り合いにだけ使う。
-    const objectiveFormRankById = new Map(
+    const objectiveFormRankById = buildRanksWithTies(
       applyStreakSwaps(
         objectiveInitialOrder,
         matchHistory,
         totalCourtCount >= 3 ? 3 : 2
-      ).map((id, index) => [id, index] as const)
+      ),
+      groupingPlayers
     );
     const objectiveRosterSize = objectiveBaseRankById.size;
     const objectiveWideSpanThreshold =

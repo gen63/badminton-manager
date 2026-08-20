@@ -77,8 +77,13 @@ function makeRoster(n: number, noise: number, rng: () => number): BenchPlayer[] 
     players.push({
       id: `p${entry.trueRank}`,
       name: `P${entry.trueRank}`,
-      // 表示序列の上位ほど高レート。buildInitialOrder は rating > 0 を要求する
-      rating: 40 - displayIndex * 0.8,
+      // 表示序列の上位ほど高レート。buildInitialOrder は rating > 0 を要求する。
+      // TIES=<n> を渡すとレートを n 段階に量子化し、同レートの人を作る
+      // （社会人サークルでは同レートがまとまるのが普通で、既定の全員別レートは
+      //  同点順位の扱いを一切テストできない）。
+      rating: TIE_LEVELS > 0
+        ? 40 - Math.floor((displayIndex * TIE_LEVELS) / n) * 0.8
+        : 40 - displayIndex * 0.8,
       gender: rng() < 0.45 ? 'F' : 'M',
       isResting: false,
       gamesPlayed: 0,
@@ -377,6 +382,7 @@ function runOnce(
 
 // ---- 実行 ----
 const SEEDS = Number(process.env.SEEDS ?? 150);
+const TIE_LEVELS = Number(process.env.TIES ?? 0);
 const ROUNDS = Number(process.env.ROUNDS ?? 15);
 /** 遅参加させる人数（0 = 全員最初から在席）。例: LATE_JOIN=3 */
 const LATE_JOIN = Number(process.env.LATE_JOIN ?? 0);

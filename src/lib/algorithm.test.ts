@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { calculatePlayerStats, getStreaks, buildInitialOrder, applyStreakSwaps, assignCourts, formTeams, sortWaitingPlayers, getCallableReservationRestingIds } from './algorithm';
+import { calculatePlayerStats, getStreaks, buildInitialOrder, buildRanksWithTies, applyStreakSwaps, assignCourts, formTeams, sortWaitingPlayers, getCallableReservationRestingIds } from './algorithm';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
@@ -1097,13 +1097,20 @@ describe('assignCourts - 3コート以上の逐次配置の実力分離 (hasTopB
     const players = Array.from({ length: 21 }, (_, i) =>
       createRatedPlayer(`p${i}`, 2000 - i * 50)
     );
+    // **再緩和（skillGap 1.0 → 1.5）**: 22 件 → 30 件（実測 26 件）。
+    // `skillGap` はハシゴ式**後**の序列を見るので、そちらの帯を締めるほど
+    // **登録序列**基準の同居は増える。上の緩和（3 → 22）と全く同じトレードオフで、
+    // 「登録序列で見た上位×下位」が悪化しているのではなく、ハシゴ式後の序列で
+    // 見た帯がむしろ締まっている（幅広% は全条件で 1.3〜2.0pt 改善）。
+    // このテストは登録序列基準なので、その改善が逆符号で出る。
+    //
     // 50ラウンド=150試合。ハシゴ式そのものを外すと 8 件まで下がる
     expectTopBottomMixAtMost(
       players,
       new Set(['p0', 'p1', 'p2']),
       new Set(['p18', 'p19', 'p20']),
       50,
-      22
+      30
     );
   });
 
@@ -3042,5 +3049,50 @@ describe('assignCourts - ハシゴ式（applyStreakSwaps）が新エンジンに
     // ハシゴ式が無いと勝敗が組み合わせに一切影響せず、両者は完全に一致する
     // （実装前の実測では差 0.00 だった）。
     expect(whenLosing - whenWinning).toBeGreaterThan(1);
+  });
+});
+
+describe('buildRanksWithTies', () => {
+  const mk = (id: string, rating: number): Player => ({
+    id, name: id, rating, gamesPlayed: 0, isResting: false, lastPlayedAt: 0, activatedAt: 0,
+  });
+
+  it('レートが全部違えば従来どおり 0,1,2,... になる', () => {
+    const players = [mk('a', 40), mk('b', 30), mk('c', 20)];
+    const ranks = buildRanksWithTies(['a', 'b', 'c'], players);
+    expect([...ranks.values()]).toEqual([0, 1, 2]);
+  });
+
+  it('同点レートで隣り合う人は同順位になり、次は index に戻る（競技順位方式）', () => {
+    const players = [mk('a', 40), mk('b', 30), mk('c', 30), mk('d', 30), mk('e', 20)];
+    const ranks = buildRanksWithTies(['a', 'b', 'c', 'd', 'e'], players);
+    expect(ranks.get('a')).toBe(0);
+    expect(ranks.get('b')).toBe(1);
+    expect(ranks.get('c')).toBe(1);
+    expect(ranks.get('d')).toBe(1);
+    // 同点の次は 4（3 ではない）。目盛りが 0..n-1 のまま保たれる
+    expect(ranks.get('e')).toBe(4);
+  });
+
+  it('全員同レートなら全員が同順位（順位差が丸ごと消える）', () => {
+    const players = ['a', 'b', 'c', 'd'].map(id => mk(id, 1500));
+    const ranks = buildRanksWithTies(['a', 'b', 'c', 'd'], players);
+    expect([...ranks.values()]).toEqual([0, 0, 0, 0]);
+  });
+
+  it('未設定レート（0 / undefined）どうしも同点として扱う', () => {
+    const players = [mk('a', 40), { ...mk('b', 0), rating: undefined as unknown as number }, mk('c', 0), mk('d', 20)];
+    const ranks = buildRanksWithTies(['a', 'b', 'c', 'd'], players);
+    expect(ranks.get('b')).toBe(1);
+    expect(ranks.get('c')).toBe(1);
+    expect(ranks.get('d')).toBe(3);
+  });
+
+  it('同点でも並びで離れていれば別順位（ハシゴ式で引き離された差は残す）', () => {
+    // b と d は同レートだが、あいだに別レートの c が入っている
+    const players = [mk('a', 40), mk('b', 30), mk('c', 25), mk('d', 30)];
+    const ranks = buildRanksWithTies(['a', 'b', 'c', 'd'], players);
+    expect(ranks.get('b')).toBe(1);
+    expect(ranks.get('d')).toBe(3);
   });
 });
