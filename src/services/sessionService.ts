@@ -45,6 +45,8 @@ export interface SyncSettings {
   practiceType?: '単' | '複' | '楽';
   /** 練習後半に試合回数の偏りを均等化するモード。 */
   lateBalanceMode?: boolean;
+  /** 男女比調整。未設定は true（旧セッション互換） */
+  genderBalanceMode?: boolean;
   /**
    * 配置の優先度モード。true = 待機時間（滞在時間）優先、false = 試合回数優先。
    * **未設定は `true` 扱い**（`assignCourts` の `?? true` / `settingsStore` の初期値と

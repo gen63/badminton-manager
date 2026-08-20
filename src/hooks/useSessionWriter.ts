@@ -256,6 +256,12 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  const setGenderBalanceMode = useCallback(
+    (value: boolean) =>
+      handle('setGenderBalanceMode', (sid) => sm.setGenderBalanceMode(sid, value)),
+    [handle],
+  );
+
   const setForceBulkAssignment = useCallback(
     (value: boolean) =>
       handle('setForceBulkAssignment', (sid) =>
@@ -317,6 +323,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setPracticeType,
       setLateBalanceMode,
       setUseStayDurationPriority,
+      setGenderBalanceMode,
       setForceBulkAssignment,
       markLateBalanceAutoFired,
       setReservationBlockThreshold,
@@ -357,6 +364,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setPracticeType,
       setLateBalanceMode,
       setUseStayDurationPriority,
+      setGenderBalanceMode,
       setForceBulkAssignment,
       markLateBalanceAutoFired,
       setReservationBlockThreshold,

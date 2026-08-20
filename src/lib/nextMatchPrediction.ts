@@ -66,6 +66,7 @@ export interface NextMatchPredictionOptions {
   useStayDurationPriority: boolean;
   gameMode: 'singles' | 'doubles';
   lateBalanceMode?: boolean;
+  genderBalanceMode?: boolean;
   reservationBlockThreshold?: number;
 }
 
@@ -116,6 +117,7 @@ function runScenario(
       reservations,
       gameMode: options.gameMode,
       lateBalanceMode: options.lateBalanceMode,
+      genderBalanceMode: options.genderBalanceMode,
       reservationBlockThreshold: options.reservationBlockThreshold,
       restingPlayers,
     });

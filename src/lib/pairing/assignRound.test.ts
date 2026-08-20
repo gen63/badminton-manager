@@ -4,6 +4,7 @@ import {
   computeMixSplit,
   computeVariety,
   computeObjectiveTerms,
+  GENDER_BALANCE_OFF_WEIGHTS,
   type CourtPlacement,
   type PairCounts,
 } from './objective';
@@ -347,6 +348,36 @@ describe('assignRoundByObjective の性別チーム分け', () => {
     const genderOf = new Map(candidates.map(p => [p.id, p.gender]));
     const malesInA = result[0].teamA.filter(id => genderOf.get(id) === 'M').length;
     expect(malesInA).toBe(1); // 各チームが男女1人ずつ = MIX×MIX
+  });
+
+  it('男女比調整 OFF（GENDER_BALANCE_OFF_WEIGHTS）なら、実力が釣り合う男女戦を許容する', () => {
+    // 上のテストと全く同じ入力。重みだけ差し替えると結論が反転することを見る
+    // （= トグルが実際に配置を変えている / テストが空回りしていない）。
+    const candidates = [
+      makePlayer('m0', { gender: 'M' }),
+      makePlayer('f0', { gender: 'F' }),
+      makePlayer('f1', { gender: 'F' }),
+      makePlayer('m1', { gender: 'M' }),
+    ];
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1],
+      rankById: rankByIdFrom(['m0', 'f0', 'f1', 'm1']),
+      rosterSize: 4,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+      weights: GENDER_BALANCE_OFF_WEIGHTS,
+    });
+
+    expect(result).toHaveLength(1);
+    const genderOf = new Map(candidates.map(p => [p.id, p.gender]));
+    const malesInA = result[0].teamA.filter(id => genderOf.get(id) === 'M').length;
+    expect(malesInA).not.toBe(1); // 男男 vs 女女 = 順位和が完全に釣り合う組み合わせ
   });
 });
 

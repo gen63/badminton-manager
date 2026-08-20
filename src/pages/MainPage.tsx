@@ -94,6 +94,7 @@ export function MainPage() {
   const forceBulkAssignment = useSettingsStore((s) => s.forceBulkAssignment);
   const practiceType = useSettingsStore((s) => s.practiceType);
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
+  const genderBalanceMode = useSettingsStore((s) => s.genderBalanceMode);
   const lateBalanceAutoFired = useSettingsStore((s) => s.lateBalanceAutoFired);
   const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
   const matchCallAlert = useSettingsStore((s) => s.matchCallAlert);
@@ -426,10 +427,11 @@ export function MainPage() {
       useStayDurationPriority,
       gameMode,
       lateBalanceMode,
+      genderBalanceMode,
       reservationBlockThreshold,
     }),
     [players, courts, matchHistory, reservations, session?.config.practiceStartTime,
-      useStayDurationPriority, gameMode, lateBalanceMode, reservationBlockThreshold],
+      useStayDurationPriority, gameMode, lateBalanceMode, genderBalanceMode, reservationBlockThreshold],
   );
 
   const myPlayerId = useMemo(
@@ -672,6 +674,7 @@ export function MainPage() {
           reservations,
           gameMode,
           lateBalanceMode,
+          genderBalanceMode,
           reservationBlockThreshold,
           restingPlayers,
         }
