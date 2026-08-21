@@ -24,7 +24,7 @@ import {
   type SessionFilterState,
 } from '../lib/sessionFilters';
 import type { Session } from '../types/session';
-import { Loader2, Plus, Users, MapPin, Calendar, Trophy, StickyNote, Pencil, X, Info, Megaphone, ChevronDown } from 'lucide-react';
+import { Loader2, Plus, Users, MapPin, Calendar, Trophy, Gauge, StickyNote, Pencil, X, Info, Megaphone, ChevronDown } from 'lucide-react';
 
 type PracticeType = '単' | '複' | '楽';
 const PRACTICE_TYPES: readonly PracticeType[] = ['単', '複', '楽'];
@@ -499,7 +499,7 @@ export function SessionSelectPage() {
                     className="flex-1 min-w-0 text-left px-3 py-2.5 transition-all duration-150 active:scale-[0.98]"
                   >
                     <div className="min-w-0">
-                      {/* 1行目: 練習種別 + 日付 + 参加者数 + 体育館 + 試合数 (+ 開発モード時 収入合計) */}
+                      {/* 1行目: 練習種別 + 日付 + 参加者数 + 体育館 + 試合数 (+ 開発モード時 平均レート) */}
                       <div className="flex items-center gap-x-1 flex-nowrap min-w-0">
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-semibold flex-shrink-0">
                           {resolvePracticeTypeLabel(session)}
@@ -529,10 +529,10 @@ export function SessionSelectPage() {
                             {session.matchCount}試合
                           </span>
                         )}
-                        {devMode && typeof session.incomeTotal === 'number' && (
+                        {devMode && typeof session.averageRating === 'number' && (
                           <span className="flex items-center gap-0.5 text-xs text-muted-foreground flex-shrink-0 tabular-nums">
-                            <span>💵</span>
-                            {session.incomeTotal.toLocaleString()}
+                            <Gauge size={12} />
+                            平均{session.averageRating}
                           </span>
                         )}
                       </div>
