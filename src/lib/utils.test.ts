@@ -230,6 +230,16 @@ describe('parsePlayerInput', () => {
     expect(parsePlayerInput('Alice\t1500\tM')).toEqual({ name: 'Alice', rating: 1500, gender: 'M' });
   });
 
+  it('小数のレーティングを切り捨てずにパースする', () => {
+    // tmp シートの skill は小数2桁。parseInt だと 39.68 → 39 になっていた
+    expect(parsePlayerInput('しょう\tM\t39.68')).toEqual({ name: 'しょう', rating: 39.68, gender: 'M' });
+    expect(parsePlayerInput('うっちー 27.2 F')).toEqual({ name: 'うっちー', rating: 27.2, gender: 'F' });
+  });
+
+  it('レート欄が空でも名前と性別をパースする', () => {
+    expect(parsePlayerInput('外部まや\tF\t')).toEqual({ name: '外部まや', gender: 'F' });
+  });
+
   it('空行はnullを返す', () => {
     expect(parsePlayerInput('')).toBe(null);
     expect(parsePlayerInput('   ')).toBe(null);

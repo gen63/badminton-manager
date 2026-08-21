@@ -78,7 +78,7 @@ export interface Session {
   // 一覧表示用の派生フィールド（docToSession で gameState から抽出）
   matchCount?: number;
   paidCount?: number; // 支払い完了済みプレイヤー数（gameState.players から算出）
-  incomeTotal?: number; // 収入合計（運営協力割引・その他収入込み）。accounting 未設定なら undefined
+  averageRating?: number; // 名簿の平均レート（rating > 0 のプレイヤーのみが母集団）。該当0人なら undefined
   medianGamesPlayed?: number; // 1人あたり試合数の中央値（gamesPlayed > 0 のプレイヤーのみが母集団）。該当0人なら undefined
   practiceType?: '単' | '複' | '楽';
   recordScores?: boolean; // 勝敗記録モード（gameState.settings.recordScores）。未設定 = ON 扱い
