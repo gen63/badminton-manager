@@ -87,6 +87,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  * プレイヤー入力行をパース
  * "名前 性別 レーティング" の組み合わせ（順不同）
  * 性別: M/F/男/女
+ * レーティング: 小数可（39.68 のような tmp シートの skill をそのまま貼れる）
  * delimiter: フィールド区切りの正規表現
  *   - 複数行入力（textarea）: /\t|\s{2,}/（タブ or 2+スペース）
  *   - 単一行入力（inline）: /\s+/（任意スペース）
@@ -113,7 +114,10 @@ export function parsePlayerInput(
     } else if (upper === 'F' || part === '女') {
       gender = 'F';
     } else {
-      const num = parseInt(part, 10);
+      // レートは小数を持つ（tmp シートの skill は小数2桁）。parseInt だと 39.68 → 39 と
+      // 切り捨てられ、シート同期経由（skill をそのまま rating へ）と手入力とで精度が
+      // 変わってしまうため parseFloat で読む。
+      const num = parseFloat(part);
       if (!isNaN(num)) {
         rating = num;
       }

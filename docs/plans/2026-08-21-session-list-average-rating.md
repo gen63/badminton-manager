@@ -90,6 +90,16 @@ export function averagePlayerRating(players: Player[]): number | undefined
 1行目の `💵 incomeTotal` チップを `Gauge 平均{averageRating}` チップへ置き換え。
 `devMode` 限定なのは従来どおり。
 
+### 5. 付随修正: 手入力レートの小数切り捨て（`src/lib/utils.ts`）
+
+`parsePlayerInput` がレート欄を `parseInt` で読んでいたため、`しょう	M	39.68` を
+アプリの名簿テキスト（セッション作成 / メンバー追加 / 編集モーダル）へ貼ると **39** に
+切り捨てられていた。tmp シート同期経由（`skill` をそのまま `rating` へ）では小数が
+保たれるので、**入力経路によって精度が変わる**状態だった。`parseFloat` に変更して揃える。
+
+平均レート表示の前提（レートは小数2桁の連続値）に直結するのでここで直す。序列は
+レートの大小関係だけを使うため、既存セッションの配置結果は変わらない。
+
 ## テスト
 
 `src/lib/ratingSummary.test.ts` を新規追加:
@@ -99,12 +109,8 @@ export function averagePlayerRating(players: Player[]): number | undefined
 - 割り切れないときに小数第1位へ丸まること
 - レート登録済み0人・空配列で `undefined`
 
-## 既知の隣接問題（本 plan では触らない）
-
-`parsePlayerInput`（`src/lib/utils.ts`）はレート欄を `parseInt` で読むため、
-`しょう	M	39.68` をアプリ側の名簿テキストから貼ると **39** に切り捨てられる。
-tmp シート同期経由（`skill` をそのまま `rating` へ）では小数が保たれるので、
-入力経路によって精度が変わる。平均表示はどちらでも動くが、直したい場合は別途対応する。
+`src/lib/utils.test.ts` に `parsePlayerInput` の小数ケース（`39.68` / `27.2` が
+切り捨てられないこと、レート欄が空でも名前・性別は取れること）を追加。
 
 ## 非対象
 
