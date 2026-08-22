@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { StopCircle } from 'lucide-react';
 
 /** 「開始」の操作直後に終了ボタンを押せない時間（誤連打・誤タップ抑止）。 */
-const FINISH_LOCK_MS = 5_000;
+const FINISH_LOCK_MS = 10_000;
 
 interface FinishGameButtonProps {
   /**
