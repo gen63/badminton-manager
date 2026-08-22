@@ -18,12 +18,12 @@ describe('FinishGameButton', () => {
     expect(button()).toBeDisabled();
   });
 
-  it('10秒経つと押せるようになる', () => {
+  it('20秒経つと押せるようになる', () => {
     render(<FinishGameButton startPressedAt={Date.now()} onFinish={() => {}} />);
     expect(button()).toBeDisabled();
 
     act(() => {
-      vi.advanceTimersByTime(9_900);
+      vi.advanceTimersByTime(19_900);
     });
     expect(button()).toBeDisabled();
 
@@ -33,8 +33,8 @@ describe('FinishGameButton', () => {
     expect(button()).toBeEnabled();
   });
 
-  it('10秒より前に開始操作されたコートは最初から押せる', () => {
-    render(<FinishGameButton startPressedAt={Date.now() - 11_000} onFinish={() => {}} />);
+  it('20秒より前に開始操作されたコートは最初から押せる', () => {
+    render(<FinishGameButton startPressedAt={Date.now() - 21_000} onFinish={() => {}} />);
     expect(button()).toBeEnabled();
   });
 
