@@ -9,11 +9,13 @@ import {
   shouldAnnounceToAdmin,
   adminAnnounceKey,
   buildAdminMatchCallMessage,
+  canEvaluateMatchCall,
 } from './nextMatchCall';
 import {
   MATCH_CALL_THRESHOLD_MS,
   MATCH_CALL_COOLDOWN_MS,
   MATCH_CALL_ADMIN_THRESHOLD_MS,
+  MATCH_CALL_RESUME_GUARD_MS,
 } from './gameOperations';
 import type { Court } from '../types/court';
 import { EMPTY_COURT_STATE } from '../types/court';
@@ -471,5 +473,51 @@ describe('buildAdminMatchCallMessage', () => {
   it('「外部」接頭辞は読み上げから除去される', () => {
     const result = buildAdminMatchCallMessage(3, ['外部たろう', '花子']);
     expect(result.speech).toBe('たろうさん、花子さん、もうすぐ3コートで試合です');
+  });
+});
+
+describe('canEvaluateMatchCall', () => {
+  const NOW = 1_000_000;
+
+  it('受信済み・復帰イベント無しなら判定してよい', () => {
+    expect(
+      canEvaluateMatchCall({ now: NOW, gameStateLoaded: true, becameVisibleAt: null }),
+    ).toBe(true);
+  });
+
+  it('gameState 未受信（再購読中・同期エラー中）なら判定しない', () => {
+    expect(
+      canEvaluateMatchCall({ now: NOW, gameStateLoaded: false, becameVisibleAt: null }),
+    ).toBe(false);
+  });
+
+  it('visible 復帰から猶予内なら判定しない（古い courts で鳴るのを防ぐ）', () => {
+    expect(
+      canEvaluateMatchCall({
+        now: NOW,
+        gameStateLoaded: true,
+        becameVisibleAt: NOW - (MATCH_CALL_RESUME_GUARD_MS - 1),
+      }),
+    ).toBe(false);
+  });
+
+  it('visible 復帰から猶予を過ぎれば判定してよい', () => {
+    expect(
+      canEvaluateMatchCall({
+        now: NOW,
+        gameStateLoaded: true,
+        becameVisibleAt: NOW - MATCH_CALL_RESUME_GUARD_MS,
+      }),
+    ).toBe(true);
+  });
+
+  it('猶予を過ぎていても未受信なら判定しない', () => {
+    expect(
+      canEvaluateMatchCall({
+        now: NOW,
+        gameStateLoaded: false,
+        becameVisibleAt: NOW - MATCH_CALL_RESUME_GUARD_MS * 10,
+      }),
+    ).toBe(false);
   });
 });

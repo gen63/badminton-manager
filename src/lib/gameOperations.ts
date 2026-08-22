@@ -49,6 +49,18 @@ export const MATCH_CALL_COOLDOWN_MS = 90 * 1000;
  */
 export const MATCH_CALL_ADMIN_THRESHOLD_MS = 5 * 60 * 1000;
 
+/**
+ * バックグラウンドから visible へ復帰した直後、呼び出しの判定を止めておく猶予（ms）。
+ *
+ * 復帰直後は Firestore の再購読が終わっておらず、ローカルの `courts` が
+ * バックグラウンドへ入る前の内容のまま残っている。そこへ現在時刻を当てると
+ * 「とっくに終わった試合」の経過時間が閾値を超え、もう始まっている試合について
+ * 呼び出しが鳴ってしまう。`isGameStateLoaded` が false に落ちるまでの数ミリ秒の
+ * すき間を塞ぐための時間ガード。
+ * 詳細: docs/plans/2026-08-22-match-call-stale-audio-on-resume.md
+ */
+export const MATCH_CALL_RESUME_GUARD_MS = 5 * 1000;
+
 /** ゲームモードに応じた1コートあたりの人数 */
 export function getPlayersPerCourt(gameMode: 'singles' | 'doubles'): number {
   return gameMode === 'singles' ? 2 : 4;

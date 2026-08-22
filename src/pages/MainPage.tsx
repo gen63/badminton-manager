@@ -36,6 +36,7 @@ import {
   shouldAnnounceToAdmin,
   buildAdminMatchCallMessage,
   adminAnnounceKey,
+  canEvaluateMatchCall,
 } from '../lib/nextMatchCall';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
@@ -43,7 +44,7 @@ import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH
 import { withInProgressGames } from '../lib/effectiveGames';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 import { notifyNextMatchSoon } from '../lib/notifications';
-import { unlockMatchCallAudio, playMatchCallChime, vibrateMatchCall, fireMatchCallAlert, installMatchCallAudioUnlock, speakMatchCall, SPEECH_DELAY_MS } from '../lib/matchCallAlert';
+import { unlockMatchCallAudio, playMatchCallChime, vibrateMatchCall, fireMatchCallAlert, installMatchCallAudioUnlock, installMatchCallSpeechHideGuard, speakMatchCall, SPEECH_DELAY_MS } from '../lib/matchCallAlert';
 
 import { BottomNav } from '../components/BottomNav';
 
@@ -483,8 +484,32 @@ export function MainPage() {
   // 「移動したかどうか」は検知できないため、時間差で情報を渡すだけに徹する。
   // 詳細: docs/plans/2026-08-15-admin-match-call-announce.md
   const announcedAdminKeyRef = useRef<string | null>(null);
+  // バックグラウンドから visible へ復帰した時刻。復帰直後は Firestore の再購読が
+  // 終わっておらず courts が古いままなので、`canEvaluateMatchCall` で一定時間
+  // 判定を止めるために記録する。
+  // 詳細: docs/plans/2026-08-22-match-call-stale-audio-on-resume.md
+  const becameVisibleAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      becameVisibleAtRef.current = Date.now();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
   useEffect(() => {
     const evaluate = () => {
+      // 古い状態のまま鳴らさない。飛ばしても 10 秒後の tick で再評価される。
+      if (
+        !canEvaluateMatchCall({
+          now: Date.now(),
+          gameStateLoaded: isGameStateLoaded,
+          becameVisibleAt: becameVisibleAtRef.current,
+        })
+      ) {
+        return;
+      }
+
       if (myPlayerId !== null) {
         const onAnyCourt = courts.some(
           (c) => c.teamA.includes(myPlayerId) || c.teamB.includes(myPlayerId)
@@ -559,6 +584,7 @@ export function MainPage() {
     playerMap,
     isAdmin,
     adminMatchCallAnnounce,
+    isGameStateLoaded,
   ]);
 
   // matchCallAlert のデフォルトは true（=呼び出し音 ON）だが、AudioContext は
@@ -566,7 +592,12 @@ export function MainPage() {
   // 大半のため、ベルの onClick だけを unlock 契機にすると音が一生鳴らない。
   // アプリ内の最初のタップ・キー操作を汎用的な unlock 契機にする。
   useEffect(() => {
-    return installMatchCallAudioUnlock();
+    const disposers = [
+      installMatchCallAudioUnlock(),
+      // 読み上げ中にバックグラウンドへ回ったら発話を捨てる（復帰時に再生されるのを防ぐ）
+      installMatchCallSpeechHideGuard(),
+    ];
+    return () => disposers.forEach((dispose) => dispose());
   }, []);
 
   const getPlayerName = useCallback((playerId: string) => {
