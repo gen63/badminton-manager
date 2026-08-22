@@ -221,3 +221,50 @@ export function buildFinishBlockedMessage(operatorNames: string[]): string {
   const names = operatorNames.map((name) => `${name}さん`).join('・');
   return `濃い青の${names}が担当です。押せません`;
 }
+
+/**
+ * 終了時に確認ダイアログを挟む経過時間のしきい値。
+ *
+ * これ未満で終了しようとしたら「本当にこの試合か」を必ず確認する。実測の試合時間は
+ * 中央値 6.5 分・p90 8.0 分なので、4:30 未満の終了は**まだ試合中**の可能性が高い。
+ * 誤終了の実例は「他の人が終了したのに気づかず、連続配置で**始まったばかりの次の
+ * 試合**の終了を押す」パターンが多く、これは経過が短い側に集中する。
+ *
+ * 値は `MATCH_CALL_THRESHOLD_MS`（4:30）と同じにしている。コートカードの外枠が
+ * 太くなるのも待機ガイドが `imminent` になるのも同じ時刻なので、「枠が太くなる前は
+ * 確認が出る」と画面の見た目だけで説明できる。
+ */
+export const FINISH_CONFIRM_THRESHOLD_MS = MATCH_CALL_THRESHOLD_MS;
+
+export interface FinishConfirmArgs {
+  /** 終了しようとしているコート。1面運用（番号が冗長）なら null */
+  courtId: number | null;
+  /** そのコートの経過時間（ms） */
+  elapsedMs: number;
+  /** 出場者名。`teamA` vs `teamB` の並びで渡す */
+  teamANames: string[];
+  teamBNames: string[];
+}
+
+/** 経過時間を `m:ss` で表す（`CourtTimer` の表示と同じ形式） */
+function formatElapsed(elapsedMs: number): string {
+  const seconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  return `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
+}
+
+/**
+ * 開始間もない試合を終了しようとしたときの確認ダイアログ本文。
+ *
+ * 「誤タップではありませんか？」と聞くだけでは、**どの試合を消そうとしているか**が
+ * 分からず確認になっていない。コート・経過時間・出場者を並べて、隣のコートを
+ * 押した場合も「他の人が終了した直後の新しい試合」を押した場合も、読んだ瞬間に
+ * 気づけるようにする。
+ */
+export function buildFinishConfirmMessage(args: FinishConfirmArgs): string {
+  const { courtId, elapsedMs, teamANames, teamBNames } = args;
+  const head = courtId === null
+    ? `経過 ${formatElapsed(elapsedMs)}`
+    : `${circledCourt(courtId)} 経過 ${formatElapsed(elapsedMs)}`;
+  const members = `${teamANames.join('・')} vs ${teamBNames.join('・')}`;
+  return `${head}\n${members}\n\n始まったばかりの試合です。他の人が終了した直後に始まった試合ではありませんか？`;
+}

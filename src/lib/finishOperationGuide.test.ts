@@ -7,6 +7,7 @@ import {
   standbyCourtIds,
   STANDBY_CLOSE_START_MS,
   buildFinishBlockedMessage,
+  buildFinishConfirmMessage,
   type FinishOperationGuide,
 } from './finishOperationGuide';
 import { MATCH_CALL_THRESHOLD_MS } from './gameOperations';
@@ -347,5 +348,36 @@ describe('buildFinishBlockedMessage', () => {
 
   it('担当が居なければ管理者運用の説明を返す（保険）', () => {
     expect(buildFinishBlockedMessage([])).toBe('終了操作は管理者と操作担当のみできます');
+  });
+});
+
+describe('buildFinishConfirmMessage', () => {
+  const base = {
+    courtId: 2,
+    elapsedMs: 133_000,
+    teamANames: ['太郎', '花子'],
+    teamBNames: ['一郎', '幸子'],
+  };
+
+  it('コート・経過時間・出場者を並べる', () => {
+    expect(buildFinishConfirmMessage(base)).toBe(
+      '② 経過 2:13\n太郎・花子 vs 一郎・幸子\n\n始まったばかりの試合です。他の人が終了した直後に始まった試合ではありませんか？',
+    );
+  });
+
+  it('1面運用（courtId が null）ならコート番号を出さない', () => {
+    expect(buildFinishConfirmMessage({ ...base, courtId: null })).toContain('経過 2:13\n太郎');
+    expect(buildFinishConfirmMessage({ ...base, courtId: null })).not.toContain('②');
+  });
+
+  it('経過は m:ss（秒は2桁ゼロ埋め）', () => {
+    expect(buildFinishConfirmMessage({ ...base, elapsedMs: 65_000 })).toContain('経過 1:05');
+    expect(buildFinishConfirmMessage({ ...base, elapsedMs: 0 })).toContain('経過 0:00');
+  });
+
+  it('シングルスなど人数が違っても並べられる', () => {
+    expect(
+      buildFinishConfirmMessage({ ...base, teamANames: ['太郎'], teamBNames: ['一郎'] }),
+    ).toContain('太郎 vs 一郎');
   });
 });
