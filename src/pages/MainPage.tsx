@@ -29,7 +29,7 @@ import { CourtCardFrame } from '../components/CourtCardFrame';
 import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { FinishOperationGuide } from '../components/FinishOperationGuide';
 import { predictNextMatchPlayers } from '../lib/nextMatchPrediction';
-import { canFinishGame } from '../lib/finishOperationGuide';
+import { canFinishGame, buildFinishBlockedMessage } from '../lib/finishOperationGuide';
 import {
   shouldCallNextMatch,
   callBasisCourtId,
@@ -622,6 +622,16 @@ export function MainPage() {
     certainIds: nextMatchPrediction.certainIds,
     myPlayerId,
   });
+
+  // 権限が無い人がタップしたときのアナウンス。「押せません」だけだと誰が押すのか
+  // 分からず待つ人が動けないので、配置予測バーの濃い青（＝操作担当）を名指しする。
+  // 並びは predictedPlayers と同じ「入りやすい順」。
+  const handleFinishBlocked = () => {
+    const operatorNames = predictedPlayers
+      .filter((p) => nextMatchPrediction.certainIds.has(p.id))
+      .map((p) => p.name);
+    toast.warning(buildFinishBlockedMessage(operatorNames));
+  };
 
   // 休憩状態を切り替えてよいか。管理者は誰でも、それ以外は自分の名前と
   // 一致する Player のみ可。CLAUDE.md の信頼モデル通り誤操作防止用 UX ガード
@@ -1346,6 +1356,7 @@ export function MainPage() {
                           startPressedAt={court.startPressedAt ?? court.startedAt}
                           canFinish={canFinish}
                           onFinish={() => handleFinishGameClick(court.id)}
+                          onBlocked={handleFinishBlocked}
                         />
                       ) : (
                         <div className="flex gap-1.5">
