@@ -3,6 +3,7 @@ import {
   buildFinishOperationGuide,
   buildFinishOperationGuideHeadline,
   getNextFinishGuideDelay,
+  canFinishGame,
 } from './finishOperationGuide';
 import { MATCH_CALL_THRESHOLD_MS } from './gameOperations';
 import type { Court } from '../types/court';
@@ -155,5 +156,39 @@ describe('getNextFinishGuideDelay', () => {
       playingCourt(2, startedAtForElapsed(120_000)),
     ];
     expect(getNextFinishGuideDelay(courts, NOW)).toBe(MATCH_CALL_THRESHOLD_MS - 120_000);
+  });
+});
+
+describe('canFinishGame', () => {
+  it('管理者（作成者 / 管理権限 / 開発モード）は常に押せる', () => {
+    expect(
+      canFinishGame({ isAdmin: true, certainIds: new Set(['a']), myPlayerId: 'b' }),
+    ).toBe(true);
+  });
+
+  it('操作担当（ほぼ確定メンバー）は押せる', () => {
+    expect(
+      canFinishGame({ isAdmin: false, certainIds: new Set(['a', 'b']), myPlayerId: 'b' }),
+    ).toBe(true);
+  });
+
+  it('担当が居るのに自分が担当でなければ押せない', () => {
+    expect(
+      canFinishGame({ isAdmin: false, certainIds: new Set(['a']), myPlayerId: 'b' }),
+    ).toBe(false);
+  });
+
+  it('担当が居て自分の Player を特定できなければ押せない', () => {
+    expect(
+      canFinishGame({ isAdmin: false, certainIds: new Set(['a']), myPlayerId: null }),
+    ).toBe(false);
+  });
+
+  it('担当が 1 人も居なければ全員押せる（フォールバック）', () => {
+    expect(canFinishGame({ isAdmin: false, certainIds: new Set(), myPlayerId: 'b' })).toBe(true);
+  });
+
+  it('担当が居らず自分の Player を特定できなくても押せる（フォールバック）', () => {
+    expect(canFinishGame({ isAdmin: false, certainIds: new Set(), myPlayerId: null })).toBe(true);
   });
 });

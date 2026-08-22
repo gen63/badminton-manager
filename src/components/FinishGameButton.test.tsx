@@ -14,16 +14,16 @@ describe('FinishGameButton', () => {
   });
 
   it('開始操作の直後は押せない', () => {
-    render(<FinishGameButton startPressedAt={Date.now()} onFinish={() => {}} />);
+    render(<FinishGameButton startPressedAt={Date.now()} canFinish onFinish={() => {}} />);
     expect(button()).toBeDisabled();
   });
 
-  it('5秒経つと押せるようになる', () => {
-    render(<FinishGameButton startPressedAt={Date.now()} onFinish={() => {}} />);
+  it('20秒経つと押せるようになる', () => {
+    render(<FinishGameButton startPressedAt={Date.now()} canFinish onFinish={() => {}} />);
     expect(button()).toBeDisabled();
 
     act(() => {
-      vi.advanceTimersByTime(4_900);
+      vi.advanceTimersByTime(19_900);
     });
     expect(button()).toBeDisabled();
 
@@ -33,13 +33,34 @@ describe('FinishGameButton', () => {
     expect(button()).toBeEnabled();
   });
 
-  it('5秒より前に開始操作されたコートは最初から押せる', () => {
-    render(<FinishGameButton startPressedAt={Date.now() - 6_000} onFinish={() => {}} />);
+  it('20秒より前に開始操作されたコートは最初から押せる', () => {
+    render(<FinishGameButton startPressedAt={Date.now() - 21_000} canFinish onFinish={() => {}} />);
     expect(button()).toBeEnabled();
   });
 
   it('startPressedAt が無ければロックしない（旧データ）', () => {
-    render(<FinishGameButton startPressedAt={0} onFinish={() => {}} />);
+    render(<FinishGameButton startPressedAt={0} canFinish onFinish={() => {}} />);
     expect(button()).toBeEnabled();
+  });
+
+  it('権限が無ければロック解除後も押せない', () => {
+    render(<FinishGameButton startPressedAt={Date.now()} canFinish={false} onFinish={() => {}} />);
+    expect(button()).toBeDisabled();
+
+    act(() => {
+      vi.advanceTimersByTime(21_000);
+    });
+    expect(button()).toBeDisabled();
+  });
+
+  it('権限が無ければ開始から時間が経ったコートでも押せない', () => {
+    render(
+      <FinishGameButton
+        startPressedAt={Date.now() - 60_000}
+        canFinish={false}
+        onFinish={() => {}}
+      />,
+    );
+    expect(button()).toBeDisabled();
   });
 });

@@ -29,6 +29,7 @@ import { CourtCardFrame } from '../components/CourtCardFrame';
 import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { FinishOperationGuide } from '../components/FinishOperationGuide';
 import { predictNextMatchPlayers } from '../lib/nextMatchPrediction';
+import { canFinishGame } from '../lib/finishOperationGuide';
 import {
   shouldCallNextMatch,
   callBasisCourtId,
@@ -611,6 +612,16 @@ export function MainPage() {
   const getPlayerGamesPlayed = useCallback((playerId: string) => {
     return playerMap.get(playerId)?.gamesPlayed || 0;
   }, [playerMap]);
+
+  // 試合終了ボタンを押してよいか。管理者（作成者・管理権限・開発モードを含む
+  // `isAdmin()`）か、配置予測の「ほぼ確定」＝操作担当（`NextMatchPredictionBar`
+  // の濃い青、`FinishOperationGuide` が待機場所を案内する相手）のみ。担当が
+  // 居ないときのフォールバックも含めて判定は `canFinishGame` に持たせている。
+  const canFinish = canFinishGame({
+    isAdmin: isAdmin(),
+    certainIds: nextMatchPrediction.certainIds,
+    myPlayerId,
+  });
 
   // 休憩状態を切り替えてよいか。管理者は誰でも、それ以外は自分の名前と
   // 一致する Player のみ可。CLAUDE.md の信頼モデル通り誤操作防止用 UX ガード
@@ -1333,6 +1344,7 @@ export function MainPage() {
                         <FinishGameButton
                           key={court.startPressedAt ?? court.startedAt}
                           startPressedAt={court.startPressedAt ?? court.startedAt}
+                          canFinish={canFinish}
                           onFinish={() => handleFinishGameClick(court.id)}
                         />
                       ) : (
