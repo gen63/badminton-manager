@@ -39,6 +39,15 @@ interface SettingsState {
    */
   adminMatchCallAnnounce: boolean;
   setAdminMatchCallAnnounce: (value: boolean) => void;
+  /**
+   * 試合終了を長押しで確定させるか。端末ローカル設定（Firestore 同期しない）。
+   *
+   * 誤終了の抑止が目的なので既定は ON。ただし操作に慣れた人（主に管理者）は
+   * 1日に何十回も終了を押すため、その人だけ切れるように端末ごとの設定にする。
+   * セッション共有にすると「慣れた1人がウザいから切る」で全員のガードが外れる。
+   */
+  finishHoldToConfirm: boolean;
+  setFinishHoldToConfirm: (value: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -76,6 +85,8 @@ export const useSettingsStore = create<SettingsState>()(
       setMatchCallAlert: (value) => set({ matchCallAlert: value }),
       adminMatchCallAnnounce: true,
       setAdminMatchCallAnnounce: (value) => set({ adminMatchCallAnnounce: value }),
+      finishHoldToConfirm: true,
+      setFinishHoldToConfirm: (value) => set({ finishHoldToConfirm: value }),
     }),
     {
       name: 'badminton-settings',
@@ -133,6 +144,7 @@ export const useSettingsStore = create<SettingsState>()(
         accountingWebAppUrl: state.accountingWebAppUrl,
         matchCallAlert: state.matchCallAlert,
         adminMatchCallAnnounce: state.adminMatchCallAnnounce,
+        finishHoldToConfirm: state.finishHoldToConfirm,
       }),
       onRehydrateStorage: () => (state) => {
         // 旧バージョンで保存された localStorage から復元したとき、

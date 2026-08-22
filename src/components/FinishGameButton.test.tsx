@@ -34,6 +34,7 @@ describe('FinishGameButton', () => {
 
   const props = {
     canFinish: true,
+    requireHold: true,
     onFinish: () => {},
     onBlocked: () => {},
   };
@@ -113,6 +114,7 @@ describe('FinishGameButton', () => {
     const onBlocked = vi.fn();
     render(
       <FinishGameButton
+        {...props}
         startPressedAt={0}
         canFinish={false}
         onFinish={onFinish}
@@ -129,10 +131,10 @@ describe('FinishGameButton', () => {
     const onFinish = vi.fn();
     render(
       <FinishGameButton
+        {...props}
         startPressedAt={0}
         canFinish={false}
         onFinish={onFinish}
-        onBlocked={() => {}}
       />,
     );
 
@@ -144,9 +146,9 @@ describe('FinishGameButton', () => {
     const onBlocked = vi.fn();
     render(
       <FinishGameButton
+        {...props}
         startPressedAt={Date.now()}
         canFinish={false}
-        onFinish={() => {}}
         onBlocked={onBlocked}
       />,
     );
@@ -154,5 +156,63 @@ describe('FinishGameButton', () => {
 
     fireEvent.click(button());
     expect(onBlocked).not.toHaveBeenCalled();
+  });
+
+  describe('長押し設定 OFF（requireHold=false）', () => {
+    it('タップ1回で終了する', () => {
+      const onFinish = vi.fn();
+      render(
+        <FinishGameButton {...props} startPressedAt={0} requireHold={false} onFinish={onFinish} />,
+      );
+
+      fireEvent.click(button());
+      expect(onFinish).toHaveBeenCalledTimes(1);
+    });
+
+    it('開始直後のロックは効いたまま', () => {
+      const onFinish = vi.fn();
+      render(
+        <FinishGameButton
+          {...props}
+          startPressedAt={Date.now()}
+          requireHold={false}
+          onFinish={onFinish}
+        />,
+      );
+      expect(button()).toBeDisabled();
+
+      fireEvent.click(button());
+      expect(onFinish).not.toHaveBeenCalled();
+    });
+
+    it('権限が無ければタップしても終了せず、担当のアナウンスだけ出る', () => {
+      const onFinish = vi.fn();
+      const onBlocked = vi.fn();
+      render(
+        <FinishGameButton
+          {...props}
+          startPressedAt={0}
+          requireHold={false}
+          canFinish={false}
+          onFinish={onFinish}
+          onBlocked={onBlocked}
+        />,
+      );
+
+      fireEvent.click(button());
+      expect(onFinish).not.toHaveBeenCalled();
+      expect(onBlocked).toHaveBeenCalledTimes(1);
+    });
+
+    it('長押ししても二重に終了しない', () => {
+      const onFinish = vi.fn();
+      render(
+        <FinishGameButton {...props} startPressedAt={0} requireHold={false} onFinish={onFinish} />,
+      );
+
+      hold();
+      fireEvent.click(button());
+      expect(onFinish).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -24,6 +24,11 @@ interface FinishGameButtonProps {
    * 「操作担当」（配置予測のほぼ確定メンバー）のときだけ true。
    */
   canFinish: boolean;
+  /**
+   * 終了を長押しで確定させるか（端末ローカル設定 `finishHoldToConfirm`）。
+   * false なら通常のタップ1回で終了する。操作に慣れた人向けの逃がし口。
+   */
+  requireHold: boolean;
   onFinish: () => void;
   /**
    * 権限が無いままタップされたときの通知。誰が担当かをアナウンスする。
@@ -45,15 +50,16 @@ interface FinishGameButtonProps {
  *    連続終了を抑止する。案内する相手が居ないのでここは素直に `disabled`。
  *    ロック解除は startPressedAt から算出したタイマーで一度だけ再レンダリング
  *    して行う（毎秒 tick しない）。
- * 3. {@link FINISH_HOLD_MS} 以上の**長押し**である。誤タップは短タップなので
- *    これだけで大半が落ちる。短タップしたときはラベルを「長押しで終了」に変えて
- *    やり方を伝える（無反応にはしない）。試合中に押し方が変わると混乱するので、
- *    経過時間によらず常に長押しにしている。開始間もない試合ではさらに親側
- *    （`MainPage`）が確認ダイアログを挟む。
+ * 3. {@link FINISH_HOLD_MS} 以上の**長押し**である（`requireHold` が false なら
+ *    通常のタップ）。誤タップは短タップなのでこれだけで大半が落ちる。短タップした
+ *    ときはラベルを「長押しで終了」に変えてやり方を伝える（無反応にはしない）。
+ *    試合中に押し方が変わると混乱するので、経過時間によらず常に長押しにしている。
+ *    開始間もない試合ではさらに親側（`MainPage`）が確認ダイアログを挟む。
  */
 export function FinishGameButton({
   startPressedAt,
   canFinish,
+  requireHold,
   onFinish,
   onBlocked,
 }: FinishGameButtonProps) {
@@ -88,7 +94,7 @@ export function FinishGameButton({
 
   const startHold = () => {
     // 権限が無いときは onClick 側で案内する（長押しさせても意味がない）
-    if (locked || !canFinish || pressing.current) return;
+    if (!requireHold || locked || !canFinish || pressing.current) return;
     pressing.current = true;
     setHolding(true);
     holdTimer.current = setTimeout(() => {
@@ -111,15 +117,22 @@ export function FinishGameButton({
 
   return (
     <button
-      // 権限が無い人のタップだけ click で拾う。権限がある人の終了は長押し側で確定する。
-      onClick={canFinish ? undefined : onBlocked}
+      // 権限が無い人のタップは click で拾って案内する。権限がある人の終了は
+      // 長押し設定が ON なら長押し側で確定するので、click では何もしない。
+      onClick={canFinish ? (requireHold ? undefined : onFinish) : onBlocked}
       onPointerDown={startHold}
       onPointerUp={cancelHold}
       onPointerLeave={cancelHold}
       onPointerCancel={cancelHold}
       disabled={locked}
       aria-label="終了"
-      title={canFinish ? '長押しで終了します' : '終了操作は管理者と操作担当のみできます'}
+      title={
+        canFinish
+          ? requireHold
+            ? '長押しで終了します'
+            : undefined
+          : '終了操作は管理者と操作担当のみできます'
+      }
       className={`relative overflow-hidden w-full min-h-[44px] bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 select-none touch-none disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-destructive/10${
         canFinish ? '' : ' opacity-40'
       }`}

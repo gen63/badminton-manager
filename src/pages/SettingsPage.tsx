@@ -14,7 +14,7 @@ import { buildSessionUrl, copyToClipboard } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2, Link as LinkIcon, Copy } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2, StopCircle, Link as LinkIcon, Copy } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -45,6 +45,8 @@ export function SettingsPage() {
   const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
   const adminMatchCallAnnounce = useSettingsStore((s) => s.adminMatchCallAnnounce);
   const setAdminMatchCallAnnounce = useSettingsStore((s) => s.setAdminMatchCallAnnounce);
+  const finishHoldToConfirm = useSettingsStore((s) => s.finishHoldToConfirm);
+  const setFinishHoldToConfirm = useSettingsStore((s) => s.setFinishHoldToConfirm);
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
   const writer = useSessionWriterWithToast(toast);
@@ -527,6 +529,39 @@ export function SettingsPage() {
           </div>
           <p className="text-[10px] text-muted-foreground mt-1">
             この端末のみの設定です。本人への呼び出しの30秒後に、対象者を読み上げます。
+          </p>
+        </div>
+
+        {/* 終了ボタンの長押し（端末ローカル） */}
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+            <span className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center">
+              <StopCircle size={14} className="text-indigo-600" />
+            </span>
+            終了ボタンの長押し
+          </h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setFinishHoldToConfirm(true)}
+              className={`flex-1 select-button text-xs px-2 ${
+                finishHoldToConfirm ? 'select-button-active' : 'select-button-inactive'
+              }`}
+            >
+              {finishHoldToConfirm && <span className="mr-1">✓</span>}
+              ON
+            </button>
+            <button
+              onClick={() => setFinishHoldToConfirm(false)}
+              className={`flex-1 select-button text-xs px-2 ${
+                !finishHoldToConfirm ? 'select-button-active' : 'select-button-inactive'
+              }`}
+            >
+              {!finishHoldToConfirm && <span className="mr-1">✓</span>}
+              OFF
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            この端末のみの設定です。ON なら試合終了は長押しで確定します（誤タップ防止）。操作に慣れていれば OFF でタップ1回にできます。開始直後のロックと、始まったばかりの試合の確認ダイアログは OFF でも出ます。
           </p>
         </div>
 

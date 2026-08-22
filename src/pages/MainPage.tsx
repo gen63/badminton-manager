@@ -110,6 +110,7 @@ export function MainPage() {
   const matchCallAlert = useSettingsStore((s) => s.matchCallAlert);
   const setMatchCallAlert = useSettingsStore((s) => s.setMatchCallAlert);
   const adminMatchCallAnnounce = useSettingsStore((s) => s.adminMatchCallAnnounce);
+  const finishHoldToConfirm = useSettingsStore((s) => s.finishHoldToConfirm);
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
   // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
@@ -1392,6 +1393,7 @@ export function MainPage() {
                           key={court.startPressedAt ?? court.startedAt}
                           startPressedAt={court.startPressedAt ?? court.startedAt}
                           canFinish={canFinish}
+                          requireHold={finishHoldToConfirm}
                           onFinish={() => handleFinishGameClick(court.id)}
                           onBlocked={handleFinishBlocked}
                         />
