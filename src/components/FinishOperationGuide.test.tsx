@@ -65,7 +65,7 @@ describe('FinishOperationGuide', () => {
     expect(guide()).toBeNull();
   });
 
-  it('4:30 未満は出さず、4:30 で「①付近待機」が出る', () => {
+  it('4:30 未満は控えめに出て、4:30 でオレンジに変わる', () => {
     render(
       <FinishOperationGuide
         courts={[playingCourt(1, Date.now() - 60_000), playingCourt(2, Date.now())]}
@@ -78,16 +78,53 @@ describe('FinishOperationGuide', () => {
     act(() => {
       vi.advanceTimersByTime(0);
     });
-    expect(guide()).toBeNull();
+    // 経過差が1分ちょうど（近接）なので両コートを案内する
+    expect(guide()?.dataset.phase).toBe('waiting');
+    expect(guide()?.className).not.toContain('bg-orange-50');
+    expect(screen.getByText('①②付近待機')).toBeInTheDocument();
 
     act(() => {
       // 経過最大はコート1（既に1分経過）なので、残り 3分30秒 + タイマーの余裕分
       vi.advanceTimersByTime(3.5 * 60 * 1000 + 100);
     });
-    expect(guide()).not.toBeNull();
-    expect(screen.getByText('①付近待機')).toBeInTheDocument();
+    expect(guide()?.dataset.phase).toBe('imminent');
+    expect(guide()?.className).toContain('bg-orange-50');
     expect(screen.getByText('たろう')).toBeInTheDocument();
     expect(screen.getByText('はなこ')).toBeInTheDocument();
+  });
+
+  it('経過が離れていれば最も早く終わるコートだけを指す', () => {
+    render(
+      <FinishOperationGuide
+        courts={[
+          playingCourt(1, Date.now() - 5 * 60 * 1000),
+          playingCourt(2, Date.now(), ['p5', 'p6'], ['p7', 'p8']),
+        ]}
+        certainIds={new Set(['w1'])}
+        players={waitingPlayers}
+        selfPlayerId={null}
+        showCourtNumber
+      />,
+    );
+    expect(screen.getByText('①付近待機')).toBeInTheDocument();
+  });
+
+  it('3面同時開始ならコート番号を出さない', () => {
+    const startedAt = Date.now() - 60_000;
+    render(
+      <FinishOperationGuide
+        courts={[
+          playingCourt(1, startedAt),
+          playingCourt(2, startedAt, ['p5', 'p6'], ['p7', 'p8']),
+          playingCourt(3, startedAt, ['p9', 'p10'], ['p11', 'p12']),
+        ]}
+        certainIds={new Set(['w1'])}
+        players={waitingPlayers}
+        selfPlayerId={null}
+        showCourtNumber
+      />,
+    );
+    expect(screen.getByText('コート付近待機')).toBeInTheDocument();
   });
 
   it('1面運用ではコート番号を出さない', () => {
@@ -118,7 +155,21 @@ describe('FinishOperationGuide', () => {
     expect(screen.getByText('たろう').className).not.toContain('bg-orange-600');
   });
 
-  it('出た瞬間だけ光る', () => {
+  it('4:30 未満に自分が担当なら強調色は配置予測と同じ濃い青', () => {
+    render(
+      <FinishOperationGuide
+        courts={[playingCourt(1, Date.now() - 60_000)]}
+        certainIds={new Set(['w1', 'w2'])}
+        players={waitingPlayers}
+        selfPlayerId="w2"
+        showCourtNumber
+      />,
+    );
+    expect(guide()?.className).toContain('ring-indigo-300');
+    expect(screen.getByText('はなこ').className).toContain('bg-indigo-600');
+  });
+
+  it('4:30 を跨いだ瞬間だけ光る', () => {
     render(
       <FinishOperationGuide
         courts={[playingCourt(1, Date.now() - 60_000)]}
@@ -131,7 +182,7 @@ describe('FinishOperationGuide', () => {
     act(() => {
       vi.advanceTimersByTime(0);
     });
-    expect(guide()).toBeNull();
+    expect(guide()?.className).not.toContain('finish-guide-flash');
 
     act(() => {
       vi.advanceTimersByTime(3.5 * 60 * 1000 + 100);
