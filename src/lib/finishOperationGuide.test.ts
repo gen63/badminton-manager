@@ -80,13 +80,40 @@ describe('standbyCourtIds', () => {
     expect(standbyCourtIds(courts, NOW)).toEqual([]);
   });
 
-  it('3面のうち2面だけ近接なら、その2面を返す', () => {
+  it('3面のうち隣接する2面だけ近接なら、その2面を返す', () => {
     const courts = [
       playingCourt(1, startedAtForElapsed(120_000)),
       playingCourt(2, startedAtForElapsed(90_000)),
       playingCourt(3, startedAtForElapsed(10_000)),
     ];
     expect(standbyCourtIds(courts, NOW)).toEqual([1, 2]);
+  });
+
+  it('近接2面が隣り合っていなければ番号を出さない（①と③）', () => {
+    const courts = [
+      playingCourt(1, startedAtForElapsed(120_000)),
+      playingCourt(2, startedAtForElapsed(10_000)),
+      playingCourt(3, startedAtForElapsed(90_000)),
+    ];
+    expect(standbyCourtIds(courts, NOW)).toEqual([]);
+  });
+
+  it('間のコートが試合中でなくても、飛んだ番号なら出さない', () => {
+    const courts = [
+      playingCourt(1, startedAtForElapsed(120_000)),
+      emptyCourt(2),
+      playingCourt(3, startedAtForElapsed(90_000)),
+    ];
+    expect(standbyCourtIds(courts, NOW)).toEqual([]);
+  });
+
+  it('隣接していれば先頭以外の組でも返す（②③）', () => {
+    const courts = [
+      playingCourt(1, startedAtForElapsed(10_000)),
+      playingCourt(2, startedAtForElapsed(120_000)),
+      playingCourt(3, startedAtForElapsed(90_000)),
+    ];
+    expect(standbyCourtIds(courts, NOW)).toEqual([2, 3]);
   });
 });
 
@@ -173,6 +200,25 @@ describe('buildFinishOperationGuide', () => {
     expect(guide?.courtIds).toEqual([1, 2]);
   });
 
+  it('近接2面が隣り合っていなければ番号を出さない', () => {
+    const guide = buildFinishOperationGuide(
+      args({
+        courts: [
+          playingCourt(1, startedAtForElapsed(MATCH_CALL_THRESHOLD_MS), ['a1', 'a2'], ['a3', 'a4']),
+          playingCourt(2, startedAtForElapsed(10_000)),
+          playingCourt(
+            3,
+            startedAtForElapsed(MATCH_CALL_THRESHOLD_MS - 30_000),
+            ['b1', 'b2'],
+            ['b3', 'b4'],
+          ),
+        ],
+      }),
+    );
+    expect(guide).not.toBeNull();
+    expect(guide?.courtIds).toEqual([]);
+  });
+
   it('3面同時開始なら番号を出さない', () => {
     const guide = buildFinishOperationGuide(
       args({
@@ -218,7 +264,7 @@ describe('buildFinishOperationGuideHeadline', () => {
 
   it('近接2面は区切り無しで並べる', () => {
     expect(buildFinishOperationGuideHeadline(guideWith([1, 2]))).toBe('①②付近待機');
-    expect(buildFinishOperationGuideHeadline(guideWith([2, 4]))).toBe('②④付近待機');
+    expect(buildFinishOperationGuideHeadline(guideWith([3, 4]))).toBe('③④付近待機');
   });
 
   it('丸数字が無い範囲は素の数字＋コートに戻す', () => {

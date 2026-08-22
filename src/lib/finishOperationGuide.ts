@@ -86,6 +86,12 @@ function isOnAnyCourt(courts: Court[], playerId: string): boolean {
  * `STANDBY_CLOSE_START_MS` 以内で始まったプレイ中コートをまとめる。3面同時開始の
  * ように候補が `STANDBY_MAX_COURTS` を超えたら、どこで待っても同じなので空配列。
  *
+ * 2面になる場合は **隣り合っていること**（`id` が連番）を条件にする。`①③付近待機`
+ * のような飛んだ番号は「その間で待つ」場所が間のコート（試合中）の上になってしまい、
+ * 立てる場所を指していない。隣接していなければ、どちらか一方を名指しして半分の確率で
+ * 外すより番号を落とす方が誠実なので空配列にする。コート `id` は
+ * `computeResizeCourts` が常に 1..N の連番へ振り直すため、差が 1 = 物理的に隣。
+ *
  * `callBasisCourtId` を使わないのは意図的。あちらは「次に配置される先」なので
  * 空きコートを優先するが、ここで欲しいのは「終了操作の対象＝もうすぐ終わる
  * プレイ中コート」で別物。
@@ -100,7 +106,10 @@ export function standbyCourtIds(courts: Court[], now: number): number[] {
     .map((c) => c.id)
     .sort((a, b) => a - b);
 
-  return ids.length > STANDBY_MAX_COURTS ? [] : ids;
+  if (ids.length > STANDBY_MAX_COURTS) return [];
+  // 隣り合っていない2面（①と③など）は「間で待つ」場所が無いので番号を出さない
+  if (ids.length === 2 && ids[1] - ids[0] !== 1) return [];
+  return ids;
 }
 
 /**
@@ -146,6 +155,7 @@ function circledCourt(courtId: number): string {
  *
  * 複数コートは区切り無しで連結する（`①②付近待機`）。丸数字は1文字ずつ独立して
  * 読めるので中黒を挟まなくても誤読せず、390px 幅でも名前チップと1行に収まる。
+ * `standbyCourtIds` が隣接2面しか渡さないので、連結しても常に連番になる。
  */
 export function buildFinishOperationGuideHeadline(guide: FinishOperationGuide): string {
   if (guide.courtIds.length === 0) return 'コート付近待機';
