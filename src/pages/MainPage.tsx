@@ -1210,15 +1210,15 @@ export function MainPage() {
             >
               {matchCallAlert ? <Bell size={18} /> : <BellOff size={18} />}
             </button>
-            {isAdmin() && (
-              <button
-                onClick={() => navigate('/settings')}
-                className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors"
-                aria-label="設定"
-              >
-                <Settings size={18} />
-              </button>
-            )}
+            {/* 設定は全員に出す。中身は「この端末の設定」だけが誰でも触れ、
+                セッション設定は SettingsPage 側で管理者限定にしている。 */}
+            <button
+              onClick={() => navigate('/settings')}
+              className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+              aria-label="設定"
+            >
+              <Settings size={18} />
+            </button>
           </div>
         </div>
       </header>
