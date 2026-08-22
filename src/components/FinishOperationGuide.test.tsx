@@ -127,6 +127,24 @@ describe('FinishOperationGuide', () => {
     expect(screen.getByText('コート付近待機')).toBeInTheDocument();
   });
 
+  it('近接していても隣り合っていない2面ならコート番号を出さない', () => {
+    const now = Date.now();
+    render(
+      <FinishOperationGuide
+        courts={[
+          playingCourt(1, now - 5 * 60 * 1000),
+          playingCourt(2, now, ['p5', 'p6'], ['p7', 'p8']),
+          playingCourt(3, now - 5 * 60 * 1000 + 30_000, ['p9', 'p10'], ['p11', 'p12']),
+        ]}
+        certainIds={new Set(['w1'])}
+        players={waitingPlayers}
+        selfPlayerId={null}
+        showCourtNumber
+      />,
+    );
+    expect(screen.getByText('コート付近待機')).toBeInTheDocument();
+  });
+
   it('1面運用ではコート番号を出さない', () => {
     render(
       <FinishOperationGuide
