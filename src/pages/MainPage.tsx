@@ -612,6 +612,14 @@ export function MainPage() {
     return playerMap.get(playerId)?.gamesPlayed || 0;
   }, [playerMap]);
 
+  // 試合終了ボタンを押してよいか。管理者（作成者・管理権限・開発モードを含む
+  // `isAdmin()`）か、配置予測の「ほぼ確定」＝操作担当（`NextMatchPredictionBar`
+  // の濃い青、`FinishOperationGuide` が待機場所を案内する相手）のみ。
+  // 「気づいた人が終了操作をする」運用をやめ、担当に寄せるための UX ガードで
+  // あり、認証境界ではない（`canToggleBreak` と同じく CLAUDE.md の信頼モデル）。
+  const canFinishGame =
+    isAdmin() || (myPlayerId !== null && nextMatchPrediction.certainIds.has(myPlayerId));
+
   // 休憩状態を切り替えてよいか。管理者は誰でも、それ以外は自分の名前と
   // 一致する Player のみ可。CLAUDE.md の信頼モデル通り誤操作防止用 UX ガード
   // であり、認証境界ではない（`currentUser` は localStorage の単なる文字列）。
@@ -1333,6 +1341,7 @@ export function MainPage() {
                         <FinishGameButton
                           key={court.startPressedAt ?? court.startedAt}
                           startPressedAt={court.startPressedAt ?? court.startedAt}
+                          canFinish={canFinishGame}
                           onFinish={() => handleFinishGameClick(court.id)}
                         />
                       ) : (
