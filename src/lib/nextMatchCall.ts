@@ -13,7 +13,39 @@ import {
   MATCH_CALL_THRESHOLD_MS,
   MATCH_CALL_COOLDOWN_MS,
   MATCH_CALL_ADMIN_THRESHOLD_MS,
+  MATCH_CALL_RESUME_GUARD_MS,
 } from './gameOperations';
+
+export interface CanEvaluateMatchCallArgs {
+  now: number;
+  /**
+   * Firestore の gameState を受信済みか（`useSyncStatusStore.isGameStateLoaded`）。
+   * `useFirebaseSync` は再購読のたびに false へ落とし、初回スナップショット受信で
+   * true に戻すため、「手元の courts が最新か」の判定にそのまま使える。
+   * 同期エラー中も false のままなので、切断中の古い状態では鳴らない。
+   */
+  gameStateLoaded: boolean;
+  /** 直近で visible へ復帰した時刻。復帰イベントを受けていなければ null */
+  becameVisibleAt: number | null;
+}
+
+/**
+ * 呼び出し（本人向け・管理者向けとも）の判定を実行してよいかを返す。
+ *
+ * バックグラウンド復帰直後はローカルの `courts` が古いまま残っており、そこへ
+ * 現在時刻を当てると「とっくに始まった（終わった）試合」について呼び出しが
+ * 発火する。手元の状態が最新だと言える間だけ判定を許可する。
+ *
+ * 判定を飛ばしても呼び出し側は 10 秒ごとに再評価するため、正当な呼び出しは
+ * 最大で十数秒遅れるだけで失われない。
+ * 詳細: docs/plans/2026-08-22-match-call-stale-audio-on-resume.md
+ */
+export function canEvaluateMatchCall(args: CanEvaluateMatchCallArgs): boolean {
+  const { now, gameStateLoaded, becameVisibleAt } = args;
+  if (!gameStateLoaded) return false;
+  if (becameVisibleAt !== null && now - becameVisibleAt < MATCH_CALL_RESUME_GUARD_MS) return false;
+  return true;
+}
 
 /**
  * プレイ中コート（`isPlaying && startedAt > 0`）のうち経過時間が最大のコート。

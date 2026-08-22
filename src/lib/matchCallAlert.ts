@@ -13,6 +13,20 @@ type AudioContextConstructor = typeof AudioContext;
 /** モジュールシングルトンの AudioContext。unlock 時に遅延生成する。 */
 let audioContext: AudioContext | null = null;
 
+/**
+ * ページがバックグラウンド（非表示）かどうか。
+ *
+ * hidden 中の音・振動・読み上げは「今は鳴らない代わりに復帰時へずれ込む」挙動を
+ * 取る（iOS の `speechSynthesis` は発話をキューに積んだまま保留し visible 復帰で
+ * まとめて再生する。WebAudio も AudioContext が suspend されると同様）。その結果
+ * とっくに始まった試合の呼び出しが数分後に鳴るため、hidden 中は鳴らさない。
+ * バックグラウンドの人へ気づかせる役割は OS 通知（`notifications.ts`）が担う。
+ * 詳細: docs/plans/2026-08-22-match-call-stale-audio-on-resume.md
+ */
+function isPageHidden(): boolean {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+}
+
 function getAudioContextConstructor(): AudioContextConstructor | null {
   if (typeof AudioContext !== 'undefined') return AudioContext;
   const legacy = (window as unknown as { webkitAudioContext?: AudioContextConstructor }).webkitAudioContext;
@@ -132,6 +146,12 @@ export const SPEECH_DELAY_MS = 200;
  */
 let activeCancelOnTapListener: (() => void) | null = null;
 
+/**
+ * チャイム後 `SPEECH_DELAY_MS` 待ってから読み上げるための `setTimeout` ID。
+ * 待っている間にバックグラウンドへ回ったら捨てられるよう保持する。
+ */
+let pendingSpeechTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
 function removeCancelOnTapListener(): void {
   if (!activeCancelOnTapListener) return;
   document.removeEventListener('pointerdown', activeCancelOnTapListener);
@@ -145,6 +165,10 @@ function removeCancelOnTapListener(): void {
  * 未対応環境・失敗時は throw しない。
  */
 export function cancelMatchCallSpeech(): void {
+  if (pendingSpeechTimeoutId !== null) {
+    clearTimeout(pendingSpeechTimeoutId);
+    pendingSpeechTimeoutId = null;
+  }
   removeCancelOnTapListener();
   if (!('speechSynthesis' in window)) return;
   try {
@@ -175,6 +199,10 @@ export function cancelMatchCallSpeech(): void {
 export function speakMatchCall(text: string): void {
   if (!text) return;
   if (!('speechSynthesis' in window)) return;
+  // バックグラウンドでは speak() しない。積んだ発話が復帰時にまとめて再生され、
+  // 終わった試合の呼び出しが後から読み上げられるため（`isPageHidden` 参照）。
+  // チャイムの 200ms 後に読み上げる間にバックグラウンドへ回った場合もここで止まる。
+  if (isPageHidden()) return;
 
   try {
     // 前回の発話が残っていれば、まずそのリスナーを解除してから cancel する。
@@ -230,11 +258,39 @@ export function primeSpeechSynthesis(): void {
  */
 export function fireMatchCallAlert(speechText?: string): void {
   if (!useSettingsStore.getState().matchCallAlert) return;
+  // バックグラウンド中は鳴らさない（`isPageHidden` 参照）。OS 通知は呼び出し側で
+  // 別に出しているため、気づかせる経路自体は残る。
+  if (isPageHidden()) return;
   playMatchCallChime();
   vibrateMatchCall();
   if (speechText) {
-    setTimeout(() => {
+    pendingSpeechTimeoutId = setTimeout(() => {
+      pendingSpeechTimeoutId = null;
       speakMatchCall(speechText);
     }, SPEECH_DELAY_MS);
   }
+}
+
+/**
+ * バックグラウンドへ回った瞬間に読み上げを捨てるリスナーを登録する。
+ *
+ * `fireMatchCallAlert` / `speakMatchCall` の hidden ガードは「hidden 中に始める」
+ * ことだけを防ぐので、visible 中に始まった読み上げがバックグラウンドへの移行を
+ * またぐ経路が残る。iOS はこれを一時停止して visible 復帰時に再開するため、
+ * hidden になった時点で `cancel()` し、保留中の `setTimeout` も捨てる。
+ *
+ * 戻り値はリスナーを解除するクリーンアップ関数（`useEffect` の戻り値にそのまま
+ * 渡せる）。`installMatchCallAudioUnlock` と同じ流儀。
+ */
+export function installMatchCallSpeechHideGuard(): () => void {
+  const handleVisibilityChange = () => {
+    if (document.visibilityState !== 'hidden') return;
+    cancelMatchCallSpeech();
+  };
+
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  return () => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
 }

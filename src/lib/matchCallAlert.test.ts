@@ -8,6 +8,8 @@ import {
   speakMatchCall,
   primeSpeechSynthesis,
   cancelMatchCallSpeech,
+  installMatchCallSpeechHideGuard,
+  SPEECH_DELAY_MS,
 } from './matchCallAlert';
 
 describe('vibrateMatchCall', () => {
@@ -339,5 +341,104 @@ describe('installMatchCallAudioUnlock', () => {
     document.dispatchEvent(new KeyboardEvent('keydown'));
 
     expect(ctorSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('バックグラウンド（hidden）中の抑制', () => {
+  const originalMatchCallAlert = useSettingsStore.getState().matchCallAlert;
+
+  /** jsdom の `document.visibilityState` は読み取り専用なので defineProperty で差し替える。 */
+  function setVisibility(state: 'visible' | 'hidden') {
+    Object.defineProperty(document, 'visibilityState', {
+      value: state,
+      writable: true,
+      configurable: true,
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+
+  function stubSpeechSynthesis() {
+    const speakMock = vi.fn();
+    const cancelMock = vi.fn();
+    vi.stubGlobal('speechSynthesis', { cancel: cancelMock, speak: speakMock });
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        text: string;
+        lang = '';
+        volume = 1;
+        constructor(text: string) {
+          this.text = text;
+        }
+      },
+    );
+    return { speakMock, cancelMock };
+  }
+
+  afterEach(() => {
+    cancelMatchCallSpeech();
+    setVisibility('visible');
+    useSettingsStore.setState({ matchCallAlert: originalMatchCallAlert });
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('hidden 中の fireMatchCallAlert は振動も読み上げもしない', () => {
+    useSettingsStore.setState({ matchCallAlert: true });
+    const { speakMock } = stubSpeechSynthesis();
+    const vibrateMock = vi.fn();
+    Object.defineProperty(navigator, 'vibrate', {
+      value: vibrateMock,
+      writable: true,
+      configurable: true,
+    });
+    setVisibility('hidden');
+
+    vi.useFakeTimers();
+    fireMatchCallAlert('太郎さん');
+    vi.advanceTimersByTime(SPEECH_DELAY_MS);
+
+    expect(vibrateMock).not.toHaveBeenCalled();
+    expect(speakMock).not.toHaveBeenCalled();
+  });
+
+  it('hidden 中の speakMatchCall は speak を呼ばない（復帰時にまとめて再生されるのを防ぐ）', () => {
+    const { speakMock } = stubSpeechSynthesis();
+    setVisibility('hidden');
+
+    speakMatchCall('太郎さん');
+
+    expect(speakMock).not.toHaveBeenCalled();
+  });
+
+  it('チャイム後の読み上げ待ちの間に hidden になったら読み上げない', () => {
+    useSettingsStore.setState({ matchCallAlert: true });
+    const { speakMock } = stubSpeechSynthesis();
+    const cleanup = installMatchCallSpeechHideGuard();
+
+    vi.useFakeTimers();
+    fireMatchCallAlert('太郎さん');
+    vi.advanceTimersByTime(SPEECH_DELAY_MS - 1);
+    setVisibility('hidden');
+    vi.advanceTimersByTime(1000);
+
+    expect(speakMock).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it('installMatchCallSpeechHideGuard は hidden への遷移で cancel し、クリーンアップ後は反応しない', () => {
+    const { cancelMock } = stubSpeechSynthesis();
+    const cleanup = installMatchCallSpeechHideGuard();
+
+    setVisibility('hidden');
+    expect(cancelMock).toHaveBeenCalledTimes(1);
+
+    // visible への復帰では cancel しない（復帰直後の正当な読み上げを潰さないため）
+    setVisibility('visible');
+    expect(cancelMock).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    setVisibility('hidden');
+    expect(cancelMock).toHaveBeenCalledTimes(1);
   });
 });
