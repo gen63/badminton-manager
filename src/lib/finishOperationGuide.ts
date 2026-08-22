@@ -112,3 +112,30 @@ export function getNextFinishGuideDelay(courts: Court[], now: number): number | 
   if (elapsed >= MATCH_CALL_THRESHOLD_MS) return null;
   return MATCH_CALL_THRESHOLD_MS - elapsed;
 }
+
+export interface CanFinishGameArgs {
+  /** `useSessionStore.isAdmin()`（作成者 / 管理権限 / 開発モードを含む） */
+  isAdmin: boolean;
+  /** 配置予測の「ほぼ確定」メンバー＝操作担当（候補 likelyIds は対象外） */
+  certainIds: Set<string>;
+  /** 自分の Player ID。特定できないときは null */
+  myPlayerId: string | null;
+}
+
+/**
+ * 試合終了ボタンを押してよいかを判定する。
+ *
+ * 「気づいた人が終了操作をする」運用をやめ、管理者か操作担当に寄せるための
+ * UX ガード。認証境界ではない（CLAUDE.md の信頼モデル通り、`currentUser` は
+ * localStorage の単なる文字列で改変できる）。
+ *
+ * **担当が 1 人も居ないときは全員に開放する**（フォールバック）。待機者が定員に
+ * 満たない練習終盤や、配置が成立せず予測不能（`scenarioCount === 0`）のときは
+ * `certainIds` が空になり得るため、そのまま絞ると管理者以外は誰も試合を終われず
+ * 運用が止まってしまう。
+ */
+export function canFinishGame({ isAdmin, certainIds, myPlayerId }: CanFinishGameArgs): boolean {
+  if (isAdmin) return true;
+  if (certainIds.size === 0) return true;
+  return myPlayerId !== null && certainIds.has(myPlayerId);
+}
