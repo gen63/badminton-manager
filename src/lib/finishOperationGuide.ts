@@ -195,3 +195,19 @@ export function canFinishGame({ isAdmin, certainIds, myPlayerId }: CanFinishGame
   if (certainIds.size === 0) return true;
   return myPlayerId !== null && certainIds.has(myPlayerId);
 }
+
+/**
+ * 権限が無い人が終了ボタンをタップしたときのアナウンス文言。
+ *
+ * 「押せない」だけだと**誰が押すのか**が分からず、待つ人が動けない。配置予測バーの
+ * 濃い青（＝操作担当）を名指しして、次に何が起きるかまで言い切る。
+ * 名前は `predictedPlayers` と同じ「入りやすい順」で渡す想定。
+ *
+ * 担当が 1 人も居ないときは `canFinishGame` が全員に開放するのでこの文言は出ない
+ * （保険として管理者運用の説明を返す）。
+ */
+export function buildFinishBlockedMessage(operatorNames: string[]): string {
+  if (operatorNames.length === 0) return '終了操作は管理者と操作担当のみできます';
+  const names = operatorNames.map((name) => `${name}さん`).join('・');
+  return `濃い青の${names}が担当です。押せません`;
+}

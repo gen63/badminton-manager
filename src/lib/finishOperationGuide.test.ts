@@ -6,6 +6,7 @@ import {
   canFinishGame,
   standbyCourtIds,
   STANDBY_CLOSE_START_MS,
+  buildFinishBlockedMessage,
   type FinishOperationGuide,
 } from './finishOperationGuide';
 import { MATCH_CALL_THRESHOLD_MS } from './gameOperations';
@@ -284,5 +285,21 @@ describe('canFinishGame', () => {
 
   it('担当が居らず自分の Player を特定できなくても押せる（フォールバック）', () => {
     expect(canFinishGame({ isAdmin: false, certainIds: new Set(), myPlayerId: null })).toBe(true);
+  });
+});
+
+describe('buildFinishBlockedMessage', () => {
+  it('担当 1 人ならその人を名指しする', () => {
+    expect(buildFinishBlockedMessage(['太郎'])).toBe('濃い青の太郎さんが担当です。押せません');
+  });
+
+  it('担当が複数なら渡された順に中黒で並べる', () => {
+    expect(buildFinishBlockedMessage(['太郎', '花子'])).toBe(
+      '濃い青の太郎さん・花子さんが担当です。押せません',
+    );
+  });
+
+  it('担当が居なければ管理者運用の説明を返す（保険）', () => {
+    expect(buildFinishBlockedMessage([])).toBe('終了操作は管理者と操作担当のみできます');
   });
 });
