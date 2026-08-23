@@ -3,14 +3,26 @@ import { CheckCircle, XCircle, Info, AlertTriangle } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
+/** トースト内に出す1アクション（例: 試合終了の「取り消す」） */
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface ToastProps {
   message: string;
   type: ToastType;
   onClose: () => void;
   duration?: number;
+  /**
+   * 取り消しなど、その場で打ち返せる操作。押すとトーストは閉じる。
+   * 「やってしまった」と気づくまでに読む時間が要るので、付けるときは
+   * `duration` も長めにすること。
+   */
+  action?: ToastAction;
 }
 
-export function Toast({ message, type, onClose, duration = 3000 }: ToastProps) {
+export function Toast({ message, type, onClose, duration = 3000, action }: ToastProps) {
   const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
@@ -49,6 +61,18 @@ export function Toast({ message, type, onClose, duration = 3000 }: ToastProps) {
       >
         {icons[type]}
         <p className="flex-1 text-sm font-medium text-foreground">{message}</p>
+        {action && (
+          <button
+            onClick={() => {
+              action.onClick();
+              setIsVisible(false);
+              setTimeout(onClose, 300);
+            }}
+            className="px-3 min-h-[44px] shrink-0 font-bold text-sm text-indigo-700 underline underline-offset-2 hover:text-indigo-900 active:scale-95 transition-all"
+          >
+            {action.label}
+          </button>
+        )}
         <button
           onClick={() => {
             setIsVisible(false);

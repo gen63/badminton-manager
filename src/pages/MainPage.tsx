@@ -29,7 +29,12 @@ import { CourtCardFrame } from '../components/CourtCardFrame';
 import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { FinishOperationGuide } from '../components/FinishOperationGuide';
 import { predictNextMatchPlayers } from '../lib/nextMatchPrediction';
-import { canFinishGame, buildFinishBlockedMessage } from '../lib/finishOperationGuide';
+import {
+  canFinishGame,
+  buildFinishBlockedMessage,
+  buildFinishConfirmMessage,
+  FINISH_CONFIRM_THRESHOLD_MS,
+} from '../lib/finishOperationGuide';
 import {
   shouldCallNextMatch,
   callBasisCourtId,
@@ -56,6 +61,9 @@ const BUG_REPORT_TEMPLATE = '発生画面：\n期待値：\n実際：';
 // まで確認できるようにする。文言のベタ書きはしない。
 const SPEECH_TEST_NAME = 'ゆーた';
 const SPEECH_TEST_COURT = 1;
+
+/** 試合終了後に「取り消す」を出しておく時間（ms）。気づいて押すまでの余裕を見て長め。 */
+const FINISH_UNDO_TOAST_MS = 10_000;
 
 export function MainPage() {
   const navigate = useNavigate();
@@ -102,6 +110,7 @@ export function MainPage() {
   const matchCallAlert = useSettingsStore((s) => s.matchCallAlert);
   const setMatchCallAlert = useSettingsStore((s) => s.setMatchCallAlert);
   const adminMatchCallAnnounce = useSettingsStore((s) => s.adminMatchCallAnnounce);
+  const finishHoldToConfirm = useSettingsStore((s) => s.finishHoldToConfirm);
 
   // gameMode はユーザーが設定で切り替える practiceType を単一の真実として扱う。
   // session.config.gameMode は auto-create-session などで 'doubles' に固定されるため参照しない。
@@ -133,6 +142,9 @@ export function MainPage() {
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number; isPaid: boolean } | null>(null);
   // 90秒以内の試合終了で確認ダイアログを出す対象コート（null = 非表示）
   const [pendingFinishCourtId, setPendingFinishCourtId] = useState<number | null>(null);
+  // 確認ダイアログの本文。押した瞬間の経過時間・出場者で固定する（開いている間に
+  // 秒数が動くと「今どの試合の話か」がぶれるため）
+  const [pendingFinishMessage, setPendingFinishMessage] = useState('');
   const [showInformationModal, setShowInformationModal] = useState(false);
   const [informationText, setInformationText] = useState('');
   const [showBugReportModal, setShowBugReportModal] = useState(false);
@@ -807,14 +819,30 @@ export function MainPage() {
         return;
       }
       // GAMEOPS4: 連続モードがブロックされた理由をユーザーに伝える
+      let notified = false;
       if (continuousMatchMode && !res.continuousNextApplied) {
         if (res.continuousError === 'diversity_block') {
           toast.info('待機人数が少ないため、この試合の自動配置を見送りました');
+          notified = true;
         } else if (res.continuousError === 'not_enough_players') {
           toast.info('待機中のプレイヤーが足りないため次の試合は配置されません');
+          notified = true;
         } else if (res.continuousError === 'assignment_failed') {
           toast.error('連続配置に失敗しました');
+          notified = true;
         }
+      }
+
+      // 誤終了は「押した本人が直後に気づく」ことが多いので、その場で戻せる導線を出す。
+      // undo は Firestore へ書き戻すので全員の画面が戻る（スタックは押した端末のみ）。
+      // トーストは重ねると重なって読めないため、連続配置の通知を出したときは譲る。
+      if (!notified) {
+        toast.showToast(
+          `${courts.length > 1 ? `${courtId}コート` : '試合'}を終了しました`,
+          'info',
+          FINISH_UNDO_TOAST_MS,
+          { label: '取り消す', onClick: () => void undo() },
+        );
       }
     } catch (err) {
       console.error('[FinishGame] Transaction failed:', err);
@@ -826,8 +854,18 @@ export function MainPage() {
     const currentCourt = courts.find((c) => c.id === courtId);
     if (!currentCourt) return;
     const matchStartedAt = currentCourt.startedAt;
-    // 90秒以内ならカスタム確認ダイアログを表示、それ以外は即終了
-    if (matchStartedAt && Date.now() - matchStartedAt < 90_000) {
+    // 4:30 未満は「まだ試合中」の可能性が高いので、どの試合を消そうとしているかを
+    // 見せて確認する。それ以降は長押し（FinishGameButton）だけを関門にする。
+    const elapsedMs = matchStartedAt ? Date.now() - matchStartedAt : 0;
+    if (matchStartedAt && elapsedMs < FINISH_CONFIRM_THRESHOLD_MS) {
+      setPendingFinishMessage(
+        buildFinishConfirmMessage({
+          courtId: courts.length > 1 ? courtId : null,
+          elapsedMs,
+          teamANames: currentCourt.teamA.filter((id) => id).map(getPlayerName),
+          teamBNames: currentCourt.teamB.filter((id) => id).map(getPlayerName),
+        }),
+      );
       setPendingFinishCourtId(courtId);
       return;
     }
@@ -1172,15 +1210,15 @@ export function MainPage() {
             >
               {matchCallAlert ? <Bell size={18} /> : <BellOff size={18} />}
             </button>
-            {isAdmin() && (
-              <button
-                onClick={() => navigate('/settings')}
-                className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors"
-                aria-label="設定"
-              >
-                <Settings size={18} />
-              </button>
-            )}
+            {/* 設定は全員に出す。中身は「この端末の設定」だけが誰でも触れ、
+                セッション設定は SettingsPage 側で管理者限定にしている。 */}
+            <button
+              onClick={() => navigate('/settings')}
+              className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors"
+              aria-label="設定"
+            >
+              <Settings size={18} />
+            </button>
           </div>
         </div>
       </header>
@@ -1355,6 +1393,7 @@ export function MainPage() {
                           key={court.startPressedAt ?? court.startedAt}
                           startPressedAt={court.startPressedAt ?? court.startedAt}
                           canFinish={canFinish}
+                          requireHold={finishHoldToConfirm}
                           onFinish={() => handleFinishGameClick(court.id)}
                           onBlocked={handleFinishBlocked}
                         />
@@ -1598,6 +1637,8 @@ export function MainPage() {
           key={t.id}
           message={t.message}
           type={t.type}
+          duration={t.duration}
+          action={t.action}
           onClose={() => toast.hideToast(t.id)}
         />
       ))}
@@ -1614,11 +1655,11 @@ export function MainPage() {
         />
       )}
 
-      {/* 90秒以内の試合終了の確認ダイアログ（誤タップ防止） */}
+      {/* 開始間もない試合を終了しようとしたときの確認ダイアログ（誤タップ防止） */}
       {pendingFinishCourtId !== null && (
         <ConfirmDialog
-          title="試合を終了しますか？"
-          message={'試合開始から90秒以内です。\n誤タップではありませんか？'}
+          title="この試合を終了しますか？"
+          message={pendingFinishMessage}
           confirmLabel="終了"
           cancelLabel="キャンセル"
           destructive

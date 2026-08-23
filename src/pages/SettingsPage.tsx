@@ -14,7 +14,7 @@ import { buildSessionUrl, copyToClipboard } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2, Link as LinkIcon, Copy } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2, StopCircle, Link as LinkIcon, Copy } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -45,6 +45,8 @@ export function SettingsPage() {
   const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
   const adminMatchCallAnnounce = useSettingsStore((s) => s.adminMatchCallAnnounce);
   const setAdminMatchCallAnnounce = useSettingsStore((s) => s.setAdminMatchCallAnnounce);
+  const finishHoldToConfirm = useSettingsStore((s) => s.finishHoldToConfirm);
+  const setFinishHoldToConfirm = useSettingsStore((s) => s.setFinishHoldToConfirm);
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
   const writer = useSessionWriterWithToast(toast);
@@ -66,11 +68,9 @@ export function SettingsPage() {
     );
   }
 
-  // 管理者権限チェック
-  if (!userIsAdmin) {
-    navigate('/main');
-    return null;
-  }
+  // 管理者権限チェックはページ単位では行わない。セッション設定（コート設定・
+  // 管理者管理・削除など）は管理者だけに出すが、**端末ローカル設定は誰でも
+  // 触れる必要がある**（終了操作は管理者に限らず操作担当も行うため）。
 
   // セッション URL。共有 UI は 2026-05-07 に撤去したが、一覧の自動非表示
   // （最後の試合から30分）で見つけられなくなった場合の緊急避難措置として復活させた。
@@ -268,6 +268,53 @@ export function SettingsPage() {
       </div>
 
       <div className="max-w-md mx-auto p-3 space-y-3">
+        {/* 端末ローカル設定（管理者でなくても触れる。以降のセッション設定と
+            混ざらないよう見出しで区切る） */}
+        <h2 className="text-xs font-bold text-muted-foreground px-1 pt-1">この端末の設定</h2>
+
+        {/* 終了ボタンの長押し */}
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+            <span className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center">
+              <StopCircle size={14} className="text-indigo-600" />
+            </span>
+            終了ボタンの長押し
+          </h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setFinishHoldToConfirm(true)}
+              className={`flex-1 select-button text-xs px-2 ${
+                finishHoldToConfirm ? 'select-button-active' : 'select-button-inactive'
+              }`}
+            >
+              {finishHoldToConfirm && <span className="mr-1">✓</span>}
+              ON
+            </button>
+            <button
+              onClick={() => setFinishHoldToConfirm(false)}
+              className={`flex-1 select-button text-xs px-2 ${
+                !finishHoldToConfirm ? 'select-button-active' : 'select-button-inactive'
+              }`}
+            >
+              {!finishHoldToConfirm && <span className="mr-1">✓</span>}
+              OFF
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            ON なら試合終了は長押しで確定します（誤タップ防止）。操作に慣れていれば OFF でタップ1回にできます。開始直後のロックと、始まったばかりの試合の確認ダイアログは OFF でも出ます。
+          </p>
+        </div>
+
+        {!userIsAdmin && (
+          <p className="text-[10px] text-muted-foreground px-1">
+            これ以外の設定は管理者のみ変更できます。
+          </p>
+        )}
+
+        {userIsAdmin && (
+        <>
+        <h2 className="text-xs font-bold text-muted-foreground px-1 pt-2">セッションの設定</h2>
+
         {/* コート設定 */}
         <div className="card p-4">
           <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
@@ -684,6 +731,8 @@ export function SettingsPage() {
               セッションを削除
             </button>
           </div>
+        )}
+        </>
         )}
       </div>
 

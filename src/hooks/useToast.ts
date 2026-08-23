@@ -1,20 +1,24 @@
 import { useMemo, useState, useCallback } from 'react';
-import type { ToastType } from '../components/Toast';
+import type { ToastAction, ToastType } from '../components/Toast';
 
 interface ToastState {
   id: string;
   message: string;
   type: ToastType;
   duration?: number;
+  action?: ToastAction;
 }
 
 export function useToast() {
   const [toasts, setToasts] = useState<ToastState[]>([]);
 
-  const showToast = useCallback((message: string, type: ToastType = 'info', duration?: number) => {
-    const id = `toast-${Date.now()}-${Math.random()}`;
-    setToasts((prev) => [...prev, { id, message, type, duration }]);
-  }, []);
+  const showToast = useCallback(
+    (message: string, type: ToastType = 'info', duration?: number, action?: ToastAction) => {
+      const id = `toast-${Date.now()}-${Math.random()}`;
+      setToasts((prev) => [...prev, { id, message, type, duration, action }]);
+    },
+    [],
+  );
 
   const hideToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
