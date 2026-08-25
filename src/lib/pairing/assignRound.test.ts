@@ -514,3 +514,55 @@ describe('後半均等化モード（公平性の窓を狭める）', () => {
     );
   });
 });
+
+describe('順位差のハード制約: 登録序列とハシゴ式序列の両方で判定する', () => {
+  // 16人1コート。狙いの4人（p0, p1, p14, p15）を優先度で先頭に固定し、
+  // ハシゴ式序列でも隣同士にしておく。この4人が通るかどうかは
+  // **登録序列の幅だけ**で決まる、という状況を作る。
+  const target = ['p0', 'p1', 'p14', 'p15'];
+  const ids = Array.from({ length: 16 }, (_, i) => `p${i}`);
+  const candidates = ids.map(id => makePlayer(id));
+  // 優先度: 狙いの4人が 0..3、残りは 10 以降
+  const priority = (p: Player) => {
+    const i = target.indexOf(p.id);
+    return i >= 0 ? i : 10 + ids.indexOf(p.id);
+  };
+  // ハシゴ式後は狙いの4人が先頭に固まっている（＝当日の調子は近い）
+  const formOrder = [...target, ...ids.filter(id => !target.includes(id))];
+
+  const run = (rankById: Map<string, number>) =>
+    assignRoundByObjective({
+      candidates,
+      courtIds: [1],
+      rankById,
+      formRankById: rankByIdFrom(formOrder),
+      rosterSize: 16,
+      priorityScoreOf: priority,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: Math.ceil(16 * (2 / 3)), // 11
+      preferGenderMix: false,
+    });
+
+  it('ハシゴ式序列で近くても、登録序列で幅が広すぎれば同居させない', () => {
+    // 登録序列は id 順 → p0(0), p1(1), p14(14), p15(15) で幅15 ≥ 11 → 違反
+    const regRank = rankByIdFrom(ids);
+    const result = run(regRank);
+    expect(result).toHaveLength(1);
+    const picked = [...result[0].teamA, ...result[0].teamB];
+    const span =
+      Math.max(...picked.map(id => regRank.get(id)!)) -
+      Math.min(...picked.map(id => regRank.get(id)!));
+    expect(span).toBeLessThan(11);
+    // 優先度どおりの4人がそのまま通ってはいない
+    expect(new Set(picked)).not.toEqual(new Set(target));
+  });
+
+  it('登録序列でも近ければ、その4人がそのまま選ばれる（テストが空回りしていない）', () => {
+    // formRank と同じ並びを登録序列にすると、狙いの4人は幅3 → 制約を通る
+    const result = run(rankByIdFrom(formOrder));
+    const picked = new Set([...result[0].teamA, ...result[0].teamB]);
+    expect(picked).toEqual(new Set(target));
+  });
+});
