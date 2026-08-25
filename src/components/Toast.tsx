@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CheckCircle, XCircle, Info, AlertTriangle } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
@@ -25,14 +25,29 @@ interface ToastProps {
 export function Toast({ message, type, onClose, duration = 3000, action }: ToastProps) {
   const [isVisible, setIsVisible] = useState(true);
 
+  // TOAST2 fix: 自動クローズのタイマーを onClose の識別子に依存させない。
+  // 呼び出し側（MainPage）は `onClose={() => toast.hideToast(t.id)}` を毎レンダー
+  // 作り直すため、依存に入れると **親が再レンダリングするたびにタイマーが振り出しに
+  // 戻り**、トーストが時間で消えなくなる（MainPage は呼び出し判定の 10 秒
+  // インターバルや onSnapshot 受信で頻繁に再レンダリングする）。
+  const onCloseRef = useRef(onClose);
   useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  useEffect(() => {
+    let fadeTimer: ReturnType<typeof setTimeout> | undefined;
     const timer = setTimeout(() => {
       setIsVisible(false);
-      setTimeout(onClose, 300);
+      // フェードアウト（200ms）を見せてから親のリストから消す
+      fadeTimer = setTimeout(() => onCloseRef.current(), 300);
     }, duration);
 
-    return () => clearTimeout(timer);
-  }, [duration, onClose]);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(fadeTimer);
+    };
+  }, [duration]);
 
   const icons = {
     success: <CheckCircle className="text-green-500" size={20} />,
