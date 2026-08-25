@@ -126,6 +126,9 @@ interface RunResult {
   maxIdle: number;         // 自分が出ていない間に行われた試合数の最大（低いほど良い）
   // 目的3: 大きく実力の離れたメンバーを同居させない
   wideGapRate: number;     // trueRank の幅が閾値以上だった試合の割合（低いほど良い）
+  regTopBottomRate: number; // 登録レートの上位1/3 × 下位1/3 が同居した試合の割合
+  carryRate: number;        // コート内の登録最上位が最下位と同じチームになった割合
+  overratedWinRate: number; // 「登録が実力より 1/3 以上高い人」の勝率（-1 = 該当者なし）
   trueGap: number;         // 4人の trueRank の最大−最小の平均（低いほど良い）
   // 目的4: 競る試合になる
   closeness: number;       // |真の勝率 − 0.5| の平均（低いほど競っている）
@@ -255,8 +258,16 @@ function runOnce(
   // ---- 集計（実力の評価はすべて trueRank 基準）----
   // 目的3 の閾値。plan で採用した B 案（順位差が全体の 2/3 以上なら「大きく離れている」）
   const wideGapThreshold = Math.ceil((n * 2) / 3);
+  // 登録レート（rating 降順）の順位。アプリに入っている序列そのもの。
+  const regRankById = new Map(
+    [...players].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+      .map((p, i) => [p.id, i] as const)
+  );
+  const regThird = Math.floor(n / 3);
 
   let wideGapMatches = 0;
+  let regTopBottomMatches = 0;
+  let carryMatches = 0;
   let gapSum = 0;
   let closenessSum = 0;
   let genderSkewMatches = 0;
@@ -285,6 +296,23 @@ function runOnce(
     const gap = Math.max(...ranks) - Math.min(...ranks);
     gapSum += gap;
     if (gap >= wideGapThreshold) wideGapMatches++;
+
+    // 登録レート（アプリに入っている序列）の上位1/3 × 下位1/3 の同居。
+    // 幅広% は trueRank 基準なので、「登録レート的に一番上と一番下」が混ざって
+    // いるかは別に数える必要がある。
+    const regs = ids.map(id => regRankById.get(id)!);
+    if (regs.some(r => r < regThird) && regs.some(r => r >= n - regThird)) {
+      regTopBottomMatches++;
+    }
+    // コート内の最上位が最下位と組まされている（＝一番強い人が一番弱い人を背負う）。
+    // competitive は順位和を釣り合わせるため常に (r1+r4) vs (r2+r3) を選ぶので、
+    // コートに幅があるほどこれが起きる。4人ランダムなら 1/3。
+    {
+      const sorted = [...ids].sort((a, b) => regRankById.get(a)! - regRankById.get(b)!);
+      const hi = sorted[0], lo = sorted[3];
+      if ((m.teamA.includes(hi) && m.teamA.includes(lo)) ||
+          (m.teamB.includes(hi) && m.teamB.includes(lo))) carryMatches++;
+    }
 
     // 目的4: 真の実力から見た勝率が 0.5 からどれだけ離れているか
     const diff = strength(m.teamA.map(id => byId.get(id)!)) -
@@ -365,6 +393,22 @@ function runOnce(
     gamesSpread: Math.max(...games) - Math.min(...games),
     maxIdle,
     wideGapRate: history.length ? wideGapMatches / history.length : 0,
+    overratedWinRate: (() => {
+      // 登録序列が実力より大きく上（＝過大評価）の人が、実力相応の帯まで降りて
+      // たまに勝てているか。安全網を登録序列で張ると降りられず勝率が落ちる。
+      const targets = players.filter(
+        p => p.trueRank - (regRankById.get(p.id) ?? 0) >= n / 4
+      );
+      if (targets.length === 0) return -1;
+      let w = 0, g = 0;
+      for (const p of targets) {
+        w += winsById.get(p.id) ?? 0;
+        g += games[players.indexOf(p)] ?? 0;
+      }
+      return g > 0 ? w / g : -1;
+    })(),
+    regTopBottomRate: history.length ? regTopBottomMatches / history.length : 0,
+    carryRate: history.length ? carryMatches / history.length : 0,
     trueGap: history.length ? gapSum / history.length : 0,
     closeness: history.length ? closenessSum / history.length : 0,
     genderSkewRate: history.length ? genderSkewMatches / history.length : 0,
@@ -403,7 +447,7 @@ if (LATE_JOIN > 0) console.log('  遅参加=在席時間に比例した期待値
 console.log('  （共演のみ高いほど良い。他はすべて低いほど良い）');
 console.log('');
 console.log(
-  '  条件      NOISE  幅広%  競り度  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち  勝率SD%' +
+  '  条件      NOISE  幅広%  登録上下%  背負い%  過大勝率%  競り度  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち  勝率SD%' +
     (LATE_JOIN > 0 ? '  遅参加' : '')
 );
 console.log('  ' + '-'.repeat(72));
@@ -425,6 +469,12 @@ for (const { n, courtCount } of CONDITIONS) {
     console.log(
       `  ${`${n}人${courtCount}C`.padEnd(9)} ${String(noise).padStart(5)}  ` +
         `${(avg(r => r.wideGapRate) * 100).toFixed(1).padStart(5)}  ` +
+        `${(avg(r => r.regTopBottomRate) * 100).toFixed(1).padStart(8)}  ` +
+        `${(avg(r => r.carryRate) * 100).toFixed(1).padStart(6)}  ` +
+        `${(() => {
+          const vs = results.map(r => r.overratedWinRate).filter(v => v >= 0);
+          return vs.length ? ((vs.reduce((a, b) => a + b, 0) / vs.length) * 100).toFixed(1) : '  --';
+        })().padStart(8)}  ` +
         `${(avg(r => r.closeness) * 100).toFixed(1).padStart(6)}  ` +
         `${(avg(r => r.genderSkewRate) * 100).toFixed(1).padStart(4)}  ` +
         `${(avg(r => r.mvfRate) * 100).toFixed(1).padStart(5)}  ` +

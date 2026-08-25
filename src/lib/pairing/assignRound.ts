@@ -27,9 +27,14 @@ export interface AssignRoundParams {
   /**
    * 登録レートそのままの順位（ハシゴ式適用**前**、0始まり）。
    *
-   * **登録レートは `formRankById` の初期値を決めるためだけに存在する**という方針に
-   * したため、この engine の中では現在どこにも使っていない。`formRankById` を
-   * 省略したときのフォールバックとしてのみ残している。
+   * 用途は**順位差のハード制約のみ**。「初期レートの高い人と下位層を混ぜない」
+   * ための判定に使う（`formRankById` と両方で判定し、どちらかを破れば違反）。
+   * 帯の形成（`skillGap`）とチームの釣り合い（`competitive` / `normalizeSplit`）
+   * には使わない — そちらは `formRankById`。
+   *
+   * 2026-08-18 に一度この用途からも外して `formRankById` だけで判定していたが、
+   * 登録レート的な最上位層と最下位層の同居が実データで 56.2% まで起きたため
+   * 2026-08-25 に復活させた。
    */
   rankById: Map<string, number>;
   /**
@@ -39,16 +44,16 @@ export interface AssignRoundParams {
    * 勝敗で上下する。帯の形成（`skillGap`）とチームの釣り合い（`competitive` /
    * `normalizeSplit`）はこちらを使う。
    *
-   * 順位差のハード制約・初期解の実現可能性判定・`reachableCountById` も含めて
-   * **すべてこの序列で判定する**。登録レートは初期値を与えるだけで、以後は
-   * 参照しない。
+   * `reachableCountById` はこの序列だけで数える。順位差のハード制約と初期解の
+   * 実現可能性判定は **この序列と `rankById` の両方**で判定する（どちらかを
+   * 破れば違反）。
    *
-   * 旧エンジンは安全網（`hasWideRankSpan`）を登録序列で張っていたが、それだと
+   * 旧エンジンは安全網（`hasWideRankSpan`）を登録序列だけで張っていたが、それだと
    * 登録レートが実力とズレている人が実力相応の帯まで降りられない（登録4位の人は
    * ハシゴ式で13位まで沈んでも 16位以降と同居できず、勝率が23%で頭打ちになった）。
-   * 「本当に上位だが連敗している人」と「そもそも上位ではない人」を登録序列からは
-   * 区別できない以上、安全網を登録序列で張ると後者が救えない。ハシゴ式の
-   * `maxDrift`（±1グループ）が振れ幅を抑えるので、そちらで安全側を担保する。
+   * 逆にこの序列だけにすると、登録レート的な最上位層と最下位層の同居が実データで
+   * 56.2% まで起きた。**両方を課すのが折衷案**で、ハシゴ式の振れ幅は
+   * `maxDrift`（±1グループ）が抑える。
    */
   formRankById?: Map<string, number>;
   rosterSize: number;
@@ -238,6 +243,11 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     initialCourts = usedCourtIds.map(courtId => {
       const chosenIndices: number[] = [0];
       const courtRanks: number[] = [formRankById.get(pool[0].id) ?? 0];
+      // 登録序列側の幅も同時に見る。局所探索の近傍は「出場者⇔控えの1人スワップ」
+      // しか無いため、4人中2人を同時に入れ替えないと解消しない違反は初期解から
+      // 抜け出せない（例: ハシゴ式序列では隣同士だが登録序列では両端、という4人。
+      // 1人ずつ入れ替えても幅が閾値未満にならず、最急降下がその場に留まる）。
+      const courtBaseRanks: number[] = [rankById.get(pool[0].id) ?? 0];
 
       // 制約を満たす範囲で優先度順に3人追加。
       //
@@ -248,12 +258,17 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
         const rank = formRankById.get(pool[i].id) ?? 0;
         const gap = Math.max(...courtRanks, rank) - Math.min(...courtRanks, rank);
         if (gap >= threshold) continue;
+        const baseRank = rankById.get(pool[i].id) ?? 0;
+        const baseGap =
+          Math.max(...courtBaseRanks, baseRank) - Math.min(...courtBaseRanks, baseRank);
+        if (baseGap >= threshold) continue;
         if (chosenIndices.length === 3) {
           const members = [...chosenIndices.map(k => pool[k].id), pool[i].id];
           if (isRecentDuplicate(members)) continue;
         }
         chosenIndices.push(i);
         courtRanks.push(rank);
+        courtBaseRanks.push(baseRank);
       }
 
       // 制約を満たす人が足りない場合、優先度順に残りを埋める。
@@ -292,8 +307,11 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       const acceptable = (trial: CourtState['slots']): boolean => {
         if (isRecentDuplicate([...trial])) return false;
         if (wideSpanThreshold === null) return true;
-        const ranks = trial.map(id => formRankById.get(id) ?? 0);
-        return Math.max(...ranks) - Math.min(...ranks) < wideSpanThreshold;
+        for (const rankMap of [formRankById, rankById]) {
+          const ranks = trial.map(id => rankMap.get(id) ?? 0);
+          if (Math.max(...ranks) - Math.min(...ranks) >= wideSpanThreshold) return false;
+        }
+        return true;
       };
       const apply = (trial: CourtState['slots'], slots: number[], picks: number[]): void => {
         const removed = slots.map(slot => sortedCandidates.find(p => p.id === court.slots[slot])!);
@@ -411,12 +429,27 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     for (const court of s.courts) {
       const members = courtMembers(court);
       if (wideSpanThreshold !== null) {
-        const ranks = members
-          .map(id => formRankById.get(id))
-          .filter((r): r is number => r !== undefined);
-        if (ranks.length === members.length) {
-          const gap = Math.max(...ranks) - Math.min(...ranks);
-          if (gap >= wideSpanThreshold) violations++;
+        // 順位差のハード制約は **2つの序列の両方** で判定する。
+        //
+        //   formRank（ハシゴ式後） … 当日の調子を含めた実働の帯を守る
+        //   rankById（登録レート）  … 登録レート的な最上位層と最下位層を混ぜない
+        //
+        // formRank だけで判定していた時期は、ハシゴ式で序列が入れ替わるぶん
+        // 「登録レートの上位1/3 × 下位1/3」の同居が実データで 56.2% まで起きていた
+        // （2026-08-22 / 20人48試合）。運用上「初期レートの高い人が下位と混ざる
+        // 試合は避けたい」という要求があり、登録序列側の判定を足した。
+        // 計測: docs/plans/2026-08-05-pairing-goals-and-rewrite.md
+        // formRankById 省略時は rankById と同一なので二重に数えない
+        const rankMaps =
+          formRankById === rankById ? [formRankById] : [formRankById, rankById];
+        for (const rankMap of rankMaps) {
+          const ranks = members
+            .map(id => rankMap.get(id))
+            .filter((r): r is number => r !== undefined);
+          if (ranks.length === members.length) {
+            const gap = Math.max(...ranks) - Math.min(...ranks);
+            if (gap >= wideSpanThreshold) violations++;
+          }
         }
       }
       if (isRecentDuplicate(members)) violations++;
