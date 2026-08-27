@@ -42,8 +42,8 @@ function formatNames(names: string[], suffix: string): string {
  * - 該当者ゼロなら何も描画しない
  *
  * 画面上部には終了操作ガイド（`FinishOperationGuide`）も並ぶため、こちらは
- * 幅・高さともに最小限のチップにとどめる。外側の余白まで自前で描画するのは、
- * 非表示のときに空の余白行を残さないため（ガイド側と同じ方針）。
+ * 幅・高さともに最小限のチップにとどめる。外側の余白（px/py・ガイドとの間隔）は
+ * 呼び出し側（`MainPage` の上部帯コンテナ）がまとめて持つので、ここでは持たない。
  */
 export function PresenceIndicator({ presence, currentUser }: Props) {
   const [now, setNow] = useState<number>(() => Date.now());
@@ -69,7 +69,7 @@ export function PresenceIndicator({ presence, currentUser }: Props) {
   const names = isActing ? acting : entries.map(([name]) => name);
 
   return (
-    <div className="px-4 pt-2 flex justify-center pointer-events-none">
+    <div className="flex justify-center pointer-events-none">
       <div
         className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] leading-tight shadow-sm max-w-full ${
           isActing

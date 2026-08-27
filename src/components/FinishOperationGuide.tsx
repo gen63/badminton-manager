@@ -110,42 +110,37 @@ export function FinishOperationGuide({
   const selfRingClass = imminent ? 'ring-1 ring-orange-400' : 'ring-1 ring-indigo-300';
   const selfChipClass = imminent ? 'bg-orange-600 text-white' : 'bg-indigo-600 text-white';
 
-  // 外側の余白まで含めて描画する。ガイドが無いとき（null 復帰）に空の余白行が
-  // 残らないよう、呼び出し側ではなくこのコンポーネントが px/pt を持つ。
+  // 外側の余白（px/py・プレゼンス表示との間隔）は呼び出し側（`MainPage` の
+  // 上部帯コンテナ）がまとめて持つ。ここで持つと下に隣接する全幅バナー
+  // （未完了タスク／一括配置待ち）と枠線が接して重なって見えるため。
   return (
-    <div className="px-4 pt-2">
-      <div
-        className={`rounded-xl border px-3 py-1.5 flex items-center gap-2 flex-wrap ${containerClass} ${
-          isSelfTarget ? selfRingClass : ''
-        } ${flashing ? 'finish-guide-flash' : ''}`}
-        data-testid="finish-operation-guide"
-        data-phase={guide.phase}
-        role="status"
-      >
-        <MapPin
-          size={14}
-          className={`shrink-0 ${imminent ? 'text-orange-600' : ''}`}
-          aria-hidden
-        />
-        <span className={`text-xs ${imminent ? 'font-bold' : 'font-medium'}`}>
-          {buildFinishOperationGuideHeadline(guide)}
-        </span>
-        <span className="flex items-center gap-1 flex-wrap">
-          {targets.map((player) => {
-            const isSelf = player.id === selfPlayerId;
-            const chipClass = isSelf
-              ? `${selfChipClass} font-semibold`
-              : imminent
-                ? 'bg-card border border-orange-300 text-orange-800 font-medium'
-                : 'bg-card border border-border text-foreground font-medium';
-            return (
-              <span key={player.id} className={`px-2 py-0.5 rounded-full text-xs ${chipClass}`}>
-                {player.name}
-              </span>
-            );
-          })}
-        </span>
-      </div>
+    <div
+      className={`rounded-xl border px-3 py-1.5 flex items-center gap-2 flex-wrap ${containerClass} ${
+        isSelfTarget ? selfRingClass : ''
+      } ${flashing ? 'finish-guide-flash' : ''}`}
+      data-testid="finish-operation-guide"
+      data-phase={guide.phase}
+      role="status"
+    >
+      <MapPin size={14} className={`shrink-0 ${imminent ? 'text-orange-600' : ''}`} aria-hidden />
+      <span className={`text-xs ${imminent ? 'font-bold' : 'font-medium'}`}>
+        {buildFinishOperationGuideHeadline(guide)}
+      </span>
+      <span className="flex items-center gap-1 flex-wrap">
+        {targets.map((player) => {
+          const isSelf = player.id === selfPlayerId;
+          const chipClass = isSelf
+            ? `${selfChipClass} font-semibold`
+            : imminent
+              ? 'bg-card border border-orange-300 text-orange-800 font-medium'
+              : 'bg-card border border-border text-foreground font-medium';
+          return (
+            <span key={player.id} className={`px-2 py-0.5 rounded-full text-xs ${chipClass}`}>
+              {player.name}
+            </span>
+          );
+        })}
+      </span>
     </div>
   );
 }
