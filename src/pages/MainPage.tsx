@@ -1223,20 +1223,21 @@ export function MainPage() {
         </div>
       </header>
 
-      {/* プレゼンス表示（他ユーザーが画面を開いている/操作中のとき） */}
+      {/* ヘッダー直下の帯。プレゼンス表示（他ユーザーが画面を開いている/操作中の
+          とき）と終了操作の担当案内（次の試合に入るメンバーへ継続表示）を
+          まとめ、両者の間隔と上下の余白をここで一括して持つ。どちらも条件次第で
+          null を返すため、中身が空になったら `empty:hidden` で余白ごと畳む。 */}
       {session?.id && (
-        <PresenceIndicator presence={remotePresence} currentUser={currentUser} />
-      )}
-
-      {/* 終了操作の担当案内（次の試合に入るメンバーへ継続表示） */}
-      {session?.id && (
-        <FinishOperationGuide
-          courts={courts}
-          certainIds={nextMatchPrediction.certainIds}
-          players={predictedPlayers}
-          selfPlayerId={myPlayerId}
-          showCourtNumber={courts.length > 1}
-        />
+        <div className="px-4 py-2 flex flex-col gap-2 empty:hidden">
+          <PresenceIndicator presence={remotePresence} currentUser={currentUser} />
+          <FinishOperationGuide
+            courts={courts}
+            certainIds={nextMatchPrediction.certainIds}
+            players={predictedPlayers}
+            selfPlayerId={myPlayerId}
+            showCourtNumber={courts.length > 1}
+          />
+        </div>
       )}
 
       {/* 運営タスク（自分の分だけ、全て完了で非表示） */}
