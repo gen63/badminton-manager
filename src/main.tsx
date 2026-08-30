@@ -11,7 +11,7 @@ if (window.location.search.includes('debug')) {
   });
 }
 
-// dev mode: ?dev=1 で有効化（localStorageに永続）
+// dev mode: ?dev=<DEV_MODE_CODE> で有効化（localStorageに永続）
 applyDevModeFromUrl();
 
 createRoot(document.getElementById('root')!).render(

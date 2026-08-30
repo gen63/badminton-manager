@@ -21,6 +21,7 @@ vi.mock('../services/sessionService', () => ({
 }));
 
 import { useSessionAutoExit, AUTO_EXIT_CHECK_INTERVAL_MS } from './useSessionAutoExit';
+import { DEV_MODE_CODE } from './useDevMode';
 import { useSessionStore } from '../stores/sessionStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
@@ -143,7 +144,7 @@ describe('useSessionAutoExit', () => {
   });
 
   it('dev モードでは退出しない', () => {
-    localStorage.setItem('dev-mode', '1');
+    localStorage.setItem('dev-mode', DEV_MODE_CODE);
     const finishedAt = NOW - 3 * 60 * 60 * 1000;
     setupSession([makeMatch(finishedAt - 10 * 60 * 1000, finishedAt)]);
 
