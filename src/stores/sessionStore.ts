@@ -2,11 +2,12 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AccountingInput, Session, SessionConfig } from '../types/session';
 import { useUnrecordedDismissStore } from './unrecordedDismissStore';
+import { DEV_MODE_CODE } from '../hooks/useDevMode';
 
 // 開発モード判定（useDevMode フックはコンポーネント専用のため localStorage を直読みする）
 const isDevMode = (): boolean => {
   try {
-    return typeof localStorage !== 'undefined' && localStorage.getItem('dev-mode') === '1';
+    return typeof localStorage !== 'undefined' && localStorage.getItem('dev-mode') === DEV_MODE_CODE;
   } catch {
     return false;
   }
