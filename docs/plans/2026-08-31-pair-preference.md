@@ -39,11 +39,20 @@
 export interface PairPreference {
   id: string;
   playerIds: [string, string];   // 常に2人。3人以上は扱わない
-  /** 目標成立比率。0.35 = ひかえめ / 0.6 = 積極的（UI は2段階） */
-  targetRatio: number;
+  /**
+   * 強度。`normal` = ソフト（目的関数の第7項のみ）、
+   * `strong` = ソフト + ハード制約（両方が出るなら必ず味方）。詳細は 3d。
+   */
+  strength: 'normal' | 'strong';
   createdAt: number;
   createdBy?: string;
 }
+
+/** `strength` から目標成立比率を導く。値は bench で決める（6. 参照） */
+const TARGET_RATIO: Record<PairPreference['strength'], number> = {
+  normal: 0.5,
+  strong: 1.0,
+};
 ```
 
 `GameState`（`src/services/sessionService.ts`）に **optional** で追加する。旧セッション
@@ -79,6 +88,7 @@ export interface GameState {
 機会   opportunity = min(gamesPlayed_a, gamesPlayed_b)          … 組み得た試合数の上限
 達成度 achieved    = actual / max(1, opportunity)
 不足度 deficit     = clamp01((targetRatio − achieved) / targetRatio)
+                     ※ targetRatio は `TARGET_RATIO[pref.strength]`（normal 0.5 / strong 1.0）
 ```
 
 - `deficit > 0`（目標を下回っている）ときだけペナルティが立つ
@@ -165,6 +175,69 @@ affinityDeficitByPairKey: Map<string, number>;
 **実用上の推奨は1〜3組**。UI で組数を制限はしないが、bench は **N = 1 / 3 / 6** で測り、
 1組（効き目最大・偏り最大）と6組（薄まりすぎ）の両端を押さえる。重みを1組の
 最悪ケースで決める必要があるのは 6.（重みの決め方）に記載のとおり。
+
+### 3d. 強度「必ず」（`strong`）— ハード制約として置く
+
+**`targetRatio` を 1.0 にしても「必ず」にはならない。** `affinity` は有限の重みを持つ
+目的関数の1項なので、`skillGap`（1.5）+ `gender`（1.6）+ `variety`（2.6）の合計に
+押し負ける場面が必ず残る。得られるのは「ほぼ毎回」であって保証ではない。
+**保証が要るならハード制約（`violations`）側に置く**しかない。
+
+#### 意味論 — (a) だけを採用する
+
+| | 内容 | 採否 |
+|---|---|---|
+| (a) | 両方が同じラウンドで出るなら、**必ず味方** | **採用** |
+| (b) | 加えて、片方が出るならもう片方も出す | **不採用** |
+
+**(b) は公平性の窓（ハード制約）と正面衝突する。** 片方が窓の内側・片方が外側のとき
+どちらのハード制約も満たせず、辞書式比較が「違反数が同じ候補」から実質任意に選ぶため
+**挙動が予測不能になる**。
+
+**(a) は常に充足可能。** 公平性の窓の判定は**コートに乗っている人にしか適用されない**
+（`assignRound.ts:464` 付近。窓の外の人を出場させたら違反、であって「窓の中の人を必ず
+出場させろ」ではない）ので、片方をベンチに回す解がいつでも存在する。逆に候補が
+ぴったり必要人数でベンチが作れない場合も、2人を同じコートの味方に置く分割は必ず
+存在する。**どちらに転んでも詰まない。**
+
+#### 公平性の設計が変わらないという性質
+
+(a) だけをハードにすると、**`strong` は出場頻度に一切干渉せず「一緒に出たときの
+組み方」だけを保証する**設定になる。
+
+3b の公平性リークは**ソフト項が2人をコートへ引っ張る**ことに由来しており、ハード制約の
+側は引っ張る力を持たない。したがって `reservationBlockThreshold` のガードは従来どおり
+**ソフト項にだけ**掛ければよく、`strong` でも公平性の設計は変わらない
+（ガードが効いて `deficit = 0` になっても、ハード制約は生き続ける）。
+
+#### 実装
+
+`evaluate()` に違反判定を1つ足すだけ。`splitCost`（4. 参照）は `normal` 向けの実装が
+そのまま効くので追加不要。
+
+```ts
+// evaluate() 内
+for (const pref of strongPreferences) {
+  const [a, b] = pref.playerIds;
+  const courtOf = (id: string) => s.courts.find(c => c.slots.includes(id));
+  const ca = courtOf(a), cb = courtOf(b);
+  if (!ca || !cb) continue;            // 片方でもベンチなら制約なし（(a) の意味論）
+  if (ca !== cb) { violations++; continue; }
+  const partners =
+    (ca.slots[0] === a && ca.slots[1] === b) || (ca.slots[0] === b && ca.slots[1] === a) ||
+    (ca.slots[2] === a && ca.slots[3] === b) || (ca.slots[2] === b && ca.slots[3] === a);
+  if (!partners) violations++;
+}
+```
+
+#### 注意点2つ
+
+- **同じ人を含む `strong` を2つ登録できないようにする。** A-B と B-C が両方 `strong`
+  だと、3人とも出場したとき原理的に充足不可能。**UI 側のバリデーションで弾く**
+  （`normal` 同士なら重複しても単に競合するだけなので許容する）
+- **候補が必要人数ちょうどのとき**（12人3コートで全員待機など）はベンチが作れないため、
+  実力差の大きい `strong` ペアでは「味方にする違反」と「順位差の違反」の
+  トレードオフになる。稀だが挙動として記録しておく
 
 ### 4. 実装上の落とし穴 — `splitCost` にも入れる（必ず踏む）
 
@@ -257,8 +330,9 @@ UI の警告はハード制約ではなくこの線で出す（後述）。
   試合数幅 +0.1 未満・3-1% +1.0pt 未満、かつ**希望ペア当事者の試合数超過が
   +0.5 未満**
 
-`targetRatio` の既定値（UI 2段階）も同じ bench で決める。初期案は
-**ひかえめ 0.35 / 積極的 0.6**。
+`TARGET_RATIO.normal` も同じ bench で決める（初期案 **0.5**）。`strong` は 1.0 固定で、
+成立の保証はハード制約が担うため bench の対象は「`strong` を入れても既存指標が
+壊れないこと」の確認に絞る。
 
 ---
 
@@ -277,17 +351,24 @@ UI の警告はハード制約ではなくこの線で出す（後述）。
 ──────────────────────────────
 ペア希望                       2組          ← 新規セクション
   ┌────────────────────────────┐
-  │ たろう ＋ はなこ    積極的   3/6組  🗑 │
+  │ たろう ＋ はなこ    必ず    3/6組  🗑 │
   └────────────────────────────┘
   [ ペア希望を追加 ]
 ```
 
 - **カード**: 2人の名前（既存の性別カラー踏襲: M=blue / F=pink）、強度バッジ
-  （ひかえめ / 積極的）、成立実績 `actual/opportunity`、削除ボタン
+  （**普通 / 必ず**）、成立実績 `actual/opportunity`、削除ボタン。
+  `必ず` は色を変えて（amber 系）ハード制約であることを見た目でも分ける
 - **追加モーダル**: `PairPreferenceAddModal`（新規）。`ReservationAddModal` は
   流用しない — 選択上限が2人固定で、強度の選択が要り、予約側の
   カテゴリ推測（`inferDoublesCategory`）は不要なため。プレイヤー一覧の見た目・
   並び（待機中→休憩中）は `ReservationAddModal` に揃える
+- **強度の選択**: `普通`（既定）/ `必ず` の2択トグル。3段階（ひかえめ / 普通 / 必ず）に
+  もできるが、スマホの1行カードに載せる情報としては2択の方が意味が明確なので
+  まず2段階で出す。増やすのは `TARGET_RATIO` に1行足すだけで済む
+- **`必ず` のバリデーション**: 既に `strong` に含まれているメンバーを選んだら
+  「〇〇さんは既に『必ず』の希望に入っています」と出して追加をブロックする
+  （3d の注意点。`normal` は重複を許可する）
 - **成立見込みの警告**: 追加モーダルに2段階で表示する（どちらもブロックはしない）。
   **ハード制約（`wideSpanThreshold`）を基準にすると実運用（最大25人）ではまず
   発火せず死にコードになる**ため、警告の主役は1グループ幅の方にする
@@ -320,7 +401,7 @@ UI の警告はハード制約ではなくこの線で出す（後述）。
 | `src/hooks/useSessionWriter.ts` | 上記2つのラッパ追加 |
 | `src/hooks/useFirebaseSync.ts` | `gameState.pairPreferences` → store へ反映（`jsonEqual` ガードは既存と同形） |
 | `src/lib/pairing/objective.ts` | `ObjectiveWeights.affinity` / `computeAffinity` / `ObjectiveInput.affinityDeficitByPairKey` |
-| `src/lib/pairing/assignRound.ts` | `AssignRoundParams.affinityDeficitByPairKey` を受けて `evaluate` と **`splitCost` の両方**へ渡す |
+| `src/lib/pairing/assignRound.ts` | `AssignRoundParams.affinityDeficitByPairKey` を受けて `evaluate` と **`splitCost` の両方**へ渡す。加えて `strongPairKeys: Set<string>` を受け、`evaluate` の違反判定に 3d の1ブロックを足す |
 | `src/lib/algorithm.ts` | `AssignCourtsOptions.pairPreferences?` を受け、`buildHistoryCounts` の結果・`players`・**既存の中央値と `reservationBlockThreshold`**（予約保留判定と同じ値を使い回す）から `deficit` を算出して `assignRoundByObjective` へ渡す |
 | `src/lib/gameOperations.ts` | `assignCourts` 呼び出しへ `pairPreferences` を渡す（`:291`） |
 | `src/pages/MainPage.tsx` | 同上（`:728`） |
@@ -344,7 +425,8 @@ UI の警告はハード制約ではなくこの線で出す（後述）。
    1ビットも変わらないことを先に確認する）
 5. `assignRound.ts` 接続（`evaluate` と `splitCost` の両方）
 6. `algorithm.ts` / 3つの呼び出し側の配線
-7. bench で `affinity` と `targetRatio` を決定 → `DEFAULT_WEIGHTS` へ反映
+7. `strong`（3d）のハード制約を `evaluate` に追加 + UI のバリデーション
+8. bench で `affinity` と `TARGET_RATIO.normal` を決定 → `DEFAULT_WEIGHTS` へ反映
 
 **4 と 5 の間で「`affinity: 0` なら既存の全テストが通る」ことを必ず確認する。**
 既存の配置挙動への回帰が無いことの担保がここにしか無い。
@@ -358,12 +440,16 @@ UI の警告はハード制約ではなくこの線で出す（後述）。
   （順位差が大きい希望は成立しない・公平性の窓を飛び越えない）/ 目標到達後は
   他の目的が優先される / **相手が候補プールにいないラウンドでは挙動が変わらない**
   （3b の「中立」性質の回帰テスト）
+- `assignRound.test.ts`（`strong`）— 両方が出るなら必ず味方になる / 片方だけの出場は
+  許される / **実力差が大きくても詰まない**（ベンチに回して充足する）/
+  候補=必要人数ちょうどでも解が返る（3d の充足可能性の回帰テスト）
 - `sessionMutations.test.ts` — 追加・削除・`computeRemovePlayer` 連動・
   **追加しても `isResting` が変わらないこと**（予約との差分の回帰テスト）
 
 ## スコープ外
 
 - 3人以上のグループ希望（`playerIds` は2人固定）
+- 3段階以上の強度（まず `普通 / 必ず` の2段階。増やすのは `TARGET_RATIO` に1行）
 - 「この2人は組ませない」の逆希望（要求が出てから別 plan で）
 - セッションを跨いだ希望の永続化（GAS / スプレッドシート側の話になる）
 - 希望のために順位差・公平性のハード制約を緩めること
