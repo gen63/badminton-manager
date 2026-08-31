@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Plus, Trash2, ChevronDown, Users, Clock, CheckCircle2, CalendarCheck, Heart } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, Users, Clock, CheckCircle2, CalendarCheck } from 'lucide-react';
 import { useReservationStore } from '../stores/reservationStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
@@ -238,7 +238,6 @@ export function ReservationPage() {
         {!isSingles && (
           <div className="mt-6 pt-4 border-t border-border">
             <div className="flex items-center gap-2 mb-3">
-              <Heart size={16} />
               <h2 className="text-sm font-bold text-foreground">ペア希望</h2>
               {pairPreferences.length > 0 && (
                 <span className="text-sm text-muted-foreground">

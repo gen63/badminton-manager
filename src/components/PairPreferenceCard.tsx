@@ -1,4 +1,4 @@
-import { Trash2, Heart } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
 import type { PairPreference } from '../types/pairPreference';
@@ -67,13 +67,12 @@ export function PairPreferenceCard({
             {getPlayerName(bId)}
           </span>
           <span
-            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
               preference.strength === 'strong'
                 ? 'bg-amber-100 text-amber-700'
                 : 'bg-muted text-muted-foreground'
             }`}
           >
-            {preference.strength === 'strong' && <Heart size={9} />}
             {preference.strength === 'strong' ? '必ず' : '普通'}
           </span>
         </div>

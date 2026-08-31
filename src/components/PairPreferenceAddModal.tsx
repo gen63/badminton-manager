@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Heart } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { Player } from '../types/player';
 import type { PairPreference } from '../types/pairPreference';
 import { PlayerPickList } from './PlayerPickList';
@@ -71,7 +71,6 @@ export function PairPreferenceAddModal({
       ? findConflictingStrongMember(selectedIds, existingPreferences, getPlayerName)
       : null;
 
-
   const canConfirm = selectedIds.length === 2 && !conflictName;
 
   const handleConfirm = () => {
@@ -114,13 +113,12 @@ export function PairPreferenceAddModal({
             </button>
             <button
               onClick={() => setStrength('strong')}
-              className={`flex-1 py-2 rounded-xl text-sm font-semibold border-2 transition-colors flex items-center justify-center gap-1 ${
+              className={`flex-1 py-2 rounded-xl text-sm font-semibold border-2 transition-colors ${
                 strength === 'strong'
                   ? 'bg-amber-100 border-amber-400 text-amber-700'
                   : 'bg-background border-border text-muted-foreground'
               }`}
             >
-              <Heart size={13} />
               必ず
             </button>
           </div>
