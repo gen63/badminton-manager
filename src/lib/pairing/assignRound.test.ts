@@ -4,6 +4,7 @@ import {
   computeMixSplit,
   computeVariety,
   computeObjectiveTerms,
+  computeAffinity,
   GENDER_BALANCE_OFF_WEIGHTS,
   type CourtPlacement,
   type PairCounts,
@@ -239,6 +240,7 @@ describe('computeObjectiveTerms（0〜1に収まること）', () => {
       pairKeyOf: pairKey,
       reachableCountById: new Map(ids.map(id => [id, ids.length - 1])),
       formRankById: rankById,
+      affinityPairs: [],
     });
 
     for (const [key, value] of Object.entries(terms)) {
@@ -261,6 +263,7 @@ describe('computeObjectiveTerms（0〜1に収まること）', () => {
       pairKeyOf: pairKey,
       reachableCountById: new Map(),
       formRankById: new Map(),
+      affinityPairs: [],
     });
 
     for (const value of Object.values(terms)) {
@@ -564,5 +567,275 @@ describe('順位差のハード制約: 登録序列とハシゴ式序列の両�
     const result = run(rankByIdFrom(formOrder));
     const picked = new Set([...result[0].teamA, ...result[0].teamB]);
     expect(picked).toEqual(new Set(target));
+  });
+});
+
+describe('computeAffinity（objective.ts）', () => {
+  const court = (
+    courtId: number,
+    teamA: [string, string],
+    teamB: [string, string]
+  ): CourtPlacement => ({ courtId, teamA, teamB });
+
+  it('味方（同コートで partner）は寄与0', () => {
+    const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
+    const pairs = [{ a: 'p0', b: 'p1', deficit: 1 }];
+    expect(computeAffinity(courts, [], pairs)).toBe(0);
+  });
+
+  it('同コートで敵なら寄与0.5', () => {
+    const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
+    const pairs = [{ a: 'p0', b: 'p2', deficit: 1 }];
+    expect(computeAffinity(courts, [], pairs)).toBe(0.5);
+  });
+
+  it('別コートなら寄与1.0', () => {
+    const courts = [
+      court(1, ['p0', 'p1'], ['p2', 'p3']),
+      court(2, ['p4', 'p5'], ['p6', 'p7']),
+    ];
+    const pairs = [{ a: 'p0', b: 'p4', deficit: 1 }];
+    expect(computeAffinity(courts, [], pairs)).toBe(1.0);
+  });
+
+  it('片方以上がベンチなら寄与1.0', () => {
+    const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
+    const bench = ['p4'];
+    const pairs = [{ a: 'p0', b: 'p4', deficit: 1 }];
+    expect(computeAffinity(courts, bench, pairs)).toBe(1.0);
+  });
+
+  it('deficit の値でスケールする', () => {
+    const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
+    const pairs = [{ a: 'p0', b: 'p2', deficit: 0.4 }]; // 敵 → 寄与0.5 × deficit0.4
+    expect(computeAffinity(courts, [], pairs)).toBeCloseTo(0.2);
+  });
+
+  it('評価対象ペア数で平均する（複数ペア）', () => {
+    const courts = [
+      court(1, ['p0', 'p1'], ['p2', 'p3']),
+      court(2, ['p4', 'p5'], ['p6', 'p7']),
+    ];
+    const pairs = [
+      { a: 'p0', b: 'p1', deficit: 1 }, // 味方 → 0
+      { a: 'p0', b: 'p4', deficit: 1 }, // 別コート → 1.0
+    ];
+    expect(computeAffinity(courts, [], pairs)).toBeCloseTo(0.5);
+  });
+
+  it('対象ペアが0件なら0（未登録・両者ともプールに現れないペアも対象外）', () => {
+    const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
+    expect(computeAffinity(courts, [], [])).toBe(0);
+    // 登録はされているが両者ともコート・ベンチのどちらにも現れないペア
+    const pairs = [{ a: 'x0', b: 'x1', deficit: 1 }];
+    expect(computeAffinity(courts, [], pairs)).toBe(0);
+  });
+});
+
+describe('assignRoundByObjective: affinity（ペア希望・normal）', () => {
+  it('回帰の担保: affinity の重みを0にすれば、希望ペアを登録しても配置は変わらない', () => {
+    // 8人ちょうど・2コート。rankById が id の数字順そのままなので、
+    // wideSpanThreshold なしの初期解は実力順に [p0-p3] / [p4-p7] へ素直に分かれる。
+    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+    const baseParams = {
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 8,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+    };
+
+    const baseline = assignRoundByObjective(baseParams);
+    const withZeroWeight = assignRoundByObjective({
+      ...baseParams,
+      // 実力差の大きい p0-p7 を最大 deficit で登録しても、重み0なら効かないはず
+      affinityPairs: [{ a: 'p0', b: 'p7', deficit: 1 }],
+      weights: { affinity: 0 },
+    });
+
+    expect(withZeroWeight).toEqual(baseline);
+  });
+
+  it('比較用: 希望が無ければ p0 と p7 は別コートになる（下のテストが空回りしていないことの確認）', () => {
+    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 8,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+    });
+    const courtOf = (id: string) =>
+      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
+    expect(courtOf('p0').courtId).not.toBe(courtOf('p7').courtId);
+  });
+
+  it('希望ペアが味方として配置される（実力差を押し切るだけの重みを与える）', () => {
+    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 8,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+      affinityPairs: [{ a: 'p0', b: 'p7', deficit: 1 }],
+      weights: { affinity: 20 }, // skillGap 等を押し切れる大きさ
+    });
+
+    const courtOf = (id: string) =>
+      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
+    const courtP0 = courtOf('p0');
+    const courtP7 = courtOf('p7');
+    expect(courtP0.courtId).toBe(courtP7.courtId);
+    const sameTeam =
+      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p7')) ||
+      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p7'));
+    expect(sameTeam).toBe(true); // 同コートに集めるだけでなく味方になっている（splitCost 側の担保）
+  });
+
+  it('目標到達（deficit=0）なら効果が無く、他の目的（実力差）が優先される', () => {
+    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 8,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+      affinityPairs: [{ a: 'p0', b: 'p7', deficit: 0 }], // 目標達成済み
+      weights: { affinity: 20 },
+    });
+
+    const courtOf = (id: string) =>
+      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
+    expect(courtOf('p0').courtId).not.toBe(courtOf('p7').courtId);
+  });
+});
+
+describe('assignRoundByObjective: strong（ペア希望・強度「必ず」のハード制約）', () => {
+  it('両方が出るなら必ず味方になる（候補=必要人数ちょうど・ベンチ0でも解が返る）', () => {
+    // 8人ちょうど・2コート（ベンチ0）。この条件自体が「候補が必要人数ちょうど」の
+    // 回帰テストを兼ねる。
+    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 8,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+      strongPairs: [{ a: 'p0', b: 'p7' }],
+    });
+
+    expect(result).toHaveLength(2);
+    expect(new Set(result.flatMap(c => [...c.teamA, ...c.teamB])).size).toBe(8);
+
+    const courtOf = (id: string) =>
+      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
+    const courtP0 = courtOf('p0');
+    const courtP7 = courtOf('p7');
+    expect(courtP0.courtId).toBe(courtP7.courtId);
+    const sameTeam =
+      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p7')) ||
+      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p7'));
+    expect(sameTeam).toBe(true);
+  });
+
+  it('片方だけの出場は許される（もう片方を無理にコートへ呼ばない）', () => {
+    // 12人・2コート（必要8・余剰4）。窓（FAIRNESS_WINDOW_RATIO=0.7）は
+    // 優先度順11番目まで許すが、優先度順どおりなら p0〜p7 が素直に選ばれ、
+    // p11（最下位優先度）は通常どおりベンチに残る。
+    const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 12,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+      strongPairs: [{ a: 'p0', b: 'p11' }],
+    });
+
+    const playing = new Set(result.flatMap(c => [...c.teamA, ...c.teamB]));
+    expect(playing.has('p0')).toBe(true);
+    expect(playing.has('p11')).toBe(false); // 片方だけの出場が許されている（違反にならない）
+  });
+
+  it('実力差が大きくても例外を投げず解が返る（詰まない）', () => {
+    // 9人・2コート（必要8・余剰1）。p0-p8 の実力差（順位差8）は
+    // wideSpanThreshold=5 と衝突するため、両方を同時に出場させて味方にすると
+    // 必ず順位差の制約に違反する。ベンチが1人分あるので、どちらかを
+    // ベンチへ回せば両方の制約を満たせる解が存在する。
+    const candidates = Array.from({ length: 9 }, (_, i) => makePlayer(`p${i}`));
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+    const runParams = {
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 9,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: 5,
+      preferGenderMix: false,
+      strongPairs: [{ a: 'p0', b: 'p8' }],
+    };
+
+    expect(() => assignRoundByObjective(runParams)).not.toThrow();
+
+    const result = assignRoundByObjective(runParams);
+    expect(result).toHaveLength(2);
+    const allIds = result.flatMap(c => [...c.teamA, ...c.teamB]);
+    expect(new Set(allIds).size).toBe(8); // 重複なく8人配置される（1人はベンチ）
+
+    // 両者が同時に出場しているなら味方になっているはず（strong 制約は生きている）。
+    // トレードオフで順位差制約に違反する可能性は plan 3d の想定どおり許容する。
+    const playing = new Set(allIds);
+    if (playing.has('p0') && playing.has('p8')) {
+      const court = result.find(c => [...c.teamA, ...c.teamB].includes('p0'))!;
+      const sameTeam =
+        (court.teamA.includes('p0') && court.teamA.includes('p8')) ||
+        (court.teamB.includes('p0') && court.teamB.includes('p8'));
+      expect(sameTeam).toBe(true);
+    }
   });
 });
