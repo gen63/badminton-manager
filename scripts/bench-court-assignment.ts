@@ -195,8 +195,7 @@ interface RunResult {
   // 目的6: 顔ぶれが繰り返されない
   maxMateShare: number;    // 最多相手が自分の試合に占める割合の平均（低いほど良い）
   distinctMates: number;   // 1人あたりの異なる共演相手数の平均（高いほど良い）
-  // 目的7: ペア希望（affinity）。PREF_PAIRS=0 のときは -1（対象外）
-  // docs/plans/2026-08-31-pair-preference.md 6.
+  // 目的7: ペア希望（affinity）。docs/plans/2026-08-31-pair-preference.md 6.
   // 希望ペア成立率 = 実績(味方だった回数)/機会(min(gamesPlayed)) の平均。NaN = 対象外
   prefFulfillRate: number;
   // 公平性リーク = 希望ペア当事者の試合数 − 全体中央値 の平均（負値もあり得る）。NaN = 対象外
