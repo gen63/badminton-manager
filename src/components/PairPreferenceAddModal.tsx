@@ -34,50 +34,19 @@ function findConflictingStrongMember(
   return null;
 }
 
-type FeasibilityWarning = 'none' | 'sparse' | 'blocked';
-
-/**
- * 順位差のハード制約が効き始める最小人数。`algorithm.ts` の
- * `WIDE_RANK_SPAN_MIN_ROSTER` と同じ値。これ未満のセッションでは制約自体が
- * 無効なので、どんな実力差でも 'blocked' にはならない。
+/*
+ * 【意図的に持たない機能】実力差にもとづく「成立しにくい / 成立しません」の警告
  *
- * `algorithm.ts` から import せず定数を置いているのは、このモーダルが
- * 配置ロジックに依存しない表示専用の目安であるため（値がズレても警告文の
- * 出方が変わるだけで、配置の挙動には影響しない）。
+ * かつてこのモーダルは、選んだ2人の順位差から成立見込みを警告していた。**削除済み。**
+ * このサークルはメンバーに自身の実力（レート・順位）を公開していないため、
+ * 「実力帯が離れています」と出すこと自体が**その2人の実力差を露見させる**。
+ * 特定のペアでだけ警告が出れば、試すだけで相対的な序列が推測できてしまう。
+ *
+ * 成立しにくさは、カードの成立実績（`3/6組`）という**結果**の表示で伝える。
+ * こちらは実際の試合を見ていれば分かることなので、新たな情報を漏らさない。
+ *
+ * 同じ理由で、ここに実力・レート・順位を示唆する表示を再び追加しないこと。
  */
-const WIDE_RANK_SPAN_MIN_ROSTER = 14;
-
-/**
- * 実力順位差から成立見込みの警告レベルを求める。
- * rating が未設定/0 のメンバーが1人でもいる場合は順位が意味を持たないため 'none'。
- * plan 2026-08-31-pair-preference.md の UI（予約ページ）節を参照。
- */
-function computeFeasibilityWarning(
-  playerAId: string,
-  playerBId: string,
-  players: Player[],
-): FeasibilityWarning {
-  if (players.some((p) => !p.rating)) return 'none';
-  if (players.length === 0) return 'none';
-
-  const ranked = [...players].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
-  const rankOf = (id: string) => ranked.findIndex((p) => p.id === id);
-  const rankA = rankOf(playerAId);
-  const rankB = rankOf(playerBId);
-  if (rankA < 0 || rankB < 0) return 'none';
-
-  const rankDiff = Math.abs(rankA - rankB);
-  const groupWidth = Math.ceil(players.length / 3);
-  const wideSpanThreshold = Math.ceil((players.length * 2) / 3);
-
-  // 14人未満は順位差のハード制約がオフなので「成立しません」は出さない。
-  // 実力帯が離れていること自体は変わらないので 'sparse' の判定は残す。
-  if (players.length >= WIDE_RANK_SPAN_MIN_ROSTER && rankDiff >= wideSpanThreshold) {
-    return 'blocked';
-  }
-  if (rankDiff >= groupWidth) return 'sparse';
-  return 'none';
-}
 
 export function PairPreferenceAddModal({
   players,
@@ -102,10 +71,6 @@ export function PairPreferenceAddModal({
       ? findConflictingStrongMember(selectedIds, existingPreferences, getPlayerName)
       : null;
 
-  const feasibility =
-    selectedIds.length === 2
-      ? computeFeasibilityWarning(selectedIds[0], selectedIds[1], players)
-      : 'none';
 
   const canConfirm = selectedIds.length === 2 && !conflictName;
 
@@ -163,16 +128,6 @@ export function PairPreferenceAddModal({
           {conflictName && (
             <p className="mt-2 text-xs text-destructive">
               {conflictName}さんは既に「必ず」の希望に入っています
-            </p>
-          )}
-          {!conflictName && feasibility === 'sparse' && (
-            <p className="mt-2 text-xs text-amber-700">
-              実力帯が離れているため成立しにくいことがあります
-            </p>
-          )}
-          {!conflictName && feasibility === 'blocked' && (
-            <p className="mt-2 text-xs text-amber-700">
-              実力差が大きく、成立しません
             </p>
           )}
         </div>
