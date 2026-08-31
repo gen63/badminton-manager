@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { X, Check, Heart } from 'lucide-react';
+import { X, Heart } from 'lucide-react';
 import type { Player } from '../types/player';
 import type { PairPreference } from '../types/pairPreference';
+import { PlayerPickList } from './PlayerPickList';
 
 interface PairPreferenceAddModalProps {
   players: Player[];
@@ -113,12 +114,6 @@ export function PairPreferenceAddModal({
     onConfirm([selectedIds[0], selectedIds[1]], strength);
   };
 
-  // 待機中→休憩中の順で表示
-  const sortedPlayers = [...players].sort((a, b) => {
-    if (a.isResting !== b.isResting) return a.isResting ? 1 : -1;
-    return 0;
-  });
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-background rounded-2xl shadow-2xl w-[90%] max-w-md max-h-[80vh] overflow-y-auto">
@@ -183,55 +178,12 @@ export function PairPreferenceAddModal({
         </div>
 
         {/* Content */}
-        <div className="p-4 flex flex-col gap-2">
-          {sortedPlayers.map((player) => {
-            const isSelected = selectedIds.includes(player.id);
-            const textColor = player.gender === 'M'
-              ? 'text-blue-600'
-              : player.gender === 'F'
-              ? 'text-pink-600'
-              : 'text-foreground';
-
-            return (
-              <button
-                key={player.id}
-                onClick={() => handleToggle(player.id)}
-                className={`relative flex items-center justify-between border-2 p-3 rounded-xl transition-all shadow-sm active:scale-95 ${
-                  isSelected
-                    ? 'bg-green-50 border-green-500'
-                    : player.isResting
-                    ? 'bg-muted/30 border-border'
-                    : 'bg-card border-border'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className={`font-semibold text-sm ${player.isResting ? 'text-muted-foreground' : textColor}`}>
-                    {getPlayerName(player.id)}
-                  </span>
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                    player.gender === 'M'
-                      ? 'bg-blue-100 text-blue-700'
-                      : player.gender === 'F'
-                      ? 'bg-pink-100 text-pink-700'
-                      : 'bg-muted text-muted-foreground'
-                  }`}>
-                    {player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : '-'}
-                  </span>
-                  {player.isResting && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700">
-                      休憩中
-                    </span>
-                  )}
-                </div>
-                {isSelected && (
-                  <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white">
-                    <Check size={16} />
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <PlayerPickList
+          players={players}
+          getPlayerName={getPlayerName}
+          isSelected={(id) => selectedIds.includes(id)}
+          onToggle={handleToggle}
+        />
 
         {/* Footer */}
         <div className="sticky bottom-0 bg-background border-t border-border px-6 py-4 flex gap-3">
