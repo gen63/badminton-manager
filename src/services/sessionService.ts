@@ -27,6 +27,7 @@ import type { Player } from '../types/player';
 import type { Court } from '../types/court';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
+import type { PairPreference } from '../types/pairPreference';
 import { SessionError } from '../lib/errorHandler';
 import { requireDb, sanitize } from '../lib/firestoreUtils';
 import { medianGamesPlayed } from '../lib/median';
@@ -86,6 +87,8 @@ export interface GameState {
   courts: Court[];
   matchHistory: Match[];
   reservations: Reservation[];
+  /** ペア希望。旧セッションドキュメントには存在しないため optional 必須 */
+  pairPreferences?: PairPreference[];
   settings?: SyncSettings;
 }
 

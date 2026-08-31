@@ -25,6 +25,7 @@ import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
+import type { PairPreference } from '../types/pairPreference';
 import type { GameState } from './sessionService';
 
 /** transaction.update の payload 型（gameState を主に書き込む） */
@@ -197,6 +198,8 @@ export function computeRemovePlayer(state: GameState, playerId: string): GameSta
   // - court.teamA / teamB の該当 slot を空文字に
   // - court.restingPlayerIds から除外
   // - reservation.playerIds から除外し、空になった予約は削除
+  // - pairPreferences は2人固定なので、含まれていた希望ごと削除する（予約と違い
+  //   1人だけ除外して残すことはしない。2人揃わないと成立しないため）
   // matchHistory はそのまま（履歴上の名前は表示時に「未設定」フォールバック）。
   const blankTeam = (team: [string, string]): [string, string] => [
     team[0] === playerId ? '' : team[0],
@@ -214,6 +217,11 @@ export function computeRemovePlayer(state: GameState, playerId: string): GameSta
     reservations: state.reservations
       .map((r) => ({ ...r, playerIds: r.playerIds.filter((id) => id !== playerId) }))
       .filter((r) => r.playerIds.length > 0),
+    ...(state.pairPreferences !== undefined && {
+      pairPreferences: state.pairPreferences.filter(
+        (pp) => !pp.playerIds.includes(playerId),
+      ),
+    }),
   };
 }
 
@@ -897,6 +905,68 @@ export function computeClearReservations(state: GameState): GameState {
 }
 
 // =============================================================================
+// Pair preferences: pure compute
+// =============================================================================
+
+/**
+ * ペア希望を追加する。`computeAddReservation` と異なり、`isResting` などへの
+ * 副作用は一切持たない **純粋な `pairPreferences` 配列への追加**。
+ * ペア希望は「登録した瞬間だけ効く」ものではなく恒常的な設定であり、登録した
+ * 2人を待機から外すのは本末転倒になるため（docs/plans/2026-08-31-pair-preference.md）。
+ *
+ * バリデーション（`computeAddReservation` の DATA4 fix と同じ考え方）:
+ *   - playerIds が重複 ID / 空文字 / 存在しない ID を含む → no-op
+ *   - ちょうど2人でない → no-op
+ *   - 既に同じ2人の組み合わせが登録済み → no-op
+ */
+export function computeAddPairPreference(
+  state: GameState,
+  playerIds: string[],
+  strength: PairPreference['strength'],
+  id: string,
+  now: number,
+  createdBy?: string,
+): GameState {
+  const validIds = new Set(state.players.map((p) => p.id));
+  const dedup: string[] = [];
+  const seen = new Set<string>();
+  for (const pid of playerIds) {
+    if (!pid || !validIds.has(pid) || seen.has(pid)) continue;
+    seen.add(pid);
+    dedup.push(pid);
+  }
+  if (dedup.length !== 2) return state;
+
+  const key = [...dedup].sort().join(',');
+  const existing = state.pairPreferences ?? [];
+  const alreadyExists = existing.some(
+    (pp) => [...pp.playerIds].sort().join(',') === key,
+  );
+  if (alreadyExists) return state;
+
+  const preference: PairPreference = {
+    id,
+    playerIds: [dedup[0], dedup[1]],
+    strength,
+    createdAt: now,
+    createdBy,
+  };
+
+  return { ...state, pairPreferences: [...existing, preference] };
+}
+
+export function computeRemovePairPreference(
+  state: GameState,
+  preferenceId: string,
+): GameState {
+  const existing = state.pairPreferences ?? [];
+  return {
+    ...state,
+    pairPreferences: existing.filter((pp) => pp.id !== preferenceId),
+  };
+}
+
+// =============================================================================
 // Settings: pure compute
 // =============================================================================
 
@@ -1121,6 +1191,23 @@ export function fulfillReservation(sessionId: string, reservationId: string) {
 
 export function clearReservations(sessionId: string) {
   return mutateGameState(sessionId, computeClearReservations);
+}
+
+export function addPairPreference(
+  sessionId: string,
+  playerIds: string[],
+  strength: PairPreference['strength'],
+  createdBy?: string,
+) {
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  return mutateGameState(sessionId, (s) =>
+    computeAddPairPreference(s, playerIds, strength, id, now, createdBy),
+  );
+}
+
+export function removePairPreference(sessionId: string, preferenceId: string) {
+  return mutateGameState(sessionId, (s) => computeRemovePairPreference(s, preferenceId));
 }
 
 /**

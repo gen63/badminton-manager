@@ -5,6 +5,7 @@ import { SessionError } from '../lib/errorHandler';
 import type { Player } from '../types/player';
 import type { Court } from '../types/court';
 import type { Match } from '../types/match';
+import type { PairPreference } from '../types/pairPreference';
 
 /**
  * セッションのゲーム状態への書き込みを 1 つの API に集約するフック。
@@ -225,6 +226,21 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  // ===== Pair preferences =====
+  const addPairPreference = useCallback(
+    (playerIds: string[], strength: PairPreference['strength'], createdBy?: string) =>
+      handle('addPairPreference', (sid) =>
+        sm.addPairPreference(sid, playerIds, strength, createdBy),
+      ),
+    [handle],
+  );
+
+  const removePairPreference = useCallback(
+    (preferenceId: string) =>
+      handle('removePairPreference', (sid) => sm.removePairPreference(sid, preferenceId)),
+    [handle],
+  );
+
   // ===== Settings =====
   const setRecordScores = useCallback(
     (value: boolean) => handle('setRecordScores', (sid) => sm.setRecordScores(sid, value)),
@@ -317,6 +333,9 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       removeReservation,
       fulfillReservation,
       clearReservations,
+      // pair preferences
+      addPairPreference,
+      removePairPreference,
       // settings
       setRecordScores,
       setContinuousMatchMode,
@@ -359,6 +378,8 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       removeReservation,
       fulfillReservation,
       clearReservations,
+      addPairPreference,
+      removePairPreference,
       setRecordScores,
       setContinuousMatchMode,
       setPracticeType,
