@@ -23,14 +23,31 @@
  * npx tsx scripts/bench-court-assignment.ts                 # 既定 (SEEDS=150, NOISE=0,4,8)
  * SEEDS=50 NOISE=4 npx tsx scripts/bench-court-assignment.ts
  * CONDITIONS=21x3 npx tsx scripts/bench-court-assignment.ts
+ *
+ * # ペア希望（affinity）の計測。docs/plans/2026-08-31-pair-preference.md 6. 参照
+ * PREF_PAIRS=1 npx tsx scripts/bench-court-assignment.ts    # 希望ペアを1組登録
+ * PREF_PAIRS=3 AFFINITY_WEIGHT=1.6 npx tsx scripts/bench-court-assignment.ts
  * ```
  *
  * アルゴリズム変更の効果を見るには、変更前後で同じ引数で実行して出力を比較する。
  * シードが同じなら人員構成・勝敗の乱数列は完全に再現される。
+ *
+ * ## ペア希望（`PREF_PAIRS` / `AFFINITY_WEIGHT`）
+ *
+ * `PREF_PAIRS=N`（既定0）で、ロースターからランダムに N 組（シード固定・決定的）
+ * `strength: 'normal'` の希望ペアを登録した状態を計測する。`AFFINITY_WEIGHT=x` で
+ * `src/lib/pairing/objective.ts` の `DEFAULT_WEIGHTS.affinity` をこのプロセス内だけ
+ * 上書きする（bench 専用。本番の既定値は変わらない）。`PREF_PAIRS>0` のときのみ
+ * 出力末尾に**成立率%**（希望ペアの実績/機会の平均。100% が `targetRatio=1.0` 相当、
+ * 50% が `normal` の目標）と**リーク**（希望ペア当事者の試合数−全体中央値の平均。
+ * 0 に近いほど「ペア希望で試合が増えていない」）が追加される。
  */
 import { assignCourts } from '../src/lib/algorithm';
+import { DEFAULT_WEIGHTS } from '../src/lib/pairing/objective';
+import { median } from '../src/lib/median';
 import type { Player } from '../src/types/player';
 import type { Match } from '../src/types/match';
+import type { PairPreference } from '../src/types/pairPreference';
 
 /**
  * 擬似時計。`calculatePriorityScore` / `computeOneGameDelta` は滞在時間の算出に
@@ -101,6 +118,42 @@ function makeRoster(n: number, noise: number, rng: () => number): BenchPlayer[] 
   return players;
 }
 
+/** ペアキー（`algorithm.ts` の `pairKey` と同じ規則: 2人の ID を昇順で連結） */
+function pairKeyBench(a: string, b: string): string {
+  return a < b ? `${a},${b}` : `${b},${a}`;
+}
+
+/**
+ * 希望ペアを `count` 組、ロースターからランダムに選ぶ（シード固定・決定的）。
+ * 全員 `strength: 'normal'` で登録する。組同士は人が重複しない（2*count 人を
+ * 一度シャッフルして先頭から2人ずつ組にする）。`count` がロースター人数の半分を
+ * 超える場合は選べるだけ選ぶ（3c: 実用上の推奨は1〜3組なのでベンチも1〜6組しか
+ * 振らない想定だが、小規模ロースターで安全側に倒す）。
+ */
+function pickPairPreferences(
+  players: BenchPlayer[],
+  count: number,
+  rng: () => number
+): PairPreference[] {
+  if (count <= 0) return [];
+  const shuffled = [...players];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  const maxPairs = Math.min(count, Math.floor(shuffled.length / 2));
+  const prefs: PairPreference[] = [];
+  for (let i = 0; i < maxPairs; i++) {
+    prefs.push({
+      id: `pref${i}`,
+      playerIds: [shuffled[i * 2].id, shuffled[i * 2 + 1].id],
+      strength: 'normal',
+      createdAt: 0,
+    });
+  }
+  return prefs;
+}
+
 /** Bradley-Terry。真の実力が高いチームほど勝ちやすいが、番狂わせも起きる */
 function teamWins(
   teamA: BenchPlayer[],
@@ -142,6 +195,12 @@ interface RunResult {
   // 目的6: 顔ぶれが繰り返されない
   maxMateShare: number;    // 最多相手が自分の試合に占める割合の平均（低いほど良い）
   distinctMates: number;   // 1人あたりの異なる共演相手数の平均（高いほど良い）
+  // 目的7: ペア希望（affinity）。PREF_PAIRS=0 のときは -1（対象外）
+  // docs/plans/2026-08-31-pair-preference.md 6.
+  // 希望ペア成立率 = 実績(味方だった回数)/機会(min(gamesPlayed)) の平均。NaN = 対象外
+  prefFulfillRate: number;
+  // 公平性リーク = 希望ペア当事者の試合数 − 全体中央値 の平均（負値もあり得る）。NaN = 対象外
+  prefFairnessLeak: number;
   // 参考
   rotation: number;
   matches: number;
@@ -163,6 +222,11 @@ function runOnce(
   const players = makeRoster(n, noise, rng);
   const byId = new Map(players.map(p => [p.id, p]));
   const history: Match[] = []; // 古い順（末尾が最新）
+
+  // ペア希望（PREF_PAIRS 組。makeRoster が消費した続きの rng で選ぶので決定的）
+  const pairPreferences = pickPairPreferences(players, PREF_PAIRS, rng);
+  // 希望ペア成立率の算出用: pairKey → 味方だった回数（session 全体の累計）
+  const partnerCounts = new Map<string, number>();
 
   const courtBusyUntil = new Map<number, number>(); // courtId -> 終了時刻
   const courtOccupants = new Map<number, string[]>();
@@ -220,6 +284,7 @@ function runOnce(
         allPlayers: players,
         useStayDurationPriority: true,
         useObjectiveEngine: USE_OBJECTIVE_ENGINE,
+        pairPreferences,
       });
     } catch {
       // insufficient-players など。計測不能な条件として捨てる
@@ -249,6 +314,14 @@ function runOnce(
       for (const p of [...teamA, ...teamB]) {
         p.gamesPlayed += 1;
         p.lastPlayedAt = finishedAt;
+      }
+      if (pairPreferences.length > 0) {
+        const incPartner = (x: string, y: string) => {
+          const k = pairKeyBench(x, y);
+          partnerCounts.set(k, (partnerCounts.get(k) ?? 0) + 1);
+        };
+        incPartner(a.teamA[0], a.teamA[1]);
+        incPartner(a.teamB[0], a.teamB[1]);
       }
       courtBusyUntil.set(a.courtId, finishedAt);
       courtOccupants.set(a.courtId, [...a.teamA, ...a.teamB]);
@@ -389,6 +462,33 @@ function runOnce(
   const games = players.map(p => p.gamesPlayed);
   const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
+  // 目的7: ペア希望（affinity）。docs/plans/2026-08-31-pair-preference.md 6.
+  //   成立率 = 実績(partnerCounts) / 機会(min(gamesPlayed)) をペアごとに求め、
+  //            登録した全ペアで平均する
+  //   リーク = 希望ペア当事者（登録した全ペアのユニークな2N人）それぞれの
+  //            試合数 − 全体中央値を求め、平均する
+  let prefFulfillRate = NaN;
+  let prefFairnessLeak = NaN;
+  if (pairPreferences.length > 0) {
+    const overallMedian = median(games);
+    const rates: number[] = [];
+    const participantIds = new Set<string>();
+    for (const pref of pairPreferences) {
+      const [pa, pb] = pref.playerIds;
+      const playerA = byId.get(pa)!;
+      const playerB = byId.get(pb)!;
+      const opportunity = Math.min(playerA.gamesPlayed, playerB.gamesPlayed);
+      const actual = partnerCounts.get(pairKeyBench(pa, pb)) ?? 0;
+      rates.push(actual / Math.max(1, opportunity));
+      participantIds.add(pa);
+      participantIds.add(pb);
+    }
+    prefFulfillRate = mean(rates);
+    prefFairnessLeak = mean(
+      [...participantIds].map(id => byId.get(id)!.gamesPlayed - overallMedian)
+    );
+  }
+
   return {
     gamesSpread: Math.max(...games) - Math.min(...games),
     maxIdle,
@@ -421,6 +521,8 @@ function runOnce(
     distinctMates: mean(players.map(p => matesSeen.get(p.id)!.size)),
     rotation: mean(players.map(p => courtsSeen.get(p.id)!.size)),
     matches: history.length,
+    prefFulfillRate,
+    prefFairnessLeak,
   };
 }
 
@@ -431,7 +533,19 @@ const ROUNDS = Number(process.env.ROUNDS ?? 15);
 /** 遅参加させる人数（0 = 全員最初から在席）。例: LATE_JOIN=3 */
 const LATE_JOIN = Number(process.env.LATE_JOIN ?? 0);
 const NOISES = (process.env.NOISE ?? '0,4,8').split(',').map(Number);
-const DEFAULT_CONDITIONS = '13x2,14x2,16x2,15x3,18x3,21x3';
+/**
+ * ペア希望（`docs/plans/2026-08-31-pair-preference.md`）を N 組ランダム登録する。
+ * 既定 0（＝希望なし。既存の全指標に影響しない）。N = 1 / 3 / 6 を測る想定。
+ */
+const PREF_PAIRS = Number(process.env.PREF_PAIRS ?? 0);
+/**
+ * `AFFINITY_WEIGHT` の重みをこのプロセス内だけ上書きする（bench 専用。本番の
+ * `DEFAULT_WEIGHTS.affinity` の既定値は変えない）。未指定ならリポジトリの既定値のまま。
+ */
+if (process.env.AFFINITY_WEIGHT !== undefined) {
+  DEFAULT_WEIGHTS.affinity = Number(process.env.AFFINITY_WEIGHT);
+}
+const DEFAULT_CONDITIONS = '13x2,14x2,16x2,15x3,18x3,21x3,22x3,25x3';
 const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
   .split(',')
   .map(s => {
@@ -439,16 +553,23 @@ const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
     return { n, courtCount: c };
   });
 
-console.log(`SEEDS=${SEEDS} ROUNDS=${ROUNDS} NOISE=${NOISES.join(',')} ENGINE=${USE_OBJECTIVE_ENGINE ? 'objective' : 'legacy'}`);
+console.log(`SEEDS=${SEEDS} ROUNDS=${ROUNDS} NOISE=${NOISES.join(',')} ENGINE=${USE_OBJECTIVE_ENGINE ? 'objective' : 'legacy'}` +
+  (PREF_PAIRS > 0 ? ` PREF_PAIRS=${PREF_PAIRS} AFFINITY_WEIGHT=${DEFAULT_WEIGHTS.affinity}` : ''));
 console.log('  指標は docs/plans/2026-08-05-pairing-goals-and-rewrite.md の目的1〜6に対応');
 console.log('  幅広%=目的3 競り度=目的4 3-1%=目的5 男女戦%=目的5b 占有率%/共演=目的6 試合数幅=目的1 待ち=目的2');
 console.log('  端中=序列の端1/3と中央1/3の平均試合数の差（負なら端が損をしている）');
 if (LATE_JOIN > 0) console.log('  遅参加=在席時間に比例した期待値に対する倍率（1.00 が理想）');
+if (PREF_PAIRS > 0) {
+  console.log('  成立率%=目的7（ペア希望）= 実績(味方だった回数)/機会(min 試合数) の登録ペア平均');
+  console.log('    （normal の目標は 50%。docs/plans/2026-08-31-pair-preference.md 6.）');
+  console.log('  リーク=希望ペア当事者の試合数−全体中央値の平均（0 に近いほど試合数が公平）');
+}
 console.log('  （共演のみ高いほど良い。他はすべて低いほど良い）');
 console.log('');
 console.log(
   '  条件      NOISE  幅広%  登録上下%  背負い%  過大勝率%  競り度  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち  勝率SD%' +
-    (LATE_JOIN > 0 ? '  遅参加' : '')
+    (LATE_JOIN > 0 ? '  遅参加' : '') +
+    (PREF_PAIRS > 0 ? '  成立率%  リーク' : '')
 );
 console.log('  ' + '-'.repeat(72));
 
@@ -493,7 +614,16 @@ for (const { n, courtCount } of CONDITIONS) {
         `${avg(r => r.gamesSpread).toFixed(2).padStart(8)}  ` +
         `${avg(r => r.maxIdle).toFixed(2).padStart(4)}` +
         `  ${(avg(r => r.winRateSd) * 100).toFixed(1)}` +
-        (LATE_JOIN > 0 ? `   ${avg(r => r.lateRatio).toFixed(2)}倍` : '')
+        (LATE_JOIN > 0 ? `   ${avg(r => r.lateRatio).toFixed(2)}倍` : '') +
+        (PREF_PAIRS > 0
+          ? `   ${(() => {
+              const vs = results.map(r => r.prefFulfillRate).filter(v => !Number.isNaN(v));
+              return vs.length ? ((vs.reduce((a, b) => a + b, 0) / vs.length) * 100).toFixed(1) : '--';
+            })()}   ${(() => {
+              const vs = results.map(r => r.prefFairnessLeak).filter(v => !Number.isNaN(v));
+              return vs.length ? (vs.reduce((a, b) => a + b, 0) / vs.length).toFixed(2) : '--';
+            })()}`
+          : '')
     );
   }
   console.log('');
