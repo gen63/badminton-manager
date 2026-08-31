@@ -6,6 +6,8 @@ import { SessionError } from './errorHandler';
 import { assignRoundByObjective } from './pairing/assignRound';
 import { GENDER_BALANCE_OFF_WEIGHTS } from './pairing/objective';
 import { median } from './median';
+import type { PairPreference } from '../types/pairPreference';
+import { computeAffinityPairs, computeStrongPairs } from './pairPreference';
 
 type RatingGroup = 'upper' | 'middle' | 'lower';
 
@@ -1990,6 +1992,12 @@ export function assignCourts(
     reservationBlockThreshold?: number; // 予約保留の閾値（中央値+この値以上のメンバーを含む予約を保留）
     restingPlayers?: Player[]; // 休憩中で予約により呼び出せるメンバー（通常配置の対象外）
     /**
+     * ペア希望（`docs/plans/2026-08-31-pair-preference.md`）。省略時は希望なし
+     * として扱う。**シングルスモードでは無効**（ペアの概念が無いため、シングルス
+     * 分岐には接続しない）。新エンジン（`useObjectiveEngine`）にのみ接続する。
+     */
+    pairPreferences?: PairPreference[];
+    /**
      * 目的関数ベースの新エンジン（`src/lib/pairing/`）を使うかどうか。**既定 true**
      * （切り替えコミット: cabf45e）。false を明示したときだけ旧エンジンを通る。
      * true のとき、予約・休憩・シングルス・強制休憩の処理はすべて既存のまま通し、
@@ -2328,6 +2336,10 @@ export function assignCourts(
       objectiveRosterSize < WIDE_RANK_SPAN_MIN_ROSTER
         ? null
         : Math.ceil(objectiveRosterSize * WIDE_RANK_SPAN_RATIO);
+    // ペア希望 → deficit 算出（第7目的 affinity + strong のハード制約）。
+    // 中央値・reservationBlockThreshold は予約保留判定（上の isReservationBlocked）と
+    // 共通のものを使い回す（新しい設定項目は増やさない。plan 3b）。
+    const pairPreferences = options?.pairPreferences ?? [];
     const assigned = assignRoundByObjective({
       candidates: normalCandidates,
       courtIds: normalCourtIds,
@@ -2344,6 +2356,15 @@ export function assignCourts(
       lateBalanceMode: options?.lateBalanceMode ?? false,
       weights:
         (options?.genderBalanceMode ?? true) ? undefined : GENDER_BALANCE_OFF_WEIGHTS,
+      affinityPairs: computeAffinityPairs(
+        pairPreferences,
+        normalCandidates,
+        historyCounts.pair.partner,
+        pairKey,
+        medianGamesPlayed,
+        reservationBlockThreshold,
+      ),
+      strongPairs: computeStrongPairs(pairPreferences, normalCandidates),
     });
     return [...reservationAssignments, ...assigned];
   }

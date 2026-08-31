@@ -23,6 +23,7 @@ import type { Player } from '../types/player';
 import type { Court } from '../types/court';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
+import type { PairPreference } from '../types/pairPreference';
 import { assignCourts } from './algorithm';
 import { getPlayersPerCourt, hasUnresolvedOps } from './gameOperations';
 import { withInProgressGames } from './effectiveGames';
@@ -68,6 +69,12 @@ export interface NextMatchPredictionOptions {
   lateBalanceMode?: boolean;
   genderBalanceMode?: boolean;
   reservationBlockThreshold?: number;
+  /**
+   * ペア希望（`docs/plans/2026-08-31-pair-preference.md`）。忘れると
+   * 配置予測（`NextMatchPredictionBar` / 呼び出し通知 / 操作担当ガイド）が
+   * 実配置とズレるので、`assignCourts` の他の呼び出し箇所と同じ値を渡すこと。
+   */
+  pairPreferences?: PairPreference[];
 }
 
 const EMPTY_PREDICTION: NextMatchPrediction = {
@@ -120,6 +127,7 @@ function runScenario(
       genderBalanceMode: options.genderBalanceMode,
       reservationBlockThreshold: options.reservationBlockThreshold,
       restingPlayers,
+      pairPreferences: options.pairPreferences,
     });
     if (assignments.length === 0) return null;
     return assignments
