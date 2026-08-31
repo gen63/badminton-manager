@@ -17,7 +17,14 @@ import {
   type ObjectiveWeights,
   type CourtPlacement,
   type PairCounts,
+  type AffinityPair,
 } from './objective';
+
+/** 強度「必ず」の希望ペア1組ぶんの入力。`docs/plans/2026-08-31-pair-preference.md` 3d 参照 */
+export interface StrongPair {
+  a: string;
+  b: string;
+}
 
 export interface AssignRoundParams {
   /** このラウンドの配置対象（待機者） */
@@ -70,6 +77,26 @@ export interface AssignRoundParams {
   /** 後半均等化モード。公平性の窓を狭めて優先度順に近づける */
   lateBalanceMode?: boolean;
   weights?: Partial<ObjectiveWeights>;
+  /**
+   * 希望ペアの一覧。省略時は空配列（＝ペア希望なし）。
+   * `docs/plans/2026-08-31-pair-preference.md` 参照。
+   *
+   * **`Map<pairKey, deficit>` ではなく配列。** pairKey は `[a, b].sort().join(',')`
+   * のような不可逆な文字列なので、Map 形式だと「候補プールの全ペアを毎回
+   * 列挙してキーを引く」しかできない。希望ペアは実運用で1〜3組しかないため、
+   * 配列にして「希望ペアだけを回して2人の所在を調べる」向きにすることで、
+   * 候補人数に依存しない O(希望組数) にしている（詳細は `objective.ts` の
+   * `AffinityPair` のコメント）。
+   */
+  affinityPairs?: AffinityPair[];
+  /**
+   * 強度「必ず」の希望ペアの一覧。両方が同じラウンドで出場するなら
+   * 必ず味方にする（ハード制約）。片方だけの出場は違反にしない。
+   * `docs/plans/2026-08-31-pair-preference.md` の 3d 参照。省略時は空配列。
+   *
+   * `affinityPairs` と同じ理由で pairKey の Set ではなく配列にしている。
+   */
+  strongPairs?: StrongPair[];
 }
 
 /** 局所探索の反復上限 */
@@ -167,6 +194,8 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   } = params;
 
   const formRankById = params.formRankById ?? rankById;
+  const affinityPairs = params.affinityPairs ?? [];
+  const strongPairs = params.strongPairs ?? [];
 
   const weights: ObjectiveWeights = { ...DEFAULT_WEIGHTS, ...params.weights };
 
@@ -205,6 +234,25 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   const priorityRankById = new Map<string, number>(
     sortedCandidates.map((p, index) => [p.id, index] as const)
   );
+
+  // affinity（ペア希望）の評価対象ペア数。`computeAffinity` と同じ「courts ∪ bench」
+  // = このラウンドの候補プール全体（= sortedCandidates 全員）で数える。courts と
+  // bench の中身は探索中に変わるが、その和集合（母集団）は不変なので、
+  // 探索前に一度だけ数えれば足りる（`splitCost` は毎回この値で割る）。
+  //
+  // **候補プールの全ペアではなく `affinityPairs`（実運用1〜3組）だけを回す。**
+  // 候補人数の2乗で回す実装は、局所探索が `evaluate()`/`splitCost` を数万回
+  // 呼ぶ構造と組み合わさって実測 4〜8倍の性能回帰になったため、希望ペア側から
+  // 走査する向きに変えている（`AffinityPair` のコメント参照）。
+  const candidateIdSet = new Set(sortedCandidates.map(p => p.id));
+  const affinityTargetCount = (() => {
+    let count = 0;
+    for (const { a, b, deficit } of affinityPairs) {
+      if (!deficit) continue;
+      if (candidateIdSet.has(a) && candidateIdSet.has(b)) count++;
+    }
+    return count;
+  })();
 
   const neededCount = Math.min(4 * courtIds.length, candidateCount - (candidateCount % 4));
   const usableCourtCount = Math.min(courtIds.length, Math.floor(candidateCount / 4));
@@ -389,7 +437,32 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     const maleInA = (genders[0] === 'M' ? 1 : 0) + (genders[1] === 'M' ? 1 : 0);
     const mixSplit = isTwoTwo && maleInA !== 1 ? weights.mixSplit : 0;
 
-    return competitive + mixSplit;
+    // affinity（ペア希望）。`computeAffinity`（objective.ts）は「誰がどのコートか」
+    // だけを見て味方/敵を判定するが、チーム分け（teamA/teamB）自体は
+    // `normalizeSplit` がこの `splitCost` だけで決めており、探索状態には
+    // 含まれない（2b のコメント参照）。ここに足さないと「2人を同じコートに
+    // 集めるところまでは効くが、味方にならず敵同士になる」という中途半端な
+    // 結果になる（`docs/plans/2026-08-31-pair-preference.md` 4. 実装上の落とし穴）。
+    // 味方（同チーム）は寄与0なので、チームを跨ぐ組み合わせだけを見ればよい。
+    //
+    // `affinityPairs`（実運用1〜3組）だけを回す。`normalizeSplit` は1コートにつき
+    // 3通りの分け方を試すたびにこれを呼ぶため、`pairKeyOf`（sort+join の文字列
+    // 生成）を避けて ID の直接比較にしている。
+    let affinity = 0;
+    if (affinityTargetCount > 0) {
+      for (const { a, b, deficit } of affinityPairs) {
+        if (!deficit) continue;
+        const aInTeamA = slots[0] === a || slots[1] === a;
+        const aInTeamB = slots[2] === a || slots[3] === a;
+        const bInTeamA = slots[0] === b || slots[1] === b;
+        const bInTeamB = slots[2] === b || slots[3] === b;
+        const crossTeam = (aInTeamA && bInTeamB) || (aInTeamB && bInTeamA);
+        if (!crossTeam) continue;
+        affinity += (deficit * 0.5) / affinityTargetCount;
+      }
+    }
+
+    return competitive + mixSplit + affinity * weights.affinity;
   };
 
   /** コート4人を、コスト最小の分け方に並べ替える（同点は実力順で決定的に選ぶ） */
@@ -454,6 +527,38 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       }
       if (isRecentDuplicate(members)) violations++;
     }
+    // 強度「必ず」の希望ペア: 両方が同じラウンドで出場するなら必ず味方にする
+    // （ハード制約）。片方だけの出場は違反にしない（(a) の意味論のみ採用。
+    // `docs/plans/2026-08-31-pair-preference.md` 3d 参照）。
+    //
+    // ベンチにいる人は対象外なので、courts に現れる人だけを母集団に判定すれば
+    // 足りる（bench まで含める affinity の分母とは違い、こちらは courts のみ）。
+    // コート所属・パートナーの Map（O(出場者数)）は今までどおり1回だけ構築するが、
+    // それを使って「コート上の全ペア」を回すのではなく **`strongPairs`（実運用
+    // 1〜2組）だけ**を回す。前者は evaluate() を数万回呼ぶ局所探索と組み合わさって
+    // 実測 4〜8倍の性能回帰になったため、希望ペア側から走査する向きに変えている。
+    if (strongPairs.length > 0) {
+      const courtIdOfMember = new Map<string, number>();
+      const partnerOfMember = new Map<string, string>();
+      for (const court of s.courts) {
+        const members = courtMembers(court);
+        for (const id of members) courtIdOfMember.set(id, court.courtId);
+        partnerOfMember.set(court.slots[0], court.slots[1]);
+        partnerOfMember.set(court.slots[1], court.slots[0]);
+        partnerOfMember.set(court.slots[2], court.slots[3]);
+        partnerOfMember.set(court.slots[3], court.slots[2]);
+      }
+      for (const { a, b } of strongPairs) {
+        const courtA = courtIdOfMember.get(a);
+        const courtB = courtIdOfMember.get(b);
+        if (courtA === undefined || courtB === undefined) continue; // 片方でもベンチなら制約なし
+        if (courtA !== courtB) {
+          violations++; // 同じラウンドで出場しているのに別コート
+        } else if (partnerOfMember.get(a) !== b) {
+          violations++; // 同じコートだが敵同士
+        }
+      }
+    }
     // 公平性の窓: 優先度順で「必要人数 + slack」番目より後ろの人を出場させない。
     // 旧エンジンは優先度順に上から取る構造だったので公平性が強く守られていた。
     // 新エンジンは fairness を重み付きの一項目にしたため、質の項に押し負けて
@@ -481,6 +586,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       pairKeyOf,
       reachableCountById,
       formRankById,
+      affinityPairs,
     });
     return { violations, objective: weightedObjective(terms, weights) };
   };

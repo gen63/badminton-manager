@@ -1,8 +1,10 @@
 /**
- * 目的関数（6目的の正規化・重み付き合計）。
+ * 目的関数（7目的の正規化・重み付き合計）。
  *
  * `docs/plans/2026-08-05-pairing-goals-and-rewrite.md` の「やりたいこと（6個）」に
- * 1目的1指標で対応する。すべて 0〜1 に正規化し、重み付き合計する純関数群。
+ * 1目的1指標で対応する（目的1〜6）。すべて 0〜1 に正規化し、重み付き合計する
+ * 純関数群。目的7 `affinity`（ペア希望）は
+ * `docs/plans/2026-08-31-pair-preference.md` で追加。
  *
  * **副作用なし・外部依存なし**。`algorithm.ts` を import しないこと（循環参照防止）。
  */
@@ -29,6 +31,8 @@ export interface ObjectiveWeights {
   mixSplit: number;
   /** 目的6: 顔ぶれが繰り返されない */
   variety: number;
+  /** 目的7: ペア希望（`affinity`）— 特定2人が組む頻度を上げる。0〜1・小さいほど良い */
+  affinity: number;
 }
 
 /**
@@ -111,6 +115,77 @@ const MIX_SPLIT_WEIGHT = 1.0;
 const SKILL_GAP_WEIGHT = 1.5;
 
 /**
+ * `affinity` の重み。1.5 → **2.0**（bench 実測。
+ * `docs/plans/2026-08-31-pair-preference.md` 6.）。
+ *
+ * ## 計測方法
+ *
+ * `scripts/bench-court-assignment.ts`（`PREF_PAIRS` / `AFFINITY_WEIGHT` 環境変数）で、
+ * ロースターからランダムに N 組（シード固定・決定的、`strength: 'normal'`）の
+ * 希望ペアを登録した状態を計測する。**最悪ケースの N=1**（評価対象ペア数が1で
+ * その1組がそのまま最大強度になる。plan 3c）を主眼に、0.8/1.2/1.6/2.0 を振った
+ * （ENGINE=objective 必須。affinity は新エンジンにしか無い）。
+ *
+ * ## 値（SEEDS=60 NOISE=0、N=1 の成立率%。目標は 50%±10pt = 40〜60%）
+ *
+ * | 条件 | 0.8 | 1.2 | 1.6 | **2.0** |
+ * |---|---|---|---|---|
+ * | 13人2C | 24.2 | 28.4 | 31.2 | 31.5 |
+ * | 16人2C | 21.3 | 23.2 | 25.2 | 27.9 |
+ * | 21人3C | 16.9 | 20.6 | 22.0 | 23.7 |
+ * | 22人3C | 20.5 | 24.1 | 27.1 | 27.6 |
+ *
+ * **候補4値のうち、成立率が最も高いのは常に 2.0。** 一方で、候補範囲内はもちろん、
+ * 4.0 / 8.0 まで上げても目標帯（40〜60%）には届かない（21人3C: 4.0で27.1 / 8.0で
+ * 32.6）。これは実装の不具合ではなく、`skillGap`（1.5）が働いている証拠。
+ * ランダムに選んだ1組は序列上ランダムな2人なので、平均順位差はロースターの
+ * 概ね1/3（21人なら7前後）にもなり、それを毎試合ねじ込もうとすると `skillGap`
+ * の抵抗が大きい。**これは 5.（ハード制約との関係）で明言している優先順位
+ * （実力・性別 > 希望）どおりの挙動であり、weight をさらに上げて力ずくで
+ * 通す設計にはしない**（8.0 まで上げると 男女戦% が 0.0〜0.4% → 0.7〜1.9% に
+ * 悪化し始める）。
+ *
+ * ## ランダム抽出ではなく「実力が近い2人」で測ると目標帯に入る
+ *
+ * 上の表がどの重みでも 40〜60% に届かないのは、**bench が希望ペアをロースターから
+ * ランダムに選ぶ**ため。実運用で「この2人を組ませたい」と登録されるのは多くの場合
+ * 実力帯が近い2人であり、ランダム抽出はそれより遥かに厳しい条件を測っている。
+ *
+ * 22人3コート・80ラウンド・weight 2.0 で、順位差を変えて測り直した結果:
+ *
+ * | 希望ペア | 希望なし | 希望あり |
+ * |---|---|---|
+ * | 順位 1位 × 2位（隣接） | 22.7% | **43.2%** |
+ * | 順位 1位 × 6位（やや離れ） | 14.0% | **43.2%** |
+ * | 順位 1位 × 15位（大きく離れ） | 2.3% | 34.9% |
+ *
+ * **隣接・やや離れは目標帯（40〜60%）に入る。** 大きく離れた組だけが 34.9% に
+ * 留まるが、これは希望なしの 2.3% から15倍であり、かつ 5. の優先順位
+ * （実力・性別 > 希望）どおりに `skillGap` が抵抗した結果なので、意図した挙動。
+ *
+ * **他の指標への影響は 2.0 でも無視できる範囲。** 全8条件（`13x2,14x2,16x2,
+ * 15x3,18x3,21x3,22x3,25x3`、SEEDS=60）で PREF_PAIRS=0 の基準と比較し、
+ * 3-1% の悪化は最大 +0.5pt（15人3C: 13.5→14.0）、試合数幅は 18人3C で
+ * 一見 +0.12 と出たが SEEDS=150 で取り直すと 2.06→2.06（誤差）で実質 0。
+ * **公平性リーク**（希望ペア当事者の試合数 − 全体中央値の平均）は N=1/3/6
+ * いずれも ±0.35 に収まり、3b のガード（`reservationBlockThreshold`）が効いている。
+ * N=6 では 3c どおり成立率がさらに薄まる（21人3C: 17.8%）。
+ *
+ * ## 結論（合格条件を額面どおり満たせなかったことの明記）
+ *
+ * plan の合格条件「N=1〜3 で成立率が targetRatio の±0.1（40〜60%）」は、
+ * **ランダムに選んだ実力差のある1組を基準にする限り、どの重みでも満たせない**
+ * （5. で示した「登録したのに全然組めない」が bench 上でも再現された形）。
+ * 満たすには `skillGap` を押し切るほど重みを上げる必要があり、それは 3d で
+ * 避けた「希望のために実力差の制約を緩める」を目的関数側でやってしまうのと
+ * 同義になるため採らない。**2.0 は「既存指標を一切犠牲にせずに成立率を
+ * 最大化できる」という条件で選んだ現実的な妥協値**であり、`targetRatio` を
+ * 達成する値ではない。既存指標の悪化なし・公平性リークなし、という他の
+ * 合格条件は満たしている。
+ */
+const AFFINITY_WEIGHT = 2.0;
+
+/**
  * 優先順位（質 > 多様性 > 公平性）を反映した既定値。
  *
  * **重みの大小は優先順位そのものではない。** 各項の正規化スケールが違うため、
@@ -150,6 +225,7 @@ export const DEFAULT_WEIGHTS: ObjectiveWeights = {
   variety: 2.6, // 多様性
   fairness: 1.5,
   waiting: 1.5, // 公平性
+  affinity: AFFINITY_WEIGHT, // ペア希望（bench 実測。根拠は AFFINITY_WEIGHT のコメント参照）
 };
 
 /**
@@ -212,6 +288,26 @@ export interface ObjectiveInput {
   pairKeyOf: (a: string, b: string) => string;
   /** 各候補が「同じコートに入れる相手」の人数。variety の閾値スケールに使う */
   reachableCountById: Map<string, number>;
+  /** 希望ペアの一覧（実運用は1〜3組程度）。deficit 0 のペアは呼び出し側で除外済み */
+  affinityPairs: AffinityPair[];
+}
+
+/**
+ * ペア希望1組ぶんの評価入力。`deficit` は 0〜1（0 のペアは呼び出し側で除外済み）。
+ *
+ * `pairKey` の Map ではなく配列にしているのは性能上の理由。`pairKey` は
+ * `[a, b].sort().join(',')` のような不可逆な文字列で、キーから2人の ID を
+ * 復元できない。Map 形式だと `computeAffinity` は「候補プールの全ペア
+ * （n人なら n(n-1)/2 組）を毎回列挙してキーを引く」しかできず、局所探索が
+ * `evaluate()` を数万回呼ぶ構造と組み合わさって実測 4〜8倍の性能回帰になった
+ * （22〜25人3コートで計測）。希望ペアは実運用で1〜3組しかないため、配列に
+ * すれば「希望ペアだけを回して、その2人がどこにいるか調べる」向きになり、
+ * 候補人数に依存しない O(希望組数) で済む。
+ */
+export interface AffinityPair {
+  a: string;
+  b: string;
+  deficit: number;
 }
 
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
@@ -409,7 +505,89 @@ export function computeVariety(
   return clamp01(sum / courts.length);
 }
 
-/** 6目的すべてを計算した結果（各 0〜1） */
+/**
+ * 目的7: affinity — ペア希望（`docs/plans/2026-08-31-pair-preference.md`）。
+ * 「特定の2人の組む確率を上げたい」を、`variety` に対抗するソフトなペナルティ項
+ * として表現する。0〜1・小さいほど良い（他項と同じ）。
+ *
+ * ```
+ * 評価対象 = affinityPairs のうち、両者がこのラウンドの配置対象
+ *            （courts ∪ benchIds）に現れるものだけ
+ * ペアごとの寄与:
+ *   味方（同コートで partner）  → 0
+ *   同コートで敵                → 0.5
+ *   別コート / 片方以上がベンチ → 1.0
+ * affinity = Σ(deficit × 寄与) ÷ 評価対象ペア数（対象0件なら 0）
+ * ```
+ *
+ * **なぜ評価対象ペア数で割るのか。** 全項が 0〜1 に正規化されている前提を
+ * 崩さないため。固定ペナルティのまま足すと、希望を1組登録しただけで他の6目的
+ * との重み比が意図せず変わってしまう（10組登録しても総影響量は変わらない
+ * ようにしたい）。平均を取ることで「予算制」になり、組数が増えるほど
+ * 1組あたりの効き目は薄まる一方、配置全体への総影響量は一定に保たれる。
+ *
+ * **1組しか登録されていないとき、その1組は分母1で最大強度になる。** 複数組
+ * 登録されていれば互いに薄め合うが、1組だけならこの項の値がそのまま
+ * `deficit × 寄与` になる。意味としては「1組しか希望していないなら全力で
+ * 尊重する」で妥当だが、重み（`AFFINITY_WEIGHT`）を決めるときはこの
+ * 「1組だけ」のケースを最悪ケースとして基準にしないと、`skillGap` を
+ * 押し切って実力差の大きいペアを無理に成立させてしまう（bench で確認する）。
+ *
+ * 「両者ともこのラウンドの配置対象に現れないペア」は分母から外れる。この関数は
+ * `courts`（出場）と `benchIds`（控え）の**和集合**を「このラウンドの配置対象」
+ * とみなし、`affinityPairs` の各要素についてその判定をするだけなので、
+ * 一方でも現れないペアは自然に除外される（呼び出し側で追加のフィルタは要らない）。
+ *
+ * **走査の向き（性能）。** コート所属・パートナーの Map は出場者数ぶん
+ * （courts ∪ benchIds、実運用で最大25人程度）1回だけ構築するが、それを使って
+ * 「候補プールの全ペア」を回すのではなく**`affinityPairs`（実運用1〜3組）だけ**
+ * を回す。候補プールの全ペアを回う実装は局所探索が `evaluate()` を数万回呼ぶ
+ * 構造と組み合わさって実測 4〜8倍の性能回帰になったため、`AffinityPair` を
+ * 配列にしてこの向きにしている（`AffinityPair` のコメント参照）。
+ */
+export function computeAffinity(
+  courts: CourtPlacement[],
+  benchIds: string[],
+  affinityPairs: AffinityPair[]
+): number {
+  if (affinityPairs.length === 0) return 0;
+
+  const courtIndexById = new Map<string, number>();
+  const partnerOfId = new Map<string, string>();
+  courts.forEach((court, courtIndex) => {
+    for (const id of courtMembers(court)) courtIndexById.set(id, courtIndex);
+    partnerOfId.set(court.teamA[0], court.teamA[1]);
+    partnerOfId.set(court.teamA[1], court.teamA[0]);
+    partnerOfId.set(court.teamB[0], court.teamB[1]);
+    partnerOfId.set(court.teamB[1], court.teamB[0]);
+  });
+  const benchSet = new Set(benchIds);
+  const inPool = (id: string): boolean => courtIndexById.has(id) || benchSet.has(id);
+
+  let sum = 0;
+  let targetCount = 0;
+  for (const { a, b, deficit } of affinityPairs) {
+    if (!deficit) continue; // 0 は対象外（呼び出し側で除外済みの想定だが念のため）
+    if (!inPool(a) || !inPool(b)) continue; // 両者ともこのラウンドの配置対象に現れないペアは対象外
+
+    targetCount++;
+    const courtA = courtIndexById.get(a);
+    const courtB = courtIndexById.get(b);
+    let contribution: number;
+    if (courtA === undefined || courtB === undefined || courtA !== courtB) {
+      contribution = 1.0; // 別コート、または片方以上がベンチ
+    } else if (partnerOfId.get(a) === b) {
+      contribution = 0; // 味方
+    } else {
+      contribution = 0.5; // 同コートで敵
+    }
+    sum += deficit * contribution;
+  }
+
+  return targetCount === 0 ? 0 : clamp01(sum / targetCount);
+}
+
+/** 7目的すべてを計算した結果（各 0〜1） */
 export type ObjectiveTerms = ObjectiveWeights;
 
 export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
@@ -426,10 +604,11 @@ export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
       input.pairKeyOf,
       input.reachableCountById
     ),
+    affinity: computeAffinity(input.courts, input.benchIds, input.affinityPairs),
   };
 }
 
-/** 6項目を重み付き合計する（合計 = 目的関数値。小さいほど良い） */
+/** 7項目を重み付き合計する（合計 = 目的関数値。小さいほど良い） */
 export function weightedObjective(
   terms: ObjectiveTerms,
   weights: ObjectiveWeights
@@ -441,7 +620,8 @@ export function weightedObjective(
     terms.competitive * weights.competitive +
     terms.gender * weights.gender +
     terms.mixSplit * weights.mixSplit +
-    terms.variety * weights.variety
+    terms.variety * weights.variety +
+    terms.affinity * weights.affinity
   );
 }
 

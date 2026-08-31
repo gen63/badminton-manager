@@ -55,9 +55,12 @@ import {
   computeRemoveReservation,
   computeFulfillReservation,
   computeClearReservations,
+  computeAddPairPreference,
+  computeRemovePairPreference,
   computeSetSetting,
   applyPayment,
   addPlayers,
+  resetMatchState,
   setPracticeType,
   finishMatchAndContinue,
   overwriteGameState,
@@ -1004,6 +1007,127 @@ describe('sessionMutations - reservations', () => {
     });
     const next = computeClearReservations(state);
     expect(next.reservations).toEqual([]);
+  });
+});
+
+describe('sessionMutations - pair preferences', () => {
+  it('computeAddPairPreference: 追加できる', () => {
+    const state = baseState({
+      players: [makePlayer('p1'), makePlayer('p2')],
+    });
+    const next = computeAddPairPreference(state, ['p1', 'p2'], 'normal', 'pp1', 1000, 'admin');
+    expect(next.pairPreferences).toEqual([
+      {
+        id: 'pp1',
+        playerIds: ['p1', 'p2'],
+        strength: 'normal',
+        createdAt: 1000,
+        createdBy: 'admin',
+      },
+    ]);
+  });
+
+  it('computeAddPairPreference: 追加してもプレイヤーの isResting は変わらない（予約との差分）', () => {
+    const state = baseState({
+      players: [
+        makePlayer('p1', { isResting: false }),
+        makePlayer('p2', { isResting: false }),
+      ],
+    });
+    const next = computeAddPairPreference(state, ['p1', 'p2'], 'normal', 'pp1', 1000);
+    expect(next.players.find((p) => p.id === 'p1')?.isResting).toBe(false);
+    expect(next.players.find((p) => p.id === 'p2')?.isResting).toBe(false);
+  });
+
+  it('computeAddPairPreference: ちょうど2人でなければ no-op', () => {
+    const state = baseState({
+      players: [makePlayer('p1'), makePlayer('p2'), makePlayer('p3')],
+    });
+    const next = computeAddPairPreference(state, ['p1', 'p2', 'p3'], 'normal', 'pp1', 1000);
+    expect(next).toBe(state);
+    const next2 = computeAddPairPreference(state, ['p1'], 'normal', 'pp1', 1000);
+    expect(next2).toBe(state);
+  });
+
+  it('computeAddPairPreference: 存在しない ID / 空文字 / 重複 ID は no-op', () => {
+    const state = baseState({ players: [makePlayer('p1')] });
+    // 存在しない ID と空文字を含むため、dedup 後 1 人だけになり no-op
+    const next = computeAddPairPreference(state, ['p1', 'ghost', ''], 'normal', 'pp1', 1000);
+    expect(next).toBe(state);
+    // 同一 ID の重複指定も dedup 後 1 人になり no-op
+    const next2 = computeAddPairPreference(state, ['p1', 'p1'], 'normal', 'pp1', 1000);
+    expect(next2).toBe(state);
+  });
+
+  it('computeAddPairPreference: 既に同じ2人の組み合わせが登録済みなら no-op', () => {
+    const state = baseState({
+      players: [makePlayer('p1'), makePlayer('p2')],
+      pairPreferences: [
+        { id: 'pp1', playerIds: ['p1', 'p2'], strength: 'normal', createdAt: 0 },
+      ],
+    });
+    // 順序を入れ替えても同じ組み合わせとして検出される
+    const next = computeAddPairPreference(state, ['p2', 'p1'], 'strong', 'pp2', 1000);
+    expect(next).toBe(state);
+  });
+
+  it('computeRemovePairPreference: 削除できる', () => {
+    const state = baseState({
+      pairPreferences: [
+        { id: 'pp1', playerIds: ['p1', 'p2'], strength: 'normal', createdAt: 0 },
+        { id: 'pp2', playerIds: ['p3', 'p4'], strength: 'strong', createdAt: 0 },
+      ],
+    });
+    const next = computeRemovePairPreference(state, 'pp1');
+    expect(next.pairPreferences?.map((pp) => pp.id)).toEqual(['pp2']);
+  });
+
+  it('computeRemovePlayer: 該当するペア希望を削除する', () => {
+    const state = baseState({
+      players: [makePlayer('a'), makePlayer('b'), makePlayer('c')],
+      pairPreferences: [
+        { id: 'pp1', playerIds: ['a', 'b'], strength: 'normal', createdAt: 0 },
+        { id: 'pp2', playerIds: ['b', 'c'], strength: 'strong', createdAt: 0 },
+      ],
+    });
+    const next = computeRemovePlayer(state, 'a');
+    // a を含む pp1 は削除。予約と違い a だけ除いて残すことはしない
+    expect(next.pairPreferences?.map((pp) => pp.id)).toEqual(['pp2']);
+  });
+
+  it('computeRemovePlayer: pairPreferences 未設定（旧セッション）でも壊れない', () => {
+    const state = baseState({ players: [makePlayer('a')] });
+    const next = computeRemovePlayer(state, 'a');
+    expect(next.pairPreferences).toBeUndefined();
+  });
+});
+
+describe('sessionMutations - resetMatchState はペア希望を消さない', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  it('「試合をリセット」を実行しても pairPreferences は残る', async () => {
+    const state = baseState({
+      players: [makePlayer('p1'), makePlayer('p2')],
+      pairPreferences: [
+        { id: 'pp1', playerIds: ['p1', 'p2'], strength: 'normal', createdAt: 0 },
+      ],
+      reservations: [
+        { id: 'r1', orderNumber: 1, playerIds: ['p1'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+      ],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    const result = await resetMatchState('session-1');
+
+    expect(result.reservations).toEqual([]); // 予約は消える
+    expect(result.pairPreferences).toEqual(state.pairPreferences); // ペア希望は残る
   });
 });
 

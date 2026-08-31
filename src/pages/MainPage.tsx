@@ -14,6 +14,7 @@ import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { useUndoStore } from '../stores/undoStore';
 import { useReservationStore } from '../stores/reservationStore';
+import { usePairPreferenceStore } from '../stores/pairPreferenceStore';
 import { usePresence } from '../hooks/usePresence';
 import { usePresenceStore } from '../stores/presenceStore';
 import { PresenceIndicator } from '../components/PresenceIndicator';
@@ -127,6 +128,7 @@ export function MainPage() {
   const undo = useUndoStore((s) => s.undo);
   const redo = useUndoStore((s) => s.redo);
   const reservations = useReservationStore((s) => s.reservations);
+  const pairPreferences = usePairPreferenceStore((s) => s.pairPreferences);
   const practiceDefaults =
     PRACTICE_TYPE_OPTIONS.find((t) => t.value === practiceType) ?? PRACTICE_TYPE_OPTIONS[0];
   const maleFee = session?.accounting?.maleFee ?? practiceDefaults.maleFee;
@@ -443,9 +445,11 @@ export function MainPage() {
       lateBalanceMode,
       genderBalanceMode,
       reservationBlockThreshold,
+      pairPreferences,
     }),
     [players, courts, matchHistory, reservations, session?.config.practiceStartTime,
-      useStayDurationPriority, gameMode, lateBalanceMode, genderBalanceMode, reservationBlockThreshold],
+      useStayDurationPriority, gameMode, lateBalanceMode, genderBalanceMode, reservationBlockThreshold,
+      pairPreferences],
   );
 
   const myPlayerId = useMemo(
@@ -741,6 +745,7 @@ export function MainPage() {
           genderBalanceMode,
           reservationBlockThreshold,
           restingPlayers,
+          pairPreferences,
         }
       );
 

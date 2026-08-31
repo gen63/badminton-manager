@@ -19,6 +19,7 @@ import { timestampToMillis } from '../lib/firestoreUtils';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
+import { usePairPreferenceStore } from '../stores/pairPreferenceStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { DEFAULT_RESERVATION_BLOCK_THRESHOLD } from '../lib/algorithm';
@@ -234,6 +235,12 @@ export function useFirebaseSync() {
           const cur = useReservationStore.getState().reservations;
           if (!jsonEqual(cur, gameState.reservations)) {
             useReservationStore.setState({ reservations: gameState.reservations });
+          }
+        }
+        if (gameState.pairPreferences !== undefined) {
+          const cur = usePairPreferenceStore.getState().pairPreferences;
+          if (!jsonEqual(cur, gameState.pairPreferences)) {
+            usePairPreferenceStore.setState({ pairPreferences: gameState.pairPreferences });
           }
         }
 

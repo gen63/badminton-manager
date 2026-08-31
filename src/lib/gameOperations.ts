@@ -9,6 +9,7 @@ import type { Player } from '../types/player';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
+import type { PairPreference } from '../types/pairPreference';
 import type { SyncSettings } from '../services/sessionService';
 import { assignCourts, getCallableReservationRestingIds } from './algorithm';
 import { withInProgressGames } from './effectiveGames';
@@ -123,6 +124,7 @@ export interface GameState {
   courts: Court[];
   matchHistory: Match[];
   reservations: Reservation[];
+  pairPreferences?: PairPreference[];
   settings?: SyncSettings;
 }
 
@@ -306,6 +308,8 @@ export function computeFinishAndContinue(
           reservationBlockThreshold: options.reservationBlockThreshold,
           // 予約は休憩中メンバーも呼び出せる（プレイ中でない休憩者）
           restingPlayers: effectivePlayers.filter((p) => p.isResting && !playersInCourts.has(p.id)),
+          // ペア希望は reservations と同じく state（リモートの GameState）から渡す
+          pairPreferences: state.pairPreferences,
         });
       } catch {
         assignments = [];
