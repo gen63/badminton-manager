@@ -563,6 +563,15 @@ if (PREF_PAIRS > 0) {
   console.log('  成立率%=目的7（ペア希望）= 実績(味方だった回数)/機会(min 試合数) の登録ペア平均');
   console.log('    （normal の目標は 50%。docs/plans/2026-08-31-pair-preference.md 6.）');
   console.log('  リーク=希望ペア当事者の試合数−全体中央値の平均（0 に近いほど試合数が公平）');
+  if (!USE_OBJECTIVE_ENGINE) {
+    console.log('');
+    console.log(
+      '  ⚠️  ENGINE=objective が指定されていません。ペア希望（affinity）は' +
+        ' src/lib/pairing/ の新エンジンにしか実装されていないため、旧エンジンでは' +
+        ' PREF_PAIRS を設定しても完全に無視され、成立率は必ず 0% になります。' +
+        ' ENGINE=objective を付けて実行し直してください。'
+    );
+  }
 }
 console.log('  （共演のみ高いほど良い。他はすべて低いほど良い）');
 console.log('');
