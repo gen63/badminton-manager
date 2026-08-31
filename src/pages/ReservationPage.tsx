@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Plus, Trash2, ChevronDown, Users, Clock, CheckCircle2, CalendarCheck } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, Users, Clock, CheckCircle2, CalendarCheck, Heart } from 'lucide-react';
 import { useReservationStore } from '../stores/reservationStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
+import { usePairPreferenceStore } from '../stores/pairPreferenceStore';
 import { useSessionWriter } from '../hooks/useSessionWriter';
 import { ReservationAddModal } from '../components/ReservationAddModal';
+import { PairPreferenceAddModal } from '../components/PairPreferenceAddModal';
+import { PairPreferenceCard } from '../components/PairPreferenceCard';
 import { BottomNav } from '../components/BottomNav';
 import { EmptyState } from '../components/EmptyState';
 import { isPlayerReady as checkPlayerReady, getReservationStatus, inferDoublesCategory, getCategoryShortLabel } from '../lib/reservationUtils';
@@ -16,10 +19,14 @@ export function ReservationPage() {
   const currentUser = useSessionStore((s) => s.currentUser);
   const players = usePlayerStore((s) => s.players);
   const courts = useGameStore((s) => s.courts);
+  const matchHistory = useGameStore((s) => s.matchHistory);
   const reservations = useReservationStore((s) => s.reservations);
+  const pairPreferences = usePairPreferenceStore((s) => s.pairPreferences);
   const writer = useSessionWriter();
   const [showAdd, setShowAdd] = useState(false);
+  const [showAddPairPreference, setShowAddPairPreference] = useState(false);
   const [showFulfilled, setShowFulfilled] = useState(false);
+  const isSingles = session?.config.gameMode === 'singles';
 
   if (!session) {
     return <Navigate to="/" replace />;
@@ -48,6 +55,21 @@ export function ReservationPage() {
           setShowAdd(false);
         }}
         onCancel={() => setShowAdd(false)}
+      />
+    );
+  }
+
+  if (showAddPairPreference) {
+    return (
+      <PairPreferenceAddModal
+        players={players}
+        existingPreferences={pairPreferences}
+        getPlayerName={getPlayerName}
+        onConfirm={async (playerIds, strength) => {
+          await writer.addPairPreference(playerIds, strength, currentUser || undefined);
+          setShowAddPairPreference(false);
+        }}
+        onCancel={() => setShowAddPairPreference(false)}
       />
     );
   }
@@ -209,6 +231,42 @@ export function ReservationPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ペア希望セクション（予約とは別物: 消化されず、副作用も無い） */}
+        {!isSingles && (
+          <div className="mt-6 pt-4 border-t border-border">
+            <div className="flex items-center gap-2 mb-3">
+              <Heart size={16} />
+              <h2 className="text-sm font-bold text-foreground">ペア希望</h2>
+              {pairPreferences.length > 0 && (
+                <span className="text-sm text-muted-foreground">
+                  {pairPreferences.length}組
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              {pairPreferences.map((preference) => (
+                <PairPreferenceCard
+                  key={preference.id}
+                  preference={preference}
+                  players={players}
+                  matchHistory={matchHistory}
+                  getPlayerName={getPlayerName}
+                  onRemove={() => void writer.removePairPreference(preference.id)}
+                />
+              ))}
+
+              <button
+                onClick={() => setShowAddPairPreference(true)}
+                className="w-full py-3 bg-secondary text-secondary-foreground rounded-xl font-semibold text-sm hover:bg-secondary/90 transition-colors flex items-center justify-center gap-2"
+              >
+                <Plus size={16} />
+                ペア希望を追加
+              </button>
+            </div>
           </div>
         )}
       </div>

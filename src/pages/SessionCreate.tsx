@@ -5,6 +5,7 @@ import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useReservationStore } from '../stores/reservationStore';
+import { usePairPreferenceStore } from '../stores/pairPreferenceStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useUndoStore } from '../stores/undoStore';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
@@ -185,6 +186,7 @@ export function SessionCreate() {
       usePlayerStore.getState().clearPlayers();
       useGameStore.getState().clearHistory();
       useReservationStore.getState().clearReservations();
+      usePairPreferenceStore.getState().clearPairPreferences();
       useAccountingStore.getState().clearRecords();
       useUndoStore.getState().clearAll();
 
