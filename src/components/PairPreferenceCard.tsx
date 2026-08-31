@@ -57,11 +57,13 @@ export function PairPreferenceCard({
     <div className="card p-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-          <span className={`font-semibold text-sm ${nameColor(playerA)}`}>
+          {/* 名前は truncate せず折り返す（docs/plans/2026-08-12-history-name-overflow.md
+              で確立したパターン。見切れるより折り返す方を採る） */}
+          <span className={`font-semibold text-sm min-w-0 break-words ${nameColor(playerA)}`}>
             {getPlayerName(aId)}
           </span>
           <span className="text-muted-foreground text-xs">＋</span>
-          <span className={`font-semibold text-sm ${nameColor(playerB)}`}>
+          <span className={`font-semibold text-sm min-w-0 break-words ${nameColor(playerB)}`}>
             {getPlayerName(bId)}
           </span>
           <span

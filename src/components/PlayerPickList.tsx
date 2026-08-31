@@ -43,8 +43,11 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle }:
                 : 'bg-card border-border'
             }`}
           >
-            <div className="flex items-center gap-2">
-              <span className={`font-semibold text-sm ${player.isResting ? 'text-muted-foreground' : textColor}`}>
+            {/* 名前が長くてもバッジやチェックを押し出さないよう、折り返しを許す
+                （min-w-0 が無いと flex アイテムが縮まない）。truncate は使わない
+                — docs/plans/2026-08-12-history-name-overflow.md の方針 */}
+            <div className="flex items-center gap-2 min-w-0 flex-wrap">
+              <span className={`font-semibold text-sm min-w-0 break-words ${player.isResting ? 'text-muted-foreground' : textColor}`}>
                 {getPlayerName(player.id)}
               </span>
               <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
@@ -63,7 +66,7 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle }:
               )}
             </div>
             {selected && (
-              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white">
+              <div className="w-6 h-6 shrink-0 bg-green-500 rounded-full flex items-center justify-center text-white">
                 <Check size={16} />
               </div>
             )}
