@@ -124,6 +124,48 @@ affinity = Σ(deficit × 寄与) ÷ 評価対象ペア数     （対象0件な�
 affinityDeficitByPairKey: Map<string, number>;
 ```
 
+### 3b. 試合機会への影響（入りやすくなる／公平性のリークとガード）
+
+`affinity` の寄与は「味方 = 0 / 同コートで敵 = 0.5 / **別コートかベンチ = 1.0**」なので、
+2人を**同時にコート上へ押し出す力**として働く。結果、**ペア希望を登録した人は
+試合に入りやすくなる**（特に、片方が先に待っている状況では遅れている方が
+引っ張り込まれる）。
+
+- **行列は飛べない。** 公平性の窓（`FAIRNESS_WINDOW_RATIO`）はハード制約なので、
+  順番がまだ来ていない人を希望のために引き上げることはできない
+- **相手が不在のラウンドは中立。** 「両者が候補プールにいる希望ペアだけを評価対象に
+  する」設計のおかげで、**相手が試合中だから自分も入れない、は起きない**。分母除外は
+  重み比を守るための措置だが、副次的にこの性質も担保している
+
+**公平性のリークとそのガード。** コートの枠は増えないので、希望ペアが優遇された分だけ
+他の人が押し出される。試合数が増えれば優先度順位が下がるという自己修正は効くが、
+均衡点はわずかにプラス側へ寄る。これを止めるため、**既存の
+`reservationBlockThreshold`（`DEFAULT_RESERVATION_BLOCK_THRESHOLD = 2`）と同じガードを
+`affinity` にも適用する**:
+
+```
+どちらかの gamesPlayed − 中央値 >= reservationBlockThreshold  →  deficit = 0
+```
+
+予約で既に使われている仕組み・語彙をそのまま流用するので、設定項目を増やさずに済み、
+運用上の説明も「予約と同じ基準で保留されます」で済む。中央値の算出は
+`2026-08-13-in-progress-games-in-fairness.md` の母集団（配置済みコート上のメンバーを
+`gamesPlayed + 1` として数える）に合わせる。
+
+### 3c. 希望の組数による効き方の違い
+
+`affinity` は評価対象ペア数で**平均**するため、組数で2方向に変わる。
+
+| 観点 | 1組だけ | N組 |
+|---|---|---|
+| 配置全体への総影響量 | 一定 | **一定**（平均＝予算制。10組でも壊れない） |
+| 1組あたりの効き目 | 最大 | **1/N に薄まる**（6組では `targetRatio` に届かない） |
+| 公平性の偏り | **最大**（22人中2人だけが得） | 小（全員が持てば差は消える） |
+
+**実用上の推奨は1〜3組**。UI で組数を制限はしないが、bench は **N = 1 / 3 / 6** で測り、
+1組（効き目最大・偏り最大）と6組（薄まりすぎ）の両端を押さえる。重みを1組の
+最悪ケースで決める必要があるのは 6.（重みの決め方）に記載のとおり。
+
 ### 4. 実装上の落とし穴 — `splitCost` にも入れる（必ず踏む）
 
 `assignRound.ts` の `normalizeSplit` は「4人をどう2対2に割るか」を
@@ -162,25 +204,34 @@ return competitive + mixSplit + affinity * weights.affinity;
 
 `wideSpanThreshold = ceil(ロースター人数 × 2/3)`、`WIDE_RANK_SPAN_MIN_ROSTER = 14`。
 
-| 人数 | 完全に組めなくなる条件 |
-|---|---|
-| 〜13人 | **なし**（制約自体がオフ。どんな実力差でも組める） |
-| 14人 | 順位差10以上（1位と11位以降） |
-| 20人 | 順位差14以上（1位と15位以降） |
-| 30人 | 順位差20以上（1位と21位以降） |
-| 40人 | 順位差27以上（1位と28位以降） |
+**このサークルの実運用レンジは 3コート最大25人・通常22人**なので、その範囲で見る。
 
-**20人なら1位と14位は組める。** ブロックされるのは端どうしだけで、想定される
-「あの2人を組ませたい」はまず引っかからない。なお制約は**コート4人全体の順位幅**で
-判定するが、4人の幅 ≥ ペアの順位差なので「ペアの順位差が閾値以上なら必ず違反」が
-成り立つ（これが追加モーダルの警告条件）。レート未設定（全員 0）だと
+| 人数 | ハード制約（組めない） | 1グループ幅 | 成立しにくくなる目安 |
+|---|---|---|---|
+| 〜13人 | **なし**（制約オフ） | 4人 | 順位差 4以上 |
+| 14人 | 順位差10以上（1位×11位〜） | 5人 | 順位差 5以上 |
+| 16人 | 順位差11以上（1位×12位〜） | 6人 | 順位差 6以上 |
+| 18人 | 順位差12以上（1位×13位〜） | 6人 | 順位差 6以上 |
+| 20人 | 順位差14以上（1位×15位〜） | 7人 | 順位差 7以上 |
+| **22人（通常最大）** | 順位差15以上（1位×16位〜） | 8人 | 順位差 8以上 |
+| **25人（上限）** | 順位差17以上（1位×18位〜） | 9人 | 順位差 9以上 |
+
+**通常最大の22人でも、ブロックされるのは「1位 × 16位以降」だけ。** 実運用で
+「実力差でペア希望が成立しない」はまず起きないと考えてよい。なお制約は
+**コート4人全体の順位幅**で判定するが、4人の幅 ≥ ペアの順位差なので
+「ペアの順位差が閾値以上なら必ず違反」が成り立つ。レート未設定（全員 0）だと
 `buildRanksWithTies` で全員同順位になり、制約は一切効かない。
 
-**断崖の手前にも連続的な効きにくさがある。** 2人を同じコートに入れると残り2人も
-その実力帯に押し込まれるため `skillGap`（重み 1.5）のペナルティが増える。20人で
-順位差13のペアなら `skillGap` は通常の約3倍になり、`affinity` がそれを上回らないと
-成立しない。つまり「閾値未満なら OK / 以上なら NG」の二値ではなく、**離れているほど
-成立頻度が落ちて `targetRatio` に届かなくなる**。UI の成立実績表示はここで効く。
+**実務上効くのは断崖ではなく手前の連続的な効きにくさ。** 2人を同じコートに入れると
+残り2人もその実力帯に押し込まれるため `skillGap`（重み 1.5）のペナルティが増える。
+22人で順位差12のペアなら `skillGap` は通常の約3倍になり、`affinity` がそれを
+上回らないと成立しない。つまり「閾値未満なら OK / 以上なら NG」の二値ではなく、
+**離れているほど成立頻度が落ちて `targetRatio` に届かなくなる**。UI の成立実績表示は
+ここで効く。
+
+上表の「1グループ幅」= `ceil(人数 / 3)` は、旧エンジンの3分割（upper/middle/lower）
+1つ分に相当する。**順位差がこれ以上ある = 実力帯を跨いでいる**ということなので、
+UI の警告はハード制約ではなくこの線で出す（後述）。
 
 ### 6. 重み `affinity` の決め方
 
@@ -189,15 +240,22 @@ return competitive + mixSplit + affinity * weights.affinity;
 
 - bench に「希望ペアを N 組ランダムに登録する」条件を追加し、
   **希望ペア成立率（実績/機会）**を新規指標として出力する
+- 条件は既定（`13x2,14x2,16x2,15x3,18x3,21x3`）に **`22x3`（通常最大）と
+  `25x3`（上限）を追加**する。それ以上の人数は運用上あり得ないので測らない
 - 既存指標の悪化を同時に見る: 幅広% / 3-1% / 競り度 / 占有率 / 試合数幅
+- **公平性リークの専用指標を足す**: 「希望ペア当事者の試合数 − 全体中央値」。
+  3b のガードが効いていれば 0 付近に収まるはず。ここが +1 を超えるようなら
+  「ペア希望を登録すると試合が増える」ことになり、運用上受け入れられない
+- 希望の組数は **N = 1 / 3 / 6** を振る（3c 参照）
 - 開始点は `gender`（1.6）と同程度、`variety`（2.6）より弱く。0.8 / 1.2 / 1.6 / 2.0 を振る
 - **希望ペア1組の条件を必ず入れる。** `affinity` は評価対象ペア数で平均するため、
   1組しか登録されていないと分母1でその1組が**最大強度**になる（10組あれば互いに
   薄まる）。意味としては妥当（1組しか希望していないなら尊重されるべき）だが、
   **重みは「1組だけ」の最悪ケースで決めないと `skillGap` を押し切って
   実力差の大きいペアを無理に成立させてしまう**
-- **合格条件**: 成立率が `targetRatio` の ±0.1 に収まり、既存指標の悪化が
-  試合数幅 +0.1 未満・3-1% +1.0pt 未満
+- **合格条件**: N=1〜3 で成立率が `targetRatio` の ±0.1 に収まり、既存指標の悪化が
+  試合数幅 +0.1 未満・3-1% +1.0pt 未満、かつ**希望ペア当事者の試合数超過が
+  +0.5 未満**
 
 `targetRatio` の既定値（UI 2段階）も同じ bench で決める。初期案は
 **ひかえめ 0.35 / 積極的 0.6**。
@@ -230,8 +288,12 @@ return competitive + mixSplit + affinity * weights.affinity;
   流用しない — 選択上限が2人固定で、強度の選択が要り、予約側の
   カテゴリ推測（`inferDoublesCategory`）は不要なため。プレイヤー一覧の見た目・
   並び（待機中→休憩中）は `ReservationAddModal` に揃える
-- **成立見込みの警告**: 2人の `rating` 順位差が `wideSpanThreshold` 以上の場合、
-  追加モーダルに「実力差が大きいため成立しにくい」と表示する（ブロックはしない）
+- **成立見込みの警告**: 追加モーダルに2段階で表示する（どちらもブロックはしない）。
+  **ハード制約（`wideSpanThreshold`）を基準にすると実運用（最大25人）ではまず
+  発火せず死にコードになる**ため、警告の主役は1グループ幅の方にする
+  - 順位差 ≧ `ceil(人数 / 3)`（1グループ幅）→ 「実力帯が離れているため成立しにくい」
+  - 順位差 ≧ `wideSpanThreshold` → 「実力差が大きく、成立しません」（22人なら
+    1位×16位以降。ほぼ出ない想定だが、出たときに理由が分からないと困るので残す）
 - **削除**: 予約と違い「消化済み」に落ちないので、削除だけが唯一の消し方
 - **`BottomNav` のバッジ**: 予約件数のまま変更しない。ペア希望は「待っている件数」
   ではないので通知性を持たせない
@@ -246,8 +308,9 @@ return competitive + mixSplit + affinity * weights.affinity;
 - `src/types/pairPreference.ts` — 型定義
 - `src/stores/pairPreferenceStore.ts` — zustand（persist しない。`reservationStore` と同形）
 - `src/components/PairPreferenceAddModal.tsx` — 追加モーダル
-- `src/lib/pairPreference.ts` + `.test.ts` — `deficit` 算出の純粋関数
-  （`computeAffinityDeficits(preferences, players, pairCounts)`）
+- `src/lib/pairPreference.ts` + `.test.ts` — `deficit` 算出の純粋関数。
+  3b の試合数ガードもここに含める:
+  `computeAffinityDeficits(preferences, players, pairCounts, medianGamesPlayed, blockThreshold)`
 
 ### 変更
 | ファイル | 変更内容 |
@@ -258,7 +321,7 @@ return competitive + mixSplit + affinity * weights.affinity;
 | `src/hooks/useFirebaseSync.ts` | `gameState.pairPreferences` → store へ反映（`jsonEqual` ガードは既存と同形） |
 | `src/lib/pairing/objective.ts` | `ObjectiveWeights.affinity` / `computeAffinity` / `ObjectiveInput.affinityDeficitByPairKey` |
 | `src/lib/pairing/assignRound.ts` | `AssignRoundParams.affinityDeficitByPairKey` を受けて `evaluate` と **`splitCost` の両方**へ渡す |
-| `src/lib/algorithm.ts` | `AssignCourtsOptions.pairPreferences?` を受け、`buildHistoryCounts` の結果と `players` から `deficit` を算出して `assignRoundByObjective` へ渡す |
+| `src/lib/algorithm.ts` | `AssignCourtsOptions.pairPreferences?` を受け、`buildHistoryCounts` の結果・`players`・**既存の中央値と `reservationBlockThreshold`**（予約保留判定と同じ値を使い回す）から `deficit` を算出して `assignRoundByObjective` へ渡す |
 | `src/lib/gameOperations.ts` | `assignCourts` 呼び出しへ `pairPreferences` を渡す（`:291`） |
 | `src/pages/MainPage.tsx` | 同上（`:728`） |
 | `src/lib/nextMatchPrediction.ts` | 同上（`:111`）。**渡さないと配置予測が実配置とズレる** |
@@ -288,10 +351,13 @@ return competitive + mixSplit + affinity * weights.affinity;
 
 ## テスト
 
-- `pairPreference.test.ts` — `deficit` 算出（機会0 / 目標到達 / 目標超過 / 片方未出場）
+- `pairPreference.test.ts` — `deficit` 算出（機会0 / 目標到達 / 目標超過 / 片方未出場 /
+  **試合数が中央値+2以上のメンバーを含むと `deficit` が 0 になる**（3b のガード））
 - `objective.test.ts` — `computeAffinity`（味方 / 敵 / 別コート / 対象0件 / 片方ベンチ）
 - `assignRound.test.ts` — 希望ペアが味方として配置される / ハード制約を破らない
-  （順位差が大きい希望は成立しない）/ 目標到達後は他の目的が優先される
+  （順位差が大きい希望は成立しない・公平性の窓を飛び越えない）/ 目標到達後は
+  他の目的が優先される / **相手が候補プールにいないラウンドでは挙動が変わらない**
+  （3b の「中立」性質の回帰テスト）
 - `sessionMutations.test.ts` — 追加・削除・`computeRemovePlayer` 連動・
   **追加しても `isResting` が変わらないこと**（予約との差分の回帰テスト）
 
