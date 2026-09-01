@@ -24,75 +24,56 @@ function makePref(
   return { id, playerIds: [a, b], strength, createdAt: 0 };
 }
 
-const pairKeyOf = (a: string, b: string): string => [a, b].sort().join(',');
-
 describe('computeAffinityPairs', () => {
-  it('機会0（どちらも0試合）: opportunity は max(1, 0) = 1 で割り、achieved は 0 → deficit は targetRatio 分', () => {
-    const players = [makePlayer('a', 0), makePlayer('b', 0)];
-    const prefs = [makePref('p1', 'a', 'b')];
-    const result = computeAffinityPairs(prefs, players, new Map(), pairKeyOf, 0, 2);
-    expect(result).toEqual([{ a: 'a', b: 'b', deficit: 1 }]); // achieved=0 → deficit = clamp01((0.5-0)/0.5) = 1
-  });
+  // 2026-09-01: 飽和（実績比率ベースの deficit・TARGET_RATIO）を廃止したため、
+  // 「機会0」「目標到達」「目標超過」「strong は targetRatio 1.0」という
+  // 実績比率まわりのテストは意味を失った。常に最大強度で対象になる新仕様に
+  // 合わせて書き直す（公平性ガード・候補プールフィルタのテストはそのまま残す）。
 
-  it('目標到達（normal: achieved が targetRatio と一致）は deficit 0 で対象外', () => {
-    // opportunity = min(4,4) = 4, targetRatio(normal) = 0.5 → actual = 2 で達成
-    // medianGames は gamesPlayed と揃えて公平性ガードに触れないようにする
+  it('対象ペアは常に含まれる（実績に関係なく最大強度）', () => {
     const players = [makePlayer('a', 4), makePlayer('b', 4)];
     const prefs = [makePref('p1', 'a', 'b')];
-    const partnerCounts = new Map([[pairKeyOf('a', 'b'), 2]]);
-    const result = computeAffinityPairs(prefs, players, partnerCounts, pairKeyOf, 4, 2);
-    expect(result).toEqual([]);
+    const result = computeAffinityPairs(prefs, players, 4, 2);
+    expect(result).toEqual([{ a: 'a', b: 'b' }]);
   });
 
-  it('目標超過（achieved > targetRatio）も deficit 0（負にはならずクランプされ対象外）', () => {
+  it('normal / strong で対象判定は変わらない（違いはハード制約側だけ）', () => {
     const players = [makePlayer('a', 4), makePlayer('b', 4)];
-    const prefs = [makePref('p1', 'a', 'b')];
-    const partnerCounts = new Map([[pairKeyOf('a', 'b'), 4]]); // achieved = 1.0 > 0.5
-    const result = computeAffinityPairs(prefs, players, partnerCounts, pairKeyOf, 4, 2);
-    expect(result).toEqual([]);
+    const normalResult = computeAffinityPairs(
+      [makePref('p1', 'a', 'b', 'normal')], players, 4, 2,
+    );
+    const strongResult = computeAffinityPairs(
+      [makePref('p1', 'a', 'b', 'strong')], players, 4, 2,
+    );
+    expect(normalResult).toEqual([{ a: 'a', b: 'b' }]);
+    expect(strongResult).toEqual([{ a: 'a', b: 'b' }]);
   });
 
   it('片方未出場（候補プールにいない）は対象外', () => {
     const players = [makePlayer('a', 4)]; // b は候補プールにいない
     const prefs = [makePref('p1', 'a', 'b')];
-    const result = computeAffinityPairs(prefs, players, new Map(), pairKeyOf, 0, 2);
+    const result = computeAffinityPairs(prefs, players, 0, 2);
     expect(result).toEqual([]);
   });
 
-  it('公平性ガード（3b）: 試合数が中央値+閾値以上のメンバーを含むと deficit が 0（対象外）になる', () => {
+  it('公平性ガード（3b）: 試合数が中央値+閾値以上のメンバーを含むと対象外になる', () => {
     // 中央値 0、閾値 2 → gamesPlayed 2 以上のメンバーは保留
     const players = [makePlayer('a', 2), makePlayer('b', 0)];
     const prefs = [makePref('p1', 'a', 'b')];
-    const result = computeAffinityPairs(prefs, players, new Map(), pairKeyOf, 0, 2);
+    const result = computeAffinityPairs(prefs, players, 0, 2);
     expect(result).toEqual([]);
   });
 
-  it('公平性ガードの境界: 閾値未満なら通常どおり評価される', () => {
+  it('公平性ガードの境界: 閾値未満なら通常どおり対象になる', () => {
     // gamesPlayed 1 は 中央値0 + 閾値2 = 2 未満なのでガード対象外
     const players = [makePlayer('a', 1), makePlayer('b', 0)];
     const prefs = [makePref('p1', 'a', 'b')];
-    const result = computeAffinityPairs(prefs, players, new Map(), pairKeyOf, 0, 2);
-    expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({ a: 'a', b: 'b' });
-  });
-
-  it('strong は targetRatio 1.0 で判定される（normal なら達成扱いの実績でも strong は未達）', () => {
-    const players = [makePlayer('a', 4), makePlayer('b', 4)];
-    const partnerCounts = new Map([[pairKeyOf('a', 'b'), 2]]); // achieved = 0.5
-    const normalResult = computeAffinityPairs(
-      [makePref('p1', 'a', 'b', 'normal')], players, partnerCounts, pairKeyOf, 4, 2,
-    );
-    expect(normalResult).toEqual([]); // normal は 0.5 で目標達成済み
-
-    const strongResult = computeAffinityPairs(
-      [makePref('p1', 'a', 'b', 'strong')], players, partnerCounts, pairKeyOf, 4, 2,
-    );
-    expect(strongResult).toHaveLength(1);
-    expect(strongResult[0].deficit).toBeCloseTo(0.5); // clamp01((1.0-0.5)/1.0)
+    const result = computeAffinityPairs(prefs, players, 0, 2);
+    expect(result).toEqual([{ a: 'a', b: 'b' }]);
   });
 
   it('希望が0件なら空配列', () => {
-    expect(computeAffinityPairs([], [], new Map(), pairKeyOf, 0, 2)).toEqual([]);
+    expect(computeAffinityPairs([], [], 0, 2)).toEqual([]);
   });
 });
 
