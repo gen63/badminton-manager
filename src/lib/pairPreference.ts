@@ -5,43 +5,38 @@
  * 「3b. 試合機会への影響」に対応する接続層。`src/lib/pairing/` の目的関数
  * エンジンには一切依存を持ち込まず（`AffinityPair` / `StrongPair` の型だけ使う）、
  * `algorithm.ts` から呼ばれる。
+ *
+ * **2026-09-01 に飽和（実績比率ベースの `deficit`）を廃止した。** 旧版は
+ * 「実績 / 機会」の達成度から不足度を出し、目標に達すると 0 になって
+ * `variety` に譲る設計だったが、常に最大強度で押し続ける仕様に変更した。
+ * `computeAffinityPairs` はもう実績（`partnerCounts`）を見ない — 「対象に
+ * するかどうか」（候補プールにいるか・公平性ガード）だけを判定する。
  */
 import type { PairPreference } from '../types/pairPreference';
-import { TARGET_RATIO } from '../types/pairPreference';
 import type { Player } from '../types/player';
 import type { AffinityPair } from './pairing/objective';
 import type { StrongPair } from './pairing/assignRound';
 
-const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
-
 /**
- * 希望ペアごとの `deficit`（不足度、0〜1）を算出し、目的関数（第7目的
- * `affinity`）にそのまま渡せる `AffinityPair[]` を組み立てる。
- *
- * ```
- * 実績   actual      = partnerCounts から取得（味方だった回数）
- * 機会   opportunity = min(gamesPlayed_a, gamesPlayed_b)
- * 達成度 achieved    = actual / max(1, opportunity)
- * 不足度 deficit     = clamp01((targetRatio − achieved) / targetRatio)
- * ```
+ * 希望ペアのうち「対象にするもの」だけを、目的関数（第7目的 `affinity`）に
+ * そのまま渡せる `AffinityPair[]` として組み立てる。対象ペアは常に最大強度
+ * （旧 `deficit = 1.0` 相当）で扱う — 実績比率による飽和は無い。
  *
  * - **両者が候補プール（`players`）にいる希望ペアだけ**を返す。片方でも
  *   `players` にいないペアは対象外（plan「3. 目的関数への追加」の評価対象）
  * - **公平性ガード（plan 3b）**: どちらかの `gamesPlayed − medianGames >=
- *   blockThreshold` なら、そのペアは対象外にする（`deficit` を 0 扱いにして
- *   除外するのと同じ）。これが無いと「ペア希望を登録すると試合数が増える」
- *   不公平が生じる。`medianGames` / `blockThreshold` は呼び出し側
- *   （`algorithm.ts`）が予約保留判定と共通のものを渡すこと（新しい閾値は
- *   増やさない）
- * - `deficit <= 0`（目標達成済み・超過）のペアも対象外にする。0 を含めても
- *   `objective.ts` 側で無害だが、`affinityPairs`（実運用1〜3組）を評価対象数の
- *   計算に混ぜないため、ここで削っておく
+ *   blockThreshold` なら、そのペアは対象外にする。これが無いと「ペア希望を
+ *   登録すると試合数が増える」不公平が生じる。**飽和を廃止した今、これが
+ *   ペア希望の出場頻度への影響を抑える唯一の仕組み**なので消さない。
+ *   `medianGames` / `blockThreshold` は呼び出し側（`algorithm.ts`）が予約
+ *   保留判定と共通のものを渡すこと（新しい閾値は増やさない）
+ * - `strength` による区別はしない（`normal` / `strong` のどちらも対象なら
+ *   同じ強度で返す）。`normal` と `strong` の違いは呼び出し側で
+ *   `computeStrongPairs` が追加するハード制約の有無だけになる
  */
 export function computeAffinityPairs(
   preferences: PairPreference[],
   players: Player[],
-  partnerCounts: Map<string, number>,
-  pairKeyOf: (a: string, b: string) => string,
   medianGames: number,
   blockThreshold: number,
 ): AffinityPair[] {
@@ -60,14 +55,7 @@ export function computeAffinityPairs(
     if (playerA.gamesPlayed - medianGames >= blockThreshold) continue;
     if (playerB.gamesPlayed - medianGames >= blockThreshold) continue;
 
-    const opportunity = Math.min(playerA.gamesPlayed, playerB.gamesPlayed);
-    const actual = partnerCounts.get(pairKeyOf(a, b)) ?? 0;
-    const achieved = actual / Math.max(1, opportunity);
-    const targetRatio = TARGET_RATIO[pref.strength];
-    const deficit = clamp01((targetRatio - achieved) / targetRatio);
-    if (deficit <= 0) continue; // 目標達成済み・超過は対象外
-
-    result.push({ a, b, deficit });
+    result.push({ a, b });
   }
 
   return result;
@@ -75,13 +63,15 @@ export function computeAffinityPairs(
 
 /**
  * 強度「必ず」（`strong`）の希望ペアを、ハード制約用の `StrongPair[]` として
- * 抽出する。
+ * 抽出する。`evaluate()` 側で (a)「両方が出るなら必ず味方」に加えて
+ * (b)「2人一緒に出るか、2人とも控えるか」も判定される
+ * （`docs/plans/2026-08-31-pair-preference.md` 3d、2026-09-01 に (b) を追加）。
  *
- * `computeAffinityPairs` のソフト項ガード（`medianGames` / `blockThreshold`）は
- * **一切適用しない**。plan 3d のとおり、公平性リークはソフト項が2人を
- * コートへ引っ張ることに由来しており、ハード制約側（「両方出るなら必ず味方」）
- * は出場頻度に干渉しないため、ガードを掛ける必要が無い（掛けると「出場したのに
- * 敵同士にされる」という `strong` の意味論が壊れる）。
+ * `computeAffinityPairs` の公平性ガード（`medianGames` / `blockThreshold`）は
+ * **一切適用しない**。ハード制約側（`StrongPair`）にガードを掛けると
+ * 「出場したのに敵同士にされる」「一緒に出られるはずが片方だけ弾かれる」と
+ * いう `strong` の意味論が壊れるため、ソフト項（`affinity`）にだけ掛ける
+ * という設計は (b) を足した後も変わらない。
  *
  * `computeAffinityPairs` と同じく、**両者が候補プールにいる希望ペアだけ**を
  * 返す（片方が候補プールにいなければハード制約としても意味を持たないため）。

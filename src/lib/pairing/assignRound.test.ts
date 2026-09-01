@@ -579,13 +579,13 @@ describe('computeAffinity（objective.ts）', () => {
 
   it('味方（同コートで partner）は寄与0', () => {
     const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
-    const pairs = [{ a: 'p0', b: 'p1', deficit: 1 }];
+    const pairs = [{ a: 'p0', b: 'p1' }];
     expect(computeAffinity(courts, [], pairs)).toBe(0);
   });
 
   it('同コートで敵なら寄与0.5', () => {
     const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
-    const pairs = [{ a: 'p0', b: 'p2', deficit: 1 }];
+    const pairs = [{ a: 'p0', b: 'p2' }];
     expect(computeAffinity(courts, [], pairs)).toBe(0.5);
   });
 
@@ -594,21 +594,15 @@ describe('computeAffinity（objective.ts）', () => {
       court(1, ['p0', 'p1'], ['p2', 'p3']),
       court(2, ['p4', 'p5'], ['p6', 'p7']),
     ];
-    const pairs = [{ a: 'p0', b: 'p4', deficit: 1 }];
+    const pairs = [{ a: 'p0', b: 'p4' }];
     expect(computeAffinity(courts, [], pairs)).toBe(1.0);
   });
 
   it('片方以上がベンチなら寄与1.0', () => {
     const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
     const bench = ['p4'];
-    const pairs = [{ a: 'p0', b: 'p4', deficit: 1 }];
+    const pairs = [{ a: 'p0', b: 'p4' }];
     expect(computeAffinity(courts, bench, pairs)).toBe(1.0);
-  });
-
-  it('deficit の値でスケールする', () => {
-    const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
-    const pairs = [{ a: 'p0', b: 'p2', deficit: 0.4 }]; // 敵 → 寄与0.5 × deficit0.4
-    expect(computeAffinity(courts, [], pairs)).toBeCloseTo(0.2);
   });
 
   it('評価対象ペア数で平均する（複数ペア）', () => {
@@ -617,8 +611,8 @@ describe('computeAffinity（objective.ts）', () => {
       court(2, ['p4', 'p5'], ['p6', 'p7']),
     ];
     const pairs = [
-      { a: 'p0', b: 'p1', deficit: 1 }, // 味方 → 0
-      { a: 'p0', b: 'p4', deficit: 1 }, // 別コート → 1.0
+      { a: 'p0', b: 'p1' }, // 味方 → 0
+      { a: 'p0', b: 'p4' }, // 別コート → 1.0
     ];
     expect(computeAffinity(courts, [], pairs)).toBeCloseTo(0.5);
   });
@@ -627,7 +621,7 @@ describe('computeAffinity（objective.ts）', () => {
     const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
     expect(computeAffinity(courts, [], [])).toBe(0);
     // 登録はされているが両者ともコート・ベンチのどちらにも現れないペア
-    const pairs = [{ a: 'x0', b: 'x1', deficit: 1 }];
+    const pairs = [{ a: 'x0', b: 'x1' }];
     expect(computeAffinity(courts, [], pairs)).toBe(0);
   });
 });
@@ -654,8 +648,8 @@ describe('assignRoundByObjective: affinity（ペア希望・normal）', () => {
     const baseline = assignRoundByObjective(baseParams);
     const withZeroWeight = assignRoundByObjective({
       ...baseParams,
-      // 実力差の大きい p0-p7 を最大 deficit で登録しても、重み0なら効かないはず
-      affinityPairs: [{ a: 'p0', b: 'p7', deficit: 1 }],
+      // 実力差の大きい p0-p7 を登録しても、重み0なら効かないはず
+      affinityPairs: [{ a: 'p0', b: 'p7' }],
       weights: { affinity: 0 },
     });
 
@@ -698,7 +692,7 @@ describe('assignRoundByObjective: affinity（ペア希望・normal）', () => {
       isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
-      affinityPairs: [{ a: 'p0', b: 'p7', deficit: 1 }],
+      affinityPairs: [{ a: 'p0', b: 'p7' }],
       weights: { affinity: 20 }, // skillGap 等を押し切れる大きさ
     });
 
@@ -713,29 +707,12 @@ describe('assignRoundByObjective: affinity（ペア希望・normal）', () => {
     expect(sameTeam).toBe(true); // 同コートに集めるだけでなく味方になっている（splitCost 側の担保）
   });
 
-  it('目標到達（deficit=0）なら効果が無く、他の目的（実力差）が優先される', () => {
-    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 8,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-      affinityPairs: [{ a: 'p0', b: 'p7', deficit: 0 }], // 目標達成済み
-      weights: { affinity: 20 },
-    });
-
-    const courtOf = (id: string) =>
-      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
-    expect(courtOf('p0').courtId).not.toBe(courtOf('p7').courtId);
-  });
+  // 2026-09-01: 飽和（実績比率ベースの deficit・TARGET_RATIO）を廃止したため、
+  // 「目標到達（deficit=0）なら効果が無い」というテストは意味を失った
+  // （対象ペアは常に最大強度で、実績に関係なく効き続ける）。削除した。
+  // 「評価対象ペア数で平均する」（分母＝予算制）という性質自体は
+  // `computeAffinity` の単体テスト（上の「評価対象ペア数で平均する
+  // （複数ペア）」）で引き続き担保している。
 });
 
 describe('assignRoundByObjective: strong（ペア希望・強度「必ず」のハード制約）', () => {
@@ -773,10 +750,55 @@ describe('assignRoundByObjective: strong（ペア希望・強度「必ず」の�
     expect(sameTeam).toBe(true);
   });
 
-  it('片方だけの出場は許される（もう片方を無理にコートへ呼ばない）', () => {
+  // 2026-09-01 仕様変更: (a)「両方出るなら必ず味方」に加えて
+  // (b)「2人一緒に出るか、2人とも控えるか」もハード制約にした。
+  // 「片方だけの出場は許される」という旧テストは意味を失った（(b) 違反に
+  // なるため、まだ順番でない方を引っ張り込むか、順番が来ている方も控えに
+  // 回すかのどちらかで解決する）。以下、両方のケースをテストする。
+
+  it('片方の順番だけ来ているとき、窓の内側なら引っ張り込んで2人そろって出場する', () => {
     // 12人・2コート（必要8・余剰4）。窓（FAIRNESS_WINDOW_RATIO=0.7）は
-    // 優先度順11番目まで許すが、優先度順どおりなら p0〜p7 が素直に選ばれ、
-    // p11（最下位優先度）は通常どおりベンチに残る。
+    // windowLimit = 8 + ceil(4*0.7) = 11 なので、優先度順11番目（p10、0始まり）
+    // までは出場させてよい。p9 は窓の内側（初期解では素直な優先度順どおり
+    // p0〜p7 が選ばれ p9 はベンチだが、(b) を満たすために引っ張り込める）。
+    const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 12,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+      strongPairs: [{ a: 'p0', b: 'p9' }],
+    });
+
+    expect(result).toHaveLength(2);
+    const playing = new Set(result.flatMap(c => [...c.teamA, ...c.teamB]));
+    expect(playing.has('p0')).toBe(true);
+    expect(playing.has('p9')).toBe(true); // 窓の内側なので引っ張り込まれる
+
+    const courtOf = (id: string) =>
+      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
+    const courtP0 = courtOf('p0');
+    const courtP9 = courtOf('p9');
+    expect(courtP0.courtId).toBe(courtP9.courtId);
+    const sameTeam =
+      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p9')) ||
+      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p9'));
+    expect(sameTeam).toBe(true); // 一緒に出るなら味方（(a) も同時に満たされる）
+  });
+
+  it('相手が公平性の窓の外なら2人とも控えになる（解が返り、コートは埋まる）', () => {
+    // 12人・2コート（必要8・余剰4）。windowLimit=11 なので p11（優先度順
+    // 最下位・0始まりで11番目）は窓の外 — ハード制約なので引っ張り込めない。
+    // (b) を満たす唯一の道は p0 も控えに回すこと（行列は飛べないが、
+    // 控えに回るのは誰の順番も追い越さないので窓と衝突しない）。
     const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
     const rankById = rankByIdFrom(candidates.map(p => p.id));
 
@@ -794,9 +816,13 @@ describe('assignRoundByObjective: strong（ペア希望・強度「必ず」の�
       strongPairs: [{ a: 'p0', b: 'p11' }],
     });
 
+    // 詰まらない: 例外を投げず、コート（必要8人）はちゃんと埋まる
+    expect(result).toHaveLength(2);
     const playing = new Set(result.flatMap(c => [...c.teamA, ...c.teamB]));
-    expect(playing.has('p0')).toBe(true);
-    expect(playing.has('p11')).toBe(false); // 片方だけの出場が許されている（違反にならない）
+    expect(playing.size).toBe(8);
+    // 2人とも控えに回っている（(b) 違反を避けるため）
+    expect(playing.has('p0')).toBe(false);
+    expect(playing.has('p11')).toBe(false);
   });
 
   it('実力差が大きくても例外を投げず解が返る（詰まない）', () => {

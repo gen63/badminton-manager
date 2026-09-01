@@ -182,6 +182,13 @@ const SKILL_GAP_WEIGHT = 1.5;
  * 最大化できる」という条件で選んだ現実的な妥協値**であり、`targetRatio` を
  * 達成する値ではない。既存指標の悪化なし・公平性リークなし、という他の
  * 合格条件は満たしている。
+ *
+ * **2026-09-01 追記**: 上のbench記録は「実績比率が目標に届くと deficit が 0 に
+ * なって押すのをやめる」飽和つきの `normal` を前提に測ったもの。飽和を廃止し
+ * 常に最大強度（旧 deficit=1.0 相当）で押し続ける仕様に変えたため、実際の効き
+ * 目はここでの計測（特に複数ラウンド累積後、飽和で弱まっていた場面）より
+ * 強くなる方向にずれている。この値の再計測は別途行う方針（今回のスコープ外）
+ * で、2.0 は変更していない。
  */
 const AFFINITY_WEIGHT = 2.0;
 
@@ -288,12 +295,19 @@ export interface ObjectiveInput {
   pairKeyOf: (a: string, b: string) => string;
   /** 各候補が「同じコートに入れる相手」の人数。variety の閾値スケールに使う */
   reachableCountById: Map<string, number>;
-  /** 希望ペアの一覧（実運用は1〜3組程度）。deficit 0 のペアは呼び出し側で除外済み */
+  /** 希望ペアの一覧（実運用は1〜3組程度） */
   affinityPairs: AffinityPair[];
 }
 
 /**
- * ペア希望1組ぶんの評価入力。`deficit` は 0〜1（0 のペアは呼び出し側で除外済み）。
+ * ペア希望1組ぶんの評価入力。
+ *
+ * **`deficit` フィールドは持たない（2026-09-01 に廃止）。** 旧版は
+ * 「実績比率が目標に届くと 0 になって押すのをやめる」飽和つき不足度だったが、
+ * 常に最大強度で押し続ける仕様に変更したため、常に 1.0 として扱うのと
+ * 同じ値を持ち回す意味が無くなった。呼び出し側（`pairPreference.ts`）で
+ * 「対象にするかどうか」（候補プールにいるか・公平性ガード）だけを判定し、
+ * 対象になったペアはそのまま `{ a, b }` として渡す。
  *
  * `pairKey` の Map ではなく配列にしているのは性能上の理由。`pairKey` は
  * `[a, b].sort().join(',')` のような不可逆な文字列で、キーから2人の ID を
@@ -307,7 +321,6 @@ export interface ObjectiveInput {
 export interface AffinityPair {
   a: string;
   b: string;
-  deficit: number;
 }
 
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
@@ -517,8 +530,17 @@ export function computeVariety(
  *   味方（同コートで partner）  → 0
  *   同コートで敵                → 0.5
  *   別コート / 片方以上がベンチ → 1.0
- * affinity = Σ(deficit × 寄与) ÷ 評価対象ペア数（対象0件なら 0）
+ * affinity = Σ(寄与) ÷ 評価対象ペア数（対象0件なら 0）
  * ```
+ *
+ * **2026-09-01 に飽和（実績比率ベースの `deficit`）を廃止した。** 旧版は
+ * 「実績比率が目標に届くと 0 になって押すのをやめる」不足度でスケールしていたが、
+ * 今は対象ペアには常に最大強度（寄与をそのまま足す）で押し続ける。`普通`
+ * （`strong` のハード制約を伴わない側）と `必ず` の違いは、目的関数のこの項
+ * だけを見ると無くなり、**`必ず` はこれに加えて `evaluate()` 側のハード制約
+ * （`StrongPair`）を持つかどうかだけ**になった。公平性ガード（`gamesPlayed`
+ * が中央値+閾値以上のメンバーを含むペアを対象から外す）は呼び出し側
+ * （`pairPreference.ts` の `computeAffinityPairs`）が引き続き担う。
  *
  * **なぜ評価対象ペア数で割るのか。** 全項が 0〜1 に正規化されている前提を
  * 崩さないため。固定ペナルティのまま足すと、希望を1組登録しただけで他の6目的
@@ -527,11 +549,11 @@ export function computeVariety(
  * 1組あたりの効き目は薄まる一方、配置全体への総影響量は一定に保たれる。
  *
  * **1組しか登録されていないとき、その1組は分母1で最大強度になる。** 複数組
- * 登録されていれば互いに薄め合うが、1組だけならこの項の値がそのまま
- * `deficit × 寄与` になる。意味としては「1組しか希望していないなら全力で
- * 尊重する」で妥当だが、重み（`AFFINITY_WEIGHT`）を決めるときはこの
- * 「1組だけ」のケースを最悪ケースとして基準にしないと、`skillGap` を
- * 押し切って実力差の大きいペアを無理に成立させてしまう（bench で確認する）。
+ * 登録されていれば互いに薄め合うが、1組だけならこの項の値がそのまま寄与に
+ * なる。意味としては「1組しか希望していないなら全力で尊重する」で妥当だが、
+ * 重み（`AFFINITY_WEIGHT`）を決めるときはこの「1組だけ」のケースを最悪ケース
+ * として基準にしないと、`skillGap` を押し切って実力差の大きいペアを無理に
+ * 成立させてしまう（bench で確認する）。
  *
  * 「両者ともこのラウンドの配置対象に現れないペア」は分母から外れる。この関数は
  * `courts`（出場）と `benchIds`（控え）の**和集合**を「このラウンドの配置対象」
@@ -566,22 +588,19 @@ export function computeAffinity(
 
   let sum = 0;
   let targetCount = 0;
-  for (const { a, b, deficit } of affinityPairs) {
-    if (!deficit) continue; // 0 は対象外（呼び出し側で除外済みの想定だが念のため）
+  for (const { a, b } of affinityPairs) {
     if (!inPool(a) || !inPool(b)) continue; // 両者ともこのラウンドの配置対象に現れないペアは対象外
 
     targetCount++;
     const courtA = courtIndexById.get(a);
     const courtB = courtIndexById.get(b);
-    let contribution: number;
     if (courtA === undefined || courtB === undefined || courtA !== courtB) {
-      contribution = 1.0; // 別コート、または片方以上がベンチ
+      sum += 1.0; // 別コート、または片方以上がベンチ
     } else if (partnerOfId.get(a) === b) {
-      contribution = 0; // 味方
+      sum += 0; // 味方
     } else {
-      contribution = 0.5; // 同コートで敵
+      sum += 0.5; // 同コートで敵
     }
-    sum += deficit * contribution;
   }
 
   return targetCount === 0 ? 0 : clamp01(sum / targetCount);

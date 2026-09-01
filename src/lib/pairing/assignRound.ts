@@ -20,7 +20,10 @@ import {
   type AffinityPair,
 } from './objective';
 
-/** 強度「必ず」の希望ペア1組ぶんの入力。`docs/plans/2026-08-31-pair-preference.md` 3d 参照 */
+/**
+ * 強度「必ず」の希望ペア1組ぶんの入力。`docs/plans/2026-08-31-pair-preference.md`
+ * 3d 参照（2026-09-01 に「2人一緒に出るか、2人とも控えるか」(b) を追加する仕様変更）。
+ */
 export interface StrongPair {
   a: string;
   b: string;
@@ -81,7 +84,7 @@ export interface AssignRoundParams {
    * 希望ペアの一覧。省略時は空配列（＝ペア希望なし）。
    * `docs/plans/2026-08-31-pair-preference.md` 参照。
    *
-   * **`Map<pairKey, deficit>` ではなく配列。** pairKey は `[a, b].sort().join(',')`
+   * **`Map<pairKey, ...>` ではなく配列。** pairKey は `[a, b].sort().join(',')`
    * のような不可逆な文字列なので、Map 形式だと「候補プールの全ペアを毎回
    * 列挙してキーを引く」しかできない。希望ペアは実運用で1〜3組しかないため、
    * 配列にして「希望ペアだけを回して2人の所在を調べる」向きにすることで、
@@ -90,9 +93,11 @@ export interface AssignRoundParams {
    */
   affinityPairs?: AffinityPair[];
   /**
-   * 強度「必ず」の希望ペアの一覧。両方が同じラウンドで出場するなら
-   * 必ず味方にする（ハード制約）。片方だけの出場は違反にしない。
-   * `docs/plans/2026-08-31-pair-preference.md` の 3d 参照。省略時は空配列。
+   * 強度「必ず」の希望ペアの一覧（ハード制約）。
+   * (a) 両方が同じラウンドで出場するなら必ず味方にする
+   * (b) 2人一緒に出るか、2人とも控えるか（片方だけの出場は許さない）
+   * `docs/plans/2026-08-31-pair-preference.md` の 3d 参照（2026-09-01 に (b) を
+   * 追加する仕様変更）。省略時は空配列。
    *
    * `affinityPairs` と同じ理由で pairKey の Set ではなく配列にしている。
    */
@@ -247,8 +252,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   const candidateIdSet = new Set(sortedCandidates.map(p => p.id));
   const affinityTargetCount = (() => {
     let count = 0;
-    for (const { a, b, deficit } of affinityPairs) {
-      if (!deficit) continue;
+    for (const { a, b } of affinityPairs) {
       if (candidateIdSet.has(a) && candidateIdSet.has(b)) count++;
     }
     return count;
@@ -450,15 +454,14 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     // 生成）を避けて ID の直接比較にしている。
     let affinity = 0;
     if (affinityTargetCount > 0) {
-      for (const { a, b, deficit } of affinityPairs) {
-        if (!deficit) continue;
+      for (const { a, b } of affinityPairs) {
         const aInTeamA = slots[0] === a || slots[1] === a;
         const aInTeamB = slots[2] === a || slots[3] === a;
         const bInTeamA = slots[0] === b || slots[1] === b;
         const bInTeamB = slots[2] === b || slots[3] === b;
         const crossTeam = (aInTeamA && bInTeamB) || (aInTeamB && bInTeamA);
         if (!crossTeam) continue;
-        affinity += (deficit * 0.5) / affinityTargetCount;
+        affinity += 0.5 / affinityTargetCount;
       }
     }
 
@@ -527,9 +530,18 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       }
       if (isRecentDuplicate(members)) violations++;
     }
-    // 強度「必ず」の希望ペア: 両方が同じラウンドで出場するなら必ず味方にする
-    // （ハード制約）。片方だけの出場は違反にしない（(a) の意味論のみ採用。
-    // `docs/plans/2026-08-31-pair-preference.md` 3d 参照）。
+    // 強度「必ず」の希望ペア: (a)「2人が同じラウンドで出場するなら必ず味方」
+    // に加えて (b)「2人一緒に出るか、2人とも控えるか」も必須にする
+    // （2026-09-01 仕様変更。旧版は (a) のみで片方だけの出場を許していた。
+    // `docs/plans/2026-08-31-pair-preference.md` 3d 参照 — 「(b) は公平性の窓と
+    // 衝突して詰む」という当初の記述は誤りで、後日 (b) を採用する形に訂正した）。
+    //
+    // (b) は公平性の窓（ハード制約）と衝突しない。窓は「まだ順番でない人を
+    // 出場させるな」であって「窓の中の人を必ず出場させろ」ではないので、
+    // 片方が窓の外にいて引っ張り込めない場合は**2人とも控えに回せば**
+    // (a)(b) 両方を満たせる。控えが作れない（候補=必要人数ちょうど）場合でも
+    // 「2人を同じコートの味方にする」分割は必ず存在するので、どちらに転んでも
+    // 詰まない。
     //
     // ベンチにいる人は対象外なので、courts に現れる人だけを母集団に判定すれば
     // 足りる（bench まで含める affinity の分母とは違い、こちらは courts のみ）。
@@ -551,12 +563,18 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       for (const { a, b } of strongPairs) {
         const courtA = courtIdOfMember.get(a);
         const courtB = courtIdOfMember.get(b);
-        if (courtA === undefined || courtB === undefined) continue; // 片方でもベンチなら制約なし
-        if (courtA !== courtB) {
-          violations++; // 同じラウンドで出場しているのに別コート
-        } else if (partnerOfMember.get(a) !== b) {
-          violations++; // 同じコートだが敵同士
+        const onA = courtA !== undefined;
+        const onB = courtB !== undefined;
+        if (onA !== onB) {
+          violations++; // (b) 片方だけがコート上
+        } else if (onA && onB) {
+          if (courtA !== courtB) {
+            violations++; // (a) 同じラウンドで出場しているのに別コート
+          } else if (partnerOfMember.get(a) !== b) {
+            violations++; // (a) 同じコートだが敵同士
+          }
         }
+        // 両方とも控え: 違反なし
       }
     }
     // 公平性の窓: 優先度順で「必要人数 + slack」番目より後ろの人を出場させない。

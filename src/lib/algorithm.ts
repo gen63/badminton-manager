@@ -2336,7 +2336,7 @@ export function assignCourts(
       objectiveRosterSize < WIDE_RANK_SPAN_MIN_ROSTER
         ? null
         : Math.ceil(objectiveRosterSize * WIDE_RANK_SPAN_RATIO);
-    // ペア希望 → deficit 算出（第7目的 affinity + strong のハード制約）。
+    // ペア希望 → 第7目的 affinity（常に最大強度） + strong のハード制約。
     // 中央値・reservationBlockThreshold は予約保留判定（上の isReservationBlocked）と
     // 共通のものを使い回す（新しい設定項目は増やさない。plan 3b）。
     const pairPreferences = options?.pairPreferences ?? [];
@@ -2359,8 +2359,6 @@ export function assignCourts(
       affinityPairs: computeAffinityPairs(
         pairPreferences,
         normalCandidates,
-        historyCounts.pair.partner,
-        pairKey,
         medianGamesPlayed,
         reservationBlockThreshold,
       ),
