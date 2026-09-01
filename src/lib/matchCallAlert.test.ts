@@ -9,6 +9,8 @@ import {
   primeSpeechSynthesis,
   cancelMatchCallSpeech,
   installMatchCallSpeechHideGuard,
+  getLastMatchCallSpeech,
+  clearLastMatchCallSpeech,
   SPEECH_DELAY_MS,
 } from './matchCallAlert';
 
@@ -187,6 +189,71 @@ describe('fireMatchCallAlert', () => {
     vi.useRealTimers();
 
     expect(speakMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('getLastMatchCallSpeech（直前のコールの記録）', () => {
+  const originalMatchCallAlert = useSettingsStore.getState().matchCallAlert;
+
+  function setVisibility(state: 'visible' | 'hidden') {
+    Object.defineProperty(document, 'visibilityState', {
+      value: state,
+      writable: true,
+      configurable: true,
+    });
+  }
+
+  afterEach(() => {
+    clearLastMatchCallSpeech();
+    setVisibility('visible');
+    useSettingsStore.setState({ matchCallAlert: originalMatchCallAlert });
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('一度もコールが起きていなければ null', () => {
+    clearLastMatchCallSpeech();
+    expect(getLastMatchCallSpeech()).toBeNull();
+  });
+
+  it('fireMatchCallAlert の speechText を記録し、後のコールで上書きする', () => {
+    useSettingsStore.setState({ matchCallAlert: true });
+    clearLastMatchCallSpeech();
+
+    fireMatchCallAlert('太郎さん。1コート付近で試合終了をお待ちください');
+    expect(getLastMatchCallSpeech()).toBe('太郎さん。1コート付近で試合終了をお待ちください');
+
+    fireMatchCallAlert('花子さん、もうすぐ2コートで試合です');
+    expect(getLastMatchCallSpeech()).toBe('花子さん、もうすぐ2コートで試合です');
+  });
+
+  it('設定 OFF で鳴らせなかったコールも記録する（あとで鳴らし直せるように）', () => {
+    useSettingsStore.setState({ matchCallAlert: false });
+    clearLastMatchCallSpeech();
+
+    fireMatchCallAlert('太郎さん');
+
+    expect(getLastMatchCallSpeech()).toBe('太郎さん');
+  });
+
+  it('hidden 中で鳴らせなかったコールも記録する', () => {
+    useSettingsStore.setState({ matchCallAlert: true });
+    clearLastMatchCallSpeech();
+    setVisibility('hidden');
+
+    fireMatchCallAlert('太郎さん');
+
+    expect(getLastMatchCallSpeech()).toBe('太郎さん');
+  });
+
+  it('speechText なしのコールでは記録を消さない', () => {
+    useSettingsStore.setState({ matchCallAlert: true });
+    clearLastMatchCallSpeech();
+
+    fireMatchCallAlert('太郎さん');
+    fireMatchCallAlert();
+
+    expect(getLastMatchCallSpeech()).toBe('太郎さん');
   });
 });
 
