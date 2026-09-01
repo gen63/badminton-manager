@@ -250,13 +250,40 @@ export function primeSpeechSynthesis(): void {
 }
 
 /**
+ * 直近に発火した呼び出しの読み上げ文言。ベルの ON 切り替え時に「直前のコールを
+ * もう一度読み上げる」ための保持先。
+ *
+ * 設定 OFF・バックグラウンドで実際には鳴らなかったコールも記録する。記録の意味は
+ * 「直前にコールが発生した内容」であって「実際に鳴らせた内容」ではなく、聞き逃した
+ * （鳴らなかった）コールこそ手動で鳴らし直したいため。
+ *
+ * 永続化はしない（リロードで消えて `null` に戻り、テスト再生の文言に戻る）。
+ */
+let lastMatchCallSpeech: string | null = null;
+
+/** 直近に発火した呼び出しの読み上げ文言。まだ一度も発火していなければ null。 */
+export function getLastMatchCallSpeech(): string | null {
+  return lastMatchCallSpeech;
+}
+
+/** 直近の呼び出し文言の記録を消す（テストや将来のリセット導線用）。 */
+export function clearLastMatchCallSpeech(): void {
+  lastMatchCallSpeech = null;
+}
+
+/**
  * 呼び出し通知の音・振動・読み上げを発火する単一の入口。
  * 設定（`matchCallAlert`）が ON のときだけ実行する。
  * `speechText` を渡すとチャイム・振動に続けて読み上げる。体育館の騒音下では
  * ビープの方が通るため先に注意を引き、チャイム（0.3 秒）の末尾とわずかに重なるが
  * 間延びを避けるため `setTimeout` で 200ms 遅らせてから読み上げる。
+ *
+ * `speechText` は `lastMatchCallSpeech` にも記録し、ベルの ON 切り替えで直前の
+ * コールを鳴らし直せるようにする（設定 OFF・hidden で鳴らせなかった場合も記録する）。
  */
 export function fireMatchCallAlert(speechText?: string): void {
+  // 鳴らせたかどうかに関わらず、コールの内容は記録する（`lastMatchCallSpeech` 参照）。
+  if (speechText) lastMatchCallSpeech = speechText;
   if (!useSettingsStore.getState().matchCallAlert) return;
   // バックグラウンド中は鳴らさない（`isPageHidden` 参照）。OS 通知は呼び出し側で
   // 別に出しているため、気づかせる経路自体は残る。

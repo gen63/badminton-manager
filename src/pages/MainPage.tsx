@@ -51,7 +51,7 @@ import { getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH
 import { withInProgressGames } from '../lib/effectiveGames';
 import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 import { notifyNextMatchSoon } from '../lib/notifications';
-import { unlockMatchCallAudio, playMatchCallChime, vibrateMatchCall, fireMatchCallAlert, installMatchCallAudioUnlock, installMatchCallSpeechHideGuard, speakMatchCall, SPEECH_DELAY_MS } from '../lib/matchCallAlert';
+import { unlockMatchCallAudio, playMatchCallChime, vibrateMatchCall, fireMatchCallAlert, installMatchCallAudioUnlock, installMatchCallSpeechHideGuard, speakMatchCall, getLastMatchCallSpeech, SPEECH_DELAY_MS } from '../lib/matchCallAlert';
 
 import { BottomNav } from '../components/BottomNav';
 
@@ -60,8 +60,30 @@ const BUG_REPORT_TEMPLATE = '発生画面：\n期待値：\n実際：';
 // ベルのテスト再生用サンプル。実際の呼び出しと同じ buildNextMatchCallMessage を
 // 通すことで、文言だけでなく名前の読み上げ品質（sanitizeNameForSpeech の挙動等）
 // まで確認できるようにする。文言のベタ書きはしない。
+// このサンプルを使うのは「まだ一度もコールが起きていない」ときだけで、直前の
+// コールがあればそちらを鳴らし直す（`buildBellSpeech` 参照）。
 const SPEECH_TEST_NAME = 'ゆーた';
 const SPEECH_TEST_COURT = 1;
+
+/**
+ * ベルを OFF→ON にしたときに読み上げる文言を決める。
+ *
+ * 直前のコール（本人向け・管理者向けとも）があればその内容をそのまま鳴らし直す。
+ * 音を切っていた・聞き逃した呼び出しを手動で再生する導線として使えるようにする
+ * ため、鳴らせなかったコールも `fireMatchCallAlert` 側で記録している。
+ * まだ一度もコールが起きていなければ従来どおりサンプル文言でテスト再生する。
+ *
+ * `courtCount` はサンプル用。1面運用中は「1コート」が冗長なので番号を出さない
+ * （実際の呼び出しと同じ判定）。直前のコールを鳴らし直す場合は、その文言が
+ * 作られた時点の判定をそのまま使うため `courtCount` は影響しない。
+ */
+function buildBellSpeech(courtCount: number): string {
+  const lastSpeech = getLastMatchCallSpeech();
+  if (lastSpeech) return lastSpeech;
+
+  const testCourtNumber = courtCount <= 1 ? null : SPEECH_TEST_COURT;
+  return buildNextMatchCallMessage(testCourtNumber, [SPEECH_TEST_NAME], SPEECH_TEST_NAME).speech;
+}
 
 /** 試合終了後に「取り消す」を出しておく時間（ms）。気づいて押すまでの余裕を見て長め。 */
 const FINISH_UNDO_TOAST_MS = 10_000;
@@ -1193,7 +1215,8 @@ export function MainPage() {
                 const next = !matchCallAlert;
                 setMatchCallAlert(next);
                 // OFF→ON に切り替えたときだけ鳴らす・振動させる・読み上げる。
-                // 動作確認とテスト再生を兼ねる。iOS では navigator.vibrate が
+                // 動作確認と、直前のコールの鳴らし直し（無ければテスト再生）を
+                // 兼ねる。iOS では navigator.vibrate が
                 // 未実装のため振動は no-op になる（vibrateMatchCall 内部で
                 // 安全に処理される）。読み上げは実際の呼び出し時と同じ間の
                 // 取り方にするため、チャイム・振動の直後に 200ms 遅らせる。
@@ -1201,12 +1224,9 @@ export function MainPage() {
                   playMatchCallChime();
                   vibrateMatchCall();
                   setTimeout(() => {
-                    // テスト再生も実際の呼び出しと同じ判定を通し、聞こえる文言を一致させる。
-                    // 1面運用中は「1コート」を出さない。
-                    const testCourtNumber = courts.length <= 1 ? null : SPEECH_TEST_COURT;
-                    speakMatchCall(
-                      buildNextMatchCallMessage(testCourtNumber, [SPEECH_TEST_NAME], SPEECH_TEST_NAME).speech,
-                    );
+                    // 直前のコールがあればその内容を鳴らし直し、無ければ従来どおり
+                    // サンプル文言でテスト再生する（`buildBellSpeech` 参照）。
+                    speakMatchCall(buildBellSpeech(courts.length));
                   }, SPEECH_DELAY_MS);
                 }
               }}
