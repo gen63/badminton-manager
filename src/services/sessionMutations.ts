@@ -19,7 +19,13 @@ import {
 import { SessionError } from '../lib/errorHandler';
 import { requireDb, sanitize } from '../lib/firestoreUtils';
 import { computeFirstMatchStartedAt } from '../lib/sessionArchive';
-import { computeFinishAndContinue, gameModeFromPracticeType } from '../lib/gameOperations';
+import {
+  ASSIGNED_AT_BASIS_MAX_AGE_MS,
+  computeFinishAndContinue,
+  gameModeFromPracticeType,
+  isAutoEndDue,
+  resolveStartedAtFromAssignedAt,
+} from '../lib/gameOperations';
 import { sanitizePlayerName } from '../lib/inputValidation';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import type { Player } from '../types/player';
@@ -574,6 +580,9 @@ export function computeUpdateCourt(
  * 配置時刻に揃えることで、どちらの経路でも「配置した時刻＝試合開始」になる。
  *
  * `assignedAt` を持たない場合（旧データ・一括配置以外の経路）は従来どおり `now`。
+ * `assignedAt` が `ASSIGNED_AT_BASIS_MAX_AGE_MS` より古い場合も `now` を採る
+ * （アプリが止まっていた間に古くなった配置。そのまま起点にすると押した瞬間に
+ * 15 分超過扱いとなり自動終了が走る）。
  *
  * 押した時刻そのものは `startPressedAt` に残す。終了ボタンの誤タップ防止ロックは
  * 「操作からの経過」で判断するため、経過時間の起点（`startedAt`）とは別に要る。
@@ -590,7 +599,7 @@ export function computeStartGame(
         ? {
             ...c,
             isPlaying: true,
-            startedAt: (c.assignedAt ?? 0) > 0 ? c.assignedAt! : now,
+            startedAt: resolveStartedAtFromAssignedAt(c.assignedAt, now),
             startPressedAt: now,
           }
         : c,
@@ -606,6 +615,13 @@ export function computeStartGame(
  * いる）のときは `null` を返し、呼び出し側は書き込みを行わない。
  * `assignedAt` をべき等キーとして扱うため、複数端末が同時に発火しても
  * 1 度だけ成功する。
+ *
+ * **配置が `ASSIGNED_AT_BASIS_MAX_AGE_MS` より古い場合も `null`**。自動開始の
+ * タイマーがそこまで遅れたということは、その間アプリが動いていなかった
+ * （＝準備中に何が起きたか分からない）ということなので、昔の時刻で勝手に開始せず
+ * 準備中のまま人の「開始」に委ねる。古い時刻で開始すると、その場で自動終了が走り
+ * 実在しない長時間の試合が履歴に残る。
+ * 詳細: docs/plans/2026-09-08-auto-end-stale-timer.md
  */
 export function computeAutoStartGame(
   state: GameState,
@@ -619,6 +635,8 @@ export function computeAutoStartGame(
   if (court.isPlaying) return null;
   if (!court.teamA[0]) return null;
   if ((court.assignedAt ?? 0) !== assignedAt) return null;
+  // タイマーが遅れて発火した（アプリが止まっていた）配置は開始しない
+  if (now - assignedAt > ASSIGNED_AT_BASIS_MAX_AGE_MS) return null;
   // 自動開始でも「操作が起きた時刻」は now（＝自動開始が走った時刻）。切り替わった
   // 直後の誤タップを終了ボタンのロックで防ぐため、手動開始と同じ扱いにする。
   return computeUpdateCourt(state, courtId, {
@@ -1685,6 +1703,12 @@ export interface FinishGameOptions {
    * （15 分超過の自動終了用）。
    */
   skipContinuous?: boolean;
+  /**
+   * 15 分超過の**自動**終了か。true のときだけ「期限がアプリの動作中に来たか」を
+   * 検証し（{@link isAutoEndDue}）、遅れて発火したタイマーによる終了を拒否する。
+   * 手動終了（人が押した）は無条件で終了させる。
+   */
+  autoEnd?: boolean;
 }
 
 /**
@@ -1693,6 +1717,13 @@ export interface FinishGameOptions {
  * `startedAt` をべき等キーとして二重終了を防ぐ。リモート側で既に終了済み
  * （isPlaying=false または startedAt が変わっている）の場合は `already_finished`
  * を返し、書き込みは行わない。
+ *
+ * `options.autoEnd` が true のときは、さらに **15 分の期限がアプリの動作中に来たか**
+ * を検証する。アプリが止まっていた間に過ぎた期限で発火したタイマーは
+ * `stale_auto_end` を返して書き込まない（全コートがいっせいに終了する / ありえない
+ * 試合時間が記録される、を防ぐ）。判定を transaction 内に置くことで、どの端末から
+ * 呼ばれても同じ不変条件が効く。
+ * 詳細: docs/plans/2026-09-08-auto-end-stale-timer.md
  *
  * 既存の `sessionService.finishGameTransaction` の置き換え版。
  * `gameStore.finishGame`（楽観更新版）と区別するため、composite であることを
@@ -1708,7 +1739,7 @@ export async function finishMatchAndContinue(
   matchStartedAt: number,
   options: FinishGameOptions,
 ): Promise<{
-  result: 'success' | 'already_finished';
+  result: 'success' | 'already_finished' | 'stale_auto_end';
   writtenState?: GameState;
   /** 連続モード配置の結果（成功 / ブロック理由）。GAMEOPS4: 呼び出し側で toast 表示用。 */
   continuousNextApplied?: boolean;
@@ -1737,6 +1768,12 @@ export async function finishMatchAndContinue(
       const remoteCourt = remote.courts.find((c) => c.id === courtId);
       if (!remoteCourt?.isPlaying || remoteCourt.startedAt !== matchStartedAt) {
         return { result: 'already_finished' as const };
+      }
+      // 自動終了は「期限がアプリの動作中に来た」ときだけ。止まっていた間に過ぎた
+      // 期限で発火したタイマーは、実際にいつ試合が終わったのか分からないので
+      // 何も書かずに人の操作へ委ねる。
+      if (options.autoEnd && !isAutoEndDue(remoteCourt.startedAt, Date.now())) {
+        return { result: 'stale_auto_end' as const };
       }
 
       const remoteSettings = remote.settings;

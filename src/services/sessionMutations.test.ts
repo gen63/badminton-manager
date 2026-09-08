@@ -84,6 +84,7 @@ import type { Player } from '../types/player';
 import type { Court } from '../types/court';
 import type { Match } from '../types/match';
 import { SessionError } from '../lib/errorHandler';
+import { MATCH_AUTO_END_MS } from '../lib/gameOperations';
 
 const makePlayer = (id: string, overrides: Partial<Player> = {}): Player => ({
   id,
@@ -584,11 +585,37 @@ describe('sessionMutations - courts', () => {
   });
 
   it('computeAutoStartGame: 配置時刻をそのまま startedAt にして開始する', () => {
+    const assignedAt = Date.now() - 3 * 60 * 1000;
     const state = baseState({
-      courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'], assignedAt: 5000 })],
+      courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'], assignedAt })],
     });
-    const next = computeAutoStartGame(state, 1, 5000);
-    expect(next?.courts[0]).toMatchObject({ isPlaying: true, startedAt: 5000 });
+    const next = computeAutoStartGame(state, 1, assignedAt);
+    expect(next?.courts[0]).toMatchObject({ isPlaying: true, startedAt: assignedAt });
+  });
+
+  it('computeStartGame: 配置が古すぎる（アプリ停止中に古くなった）と now を startedAt にする', () => {
+    const now = 10_000_000;
+    const state = baseState({
+      courts: [
+        makeCourt(1, {
+          teamA: ['p1', 'p2'],
+          // 30 分前の配置。そのまま起点にすると押した瞬間に 15 分超過扱いになる
+          assignedAt: now - 30 * 60 * 1000,
+        }),
+      ],
+    });
+    const next = computeStartGame(state, 1, now);
+    expect(next.courts[0].startedAt).toBe(now);
+    expect(next.courts[0].startPressedAt).toBe(now);
+  });
+
+  it('computeAutoStartGame: 配置が古すぎる（タイマーが遅れて発火）と null', () => {
+    const now = 10_000_000;
+    const assignedAt = now - 30 * 60 * 1000;
+    const state = baseState({
+      courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'], assignedAt })],
+    });
+    expect(computeAutoStartGame(state, 1, assignedAt, now)).toBeNull();
   });
 
   it('computeAutoStartGame: 既に開始済み / 配置が変わっている / 空コートは null', () => {
@@ -2033,6 +2060,84 @@ describe('sessionMutations - finishMatchAndContinue', () => {
       }),
     ).rejects.toBeInstanceOf(SessionError);
   });
+
+  // 自動終了のタイマー遅れガード
+  // （docs/plans/2026-09-08-auto-end-stale-timer.md）
+  function playingSince(startedAt: number) {
+    return baseState({
+      players: [
+        makePlayer('p1', { name: 'A' }),
+        makePlayer('p2', { name: 'B' }),
+        makePlayer('p3', { name: 'C' }),
+        makePlayer('p4', { name: 'D' }),
+      ],
+      courts: [
+        makeCourt(1, {
+          teamA: ['p1', 'p2'],
+          teamB: ['p3', 'p4'],
+          isPlaying: true,
+          startedAt,
+        }),
+      ],
+    });
+  }
+
+  it('autoEnd: アプリ停止中に 15 分を過ぎた試合は stale_auto_end で終了しない', async () => {
+    // 25 分前に開始 = タイマーが遅れて発火した（＝アプリが止まっていた）状態
+    const startedAt = Date.now() - 25 * 60 * 1000;
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: playingSince(startedAt) }),
+      ref: { __docRef: true },
+    });
+
+    const result = await finishMatchAndContinue('s', 1, startedAt, {
+      matchId: 'm1',
+      useStayDurationPriority: false,
+      forceBulkAssignment: false,
+      skipContinuous: true,
+      autoEnd: true,
+    });
+    expect(result.result).toBe('stale_auto_end');
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('autoEnd: 期限どおりに発火した自動終了は成立する', async () => {
+    const startedAt = Date.now() - (MATCH_AUTO_END_MS + 1000);
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: playingSince(startedAt) }),
+      ref: { __docRef: true },
+    });
+
+    const result = await finishMatchAndContinue('s', 1, startedAt, {
+      matchId: 'm1',
+      useStayDurationPriority: false,
+      forceBulkAssignment: false,
+      skipContinuous: true,
+      autoEnd: true,
+    });
+    expect(result.result).toBe('success');
+    expect(result.writtenState?.matchHistory).toHaveLength(1);
+    expect(mockTransactionUpdate).toHaveBeenCalled();
+  });
+
+  it('手動終了はガードの対象外（何分経っていても終了できる）', async () => {
+    const startedAt = Date.now() - 25 * 60 * 1000;
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: playingSince(startedAt) }),
+      ref: { __docRef: true },
+    });
+
+    const result = await finishMatchAndContinue('s', 1, startedAt, {
+      matchId: 'm1',
+      useStayDurationPriority: false,
+      forceBulkAssignment: false,
+    });
+    expect(result.result).toBe('success');
+    expect(mockTransactionUpdate).toHaveBeenCalled();
+  });
 });
 
 // =============================================================================
@@ -2200,8 +2305,10 @@ describe('sessionMutations - autoStartMatch', () => {
   });
 
   it('配置時刻を開始時刻として書き込む', async () => {
+    // 3 分前の配置（＝タイマーが予定どおり発火した）
+    const assignedAt = Date.now() - 3 * 60 * 1000;
     const state = baseState({
-      courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'], assignedAt: 5000 })],
+      courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'], assignedAt })],
     });
     mockTransactionGet.mockResolvedValueOnce({
       exists: () => true,
@@ -2209,11 +2316,27 @@ describe('sessionMutations - autoStartMatch', () => {
       ref: { __docRef: true },
     });
 
-    const result = await autoStartMatch('s', 1, 5000);
+    const result = await autoStartMatch('s', 1, assignedAt);
     expect(result.result).toBe('success');
     expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
     const next = mockTransactionUpdate.mock.calls[0][1].gameState;
-    expect(next.courts[0]).toMatchObject({ isPlaying: true, startedAt: 5000 });
+    expect(next.courts[0]).toMatchObject({ isPlaying: true, startedAt: assignedAt });
+  });
+
+  it('タイマーが遅れて発火した（アプリ停止中に古くなった）配置は書き込まない', async () => {
+    const assignedAt = Date.now() - 30 * 60 * 1000;
+    const state = baseState({
+      courts: [makeCourt(1, { teamA: ['p1', 'p2'], teamB: ['p3', 'p4'], assignedAt })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    const result = await autoStartMatch('s', 1, assignedAt);
+    expect(result.result).toBe('already_started');
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
   });
 
   it('他端末が先に開始済みなら already_started を返し update しない', async () => {
