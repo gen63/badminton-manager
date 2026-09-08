@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { computeFinishAndContinue, gameModeFromPracticeType, type GameState } from './gameOperations';
+import {
+  ASSIGNED_AT_BASIS_MAX_AGE_MS,
+  AUTO_TIMER_MAX_LATENESS_MS,
+  computeFinishAndContinue,
+  gameModeFromPracticeType,
+  isAutoEndDue,
+  MATCH_AUTO_END_MS,
+  resolveStartedAtFromAssignedAt,
+  type GameState,
+} from './gameOperations';
 import type { Player } from '../types/player';
 import type { Court } from '../types/court';
 import * as algorithm from './algorithm';
@@ -859,5 +868,58 @@ describe('computeFinishAndContinue: practiceStartTime と待機時間優先モ�
     // つまり滞在時間が下限に潰れる前提が変わったということ。上 2 つの
     // テストと合わせて「practiceStartTime を渡す実装」を担保する。
     expect(nextMembers(true)).toEqual(nextMembers(false));
+  });
+});
+
+// =============================================================================
+// 自動終了 / 自動開始のタイマー遅れガード
+// （docs/plans/2026-09-08-auto-end-stale-timer.md）
+// =============================================================================
+
+describe('isAutoEndDue', () => {
+  const started = 1_000_000;
+  const deadline = started + MATCH_AUTO_END_MS;
+
+  it('期限前は false（まだ 15 分経っていない）', () => {
+    expect(isAutoEndDue(started, deadline - 60_000)).toBe(false);
+  });
+
+  it('期限ちょうど〜わずかな遅れは true（通常のタイマー発火）', () => {
+    expect(isAutoEndDue(started, deadline)).toBe(true);
+    expect(isAutoEndDue(started, deadline + 5_000)).toBe(true);
+  });
+
+  it('バックグラウンドのスロットリング程度の遅れ（1分）は true', () => {
+    expect(isAutoEndDue(started, deadline + 60_000)).toBe(true);
+  });
+
+  it('許容を超えて遅れたら false（アプリが止まっていた間に期限が過ぎた）', () => {
+    expect(isAutoEndDue(started, deadline + AUTO_TIMER_MAX_LATENESS_MS + 1)).toBe(false);
+    // 実際に起きたケース: 復帰時に 25 分経過した試合がいっせいに終了した
+    expect(isAutoEndDue(started, started + 25 * 60 * 1000)).toBe(false);
+  });
+
+  it('未開始（startedAt が 0）は false', () => {
+    expect(isAutoEndDue(0, Date.now())).toBe(false);
+  });
+});
+
+describe('resolveStartedAtFromAssignedAt', () => {
+  const now = 10_000_000;
+
+  it('配置が新しければ配置時刻を開始時刻にする（準備中の時間も試合時間に含める）', () => {
+    expect(resolveStartedAtFromAssignedAt(now - 60_000, now)).toBe(now - 60_000);
+  });
+
+  it('配置が無い（旧データ・0）なら now', () => {
+    expect(resolveStartedAtFromAssignedAt(undefined, now)).toBe(now);
+    expect(resolveStartedAtFromAssignedAt(0, now)).toBe(now);
+  });
+
+  it('配置が古すぎる（アプリが止まっていた）なら now を起点にする', () => {
+    const stale = now - ASSIGNED_AT_BASIS_MAX_AGE_MS - 1;
+    expect(resolveStartedAtFromAssignedAt(stale, now)).toBe(now);
+    // 起点が now なので、開始直後に自動終了の期限を過ぎていない
+    expect(isAutoEndDue(resolveStartedAtFromAssignedAt(stale, now), now)).toBe(false);
   });
 });

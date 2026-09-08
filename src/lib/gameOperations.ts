@@ -27,6 +27,68 @@ export const MATCH_AUTO_END_MS = 15 * 60 * 1000;
 export const MATCH_AUTO_START_MS = 3 * 60 * 1000;
 
 /**
+ * 自動開始・自動終了のタイマーが「予定どおりに発火した」とみなす遅れの上限（2分）。
+ *
+ * 自動開始 / 自動終了は `MainPage` の `setTimeout` で「期限 − now」後に発火するが、
+ * 期限を既に過ぎている場合は遅延 0 = 即発火になる。**期限を過ぎているのに未発火**
+ * ということは、その間アプリが動いていなかった（画面ロック・バックグラウンドでの
+ * サスペンド・タブ破棄・アプリ再訪）ことを意味する。そのまま実行すると
+ *
+ * - 誰も押していないのに全コートの試合がいっせいに終了する
+ * - `finishedAt` が復帰時刻になるため、実際は数分だった試合が 25 分などとして残る
+ *
+ * が起きる。動いているアプリのタイマーはバックグラウンドのスロットリング
+ * （Chrome は hidden タブのタイマーを 1 分に 1 回程度へ絞る）を含めても 1 分程度しか
+ * 遅れないので、その倍を「動いていた」と「止まっていた」の線引きに使う。
+ * 詳細: docs/plans/2026-09-08-auto-end-stale-timer.md
+ */
+export const AUTO_TIMER_MAX_LATENESS_MS = 2 * 60 * 1000;
+
+/**
+ * タイマーの発火が早すぎる分の許容（1秒）。`setTimeout` はごく僅かに期限より早く
+ * 発火することがあるため、その分だけ手前も「期限に達した」とみなす。
+ */
+const AUTO_TIMER_EARLY_TOLERANCE_MS = 1000;
+
+/**
+ * 自動終了してよいか（＝15 分の期限が **アプリが動いている間に** 来たか）。
+ *
+ * 期限に達していない、または期限から `AUTO_TIMER_MAX_LATENESS_MS` より遅れている
+ * （＝止まっていた間に過ぎた期限）なら false。false のときは自動終了せず、
+ * 手動の「終了」に委ねる。
+ */
+export function isAutoEndDue(startedAt: number, now: number): boolean {
+  if (!startedAt || startedAt <= 0) return false;
+  const lateness = now - (startedAt + MATCH_AUTO_END_MS);
+  return lateness >= -AUTO_TIMER_EARLY_TOLERANCE_MS && lateness <= AUTO_TIMER_MAX_LATENESS_MS;
+}
+
+/**
+ * 配置時刻を試合開始時刻として使ってよい上限。自動開始が動いていれば準備中は
+ * `MATCH_AUTO_START_MS` で打ち切られるので、これを超えて準備中が続いている配置は
+ * 「アプリが止まっていた間に古くなったもの」であり、経過時間の起点に使えない。
+ */
+export const ASSIGNED_AT_BASIS_MAX_AGE_MS = MATCH_AUTO_START_MS + AUTO_TIMER_MAX_LATENESS_MS;
+
+/**
+ * 「開始」時の `startedAt` を決める。
+ *
+ * 原則は **配置時刻 (`assignedAt`)**（準備中の時間も試合時間に含める）。ただし
+ * 配置が `ASSIGNED_AT_BASIS_MAX_AGE_MS` より古い場合は `now` を採る。古い配置を
+ * そのまま起点にすると、開始した瞬間に 15 分超過扱いとなって自動終了が走り、
+ * 実在しない長時間の試合が履歴に残るため。
+ */
+export function resolveStartedAtFromAssignedAt(
+  assignedAt: number | undefined,
+  now: number,
+): number {
+  const assigned = assignedAt ?? 0;
+  if (assigned <= 0) return now;
+  if (now - assigned > ASSIGNED_AT_BASIS_MAX_AGE_MS) return now;
+  return assigned;
+}
+
+/**
  * 「次の試合に入りそう」呼び出し通知を出す試合経過時間の閾値（4分30秒）。
  * 実測（2026-08-11、有効 n=62、外れ値1件除外）: 5分17.5% / 6分31.7% / 7分30.2% /
  * 8分15.9% / 9分3.2%、平均6.55分・中央値6.5分・p10 5.0分・p90 8.0分。
