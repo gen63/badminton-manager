@@ -61,3 +61,11 @@ npm run build && npm run lint && npm run test:run
 1. 設定画面に「セッションURL」カードが出て、URL が `https://<host>/badminton-manager/session/<ID>` になっている。
 2. コピーボタンでクリップボードに入り、トーストとボタン表示が切り替わる。
 3. コピーした URL を別端末で開くと `SessionJoinPage` に入れる（一覧から消えていても入れる）。
+
+---
+
+## 追記（2026-09-08）
+
+本 plan の「QR は戻さない」という決定は撤回した。設定画面のこのカードに参加用 QR を
+常時表示している。理由と実装方針は `docs/plans/2026-09-08-settings-session-qr.md` を参照。
+作成完了後の URL 画面・参加画面の共有アコーディオンを戻さない点は変更していない。
