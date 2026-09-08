@@ -27,6 +27,11 @@
  * # ペア希望（affinity）の計測。docs/plans/2026-08-31-pair-preference.md 6. 参照
  * PREF_PAIRS=1 npx tsx scripts/bench-court-assignment.ts    # 希望ペアを1組登録
  * PREF_PAIRS=3 AFFINITY_WEIGHT=1.6 npx tsx scripts/bench-court-assignment.ts
+ *
+ * # 目的8 recency（連続出場を少し嫌う）の重み振り。
+ * # docs/plans/2026-09-08-recency-penalty.md 参照
+ * ENGINE=objective SEEDS=30 NOISE=4 CONDITIONS=21x3 ROUNDS=13 \
+ *   RECENCY_WEIGHT=0.4 npx tsx scripts/bench-court-assignment.ts
  * ```
  *
  * アルゴリズム変更の効果を見るには、変更前後で同じ引数で実行して出力を比較する。
@@ -177,6 +182,13 @@ interface RunResult {
   gamesSpread: number;     // 最多試合数 − 最少試合数（低いほど良い）
   // 目的2: 待ち時間が偏らない
   maxIdle: number;         // 自分が出ていない間に行われた試合数の最大（低いほど良い）
+  // 目的2 の補助指標（docs/plans/2026-09-08-recency-penalty.md）。
+  // maxIdle（最大）はプール人数（21人3コートなら平均間隔4.2試合）とセッション
+  // 末尾の裾に支配されてしまい、「空き1〜2で回り続ける人と11試合待つ人の落差」
+  // という体感を測れない。そこで次の3つを併記する。
+  backToBackRate: number;  // 出場間隔のうち「空き1試合以下」が占める割合（低いほど良い）
+  idleSd: number;          // 出場間隔の標準偏差（＝落差そのもの。低いほど良い）
+  maxIdleMid: number;      // 末尾の裾を除いた「途中の空き」の最大（低いほど良い）
   // 目的3: 大きく実力の離れたメンバーを同居させない
   wideGapRate: number;     // trueRank の幅が閾値以上だった試合の割合（低いほど良い）
   regTopBottomRate: number; // 登録レートの上位1/3 × 下位1/3 が同居した試合の割合
@@ -249,8 +261,29 @@ function runOnce(
   const targetMatches = rounds * courtCount;
   let now = 0;
   let matchSeq = 0;
+  // 進行中の試合。**本番の `matchHistory` に入るのは終了した試合だけ**
+  // （`gameOperations.ts` の `computeFinishAndContinue` が終了時に append する）
+  // ので、bench でも配置時ではなくここに溜め、終了時刻を過ぎたものだけを
+  // `history` へ移す。配置時に push していた頃は、進行中（＝候補ですらない人）の
+  // 試合が履歴の末尾 courtCount 件を占めており、履歴の末尾からの距離を見る
+  // ロジック（目的8 `recency` / `isRecentDuplicate` / ハシゴ式）が本番と
+  // 別物の入力を見ていた。docs/plans/2026-09-08-recency-penalty.md
+  const pending: Match[] = [];
+  /** finishedAt <= t の試合を finishedAt 昇順で history へ移す（本番の終了順 append と同じ） */
+  const flushFinished = (t: number) => {
+    const done: Match[] = [];
+    const remain: Match[] = [];
+    for (const m of pending) (m.finishedAt <= t ? done : remain).push(m);
+    if (done.length === 0) return;
+    done.sort((a, b) => a.finishedAt - b.finishedAt); // 同時刻は生成順（安定ソート）
+    history.push(...done);
+    pending.length = 0;
+    pending.push(...remain);
+  };
 
-  while (history.length < targetMatches) {
+  // ループ条件は「作った試合数」で数える。history は終了ぶんしか増えないため、
+  // ここを history.length にすると進行中のぶんだけ余計に試合を作ってしまう。
+  while (matchSeq < targetMatches) {
     // 最も早く空くコートを起点に、MIXED_WINDOW_MS 以内に終わるコートをまとめて空ける
     const earliest = Math.min(...courtIds.map(id => courtBusyUntil.get(id)!));
     const freeIds = courtIds.filter(
@@ -258,6 +291,9 @@ function runOnce(
     );
     now = Math.max(now, ...freeIds.map(id => courtBusyUntil.get(id)!));
     simClock = now; // 滞在時間が「練習開始(0)からの経過」になるよう擬似時計を進める
+
+    // 次の配置を組む前に、この時点で終わっている試合を履歴へ移す（本番と同じ順序）
+    flushFinished(now);
 
     for (const id of freeIds) courtOccupants.delete(id);
 
@@ -298,7 +334,10 @@ function runOnce(
       const duration = (6 + Math.floor(rng() * 4)) * 60_000; // 6〜9分
       const finishedAt = now + duration;
 
-      history.push({
+      // 配置＝出場確定なので gamesPlayed / lastPlayedAt / partnerCounts の更新は
+      // 従来どおりこの場で行う（本番も配置時に確定する）。履歴への反映だけが
+      // 終了時に遅れる。
+      pending.push({
         id: `m${matchSeq++}`,
         courtId: a.courtId,
         teamA: a.teamA,
@@ -326,6 +365,9 @@ function runOnce(
       courtOccupants.set(a.courtId, [...a.teamA, ...a.teamB]);
     }
   }
+
+  // 最後まで残った進行中の試合も集計対象に入れる（終了順で末尾に積む）
+  flushFinished(Infinity);
 
   // ---- 集計（実力の評価はすべて trueRank 基準）----
   // 目的3 の閾値。plan で採用した B 案（順位差が全体の 2/3 以上なら「大きく離れている」）
@@ -420,16 +462,41 @@ function runOnce(
   });
 
   // 目的2: 自分が出ていない間に行われた試合数の最大（セッション末尾の待ちも数える）
+  //
+  // あわせて「出場と出場の間の空き」（＝末尾の裾を含まない、実際に待って次に
+  // 出られた間隔）を全員分プールし、連投率・標準偏差・途中の最大を出す。
+  // maxIdle だけだと分布の裾しか見えない（内訳の実測は plan の計測結果を参照）。
   let maxIdle = 0;
+  let maxIdleMid = 0;
+  const idleGaps: number[] = [];
   for (const p of players) {
     const idxs = appearances.get(p.id)!;
     let prev = -1;
     for (const idx of idxs) {
-      maxIdle = Math.max(maxIdle, idx - prev - 1);
+      const gap = idx - prev - 1;
+      maxIdle = Math.max(maxIdle, gap);
+      if (prev >= 0) {
+        // 初出場までの空きは「待ち」ではない（まだ1試合も出ていないだけ）ので、
+        // 間隔の統計には入れない
+        maxIdleMid = Math.max(maxIdleMid, gap);
+        idleGaps.push(gap);
+      }
       prev = idx;
     }
     maxIdle = Math.max(maxIdle, history.length - prev - 1);
   }
+  const idleMean = idleGaps.length
+    ? idleGaps.reduce((a, b) => a + b, 0) / idleGaps.length
+    : 0;
+  const idleSd = idleGaps.length
+    ? Math.sqrt(
+        idleGaps.reduce((a, b) => a + (b - idleMean) ** 2, 0) / idleGaps.length
+      )
+    : 0;
+  // 連投率: 「空き1試合以下」＝ ほぼ休まずに次の試合へ入った割合
+  const backToBackRate = idleGaps.length
+    ? idleGaps.filter(g => g <= 1).length / idleGaps.length
+    : 0;
 
   // 目的6: 試合をした人だけを対象に「最多相手 / 自分の試合数」を平均する
   const shares = players
@@ -491,6 +558,9 @@ function runOnce(
   return {
     gamesSpread: Math.max(...games) - Math.min(...games),
     maxIdle,
+    backToBackRate,
+    idleSd,
+    maxIdleMid,
     wideGapRate: history.length ? wideGapMatches / history.length : 0,
     overratedWinRate: (() => {
       // 登録序列が実力より大きく上（＝過大評価）の人が、実力相応の帯まで降りて
@@ -544,6 +614,15 @@ const PREF_PAIRS = Number(process.env.PREF_PAIRS ?? 0);
 if (process.env.AFFINITY_WEIGHT !== undefined) {
   DEFAULT_WEIGHTS.affinity = Number(process.env.AFFINITY_WEIGHT);
 }
+/**
+ * `recency`（目的8: 連続出場を少し嫌う）の重みをこのプロセス内だけ上書きする
+ * （bench 専用。本番の `DEFAULT_WEIGHTS.recency` の既定値は変えない）。
+ * 未指定ならリポジトリの既定値のまま。
+ * `docs/plans/2026-09-08-recency-penalty.md` の「決め方（bench）」で使う。
+ */
+if (process.env.RECENCY_WEIGHT !== undefined) {
+  DEFAULT_WEIGHTS.recency = Number(process.env.RECENCY_WEIGHT);
+}
 const DEFAULT_CONDITIONS = '13x2,14x2,16x2,15x3,18x3,21x3,22x3,25x3';
 const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
   .split(',')
@@ -553,9 +632,11 @@ const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
   });
 
 console.log(`SEEDS=${SEEDS} ROUNDS=${ROUNDS} NOISE=${NOISES.join(',')} ENGINE=${USE_OBJECTIVE_ENGINE ? 'objective' : 'legacy'}` +
-  (PREF_PAIRS > 0 ? ` PREF_PAIRS=${PREF_PAIRS} AFFINITY_WEIGHT=${DEFAULT_WEIGHTS.affinity}` : ''));
+  (PREF_PAIRS > 0 ? ` PREF_PAIRS=${PREF_PAIRS} AFFINITY_WEIGHT=${DEFAULT_WEIGHTS.affinity}` : '') +
+  (process.env.RECENCY_WEIGHT !== undefined ? ` RECENCY_WEIGHT=${DEFAULT_WEIGHTS.recency}` : ''));
 console.log('  指標は docs/plans/2026-08-05-pairing-goals-and-rewrite.md の目的1〜6に対応');
 console.log('  幅広%=目的3 競り度=目的4 3-1%=目的5 男女戦%=目的5b 占有率%/共演=目的6 試合数幅=目的1 待ち=目的2');
+console.log('  待ち途中=末尾の裾を除いた空きの最大 連投%=空き1試合以下の割合 待ちσ=空きの標準偏差（いずれも目的2の補助）');
 console.log('  端中=序列の端1/3と中央1/3の平均試合数の差（負なら端が損をしている）');
 if (LATE_JOIN > 0) console.log('  遅参加=在席時間に比例した期待値に対する倍率（1.00 が理想）');
 if (PREF_PAIRS > 0) {
@@ -575,7 +656,7 @@ if (PREF_PAIRS > 0) {
 console.log('  （共演のみ高いほど良い。他はすべて低いほど良い）');
 console.log('');
 console.log(
-  '  条件      NOISE  幅広%  登録上下%  背負い%  過大勝率%  競り度  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち  勝率SD%' +
+  '  条件      NOISE  幅広%  登録上下%  背負い%  過大勝率%  競り度  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち  待ち途中  連投%  待ちσ  勝率SD%' +
     (LATE_JOIN > 0 ? '  遅参加' : '') +
     (PREF_PAIRS > 0 ? '  成立率%  リーク' : '')
 );
@@ -620,7 +701,10 @@ for (const { n, courtCount } of CONDITIONS) {
         `${(avg(r => r.maxMateShare) * 100).toFixed(1).padStart(7)}  ` +
         `${avg(r => r.distinctMates).toFixed(2).padStart(5)}  ` +
         `${avg(r => r.gamesSpread).toFixed(2).padStart(8)}  ` +
-        `${avg(r => r.maxIdle).toFixed(2).padStart(4)}` +
+        `${avg(r => r.maxIdle).toFixed(2).padStart(4)}  ` +
+        `${avg(r => r.maxIdleMid).toFixed(2).padStart(6)}  ` +
+        `${(avg(r => r.backToBackRate) * 100).toFixed(1).padStart(5)}  ` +
+        `${avg(r => r.idleSd).toFixed(2).padStart(5)}` +
         `  ${(avg(r => r.winRateSd) * 100).toFixed(1)}` +
         (LATE_JOIN > 0 ? `   ${avg(r => r.lateRatio).toFixed(2)}倍` : '') +
         (PREF_PAIRS > 0

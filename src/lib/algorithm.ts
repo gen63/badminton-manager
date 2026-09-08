@@ -2340,6 +2340,24 @@ export function assignCourts(
     // 中央値・reservationBlockThreshold は予約保留判定（上の isReservationBlocked）と
     // 共通のものを使い回す（新しい設定項目は増やさない。plan 3b）。
     const pairPreferences = options?.pairPreferences ?? [];
+    // 目的8 recency（連続出場を少し嫌う）の入力。
+    // 値は gapOf =「その人が最後に出場した試合から数えて経過した試合数」
+    // （直前の試合に出ていた = 0、1試合はさんだ = 1、未出場は Map に入れない）。
+    // `matchHistory` は古い順（末尾が最新）なので**末尾から1回だけ**走査する。
+    // gap が RECENCY_SPAN 以上になった時点で以降は全員 recency = 0 が確定するため
+    // 打ち切ってよい（`computeRecency` の max(0, 1 − gap/span) が 0 に飽和する）。
+    // docs/plans/2026-09-08-recency-penalty.md
+    const objectiveRecencySpan = Math.max(1, totalCourtCount);
+    const objectiveRecencyById = new Map<string, number>();
+    for (let i = matchHistory.length - 1; i >= 0; i--) {
+      const gap = matchHistory.length - 1 - i;
+      if (gap >= objectiveRecencySpan) break;
+      const match = matchHistory[i];
+      for (const id of [...match.teamA, ...match.teamB]) {
+        if (!id) continue; // シングルスの空スロット
+        if (!objectiveRecencyById.has(id)) objectiveRecencyById.set(id, gap);
+      }
+    }
     const assigned = assignRoundByObjective({
       candidates: normalCandidates,
       courtIds: normalCourtIds,
@@ -2363,6 +2381,8 @@ export function assignCourts(
         reservationBlockThreshold,
       ),
       strongPairs: computeStrongPairs(pairPreferences, normalCandidates),
+      recencyById: objectiveRecencyById,
+      recencySpan: objectiveRecencySpan,
     });
     return [...reservationAssignments, ...assigned];
   }
