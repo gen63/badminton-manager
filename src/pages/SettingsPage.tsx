@@ -15,7 +15,7 @@ import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
 import { SessionQrCode } from '../components/SessionQrCode';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2, StopCircle, Link as LinkIcon, Copy } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2, StopCircle, Link as LinkIcon, Copy, QrCode, ChevronDown } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -28,6 +28,7 @@ export function SettingsPage() {
   const [selectedAdmins, setSelectedAdmins] = useState<string[]>([]);
   const [isAddingAdmins, setIsAddingAdmins] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
+  const [qrExpanded, setQrExpanded] = useState(false);
   const [showChangeCreatorModal, setShowChangeCreatorModal] = useState(false);
   const [selectedNewCreator, setSelectedNewCreator] = useState<string | null>(null);
   const [isChangingCreator, setIsChangingCreator] = useState(false);
@@ -275,7 +276,7 @@ export function SettingsPage() {
             「この端末の設定」「セッションの設定」のどちらでもなく、その場で人を呼ぶための
             情報なので見出しの外・ページ先頭に置く。管理者に限らず、隣にいる人を誘うのは
             参加者の誰でもやることなので権限で隠さない（信頼モデル上も、ここにいる時点で
-            URL は既に知っている）。 */}
+            URL は既に知っている）。QR は既定で畳んでおき、必要なときだけ開く。 */}
         <div className="card p-4">
           <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
             <span className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center">
@@ -286,7 +287,25 @@ export function SettingsPage() {
           <p className="text-[11px] text-muted-foreground mb-3">
             その場にいる人にはQRを読んでもらい、離れた人にはURLを送れば参加できます。
           </p>
-          <div className="mb-3">
+          {/* QR はカードの高さを常時 200px 押し上げるため、既定は閉じたアコーディオンに
+              収納する。中身は閉じていてもマウントしたまま `hidden` で隠すので、
+              開いた瞬間に描画待ちが発生せず、aria-controls の参照先も常に存在する。 */}
+          <button
+            onClick={() => setQrExpanded((prev) => !prev)}
+            aria-expanded={qrExpanded}
+            aria-controls="session-qr-panel"
+            className="w-full bg-muted hover:bg-muted/70 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98] min-h-[44px] mb-3"
+          >
+            <QrCode size={16} className="text-blue-600" />
+            {qrExpanded ? 'QRを閉じる' : 'QRを表示'}
+            <ChevronDown
+              size={14}
+              className={`text-muted-foreground transition-transform duration-200 ${
+                qrExpanded ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+          <div id="session-qr-panel" hidden={!qrExpanded} className="mb-3">
             <SessionQrCode url={sessionUrl} />
           </div>
           <div className="bg-muted rounded-xl p-3 mb-3">
