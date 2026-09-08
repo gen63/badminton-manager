@@ -1,10 +1,11 @@
 /**
- * 目的関数（7目的の正規化・重み付き合計）。
+ * 目的関数（8目的の正規化・重み付き合計）。
  *
  * `docs/plans/2026-08-05-pairing-goals-and-rewrite.md` の「やりたいこと（6個）」に
  * 1目的1指標で対応する（目的1〜6）。すべて 0〜1 に正規化し、重み付き合計する
  * 純関数群。目的7 `affinity`（ペア希望）は
- * `docs/plans/2026-08-31-pair-preference.md` で追加。
+ * `docs/plans/2026-08-31-pair-preference.md` で追加。目的8 `recency`
+ * （連続出場を少し嫌う）は `docs/plans/2026-09-08-recency-penalty.md` で追加。
  *
  * **副作用なし・外部依存なし**。`algorithm.ts` を import しないこと（循環参照防止）。
  */
@@ -33,6 +34,12 @@ export interface ObjectiveWeights {
   variety: number;
   /** 目的7: ペア希望（`affinity`）— 特定2人が組む頻度を上げる。0〜1・小さいほど良い */
   affinity: number;
+  /**
+   * 目的8: 連続出場を少し嫌う（`recency`）。**連続出場が長い人ほど減点する**
+   * （2連続までは減点なし。3連続目から効く）。0〜1・小さいほど良い。
+   * `docs/plans/2026-09-08-recency-penalty.md`
+   */
+  recency: number;
 }
 
 /**
@@ -164,6 +171,48 @@ const SKILL_GAP_WEIGHT = 1.5;
 const AFFINITY_WEIGHT = 1.0;
 
 /**
+ * `recency` の重み。**0 ＝ 採用見送り（この項は既定で無効）**。
+ * 計測の全文は `docs/plans/2026-09-08-recency-penalty.md` の「計測結果」節。
+ *
+ * ## なぜ 0 なのか
+ *
+ * 主指標「**連投率**（出場間隔のうち空き1試合以下が占める割合）が相対で 30% 以上
+ * 下がる」を、重みの制約（`fairness`=1.5 未満）の中では満たせなかった。
+ * bench（`ENGINE=objective SEEDS=100 NOISE=4 CONDITIONS=21x3 ROUNDS=13`）:
+ *
+ * | 重み | 連投% | 相対減 | 待ちσ | 待ち | 試合数幅 | 占有率% | 共演 | 3-1% |
+ * |---|---|---|---|---|---|---|---|---|
+ * | **0（現状）** | **5.0** | — | **1.82** | 9.53 | 1.43 | 39.8 | 13.64 | 3.4 |
+ * | 0.6 | 4.3 | −14% | 1.73 | 9.20 | 1.33 | 40.1 | 13.61 | 3.6 |
+ * | 1.2 | 3.8 | −24% | 1.67 | 9.17 | 1.33 | 40.8 | 13.53 | 3.8 |
+ * | 1.4（制約の上限） | 3.7 | −26% | 1.66 | 9.10 | 1.33 | 40.6 | 13.53 | 3.8 |
+ *
+ * **主指標以外はすべて合格している**（待ちσ は単調に低下、待ち・試合数幅は
+ * むしろ改善、占有率 +2.0% / 共演 −0.8% で許容 5% 以内、3-1% も +0.4pt）。
+ * 副作用が無いまま主指標だけが 30% に届かない、という結果。制約を外して 2.0 に
+ * すると 21人3コートでは −36% に届くが、16人2C −28% / 18人3C −14% /
+ * 20人3C −21% と他条件は届かず、16人2C の 3-1% が +1.1pt と許容を超える。
+ *
+ * ## 前提: bench の履歴タイミングを本番に合わせてある
+ *
+ * この計測は `scripts/bench-court-assignment.ts` を「試合を**終了時に**
+ * `finishedAt` 昇順で履歴へ積む」よう直した**後**のもの。旧 bench は配置直後に
+ * 積んでいて進行中の試合が履歴末尾を占めており、`gapOf` が本番と別物になって
+ * この項をほぼ無効化していた（本番は `computeFinishAndContinue` が終了時に
+ * `matchHistory` へ append する＝履歴の並びは終了順）。**この項を再計測する
+ * ときは、bench 側のこの性質が保たれているか先に確かめること。**
+ *
+ * ## 次に上げるなら
+ *
+ * 実装・テスト・bench の口（環境変数 `RECENCY_WEIGHT`）は残してある。連投が多いのは
+ * **小さいプール**（13〜16人で連投 20〜32%、21人3コートは 5%）なので、条件と
+ * 閾値を置き直すか、重みの制約を緩める合意を取れば、この値を変えるだけで再開できる
+ * （`LATE_JOIN=3` の実測では重み 3.0 まで上げても遅参加のキャッチアップは
+ * 1.19 → 1.18 倍で無傷だった）。
+ */
+const RECENCY_WEIGHT = 0;
+
+/**
  * 優先順位（質 > 多様性 > 公平性）を反映した既定値。
  *
  * **重みの大小は優先順位そのものではない。** 各項の正規化スケールが違うため、
@@ -204,6 +253,7 @@ export const DEFAULT_WEIGHTS: ObjectiveWeights = {
   fairness: 1.5,
   waiting: 1.5, // 公平性
   affinity: AFFINITY_WEIGHT, // ペア希望（bench 実測。根拠は AFFINITY_WEIGHT のコメント参照）
+  recency: RECENCY_WEIGHT, // 連続出場を少し嫌う（bench 実測の結果 0 ＝無効。根拠は RECENCY_WEIGHT のコメント参照）
 };
 
 /**
@@ -268,6 +318,24 @@ export interface ObjectiveInput {
   reachableCountById: Map<string, number>;
   /** 希望ペアの一覧（実運用は1〜3組程度） */
   affinityPairs: AffinityPair[];
+  /**
+   * 目的8 `recency` の入力。値は **`streakOf`**（＝直近の**連続出場数**）。
+   *
+   * - 最新の出場からの経過が `RECENCY_SPAN`（＝コート数）以上なら 0
+   *   （もう連続していない）
+   * - そこから履歴を遡り、隣り合う出場どうしの間隔が `RECENCY_SPAN` 未満である
+   *   限り数え上げる（3コートなら「2試合以内で戻ってきた」が連続の条件）
+   * - 未出場は 0（Map に入れない）
+   *
+   * 組み立ては呼び出し側（`algorithm.ts`）が `matchHistory` の1回走査で行う。
+   * `RECENCY_SPAN` はそこで消費されるので、この Map にはもう含まれない。
+   * **空 Map ならこの項は常に 0** になるので、渡さない呼び出し側は自動的に無効。
+   *
+   * 時刻（`lastPlayedAt`）ではなく**試合履歴ベース**にしているのは、`Date.now()`
+   * に依存すると bench が非決定的になり、実運用でも端末の時計差に影響されるため。
+   * `docs/plans/2026-09-08-recency-penalty.md`
+   */
+  streakById: Map<string, number>;
 }
 
 /**
@@ -577,7 +645,67 @@ export function computeAffinity(
   return targetCount === 0 ? 0 : clamp01(sum / targetCount);
 }
 
-/** 7目的すべてを計算した結果（各 0〜1） */
+/**
+ * `recency` の効き方（連続出場の長さ → ペナルティ）。
+ *
+ * ```
+ * recency(id) = clamp01((streakOf(id) − allowance) / ramp)
+ * ```
+ *
+ * `allowance = 2` / `ramp = 2` なら、2連続までは 0（減点なし）、3連続で 0.5、
+ * 4連続以上で 1.0。**bench（`scripts/bench-court-assignment.ts`）が環境変数
+ * `STREAK_ALLOWANCE` / `STREAK_RAMP` でこのオブジェクトを書き換えて感度を測る**
+ * ため、`const` の即値ではなく書き換え可能なオブジェクトにしてある
+ * （`DEFAULT_WEIGHTS` と同じ扱い）。本番はこの既定値のまま。
+ */
+export const RECENCY_STREAK_SHAPE = {
+  /** これ以下の連続出場は減点しない（2連続は害が無いので許す） */
+  allowance: 2,
+  /** allowance を超えてから 1.0 に達するまでの連続数 */
+  ramp: 2,
+};
+
+/**
+ * 目的8: recency — 「連続出場を少し嫌う」。配置された全員について
+ *
+ * ```
+ * recency(id) = clamp01((streakOf(id) − STREAK_ALLOWANCE) / STREAK_RAMP)
+ * term        = 配置された全員の recency の平均（0〜1・小さいほど良い）
+ * ```
+ *
+ * `streakOf` は直近の連続出場数（`ObjectiveInput.streakById` のコメント参照）。
+ * 既定（allowance 2 / ramp 2）では **2連続までは 0、3連続で 0.5、4連続以上で 1.0**。
+ *
+ * **「直前に出た人」ではなく「連続が長くなっている人」を嫌う。** 潰したいのは
+ * 1回の連投ではなく**連続の長さ**だから（実データ: 空き `2,2,1,2,2,2` で7巡
+ * 出ずっぱりの人がいる一方、2連続で終わる人は害が無い）。1回の再出場を
+ * 邪魔しないので候補プールが固定されず多様性が守られ、遅参加のキャッチアップ
+ * （最初に2巡続けて入るのは正しい挙動）も邪魔しない。
+ *
+ * **優先度順位（＝試合数の順位）は動かさない**ので、試合数の均等（目的1）を
+ * 壊さない（重みを `fairness` 未満に保つ前提）。未出場・連続していない人は 0。
+ * 練習開始直後は履歴が空で全員 0 になり、この項は何もしない。
+ *
+ * `docs/plans/2026-09-08-recency-penalty.md`
+ */
+export function computeRecency(
+  courts: CourtPlacement[],
+  streakById: Map<string, number>,
+  shape: { allowance: number; ramp: number } = RECENCY_STREAK_SHAPE
+): number {
+  if (courts.length === 0) return 0;
+  const selected = courts.flatMap(courtMembers);
+  if (selected.length === 0) return 0;
+  const ramp = Math.max(1, shape.ramp);
+  const sum = selected.reduce((s, id) => {
+    const streak = streakById.get(id);
+    if (streak === undefined || !Number.isFinite(streak)) return s; // 未出場・連続なしは 0
+    return s + clamp01((streak - shape.allowance) / ramp);
+  }, 0);
+  return clamp01(sum / selected.length);
+}
+
+/** 8目的すべてを計算した結果（各 0〜1） */
 export type ObjectiveTerms = ObjectiveWeights;
 
 export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
@@ -595,10 +723,11 @@ export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
       input.reachableCountById
     ),
     affinity: computeAffinity(input.courts, input.benchIds, input.affinityPairs),
+    recency: computeRecency(input.courts, input.streakById),
   };
 }
 
-/** 7項目を重み付き合計する（合計 = 目的関数値。小さいほど良い） */
+/** 8項目を重み付き合計する（合計 = 目的関数値。小さいほど良い） */
 export function weightedObjective(
   terms: ObjectiveTerms,
   weights: ObjectiveWeights
@@ -611,7 +740,8 @@ export function weightedObjective(
     terms.gender * weights.gender +
     terms.mixSplit * weights.mixSplit +
     terms.variety * weights.variety +
-    terms.affinity * weights.affinity
+    terms.affinity * weights.affinity +
+    terms.recency * weights.recency
   );
 }
 

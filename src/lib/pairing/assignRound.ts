@@ -102,6 +102,17 @@ export interface AssignRoundParams {
    * `affinityPairs` と同じ理由で pairKey の Set ではなく配列にしている。
    */
   strongPairs?: StrongPair[];
+  /**
+   * 目的8 `recency`（連続出場を少し嫌う）の入力。値は **`streakOf`**
+   * （＝直近の連続出場数。2連続までは減点されない。詳細は `objective.ts` の
+   * `ObjectiveInput.streakById` のコメント）。
+   *
+   * **省略時は空 Map ＝ この項は常に 0**（＝無効）。呼び出し側（`algorithm.ts`）が
+   * `matchHistory` の1回走査で組み立てる（`RECENCY_SPAN` ＝ コート数はそこで
+   * 消費されるので、このモジュールは受け取らない）。
+   * `docs/plans/2026-09-08-recency-penalty.md`
+   */
+  streakById?: Map<string, number>;
 }
 
 /** 局所探索の反復上限 */
@@ -201,6 +212,8 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   const formRankById = params.formRankById ?? rankById;
   const affinityPairs = params.affinityPairs ?? [];
   const strongPairs = params.strongPairs ?? [];
+  // 目的8 recency。省略時は空 Map = この項が常に 0（＝無効）。
+  const streakById = params.streakById ?? new Map<string, number>();
 
   const weights: ObjectiveWeights = { ...DEFAULT_WEIGHTS, ...params.weights };
 
@@ -605,6 +618,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       reachableCountById,
       formRankById,
       affinityPairs,
+      streakById,
     });
     return { violations, objective: weightedObjective(terms, weights) };
   };
