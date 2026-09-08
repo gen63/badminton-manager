@@ -24,12 +24,14 @@ function allStreak(streak: number): Map<string, number> {
 describe('computeRecency（連続出場の長さで減点する）', () => {
   const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
 
-  it('既定の形は「2連続まで0 / 3連続で0.5 / 4連続以上で1.0」', () => {
-    expect(RECENCY_STREAK_SHAPE).toEqual({ allowance: 2, ramp: 2 });
-    expect(computeRecency(courts, allStreak(1))).toBe(0);
-    expect(computeRecency(courts, allStreak(2))).toBe(0); // 2連続は許容（害が無い）
-    expect(computeRecency(courts, allStreak(3))).toBeCloseTo(0.5, 10);
-    expect(computeRecency(courts, allStreak(4))).toBe(1);
+  it('既定の形は「1連続(=再出場1回目)で0.5 / 2連続以上で1.0」', () => {
+    // allowance=2 (「3連続目から」) は後追いになり bench で効果が出なかったため
+    // allowance=0 (1回目の再出場から予防的に効く) を採用した。
+    // 経緯・計測: docs/plans/2026-09-08-recency-penalty.md
+    expect(RECENCY_STREAK_SHAPE).toEqual({ allowance: 0, ramp: 2 });
+    expect(computeRecency(courts, allStreak(0))).toBe(0); // 未出場・連続なしは 0
+    expect(computeRecency(courts, allStreak(1))).toBeCloseTo(0.5, 10);
+    expect(computeRecency(courts, allStreak(2))).toBe(1);
     expect(computeRecency(courts, allStreak(7))).toBe(1); // 上限は 1.0（クランプ）
   });
 
@@ -39,10 +41,10 @@ describe('computeRecency（連続出場の長さで減点する）', () => {
   });
 
   it('配置された全員の平均を取る（出場者数で割る。連続していない人も分母に入る）', () => {
-    // p0 だけ4連続（1.0）、残り3人は連続なし（0）→ 平均 0.25
-    expect(computeRecency(courts, new Map([['p0', 4]]))).toBeCloseTo(0.25, 10);
-    // p0 が3連続（0.5）だけなら 0.125
-    expect(computeRecency(courts, new Map([['p0', 3]]))).toBeCloseTo(0.125, 10);
+    // p0 だけ2連続以上（1.0）、残り3人は連続なし（0）→ 平均 0.25
+    expect(computeRecency(courts, new Map([['p0', 2]]))).toBeCloseTo(0.25, 10);
+    // p0 が1連続（0.5）だけなら 0.125
+    expect(computeRecency(courts, new Map([['p0', 1]]))).toBeCloseTo(0.125, 10);
   });
 
   it('コートをまたいでも全出場者の平均（コートごとの平均の平均ではない）', () => {

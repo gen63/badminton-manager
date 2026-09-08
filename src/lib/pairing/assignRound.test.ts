@@ -909,17 +909,24 @@ describe('assignRoundByObjective: recency（連続出場を少し嫌う）', () 
     expect(picked.has('p3')).toBe(false);
   });
 
-  it('2連続までは嫌われない（許容範囲なので配置が変わらない）', () => {
-    const baseline = assignRoundByObjective(baseParams);
-    const withTwoStreak = assignRoundByObjective({
-      ...baseParams,
-      streakById: new Map([['p3', 2]]),
-      weights: { recency: 20 },
-    });
-    expect(withTwoStreak).toEqual(baseline);
+  it('1回の再出場でも弱く効く（allowance=0 は3連続を待たず1回目から予防的に働く）', () => {
+    // streak=1（直前の再出場1回目）でも 0.5 のペナルティが乗るため、
+    // 重みが十分なら休んでいる p4 に道を譲る。旧既定（allowance=2）だと
+    // ここは「2連続までは許容」で配置が変わらなかったが、後追いになり
+    // bench で効果が出なかったため allowance=0 に変えた
+    // （docs/plans/2026-09-08-recency-penalty.md）。
+    const picked = pickedIds(
+      assignRoundByObjective({
+        ...baseParams,
+        streakById: new Map([['p3', 1]]),
+        weights: { recency: 20 },
+      })
+    );
+    expect(picked.has('p4')).toBe(true);
+    expect(picked.has('p3')).toBe(false);
   });
 
-  it('回帰の担保: 重み0（＝既定）なら streak を渡しても配置は変わらない', () => {
+  it('重み0を明示すれば streak を渡しても配置は変わらない（既定は 1.2 だが明示指定で無効化できる）', () => {
     const baseline = assignRoundByObjective(baseParams);
     const withZeroWeight = assignRoundByObjective({
       ...baseParams,
