@@ -14,6 +14,7 @@ import { buildSessionUrl, copyToClipboard } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
+import { SessionQrCode } from '../components/SessionQrCode';
 import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2, StopCircle, Link as LinkIcon, Copy } from 'lucide-react';
 
 export function SettingsPage() {
@@ -74,6 +75,7 @@ export function SettingsPage() {
 
   // セッション URL。共有 UI は 2026-05-07 に撤去したが、一覧の自動非表示
   // （最後の試合から30分）で見つけられなくなった場合の緊急避難措置として復活させた。
+  // その場にいる人向けに QR も同じ URL から描く（2026-09-08）。
   // BrowserRouter の basename と同じ import.meta.env.BASE_URL を使う。
   const sessionUrl = buildSessionUrl(
     window.location.origin,
@@ -627,17 +629,20 @@ export function SettingsPage() {
           </div>
         )}
 
-        {/* セッションURL共有 */}
+        {/* セッション共有（QR + URL） */}
         <div className="card p-4">
           <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
             <span className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center">
               <LinkIcon size={14} className="text-blue-600" />
             </span>
-            セッションURL
+            セッションQR・URL
           </h2>
           <p className="text-[11px] text-muted-foreground mb-3">
-            一覧から見つけられないメンバーへ、このURLを送れば参加できます。
+            その場にいる人にはQRを読んでもらい、離れた人にはURLを送れば参加できます。
           </p>
+          <div className="mb-3">
+            <SessionQrCode url={sessionUrl} />
+          </div>
           <div className="bg-muted rounded-xl p-3 mb-3">
             <p className="text-xs font-mono break-all text-foreground">{sessionUrl}</p>
           </div>
