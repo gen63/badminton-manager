@@ -70,8 +70,9 @@ export function SettingsPage() {
   }
 
   // 管理者権限チェックはページ単位では行わない。セッション設定（コート設定・
-  // 管理者管理・削除など）は管理者だけに出すが、**端末ローカル設定は誰でも
-  // 触れる必要がある**（終了操作は管理者に限らず操作担当も行うため）。
+  // 管理者管理・削除など）は管理者だけに出すが、**端末ローカル設定と QR・URL は
+  // 誰でも触れる必要がある**（終了操作は管理者に限らず操作担当も行い、隣にいる人を
+  // 誘うのも参加者の誰でもやるため）。
 
   // セッション URL。共有 UI は 2026-05-07 に撤去したが、一覧の自動非表示
   // （最後の試合から30分）で見つけられなくなった場合の緊急避難措置として復活させた。
@@ -270,6 +271,36 @@ export function SettingsPage() {
       </div>
 
       <div className="max-w-md mx-auto p-3 space-y-3">
+        {/* セッション共有（QR + URL）。
+            「この端末の設定」「セッションの設定」のどちらでもなく、その場で人を呼ぶための
+            情報なので見出しの外・ページ先頭に置く。管理者に限らず、隣にいる人を誘うのは
+            参加者の誰でもやることなので権限で隠さない（信頼モデル上も、ここにいる時点で
+            URL は既に知っている）。 */}
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+            <span className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center">
+              <LinkIcon size={14} className="text-blue-600" />
+            </span>
+            セッションQR・URL
+          </h2>
+          <p className="text-[11px] text-muted-foreground mb-3">
+            その場にいる人にはQRを読んでもらい、離れた人にはURLを送れば参加できます。
+          </p>
+          <div className="mb-3">
+            <SessionQrCode url={sessionUrl} />
+          </div>
+          <div className="bg-muted rounded-xl p-3 mb-3">
+            <p className="text-xs font-mono break-all text-foreground">{sessionUrl}</p>
+          </div>
+          <button
+            onClick={handleCopyUrl}
+            className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 border-2 border-blue-200 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98] min-h-[44px]"
+          >
+            {urlCopied ? <Check size={16} /> : <Copy size={16} />}
+            {urlCopied ? 'コピーしました' : 'URLをコピー'}
+          </button>
+        </div>
+
         {/* 端末ローカル設定（管理者でなくても触れる。以降のセッション設定と
             混ざらないよう見出しで区切る） */}
         <h2 className="text-xs font-bold text-muted-foreground px-1 pt-1">この端末の設定</h2>
@@ -628,32 +659,6 @@ export function SettingsPage() {
             </div>
           </div>
         )}
-
-        {/* セッション共有（QR + URL） */}
-        <div className="card p-4">
-          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
-            <span className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center">
-              <LinkIcon size={14} className="text-blue-600" />
-            </span>
-            セッションQR・URL
-          </h2>
-          <p className="text-[11px] text-muted-foreground mb-3">
-            その場にいる人にはQRを読んでもらい、離れた人にはURLを送れば参加できます。
-          </p>
-          <div className="mb-3">
-            <SessionQrCode url={sessionUrl} />
-          </div>
-          <div className="bg-muted rounded-xl p-3 mb-3">
-            <p className="text-xs font-mono break-all text-foreground">{sessionUrl}</p>
-          </div>
-          <button
-            onClick={handleCopyUrl}
-            className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 border-2 border-blue-200 rounded-xl p-3 text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98] min-h-[44px]"
-          >
-            {urlCopied ? <Check size={16} /> : <Copy size={16} />}
-            {urlCopied ? 'コピーしました' : 'URLをコピー'}
-          </button>
-        </div>
 
         {/* アクション（開発モード限定） */}
         {userIsAdmin && devMode && (
