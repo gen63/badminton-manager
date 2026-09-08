@@ -241,8 +241,7 @@ describe('computeObjectiveTerms（0〜1に収まること）', () => {
       reachableCountById: new Map(ids.map(id => [id, ids.length - 1])),
       formRankById: rankById,
       affinityPairs: [],
-      recencyById: new Map(),
-      recencySpan: 3,
+      streakById: new Map(),
     });
 
     for (const [key, value] of Object.entries(terms)) {
@@ -266,8 +265,7 @@ describe('computeObjectiveTerms（0〜1に収まること）', () => {
       reachableCountById: new Map(),
       formRankById: new Map(),
       affinityPairs: [],
-      recencyById: new Map(),
-      recencySpan: 1,
+      streakById: new Map(),
     });
 
     for (const value of Object.values(terms)) {
@@ -873,7 +871,7 @@ describe('assignRoundByObjective: strong（ペア希望・強度「必ず」の�
 describe('assignRoundByObjective: recency（連続出場を少し嫌う）', () => {
   // 5人・1コート（4人必要）。全員 gamesPlayed が同じなので優先度は完全に同点で、
   // タイブレーク（実力順位 → ID）により既定では p0〜p3 が選ばれる。
-  // p3 だけが「直前の試合に出ていた」状態を作り、recency がこの同点を
+  // p3 だけが「連続出場が続いている」状態を作り、recency がこの同点を
   // 崩して p4 を選ぶかどうかを見る。
   const candidates = Array.from({ length: 5 }, (_, i) => makePlayer(`p${i}`));
   const rankById = rankByIdFrom(candidates.map(p => p.id));
@@ -892,19 +890,18 @@ describe('assignRoundByObjective: recency（連続出場を少し嫌う）', () 
   const pickedIds = (result: ReturnType<typeof assignRoundByObjective>) =>
     new Set(result.flatMap(c => [...c.teamA, ...c.teamB]));
 
-  it('比較用: recency を渡さなければ p3 が選ばれる（下のテストが空回りしていない確認）', () => {
+  it('比較用: streak を渡さなければ p3 が選ばれる（下のテストが空回りしていない確認）', () => {
     const picked = pickedIds(assignRoundByObjective(baseParams));
     expect(picked.has('p3')).toBe(true);
     expect(picked.has('p4')).toBe(false);
   });
 
-  it('試合数が同じなら、直前に出ていない人が選ばれる', () => {
+  it('試合数が同じなら、連続出場が続いている人より休んでいる人が選ばれる', () => {
     const picked = pickedIds(
       assignRoundByObjective({
         ...baseParams,
-        // p3 は直前の試合に出ていた（gap 0）。p4 は Map に無い＝未出場
-        recencyById: new Map([['p3', 0]]),
-        recencySpan: 1,
+        // p3 は4連続で出ている。p4 は Map に無い＝連続していない
+        streakById: new Map([['p3', 4]]),
         weights: { recency: 20 }, // 実力差・待ちの項を押し切れる大きさ
       })
     );
@@ -912,37 +909,32 @@ describe('assignRoundByObjective: recency（連続出場を少し嫌う）', () 
     expect(picked.has('p3')).toBe(false);
   });
 
-  it('1巡（span）休んでいれば嫌われない', () => {
-    const picked = pickedIds(
-      assignRoundByObjective({
-        ...baseParams,
-        recencyById: new Map([['p3', 1]]), // span 1 なので既に 0
-        recencySpan: 1,
-        weights: { recency: 20 },
-      })
-    );
-    expect(picked.has('p3')).toBe(true);
-    expect(picked.has('p4')).toBe(false);
+  it('2連続までは嫌われない（許容範囲なので配置が変わらない）', () => {
+    const baseline = assignRoundByObjective(baseParams);
+    const withTwoStreak = assignRoundByObjective({
+      ...baseParams,
+      streakById: new Map([['p3', 2]]),
+      weights: { recency: 20 },
+    });
+    expect(withTwoStreak).toEqual(baseline);
   });
 
-  it('回帰の担保: 重み0（＝既定）なら recency を渡しても配置は変わらない', () => {
+  it('回帰の担保: 重み0（＝既定）なら streak を渡しても配置は変わらない', () => {
     const baseline = assignRoundByObjective(baseParams);
     const withZeroWeight = assignRoundByObjective({
       ...baseParams,
-      recencyById: new Map([['p3', 0]]),
-      recencySpan: 1,
+      streakById: new Map([['p3', 4]]),
       weights: { recency: 0 },
     });
     expect(withZeroWeight).toEqual(baseline);
   });
 
-  it('recencyById を省略すればこの項は無効（既定の挙動を変えない）', () => {
+  it('streakById を省略すればこの項は無効（既定の挙動を変えない）', () => {
     const baseline = assignRoundByObjective(baseParams);
-    const withSpanOnly = assignRoundByObjective({
+    const withoutStreak = assignRoundByObjective({
       ...baseParams,
-      recencySpan: 3,
       weights: { recency: 20 },
     });
-    expect(withSpanOnly).toEqual(baseline);
+    expect(withoutStreak).toEqual(baseline);
   });
 });

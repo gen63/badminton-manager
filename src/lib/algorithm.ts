@@ -2341,21 +2341,35 @@ export function assignCourts(
     // 共通のものを使い回す（新しい設定項目は増やさない。plan 3b）。
     const pairPreferences = options?.pairPreferences ?? [];
     // 目的8 recency（連続出場を少し嫌う）の入力。
-    // 値は gapOf =「その人が最後に出場した試合から数えて経過した試合数」
-    // （直前の試合に出ていた = 0、1試合はさんだ = 1、未出場は Map に入れない）。
+    // 値は streakOf =「直近の連続出場数」。
+    //   - 最新の出場からの経過が RECENCY_SPAN（＝コート数）以上なら 0（連続していない）
+    //   - そこから遡り、隣り合う出場どうしの間隔が RECENCY_SPAN 未満である限り数える
+    //   - 未出場は Map に入れない（＝0）
+    // 「2連続までは自由、3連続目から嫌う」を表現するための入力で、減点の形
+    // （STREAK_ALLOWANCE / STREAK_RAMP）は objective.ts 側が持つ。
     // `matchHistory` は古い順（末尾が最新）なので**末尾から1回だけ**走査する。
-    // gap が RECENCY_SPAN 以上になった時点で以降は全員 recency = 0 が確定するため
-    // 打ち切ってよい（`computeRecency` の max(0, 1 − gap/span) が 0 に飽和する）。
     // docs/plans/2026-09-08-recency-penalty.md
     const objectiveRecencySpan = Math.max(1, totalCourtCount);
-    const objectiveRecencyById = new Map<string, number>();
-    for (let i = matchHistory.length - 1; i >= 0; i--) {
-      const gap = matchHistory.length - 1 - i;
-      if (gap >= objectiveRecencySpan) break;
-      const match = matchHistory[i];
-      for (const id of [...match.teamA, ...match.teamB]) {
-        if (!id) continue; // シングルスの空スロット
-        if (!objectiveRecencyById.has(id)) objectiveRecencyById.set(id, gap);
+    const objectiveStreakById = new Map<string, number>();
+    {
+      // その人を最後に見た試合の位置。連続が途切れた人は broken に入れて以後無視する。
+      const lastSeenIndex = new Map<string, number>();
+      const broken = new Set<string>();
+      for (let i = matchHistory.length - 1; i >= 0; i--) {
+        const match = matchHistory[i];
+        for (const id of [...match.teamA, ...match.teamB]) {
+          if (!id) continue; // シングルスの空スロット
+          if (broken.has(id)) continue;
+          const last = lastSeenIndex.get(id);
+          // 間隔 = 2つの出場の間に行われた試合数（末尾側は「最後の出場より後の試合数」）
+          const gap = last === undefined ? matchHistory.length - 1 - i : last - i - 1;
+          if (gap >= objectiveRecencySpan) {
+            broken.add(id); // 1巡以上空いている → ここで連続は終わり
+            continue;
+          }
+          objectiveStreakById.set(id, (objectiveStreakById.get(id) ?? 0) + 1);
+          lastSeenIndex.set(id, i);
+        }
       }
     }
     const assigned = assignRoundByObjective({
@@ -2381,8 +2395,7 @@ export function assignCourts(
         reservationBlockThreshold,
       ),
       strongPairs: computeStrongPairs(pairPreferences, normalCandidates),
-      recencyById: objectiveRecencyById,
-      recencySpan: objectiveRecencySpan,
+      streakById: objectiveStreakById,
     });
     return [...reservationAssignments, ...assigned];
   }

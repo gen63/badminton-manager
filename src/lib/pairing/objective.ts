@@ -35,8 +35,9 @@ export interface ObjectiveWeights {
   /** 目的7: ペア希望（`affinity`）— 特定2人が組む頻度を上げる。0〜1・小さいほど良い */
   affinity: number;
   /**
-   * 目的8: 連続出場を少し嫌う（`recency`）。直前の試合に出ていた人ほど大きく減点する。
-   * 0〜1・小さいほど良い。`docs/plans/2026-09-08-recency-penalty.md`
+   * 目的8: 連続出場を少し嫌う（`recency`）。**連続出場が長い人ほど減点する**
+   * （2連続までは減点なし。3連続目から効く）。0〜1・小さいほど良い。
+   * `docs/plans/2026-09-08-recency-penalty.md`
    */
   recency: number;
 }
@@ -318,24 +319,23 @@ export interface ObjectiveInput {
   /** 希望ペアの一覧（実運用は1〜3組程度） */
   affinityPairs: AffinityPair[];
   /**
-   * 目的8 `recency` の入力。値は **`gapOf`**（その人が最後に出場した試合から数えて
-   * 経過した試合数）。直前の試合に出ていたなら 0、1試合はさんだなら 1。
+   * 目的8 `recency` の入力。値は **`streakOf`**（＝直近の**連続出場数**）。
    *
-   * **未出場（`gapOf = ∞`）の人は Map に入れない**（入れる場合は `Infinity`）。
-   * どちらでも `computeRecency` は 0 として扱う。空 Map ならこの項は常に 0 に
-   * なるので、渡さない呼び出し側は自動的に無効化される。
+   * - 最新の出場からの経過が `RECENCY_SPAN`（＝コート数）以上なら 0
+   *   （もう連続していない）
+   * - そこから履歴を遡り、隣り合う出場どうしの間隔が `RECENCY_SPAN` 未満である
+   *   限り数え上げる（3コートなら「2試合以内で戻ってきた」が連続の条件）
+   * - 未出場は 0（Map に入れない）
+   *
+   * 組み立ては呼び出し側（`algorithm.ts`）が `matchHistory` の1回走査で行う。
+   * `RECENCY_SPAN` はそこで消費されるので、この Map にはもう含まれない。
+   * **空 Map ならこの項は常に 0** になるので、渡さない呼び出し側は自動的に無効。
    *
    * 時刻（`lastPlayedAt`）ではなく**試合履歴ベース**にしているのは、`Date.now()`
    * に依存すると bench が非決定的になり、実運用でも端末の時計差に影響されるため。
    * `docs/plans/2026-09-08-recency-penalty.md`
    */
-  recencyById: Map<string, number>;
-  /**
-   * 目的8 `recency` の `RECENCY_SPAN`。**コート数**（最低1）を渡す。
-   * 「1巡（コート数ぶんの試合）休めば 0」という意味づけで、面数が変わっても
-   * 「1巡ぶん」の意味が保たれる。
-   */
-  recencySpan: number;
+  streakById: Map<string, number>;
 }
 
 /**
@@ -646,40 +646,61 @@ export function computeAffinity(
 }
 
 /**
+ * `recency` の効き方（連続出場の長さ → ペナルティ）。
+ *
+ * ```
+ * recency(id) = clamp01((streakOf(id) − allowance) / ramp)
+ * ```
+ *
+ * `allowance = 2` / `ramp = 2` なら、2連続までは 0（減点なし）、3連続で 0.5、
+ * 4連続以上で 1.0。**bench（`scripts/bench-court-assignment.ts`）が環境変数
+ * `STREAK_ALLOWANCE` / `STREAK_RAMP` でこのオブジェクトを書き換えて感度を測る**
+ * ため、`const` の即値ではなく書き換え可能なオブジェクトにしてある
+ * （`DEFAULT_WEIGHTS` と同じ扱い）。本番はこの既定値のまま。
+ */
+export const RECENCY_STREAK_SHAPE = {
+  /** これ以下の連続出場は減点しない（2連続は害が無いので許す） */
+  allowance: 2,
+  /** allowance を超えてから 1.0 に達するまでの連続数 */
+  ramp: 2,
+};
+
+/**
  * 目的8: recency — 「連続出場を少し嫌う」。配置された全員について
  *
  * ```
- * recency(id) = max(0, 1 − gapOf(id) / RECENCY_SPAN)
+ * recency(id) = clamp01((streakOf(id) − STREAK_ALLOWANCE) / STREAK_RAMP)
  * term        = 配置された全員の recency の平均（0〜1・小さいほど良い）
  * ```
  *
- * `gapOf` はその人が最後に出場した試合から数えて経過した試合数（直前の試合に
- * 出ていた = 0、1試合はさんだ = 1、未出場 = ∞）。`RECENCY_SPAN` はコート数
- * （最低1）なので、3コートなら「1巡（3試合）休めば 0」になる。
+ * `streakOf` は直近の連続出場数（`ObjectiveInput.streakById` のコメント参照）。
+ * 既定（allowance 2 / ramp 2）では **2連続までは 0、3連続で 0.5、4連続以上で 1.0**。
  *
- * **「長く待った人を優先」ではなく「直前に出た人を少し嫌う」**という向きで入れて
- * いる。優先度順位（＝試合数の順位）を動かさないので、試合数の均等（目的1）や
- * 遅参加のキャッチアップを壊さない（重みを `fairness` 未満に保つ前提）。
+ * **「直前に出た人」ではなく「連続が長くなっている人」を嫌う。** 潰したいのは
+ * 1回の連投ではなく**連続の長さ**だから（実データ: 空き `2,2,1,2,2,2` で7巡
+ * 出ずっぱりの人がいる一方、2連続で終わる人は害が無い）。1回の再出場を
+ * 邪魔しないので候補プールが固定されず多様性が守られ、遅参加のキャッチアップ
+ * （最初に2巡続けて入るのは正しい挙動）も邪魔しない。
  *
- * 未出場（Map に無い / `Infinity`）は 0。初回保証（`gamesPlayed === 0` の
- * `-Infinity` 優先度）と衝突しない。練習開始直後は履歴が空で全員 0 になり、
- * この項は何もしない。
+ * **優先度順位（＝試合数の順位）は動かさない**ので、試合数の均等（目的1）を
+ * 壊さない（重みを `fairness` 未満に保つ前提）。未出場・連続していない人は 0。
+ * 練習開始直後は履歴が空で全員 0 になり、この項は何もしない。
  *
  * `docs/plans/2026-09-08-recency-penalty.md`
  */
 export function computeRecency(
   courts: CourtPlacement[],
-  recencyById: Map<string, number>,
-  recencySpan: number
+  streakById: Map<string, number>,
+  shape: { allowance: number; ramp: number } = RECENCY_STREAK_SHAPE
 ): number {
   if (courts.length === 0) return 0;
-  const span = Math.max(1, recencySpan);
   const selected = courts.flatMap(courtMembers);
   if (selected.length === 0) return 0;
+  const ramp = Math.max(1, shape.ramp);
   const sum = selected.reduce((s, id) => {
-    const gap = recencyById.get(id);
-    if (gap === undefined || !Number.isFinite(gap)) return s; // 未出場は 0
-    return s + Math.max(0, 1 - gap / span);
+    const streak = streakById.get(id);
+    if (streak === undefined || !Number.isFinite(streak)) return s; // 未出場・連続なしは 0
+    return s + clamp01((streak - shape.allowance) / ramp);
   }, 0);
   return clamp01(sum / selected.length);
 }
@@ -702,7 +723,7 @@ export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
       input.reachableCountById
     ),
     affinity: computeAffinity(input.courts, input.benchIds, input.affinityPairs),
-    recency: computeRecency(input.courts, input.recencyById, input.recencySpan),
+    recency: computeRecency(input.courts, input.streakById),
   };
 }
 

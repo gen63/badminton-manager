@@ -103,21 +103,16 @@ export interface AssignRoundParams {
    */
   strongPairs?: StrongPair[];
   /**
-   * 目的8 `recency`（連続出場を少し嫌う）の入力。値は **`gapOf`**
-   * （その人が最後に出場した試合から数えて経過した試合数。直前の試合に出ていた
-   * なら 0、1試合はさんだなら 1、未出場は Map に入れない or `Infinity`）。
+   * 目的8 `recency`（連続出場を少し嫌う）の入力。値は **`streakOf`**
+   * （＝直近の連続出場数。2連続までは減点されない。詳細は `objective.ts` の
+   * `ObjectiveInput.streakById` のコメント）。
    *
    * **省略時は空 Map ＝ この項は常に 0**（＝無効）。呼び出し側（`algorithm.ts`）が
-   * `matchHistory` を末尾から1回走査して組み立てる。
+   * `matchHistory` の1回走査で組み立てる（`RECENCY_SPAN` ＝ コート数はそこで
+   * 消費されるので、このモジュールは受け取らない）。
    * `docs/plans/2026-09-08-recency-penalty.md`
    */
-  recencyById?: Map<string, number>;
-  /**
-   * 目的8 `recency` の `RECENCY_SPAN`。**セッションのコート数**（最低1）を渡す。
-   * 3コートなら「1巡（3試合）休めば 0」。省略時はこのラウンドで埋めるコート数
-   * （`courtIds.length`）にフォールバックする。
-   */
-  recencySpan?: number;
+  streakById?: Map<string, number>;
 }
 
 /** 局所探索の反復上限 */
@@ -218,8 +213,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   const affinityPairs = params.affinityPairs ?? [];
   const strongPairs = params.strongPairs ?? [];
   // 目的8 recency。省略時は空 Map = この項が常に 0（＝無効）。
-  const recencyById = params.recencyById ?? new Map<string, number>();
-  const recencySpan = Math.max(1, params.recencySpan ?? courtIds.length);
+  const streakById = params.streakById ?? new Map<string, number>();
 
   const weights: ObjectiveWeights = { ...DEFAULT_WEIGHTS, ...params.weights };
 
@@ -624,8 +618,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       reachableCountById,
       formRankById,
       affinityPairs,
-      recencyById,
-      recencySpan,
+      streakById,
     });
     return { violations, objective: weightedObjective(terms, weights) };
   };
