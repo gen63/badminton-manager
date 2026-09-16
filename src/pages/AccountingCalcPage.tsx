@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { copyToClipboard } from '../lib/utils';
 import { GYM_OPTIONS } from '../types/session';
 import { DollarSign, Copy, ArrowLeft, MapPin, Calendar } from 'lucide-react';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import {
@@ -11,8 +11,10 @@ import {
   calculateAppropriateFee,
   DEFAULT_PRACTICE_TYPE,
   PRACTICE_TYPE_OPTIONS,
+  resolveFees,
   toGymShortName,
 } from '../lib/accountingCalc';
+import { useDefaultFees } from '../hooks/useDefaultFees';
 
 const STORAGE_KEY = 'accounting-calc-last-input';
 
@@ -72,7 +74,13 @@ export function AccountingCalcPage() {
   const navigate = useNavigate();
   const toast = useToast();
 
-  const initial = loadSavedInput() || getDefaults();
+  const saved = loadSavedInput();
+  const initial = saved || getDefaults();
+  // グローバル既定会費。localStorage に保存値がない初回のみ、読み込み完了後に
+  // 会費へ反映する（保存値やユーザーの手編集は上書きしない）。
+  const { fees: defaultFees, loaded: defaultFeesLoaded } = useDefaultFees();
+  const hadSavedInput = useRef(saved !== null);
+  const appliedGlobalFees = useRef(false);
 
   const [date, setDate] = useState(initial.date || todayString());
   const [gym, setGym] = useState(initial.gym);
@@ -92,6 +100,16 @@ export function AccountingCalcPage() {
   const [isOtherExpanded, setIsOtherExpanded] = useState(
     !!(initial.otherDescription || initial.otherAmount),
   );
+
+  useEffect(() => {
+    if (!defaultFeesLoaded || hadSavedInput.current || appliedGlobalFees.current) return;
+    appliedGlobalFees.current = true;
+    const fees = resolveFees(practiceType, defaultFees);
+    setMaleFee(fees.maleFee);
+    setFemaleFee(fees.femaleFee);
+    // practiceType は初期値のまま（この effect は初回一度きり）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultFeesLoaded, defaultFees]);
 
   const saveAll = useCallback((overrides: Partial<CalcInput> = {}) => {
     const data: CalcInput = {
@@ -125,6 +143,7 @@ export function AccountingCalcPage() {
 
   const appropriateFee = calculateAppropriateFee({
     gymCost, shuttleTotal, otherAmount, maleCount, femaleCount, practiceType,
+    feeOverrides: defaultFees,
   });
 
   // 日付フォーマット（YYYY/MM/DD）
@@ -137,6 +156,7 @@ export function AccountingCalcPage() {
     exemptCount, maleCount, femaleCount, maleFee, femaleFee,
     gymCost, shuttlePrice, shuttleCount, otherAmount,
     matchCount, otherDescription,
+    feeOverrides: defaultFees,
   });
 
   const handleCopy = async () => {
@@ -219,13 +239,14 @@ export function AccountingCalcPage() {
                 key={type.value}
                 onClick={() => {
                   if (practiceType === type.value) return;
+                  const fees = resolveFees(type.value, defaultFees);
                   setPracticeType(type.value);
-                  setMaleFee(type.maleFee);
-                  setFemaleFee(type.femaleFee);
+                  setMaleFee(fees.maleFee);
+                  setFemaleFee(fees.femaleFee);
                   const overrides: Partial<CalcInput> = {
                     practiceType: type.value,
-                    maleFee: type.maleFee,
-                    femaleFee: type.femaleFee,
+                    maleFee: fees.maleFee,
+                    femaleFee: fees.femaleFee,
                   };
                   if (matchCount > 0) {
                     const newShuttleCount = type.value === '楽'

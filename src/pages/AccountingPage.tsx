@@ -21,8 +21,10 @@ import {
   calculateAppropriateFee,
   DEFAULT_PRACTICE_TYPE,
   PRACTICE_TYPE_OPTIONS,
+  resolveFees,
   toGymShortName,
 } from '../lib/accountingCalc';
+import { useDefaultFees } from '../hooks/useDefaultFees';
 
 // 旧形式（ダブルス/シングルス/初級）の練習種別を新形式（複/単/楽）に変換
 function normalizePracticeType(type: string): string {
@@ -57,6 +59,8 @@ export function AccountingPage() {
   const toast = useToast();
   const isAdmin = isAdminFn();
   const devMode = useDevMode();
+  // グローバル既定会費（appConfig/global）。会費の解決に使う
+  const { fees: defaultFees, loaded: defaultFeesLoaded } = useDefaultFees();
 
   // タブ状態
   const [activeTab, setActiveTab] = useState<'input' | 'payments'>('input');
@@ -93,9 +97,11 @@ export function AccountingPage() {
     return toGymShortName(session.config.gym || '');
   }, [session]);
 
-  // 試合履歴・過去の会計データから初期値を自動設定
+  // 試合履歴・過去の会計データから初期値を自動設定。
+  // グローバル既定会費の読み込み完了を待ってから走らせることで、初期値を入れた後に
+  // 既定会費が届いてユーザーの手編集を上書きしてしまうのを防ぐ。
   useEffect(() => {
-    if (initialized || !session) return;
+    if (initialized || !session || !defaultFeesLoaded) return;
 
     // 体育館別の固定料金設定
     const gymCostMap: Record<string, number> = {
@@ -186,17 +192,20 @@ export function AccountingPage() {
 
     // 保存された値がない場合のみ、料金設定を過去データ・固定値から取得
     if (!savedAccounting) {
-      // 料金は同じ練習種別の直近レコードを優先。なければ練習種別の標準料金
+      // 料金の解決順: グローバル既定 → 同じ練習種別の直近レコード → コード定数。
+      // 管理者が明示的に決めたグローバル既定を、たまたま残っていた前回入力値より優先する。
+      const globalFees = defaultFees[defaultPracticeType];
       const sameTypeRecord = [...records].reverse().find(
         (r) => normalizePracticeType(r.practiceType) === defaultPracticeType,
       );
-      if (sameTypeRecord) {
+      if (globalFees) {
+        setMaleFee(globalFees.maleFee);
+        setFemaleFee(globalFees.femaleFee);
+      } else if (sameTypeRecord) {
         setMaleFee(sameTypeRecord.maleFee);
         setFemaleFee(sameTypeRecord.femaleFee);
       } else {
-        const typeDefaults =
-          PRACTICE_TYPE_OPTIONS.find((t) => t.value === defaultPracticeType) ??
-          PRACTICE_TYPE_OPTIONS[0];
+        const typeDefaults = resolveFees(defaultPracticeType);
         setMaleFee(typeDefaults.maleFee);
         setFemaleFee(typeDefaults.femaleFee);
       }
@@ -217,7 +226,7 @@ export function AccountingPage() {
 
     setInitialized(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchHistory, players, records, gymShortName, initialized, session, savedAccounting]);
+  }, [matchHistory, players, records, gymShortName, initialized, session, savedAccounting, defaultFees, defaultFeesLoaded]);
 
   // 運営協力割引・寄付：標準会費と実支払額の差額の合計
   // 支払い済み (payment === true) かつ 0 円でない（=免除でない）プレイヤーが対象
@@ -416,6 +425,7 @@ export function AccountingPage() {
 
   const appropriateFee = calculateAppropriateFee({
     gymCost, shuttleTotal, otherAmount, maleCount, femaleCount, practiceType,
+    feeOverrides: defaultFees,
   });
 
   // コピー用テキスト生成（実参加者数は試合履歴から算出）
@@ -437,6 +447,7 @@ export function AccountingPage() {
       donation,
       matchCount, otherDescription,
       activePlayerCount,
+      feeOverrides: defaultFees,
     });
   };
 
@@ -773,14 +784,15 @@ export function AccountingPage() {
                 key={type.value}
                 onClick={() => {
                   if (practiceType === type.value) return; // 同じ種別は何もしない
+                  const fees = resolveFees(type.value, defaultFees);
                   const overrides: Partial<AccountingInput> = {
                     practiceType: type.value,
-                    maleFee: type.maleFee,
-                    femaleFee: type.femaleFee,
+                    maleFee: fees.maleFee,
+                    femaleFee: fees.femaleFee,
                   };
                   setPracticeType(type.value);
-                  setMaleFee(type.maleFee);
-                  setFemaleFee(type.femaleFee);
+                  setMaleFee(fees.maleFee);
+                  setFemaleFee(fees.femaleFee);
                   // 楽は1個4試合、それ以外は1試合1.5個でシャトル数を再推定
                   if (matchCount > 0) {
                     const newShuttleCount = type.value === '楽'

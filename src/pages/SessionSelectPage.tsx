@@ -4,7 +4,9 @@ import { deleteField } from 'firebase/firestore';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { subscribeToRecentActiveSessions, updateSession } from '../services/sessionService';
 import { setPracticeType as setPracticeTypeMutation } from '../services/sessionMutations';
-import { getDefaultAnnouncement, setDefaultAnnouncement } from '../services/appConfigService';
+import { getDefaultAnnouncement, setDefaultAnnouncement, getDefaultFees, setDefaultFees } from '../services/appConfigService';
+import { invalidateDefaultFeesCache } from '../hooks/useDefaultFees';
+import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
 import { isSessionVisible } from '../lib/sessionArchive';
 import { clearAppBadge } from '../lib/badge';
 import { useDevMode } from '../hooks/useDevMode';
@@ -24,10 +26,23 @@ import {
   type SessionFilterState,
 } from '../lib/sessionFilters';
 import type { Session } from '../types/session';
-import { Loader2, Plus, Users, MapPin, Calendar, Trophy, Gauge, StickyNote, Pencil, X, Info, Megaphone, ChevronDown } from 'lucide-react';
+import { Loader2, Plus, Users, MapPin, Calendar, Trophy, Gauge, StickyNote, Pencil, X, Info, Megaphone, ChevronDown, Coins } from 'lucide-react';
 
 type PracticeType = '単' | '複' | '楽';
 const PRACTICE_TYPES: readonly PracticeType[] = ['単', '複', '楽'];
+
+/** デフォルト参加費フォームの入力値（空文字 = 未設定 → コード定数を使う） */
+type FeeFormValues = Record<string, { maleFee: string; femaleFee: string }>;
+
+const EMPTY_FEE_FORM: FeeFormValues = Object.fromEntries(
+  PRACTICE_TYPE_OPTIONS.map((t) => [t.value, { maleFee: '', femaleFee: '' }]),
+);
+
+/** 空欄は未設定、それ以外は 0 以上の整数のみ許可 */
+function isValidFeeInput(value: string): boolean {
+  if (value === '') return true;
+  return /^\d+$/.test(value);
+}
 
 /** 日付をフォーマット（M/D と曜日に分割。M/D は min-width で 4 文字分相当を確保） */
 function formatSessionDate(practiceStartTime: number): { md: string; weekday: string } {
@@ -114,6 +129,11 @@ export function SessionSelectPage() {
   const [editingDefaultText, setEditingDefaultText] = useState('');
   const [savingDefault, setSavingDefault] = useState(false);
   const [defaultError, setDefaultError] = useState('');
+  // デフォルト参加費（appConfig/global.defaultFees）。dev モード限定で表示・編集。
+  const [feeForm, setFeeForm] = useState<FeeFormValues>(EMPTY_FEE_FORM);
+  const [feesExpanded, setFeesExpanded] = useState(false);
+  const [savingFees, setSavingFees] = useState(false);
+  const [feesError, setFeesError] = useState('');
 
   // useFirebaseSync からセッション削除/TTL 切れで遷移してきた場合、
   // location.state.notice を読み取って一度だけバナー表示する。
@@ -238,6 +258,76 @@ export function SessionSelectPage() {
       setSavingDefault(false);
     }
   };
+
+  // 閉じている間に出す要約1行（設定済みの種別のみ。全部未設定なら注記）
+  const feesSummary = useMemo(() => {
+    const parts = PRACTICE_TYPE_OPTIONS.map((t) => feeForm[t.value])
+      .map((v, i) =>
+        v && v.maleFee !== '' && v.femaleFee !== ''
+          ? `${PRACTICE_TYPE_OPTIONS[i].value} ${v.maleFee}/${v.femaleFee}`
+          : null,
+      )
+      .filter((v): v is string => v !== null);
+    return parts.length > 0 ? parts.join('・') : '未設定（コード既定値を使用）';
+  }, [feeForm]);
+
+  const handleSaveFees = async () => {
+    if (savingFees) return;
+    const entries = Object.entries(feeForm);
+    if (entries.some(([, v]) => !isValidFeeInput(v.maleFee) || !isValidFeeInput(v.femaleFee))) {
+      setFeesError('会費は 0 以上の整数で入力してください（空欄は未設定）');
+      return;
+    }
+    // 男女どちらか片方だけの入力は解決順が曖昧になるため受け付けない
+    if (entries.some(([, v]) => (v.maleFee === '') !== (v.femaleFee === ''))) {
+      setFeesError('男女どちらも入力するか、どちらも空欄にしてください');
+      return;
+    }
+    // 空欄の種別は fees から省く（未設定＝コード定数へフォールバック）
+    const fees: Record<string, { maleFee: number; femaleFee: number }> = {};
+    for (const [type, v] of entries) {
+      if (v.maleFee === '' || v.femaleFee === '') continue;
+      fees[type] = { maleFee: Number(v.maleFee), femaleFee: Number(v.femaleFee) };
+    }
+    setSavingFees(true);
+    setFeesError('');
+    try {
+      await setDefaultFees(fees, currentUser ?? undefined);
+      invalidateDefaultFeesCache();
+      setFeesExpanded(false);
+    } catch (err) {
+      console.error('[SessionSelect] Failed to save default fees:', err);
+      const message = err instanceof Error && err.message
+        ? err.message
+        : 'デフォルト参加費の保存に失敗しました';
+      setFeesError(message);
+    } finally {
+      setSavingFees(false);
+    }
+  };
+
+  // デフォルト参加費の現在値を取得（dev モード限定 UI なので dev モード時のみ）
+  useEffect(() => {
+    if (!devMode || !isFirebaseConfigured()) return;
+    let cancelled = false;
+    getDefaultFees()
+      .then((defaultFees) => {
+        if (cancelled) return;
+        const next: FeeFormValues = { ...EMPTY_FEE_FORM };
+        for (const [type, pair] of Object.entries(defaultFees?.fees ?? {})) {
+          if (!(type in next)) continue; // 未知の練習種別は無視
+          next[type] = { maleFee: String(pair.maleFee), femaleFee: String(pair.femaleFee) };
+        }
+        setFeeForm(next);
+      })
+      .catch((err) => {
+        // 未設定/rules 未対応でも一覧表示は妨げない
+        console.warn('[SessionSelect] Failed to load default fees:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [devMode]);
 
   // デフォルト周知事項の現在値を取得（dev モード限定 UI なので dev モード時のみ）
   useEffect(() => {
@@ -414,6 +504,104 @@ export function SessionSelectPage() {
             {defaultAnnouncementExpanded && (
               <div className="px-3 pb-3 -mt-1 text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
                 {defaultAnnouncementText || '未設定（新規セッション作成時に周知事項へ自動設定されます）'}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* デフォルト参加費（開発モード限定）— 新規セッション・会計未入力セッションの
+            会費初期値に使う。既存セッションの保存済み会計には遡及しない。 */}
+        {devMode && (
+          <div className="card overflow-hidden">
+            <button
+              onClick={() => setFeesExpanded((prev) => !prev)}
+              className="w-full text-left px-3 py-2.5 transition-colors hover:bg-muted/50"
+              aria-expanded={feesExpanded}
+            >
+              <div className="flex items-center gap-1 text-xs font-semibold text-foreground">
+                <Coins size={14} className="text-primary flex-shrink-0" />
+                デフォルト参加費
+                <ChevronDown
+                  size={14}
+                  className={`ml-auto flex-shrink-0 text-muted-foreground transition-transform duration-200 ${
+                    feesExpanded ? 'rotate-180' : ''
+                  }`}
+                />
+              </div>
+              {!feesExpanded && (
+                <div className="mt-1 text-xs text-muted-foreground min-w-0">
+                  <span className="block truncate">{feesSummary}</span>
+                </div>
+              )}
+            </button>
+            {feesExpanded && (
+              <div className="px-3 pb-3 -mt-1">
+                <p className="text-xs text-muted-foreground mb-2">
+                  新規セッション・会計未入力セッションの会費初期値になります。
+                  空欄にするとコード既定値（{PRACTICE_TYPE_OPTIONS.map((t) => `${t.value}:${t.maleFee}/${t.femaleFee}`).join(' ')}）を使います。
+                  保存済みの会計は変わりません。
+                </p>
+                <div className="space-y-2">
+                  {PRACTICE_TYPE_OPTIONS.map((type) => (
+                    <div key={type.value} className="flex items-center gap-2">
+                      <span className="w-6 text-xs font-semibold text-foreground flex-shrink-0">
+                        {type.value}
+                      </span>
+                      <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                        男
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          step={100}
+                          value={feeForm[type.value]?.maleFee ?? ''}
+                          onChange={(e) =>
+                            setFeeForm((prev) => ({
+                              ...prev,
+                              [type.value]: { ...prev[type.value], maleFee: e.target.value },
+                            }))
+                          }
+                          className="input-field min-h-[36px] w-20 text-sm"
+                          placeholder={String(type.maleFee)}
+                          disabled={savingFees}
+                          aria-label={`${type.value} 男性の会費`}
+                        />
+                      </label>
+                      <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                        女
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          step={100}
+                          value={feeForm[type.value]?.femaleFee ?? ''}
+                          onChange={(e) =>
+                            setFeeForm((prev) => ({
+                              ...prev,
+                              [type.value]: { ...prev[type.value], femaleFee: e.target.value },
+                            }))
+                          }
+                          className="input-field min-h-[36px] w-20 text-sm"
+                          placeholder={String(type.femaleFee)}
+                          disabled={savingFees}
+                          aria-label={`${type.value} 女性の会費`}
+                        />
+                      </label>
+                    </div>
+                  ))}
+                </div>
+                {feesError && (
+                  <div className="mt-2 bg-destructive/10 border border-destructive/20 text-destructive px-3 py-2 rounded-lg text-xs">
+                    {feesError}
+                  </div>
+                )}
+                <button
+                  onClick={handleSaveFees}
+                  className="mt-3 w-full btn-primary"
+                  disabled={savingFees}
+                >
+                  {savingFees ? '保存中...' : '保存'}
+                </button>
               </div>
             )}
           </div>

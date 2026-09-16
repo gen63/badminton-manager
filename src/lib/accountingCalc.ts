@@ -14,6 +14,34 @@ export const PRACTICE_TYPE_OPTIONS = [
 export const DEFAULT_PRACTICE_TYPE =
   PRACTICE_TYPE_OPTIONS.find((t) => t.value === '複') ?? PRACTICE_TYPE_OPTIONS[0];
 
+/** 練習種別ごとの会費（男女ペア） */
+export interface FeePair {
+  maleFee: number;
+  femaleFee: number;
+}
+
+/**
+ * 練習種別 → 会費のグローバル既定（`appConfig/global.defaultFees.fees`）。
+ * 部分指定を許し、未設定の種別はコード定数へフォールバックする。
+ */
+export type FeeOverrides = Record<string, FeePair>;
+
+/**
+ * 練習種別の会費を解決する（純粋関数）。
+ *
+ * 解決順: overrides（グローバル既定）→ PRACTICE_TYPE_OPTIONS（コード定数）
+ * → DEFAULT_PRACTICE_TYPE（未知の練習種別のフォールバック）。
+ */
+export function resolveFees(practiceType: string, overrides?: FeeOverrides): FeePair {
+  const override = overrides?.[practiceType];
+  if (override) {
+    return { maleFee: override.maleFee, femaleFee: override.femaleFee };
+  }
+  const option = PRACTICE_TYPE_OPTIONS.find((t) => t.value === practiceType);
+  const fallback = option ?? DEFAULT_PRACTICE_TYPE;
+  return { maleFee: fallback.maleFee, femaleFee: fallback.femaleFee };
+}
+
 /** 体育館名を略称に変換 */
 export function toGymShortName(gym: string): string {
   if (gym.includes('目白')) return '目白';
@@ -81,6 +109,8 @@ export interface AccountingCopyInput extends AccountingInputValues {
    * 未指定なら participantCount（exempt+男+女）をフォールバックとして使用。
    */
   activePlayerCount?: number;
+  /** グローバル既定会費。適正会費の男女差に反映する */
+  feeOverrides?: FeeOverrides;
 }
 
 /** コピー用テキストを生成（AccountingPage / AccountingCalcPage で共用） */
@@ -90,7 +120,7 @@ export function buildAccountingCopyText(input: AccountingCopyInput): string {
   const {
     exemptCount, maleCount, femaleCount, maleFee, femaleFee,
     gymCost, shuttlePrice, shuttleCount, otherAmount,
-    date, gymShortName, practiceType, matchCount, otherDescription, activePlayerCount,
+    date, gymShortName, practiceType, matchCount, otherDescription, activePlayerCount, feeOverrides,
   } = input;
 
   const lines: string[] = [
@@ -156,7 +186,7 @@ export function buildAccountingCopyText(input: AccountingCopyInput): string {
 
   const referenceLines: string[] = [];
   const appropriateFee = calculateAppropriateFee({
-    gymCost, shuttleTotal, otherAmount, maleCount, femaleCount, practiceType,
+    gymCost, shuttleTotal, otherAmount, maleCount, femaleCount, practiceType, feeOverrides,
   });
 
   if (matchCount > 0) {
@@ -197,14 +227,19 @@ export function calculateAppropriateFee(params: {
   maleCount: number;
   femaleCount: number;
   practiceType: string;
+  /** グローバル既定会費。指定時は男女差の算出に反映する */
+  feeOverrides?: FeeOverrides;
 }): { male: number; female: number } {
-  const { gymCost, shuttleTotal, otherAmount, maleCount, femaleCount, practiceType } = params;
+  const { gymCost, shuttleTotal, otherAmount, maleCount, femaleCount, practiceType, feeOverrides } = params;
   const totalExpense = gymCost + shuttleTotal - otherAmount;
   if (maleCount + femaleCount === 0) return { male: 0, female: 0 };
 
-  // 練習種別に応じた男女差額（PRACTICE_TYPE_OPTIONS の会費差から導出）
-  const option = PRACTICE_TYPE_OPTIONS.find((t) => t.value === practiceType);
-  const genderDiff = option ? option.maleFee - option.femaleFee : 200;
+  // 練習種別に応じた男女差額。グローバル既定 → コード定数の順に参照する。
+  // どちらにも無い未知の練習種別は従来どおり 200 円にフォールバックする
+  // （resolveFees の '複' フォールバックを使うと差額 0 になり挙動が変わるため）。
+  const knownFees =
+    feeOverrides?.[practiceType] ?? PRACTICE_TYPE_OPTIONS.find((t) => t.value === practiceType);
+  const genderDiff = knownFees ? knownFees.maleFee - knownFees.femaleFee : 200;
 
   let minProfitMale = 0;
   let minProfit = Infinity;
