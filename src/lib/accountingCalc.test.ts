@@ -3,6 +3,9 @@ import {
   buildAccountingCopyText,
   calculateAccountingTotals,
   calculateAppropriateFee,
+  resolveFees,
+  DEFAULT_PRACTICE_TYPE,
+  PRACTICE_TYPE_OPTIONS,
   toGymShortName,
 } from './accountingCalc';
 
@@ -264,20 +267,43 @@ describe('calculateAppropriateFee', () => {
     expect(fee).toEqual({ male: 0, female: 0 });
   });
 
-  it('複の男女差額は 200 円', () => {
+  it('複の男女差額は PRACTICE_TYPE_OPTIONS 由来の 0 円（男女共通）', () => {
+    const option = PRACTICE_TYPE_OPTIONS.find((t) => t.value === '複')!;
     const fee = calculateAppropriateFee({
       gymCost: 900, shuttleTotal: 0, otherAmount: 0,
       maleCount: 4, femaleCount: 2, practiceType: '複',
     });
-    expect(fee.male - fee.female).toBe(200);
+    expect(fee.male - fee.female).toBe(option.maleFee - option.femaleFee);
+    expect(fee.male - fee.female).toBe(0);
+    // genderDiff=0 でも探索が破綻せず黒字になる額を返す
+    expect(fee.male).toBeGreaterThan(0);
+    expect(fee.male * 4 + fee.female * 2).toBeGreaterThanOrEqual(900);
   });
 
-  it('単の男女差額は 400 円', () => {
+  it('単の男女差額は PRACTICE_TYPE_OPTIONS 由来の 200 円', () => {
+    const option = PRACTICE_TYPE_OPTIONS.find((t) => t.value === '単')!;
     const fee = calculateAppropriateFee({
       gymCost: 900, shuttleTotal: 0, otherAmount: 0,
       maleCount: 4, femaleCount: 2, practiceType: '単',
     });
-    expect(fee.male - fee.female).toBe(400);
+    expect(fee.male - fee.female).toBe(option.maleFee - option.femaleFee);
+    expect(fee.male - fee.female).toBe(200);
+  });
+
+  it('楽の男女差額は 0 円', () => {
+    const fee = calculateAppropriateFee({
+      gymCost: 900, shuttleTotal: 0, otherAmount: 0,
+      maleCount: 3, femaleCount: 3, practiceType: '楽',
+    });
+    expect(fee.male - fee.female).toBe(0);
+  });
+
+  it('未知の practiceType は従来どおり差額 200 円にフォールバックする', () => {
+    const fee = calculateAppropriateFee({
+      gymCost: 900, shuttleTotal: 0, otherAmount: 0,
+      maleCount: 4, femaleCount: 2, practiceType: '未知',
+    });
+    expect(fee.male - fee.female).toBe(200);
   });
 });
 
@@ -290,5 +316,77 @@ describe('toGymShortName', () => {
   it('未知の体育館はそのまま返す', () => {
     expect(toGymShortName('新宿体育館')).toBe('新宿体育館');
     expect(toGymShortName('')).toBe('');
+  });
+});
+
+describe('resolveFees', () => {
+  it('overrides が無ければ PRACTICE_TYPE_OPTIONS の値を返す', () => {
+    for (const type of PRACTICE_TYPE_OPTIONS) {
+      expect(resolveFees(type.value)).toEqual({
+        maleFee: type.maleFee,
+        femaleFee: type.femaleFee,
+      });
+    }
+  });
+
+  it('overrides にある種別はグローバル既定を優先する', () => {
+    const overrides = { 複: { maleFee: 700, femaleFee: 650 } };
+    expect(resolveFees('複', overrides)).toEqual({ maleFee: 700, femaleFee: 650 });
+  });
+
+  it('部分指定のとき、指定の無い種別はコード定数にフォールバックする', () => {
+    const overrides = { 単: { maleFee: 1200, femaleFee: 900 } };
+    expect(resolveFees('単', overrides)).toEqual({ maleFee: 1200, femaleFee: 900 });
+    expect(resolveFees('複', overrides)).toEqual({ maleFee: 600, femaleFee: 600 });
+    expect(resolveFees('楽', overrides)).toEqual({ maleFee: 500, femaleFee: 500 });
+  });
+
+  it('空の overrides は未指定と同じ結果になる（後方互換）', () => {
+    expect(resolveFees('楽', {})).toEqual(resolveFees('楽'));
+  });
+
+  it('未知の練習種別は DEFAULT_PRACTICE_TYPE（複）にフォールバックする', () => {
+    expect(resolveFees('未知')).toEqual({
+      maleFee: DEFAULT_PRACTICE_TYPE.maleFee,
+      femaleFee: DEFAULT_PRACTICE_TYPE.femaleFee,
+    });
+  });
+
+  it('未知の練習種別でも overrides にキーがあればそれを使う', () => {
+    expect(resolveFees('特別', { 特別: { maleFee: 300, femaleFee: 200 } })).toEqual({
+      maleFee: 300,
+      femaleFee: 200,
+    });
+  });
+});
+
+describe('calculateAppropriateFee（グローバル既定の男女差追従）', () => {
+  const base = {
+    gymCost: 900,
+    shuttleTotal: 0,
+    otherAmount: 0,
+    maleCount: 4,
+    femaleCount: 2,
+  };
+
+  it('feeOverrides の男女差が適正会費の差に反映される', () => {
+    const fee = calculateAppropriateFee({
+      ...base,
+      practiceType: '複',
+      feeOverrides: { 複: { maleFee: 800, femaleFee: 500 } },
+    });
+    expect(fee.male - fee.female).toBe(300);
+  });
+
+  it('feeOverrides に該当種別が無ければ従来どおりコード定数の差を使う', () => {
+    const withUnrelatedOverride = calculateAppropriateFee({
+      ...base,
+      practiceType: '単',
+      feeOverrides: { 複: { maleFee: 800, femaleFee: 500 } },
+    });
+    const withoutOverride = calculateAppropriateFee({ ...base, practiceType: '単' });
+    expect(withUnrelatedOverride).toEqual(withoutOverride);
+    // '単' のコード定数は 1000 / 800 なので差は 200
+    expect(withoutOverride.male - withoutOverride.female).toBe(200);
   });
 });

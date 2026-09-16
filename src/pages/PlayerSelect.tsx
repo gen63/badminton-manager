@@ -10,7 +10,8 @@ import { Toast } from '../components/Toast';
 import { Trash2, Pencil, Users, ChevronDown, ChevronUp, Clock } from 'lucide-react';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
-import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
+import { resolveFees } from '../lib/accountingCalc';
+import { useDefaultFees } from '../hooks/useDefaultFees';
 import { formatLastSeen, type LastSeenTone } from '../lib/lastSeen';
 import { sortPlayers, type PlayerSortMode } from '../lib/playerSort';
 import { countByGender, formatGenderBreakdown, genderLabel } from '../lib/genderBreakdown';
@@ -77,8 +78,9 @@ export function PlayerSelect() {
   // ソート選択（settingsStore へは永続化しない。CLAUDE.md のローカルストレージ最小化方針）。
   // 非管理者は lastSeen データが見えないため、ロジックでも 'games' 固定にする（下記 sortedPlayers 参照）。
   const [sortMode, setSortMode] = useState<PlayerSortMode>('games');
-  const practiceDefaults =
-    PRACTICE_TYPE_OPTIONS.find((t) => t.value === practiceType) ?? PRACTICE_TYPE_OPTIONS[0];
+  // 会費は「セッション保存値 → グローバル既定 → コード定数」の順に解決する
+  const { fees: defaultFees } = useDefaultFees();
+  const practiceDefaults = resolveFees(practiceType, defaultFees);
   const maleFee = session?.accounting?.maleFee ?? practiceDefaults.maleFee;
   const femaleFee = session?.accounting?.femaleFee ?? practiceDefaults.femaleFee;
 

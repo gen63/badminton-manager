@@ -49,7 +49,8 @@ import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { ASSIGNED_AT_BASIS_MAX_AGE_MS, getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, isAutoEndDue, MATCH_AUTO_END_MS, MATCH_AUTO_START_MS } from '../lib/gameOperations';
 import { withInProgressGames } from '../lib/effectiveGames';
-import { PRACTICE_TYPE_OPTIONS } from '../lib/accountingCalc';
+import { resolveFees } from '../lib/accountingCalc';
+import { useDefaultFees } from '../hooks/useDefaultFees';
 import { notifyNextMatchSoon } from '../lib/notifications';
 import { unlockMatchCallAudio, playMatchCallChime, vibrateMatchCall, fireMatchCallAlert, installMatchCallAudioUnlock, installMatchCallSpeechHideGuard, speakMatchCall, getLastMatchCallSpeech, SPEECH_DELAY_MS } from '../lib/matchCallAlert';
 
@@ -151,8 +152,9 @@ export function MainPage() {
   const redo = useUndoStore((s) => s.redo);
   const reservations = useReservationStore((s) => s.reservations);
   const pairPreferences = usePairPreferenceStore((s) => s.pairPreferences);
-  const practiceDefaults =
-    PRACTICE_TYPE_OPTIONS.find((t) => t.value === practiceType) ?? PRACTICE_TYPE_OPTIONS[0];
+  // 会費は「セッション保存値 → グローバル既定 → コード定数」の順に解決する
+  const { fees: defaultFees } = useDefaultFees();
+  const practiceDefaults = resolveFees(practiceType, defaultFees);
   const maleFee = session?.accounting?.maleFee ?? practiceDefaults.maleFee;
   const femaleFee = session?.accounting?.femaleFee ?? practiceDefaults.femaleFee;
   const [selectedPlayer, setSelectedPlayer] = useState<{
