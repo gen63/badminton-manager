@@ -3,6 +3,7 @@ import {
   buildAccountingCopyText,
   calculateAccountingTotals,
   calculateAppropriateFee,
+  PRACTICE_TYPE_OPTIONS,
   toGymShortName,
 } from './accountingCalc';
 
@@ -264,20 +265,43 @@ describe('calculateAppropriateFee', () => {
     expect(fee).toEqual({ male: 0, female: 0 });
   });
 
-  it('複の男女差額は 200 円', () => {
+  it('複の男女差額は PRACTICE_TYPE_OPTIONS 由来の 0 円（男女共通）', () => {
+    const option = PRACTICE_TYPE_OPTIONS.find((t) => t.value === '複')!;
     const fee = calculateAppropriateFee({
       gymCost: 900, shuttleTotal: 0, otherAmount: 0,
       maleCount: 4, femaleCount: 2, practiceType: '複',
     });
-    expect(fee.male - fee.female).toBe(200);
+    expect(fee.male - fee.female).toBe(option.maleFee - option.femaleFee);
+    expect(fee.male - fee.female).toBe(0);
+    // genderDiff=0 でも探索が破綻せず黒字になる額を返す
+    expect(fee.male).toBeGreaterThan(0);
+    expect(fee.male * 4 + fee.female * 2).toBeGreaterThanOrEqual(900);
   });
 
-  it('単の男女差額は 400 円', () => {
+  it('単の男女差額は PRACTICE_TYPE_OPTIONS 由来の 200 円', () => {
+    const option = PRACTICE_TYPE_OPTIONS.find((t) => t.value === '単')!;
     const fee = calculateAppropriateFee({
       gymCost: 900, shuttleTotal: 0, otherAmount: 0,
       maleCount: 4, femaleCount: 2, practiceType: '単',
     });
-    expect(fee.male - fee.female).toBe(400);
+    expect(fee.male - fee.female).toBe(option.maleFee - option.femaleFee);
+    expect(fee.male - fee.female).toBe(200);
+  });
+
+  it('楽の男女差額は 0 円', () => {
+    const fee = calculateAppropriateFee({
+      gymCost: 900, shuttleTotal: 0, otherAmount: 0,
+      maleCount: 3, femaleCount: 3, practiceType: '楽',
+    });
+    expect(fee.male - fee.female).toBe(0);
+  });
+
+  it('未知の practiceType は従来どおり差額 200 円にフォールバックする', () => {
+    const fee = calculateAppropriateFee({
+      gymCost: 900, shuttleTotal: 0, otherAmount: 0,
+      maleCount: 4, femaleCount: 2, practiceType: '未知',
+    });
+    expect(fee.male - fee.female).toBe(200);
   });
 });
 

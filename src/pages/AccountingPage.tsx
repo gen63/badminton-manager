@@ -19,6 +19,7 @@ import {
   buildAccountingCopyText,
   calculateAccountingTotals,
   calculateAppropriateFee,
+  DEFAULT_PRACTICE_TYPE,
   PRACTICE_TYPE_OPTIONS,
   toGymShortName,
 } from '../lib/accountingCalc';
@@ -64,8 +65,8 @@ export function AccountingPage() {
   const [exemptCount, setExemptCount] = useState<number>(0);
   const [maleCount, setMaleCount] = useState<number>(0);
   const [femaleCount, setFemaleCount] = useState<number>(0);
-  const [maleFee, setMaleFee] = useState<number>(800);
-  const [femaleFee, setFemaleFee] = useState<number>(600);
+  const [maleFee, setMaleFee] = useState<number>(DEFAULT_PRACTICE_TYPE.maleFee);
+  const [femaleFee, setFemaleFee] = useState<number>(DEFAULT_PRACTICE_TYPE.femaleFee);
   const [gymCost, setGymCost] = useState<number>(900);
   const [shuttlePrice, setShuttlePrice] = useState<number>(510);
   const [shuttleCount, setShuttleCount] = useState<number>(0);

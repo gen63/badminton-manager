@@ -9,6 +9,7 @@ import {
   buildAccountingCopyText,
   calculateAccountingTotals,
   calculateAppropriateFee,
+  DEFAULT_PRACTICE_TYPE,
   PRACTICE_TYPE_OPTIONS,
   toGymShortName,
 } from '../lib/accountingCalc';
@@ -56,8 +57,8 @@ function getDefaults(): CalcInput {
     exemptCount: 0,
     maleCount: 0,
     femaleCount: 0,
-    maleFee: 800,
-    femaleFee: 600,
+    maleFee: DEFAULT_PRACTICE_TYPE.maleFee,
+    femaleFee: DEFAULT_PRACTICE_TYPE.femaleFee,
     gymCost: 900,
     shuttlePrice: 510,
     shuttleCount: 0,

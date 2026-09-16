@@ -5,10 +5,14 @@
 
 /** 練習種別ごとの会費デフォルト値 */
 export const PRACTICE_TYPE_OPTIONS = [
-  { value: '複', maleFee: 800, femaleFee: 600 },
-  { value: '単', maleFee: 1200, femaleFee: 800 },
+  { value: '複', maleFee: 600, femaleFee: 600 },
+  { value: '単', maleFee: 1000, femaleFee: 800 },
   { value: '楽', maleFee: 500, femaleFee: 500 },
 ] as const;
+
+/** 既定の練習種別（ダブルス）。会費デフォルト値のフォールバックに使う */
+export const DEFAULT_PRACTICE_TYPE =
+  PRACTICE_TYPE_OPTIONS.find((t) => t.value === '複') ?? PRACTICE_TYPE_OPTIONS[0];
 
 /** 体育館名を略称に変換 */
 export function toGymShortName(gym: string): string {
@@ -198,8 +202,9 @@ export function calculateAppropriateFee(params: {
   const totalExpense = gymCost + shuttleTotal - otherAmount;
   if (maleCount + femaleCount === 0) return { male: 0, female: 0 };
 
-  // 練習種別に応じた男女差額
-  const genderDiff = practiceType === '単' ? 400 : 200;
+  // 練習種別に応じた男女差額（PRACTICE_TYPE_OPTIONS の会費差から導出）
+  const option = PRACTICE_TYPE_OPTIONS.find((t) => t.value === practiceType);
+  const genderDiff = option ? option.maleFee - option.femaleFee : 200;
 
   let minProfitMale = 0;
   let minProfit = Infinity;
