@@ -53,6 +53,7 @@ import {
   RECENCY_STREAK_SHAPE,
   AFFINITY_ENEMY_COST,
   AFFINITY_ENEMY_COST_SPLIT,
+  AFFINITY_ENEMY_COST_SPLIT_SAFE,
 } from '../src/lib/pairing/objective';
 import { median } from '../src/lib/median';
 import type { Player } from '../src/types/player';
@@ -264,6 +265,11 @@ interface RunResult {
   // 登録ペアのうち「一度でも同コートになったペア」だけで平均する。NaN = 対象外
   // （一度も同コートにならなかった場合は判定不能なので除外する）。
   prefSameCourtEnemyRate: number;
+  // 「同コートで敵」の内訳（生カウント。複数 seed 合算してから比率を出す）。
+  // mixSplit由来 = 味方にすると必ず男女戦になる（2-2 かつ同性）＝回避不能。
+  // その他       = それ以外（competitive 等・理論上は回避可能）。
+  prefEnemyMixSplitCount: number;
+  prefEnemyOtherCount: number;
   // 参考
   rotation: number;
   matches: number;
@@ -715,6 +721,8 @@ function runOnce(
     prefFulfillRate,
     prefFairnessLeak,
     prefSameCourtEnemyRate,
+    prefEnemyMixSplitCount,
+    prefEnemyOtherCount,
   };
 }
 
@@ -759,6 +767,15 @@ if (process.env.AFFINITY_ENEMY_COST_SPLIT !== undefined) {
   AFFINITY_ENEMY_COST_SPLIT.value = Number(process.env.AFFINITY_ENEMY_COST_SPLIT);
 }
 /**
+ * `AFFINITY_ENEMY_COST_SPLIT_SAFE.value`（`src/lib/pairing/objective.ts`）を
+ * このプロセス内だけ上書きする（bench 専用）。「味方にしても男女戦にならない」
+ * 場合に `splitCost` が使う値（案C）。`docs/plans/2026-08-31-pair-preference.md`
+ * 追記「案C」の調査用。
+ */
+if (process.env.AFFINITY_ENEMY_COST_SPLIT_SAFE !== undefined) {
+  AFFINITY_ENEMY_COST_SPLIT_SAFE.value = Number(process.env.AFFINITY_ENEMY_COST_SPLIT_SAFE);
+}
+/**
  * `recency`（目的8: 連続出場を少し嫌う）の重みをこのプロセス内だけ上書きする
  * （bench 専用。本番の `DEFAULT_WEIGHTS.recency` の既定値は変えない）。
  * 未指定ならリポジトリの既定値のまま。
@@ -789,7 +806,8 @@ const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
 console.log(`SEEDS=${SEEDS} ROUNDS=${ROUNDS} NOISE=${NOISES.join(',')} ENGINE=${USE_OBJECTIVE_ENGINE ? 'objective' : 'legacy'}` +
   (PREF_PAIRS > 0
     ? ` PREF_PAIRS=${PREF_PAIRS} PREF_GENDER=${PREF_GENDER} AFFINITY_WEIGHT=${DEFAULT_WEIGHTS.affinity}` +
-      ` AFFINITY_ENEMY_COST=${AFFINITY_ENEMY_COST.value} AFFINITY_ENEMY_COST_SPLIT=${AFFINITY_ENEMY_COST_SPLIT.value}`
+      ` AFFINITY_ENEMY_COST=${AFFINITY_ENEMY_COST.value} AFFINITY_ENEMY_COST_SPLIT=${AFFINITY_ENEMY_COST_SPLIT.value}` +
+      ` AFFINITY_ENEMY_COST_SPLIT_SAFE=${AFFINITY_ENEMY_COST_SPLIT_SAFE.value}`
     : '') +
   (process.env.RECENCY_WEIGHT !== undefined ? ` RECENCY_WEIGHT=${DEFAULT_WEIGHTS.recency}` : '') +
   (process.env.STREAK_ALLOWANCE !== undefined || process.env.STREAK_RAMP !== undefined
@@ -805,6 +823,7 @@ if (PREF_PAIRS > 0) {
   console.log('    （normal の目標は 50%。docs/plans/2026-08-31-pair-preference.md 6.）');
   console.log('  リーク=希望ペア当事者の試合数−全体中央値の平均（0 に近いほど試合数が公平）');
   console.log('  同居敵%=「同じコートに入ったのに敵にされた」率（敵/同コート）。実運用バグの主指標。0 が理想');
+  console.log('  内訳mixSplit%=「同コートで敵」のうち2-2構成かつ同性ペア（mixSplit由来・回避不能）の割合。件数は mixSplit由来/その他');
   if (!USE_OBJECTIVE_ENGINE) {
     console.log('');
     console.log(
@@ -820,7 +839,7 @@ console.log('');
 console.log(
   '  条件      NOISE  幅広%  登録上下%  背負い%  過大勝率%  競り度  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち  待ち途中  連投%  3連続%  待ちσ  勝率SD%' +
     (LATE_JOIN > 0 ? '  遅参加' : '') +
-    (PREF_PAIRS > 0 ? '  成立率%  リーク  同居敵%' : '')
+    (PREF_PAIRS > 0 ? '  成立率%  リーク  同居敵%  内訳mixSplit%(件数)' : '')
 );
 console.log('  ' + '-'.repeat(72));
 
@@ -880,7 +899,16 @@ for (const { n, courtCount } of CONDITIONS) {
             })()}   ${(() => {
               const vs = results.map(r => r.prefSameCourtEnemyRate).filter(v => !Number.isNaN(v));
               return vs.length ? ((vs.reduce((a, b) => a + b, 0) / vs.length) * 100).toFixed(1) : '--';
-            })()}`
+            })()}   ${(() => {
+              const mixSplit = results.reduce((s, r) => s + r.prefEnemyMixSplitCount, 0);
+              const other = results.reduce((s, r) => s + r.prefEnemyOtherCount, 0);
+              const total = mixSplit + other;
+              return total > 0 ? ((mixSplit / total) * 100).toFixed(1) : '--';
+            })()}(${(() => {
+              const mixSplit = results.reduce((s, r) => s + r.prefEnemyMixSplitCount, 0);
+              const other = results.reduce((s, r) => s + r.prefEnemyOtherCount, 0);
+              return `${mixSplit}/${other}`;
+            })()})`
           : '')
     );
   }

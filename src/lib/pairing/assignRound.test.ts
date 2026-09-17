@@ -760,6 +760,15 @@ describe('assignRoundByObjective: 実運用バグ — 同性の希望ペアが2-
   // トレードオフであり、バグではない。bench では 14〜25人・ベンチありの
   // 現実的な人数で「同居敵%」が大きく改善する（例: 22人3コートで
   // 39.9%→11.5%）ことを確認済み（同 plan 追記）。
+  //
+  // ## 案C（2026-09-17 追記）を適用しても、このケースは直らない
+  //
+  // 「男女戦にならない場面だけ affinity を強める」案C（`splitCost` に
+  // `AFFINITY_ENEMY_COST_SPLIT_SAFE` を追加）も検証したが、**このテストの
+  // ケースは「味方にすると男女戦になる」（2-2構成 かつ 同性ペア）に該当する
+  // ため、案Cの対象外（`AFFINITY_ENEMY_COST_SPLIT`＝0.5・不変を使う）で、
+  // 挙動は変わらない。** 案Cが効くのは「男女戦に関係なく敵にされている」
+  // 残り10〜25%程度のケース（下の「案C」テスト参照）。詳細は同 plan 追記。
   it('現状（修正後も）: 同性の希望ペア（両端の実力・逃げ道が無い8人）は2-2コートで敵に分けられる', () => {
     // 8人・2コート。wideSpanThreshold なし（8人 < 14人）なので、初期解は
     // 実力順の先頭4人（p0〜p3）がそのままコート1に入る。ベンチ0人＝コート構成を
@@ -859,6 +868,49 @@ describe('assignRoundByObjective: 実運用バグ — 同性の希望ペアが2-
       (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p1')) ||
       (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p1'));
     expect(sameTeam).toBe(true);
+  });
+
+  it('案C（2026-09-17 追記）: 男女戦に関係ない場面で competitive に負けていたケースが直る', () => {
+    // コーディネーター指摘の残存経路（男女戦とは無関係）を再現・確認する回帰テスト。
+    // 性別未設定（男女戦の判定対象外 = mixSplit は常に無効）の8人・2コート、
+    // 希望ペアが実力隣接の下位2人（p0, p1）。4人を実力順 a<b<c<d とすると
+    // 希望ペア=(a,b) で、これを味方にすると competitive の不均衡が最大になる
+    // （残り2人 c,d も強制的に組まされるため）:
+    //
+    //   [a,d]|[b,c]（敵）: competitive=0/7=0        affinity(旧0.5) → 合計0.5 ← 旧は最小
+    //   [a,b]|[c,d]（味方）: competitive=4/7=0.571   affinity=0      → 合計0.571
+    //
+    // 旧既定（`AFFINITY_ENEMY_COST_SPLIT_SAFE`相当が0.5）では 0.5 < 0.571 で
+    // 「敵に分ける」が勝っていた。`AFFINITY_ENEMY_COST_SPLIT_SAFE`（既定1.0）に
+    // 上げると 1.0 > 0.571 で「味方にする」が勝つ。mixSplit が一切絡まない
+    // （性別未設定）ので、男女戦を増やす経路が無いままこのケースだけ直る。
+    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`)); // gender未設定
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 8,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+      affinityPairs: [{ a: 'p0', b: 'p1' }], // 実力隣接の下位2人
+      // weights・AFFINITY_ENEMY_COST_SPLIT_SAFE は既定値のまま（本番と同じ）
+    });
+
+    const courtOf = (id: string) =>
+      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
+    const courtP0 = courtOf('p0');
+    const courtP1 = courtOf('p1');
+    expect(courtP0.courtId).toBe(courtP1.courtId);
+    const sameTeam =
+      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p1')) ||
+      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p1'));
+    expect(sameTeam).toBe(true); // 案C適用後は味方になる（旧既定では敵だった）
   });
 });
 

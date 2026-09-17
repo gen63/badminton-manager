@@ -15,6 +15,7 @@ import {
   computeObjectiveTerms,
   weightedObjective,
   AFFINITY_ENEMY_COST_SPLIT,
+  AFFINITY_ENEMY_COST_SPLIT_SAFE,
   type ObjectiveWeights,
   type CourtPlacement,
   type PairCounts,
@@ -466,9 +467,16 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     // `affinityPairs`（実運用1〜3組）だけを回す。`normalizeSplit` は1コートにつき
     // 3通りの分け方を試すたびにこれを呼ぶため、`pairKeyOf`（sort+join の文字列
     // 生成）を避けて ID の直接比較にしている。
-    // `AFFINITY_ENEMY_COST_SPLIT`（objective.ts）を使う。`computeAffinity`
-    // （evaluate 側の大局評価）とは別の定数で、値は同じ 0.5 だが役割が違う
-    // （`AFFINITY_ENEMY_COST` のコメント参照）。
+    //
+    // 「敵」の寄与は2種類の定数を条件付きで使い分ける（案C。
+    // `docs/plans/2026-08-31-pair-preference.md` 追記参照）:
+    //   `AFFINITY_ENEMY_COST_SPLIT`      … 味方にすると男女戦になる場合（0.5・不変）
+    //   `AFFINITY_ENEMY_COST_SPLIT_SAFE` … 味方にしても男女戦にならない場合
+    // 「味方にすると男女戦になるか」= このコートが2-2構成（`isTwoTwo`。このコートに
+    // 乗っている4人の性別構成だけで決まり、3択のどの分け方を見ているかに依存しない
+    // ので options のループの外＝コートごとに一度だけ判定すればよい）かつ、
+    // ペアの2人が同性（性別未設定を含むペアは対象外＝ SAFE 側を使う。性別未設定は
+    // `computeMixSplit` / `isTwoTwo` の対象外＝男女戦の判定自体が及ばないため）。
     let affinity = 0;
     if (affinityTargetCount > 0) {
       for (const { a, b } of affinityPairs) {
@@ -478,7 +486,14 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
         const bInTeamB = slots[2] === b || slots[3] === b;
         const crossTeam = (aInTeamA && bInTeamB) || (aInTeamB && bInTeamA);
         if (!crossTeam) continue;
-        affinity += AFFINITY_ENEMY_COST_SPLIT.value / affinityTargetCount;
+        const genderA = genderById.get(a);
+        const genderB = genderById.get(b);
+        const sameSexPair = genderA !== undefined && genderA === genderB;
+        const wouldCauseMixSplit = isTwoTwo && sameSexPair;
+        const enemyCost = wouldCauseMixSplit
+          ? AFFINITY_ENEMY_COST_SPLIT.value
+          : AFFINITY_ENEMY_COST_SPLIT_SAFE.value;
+        affinity += enemyCost / affinityTargetCount;
       }
     }
 
