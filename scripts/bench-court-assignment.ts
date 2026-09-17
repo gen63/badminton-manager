@@ -48,7 +48,12 @@
  * 0 に近いほど「ペア希望で試合が増えていない」）が追加される。
  */
 import { assignCourts } from '../src/lib/algorithm';
-import { DEFAULT_WEIGHTS, RECENCY_STREAK_SHAPE } from '../src/lib/pairing/objective';
+import {
+  DEFAULT_WEIGHTS,
+  RECENCY_STREAK_SHAPE,
+  AFFINITY_ENEMY_COST,
+  AFFINITY_ENEMY_COST_SPLIT,
+} from '../src/lib/pairing/objective';
 import { median } from '../src/lib/median';
 import type { Player } from '../src/types/player';
 import type { Match } from '../src/types/match';
@@ -128,33 +133,74 @@ function pairKeyBench(a: string, b: string): string {
   return a < b ? `${a},${b}` : `${b},${a}`;
 }
 
+function shuffled<T>(items: T[], rng: () => number): T[] {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 /**
  * 希望ペアを `count` 組、ロースターからランダムに選ぶ（シード固定・決定的）。
- * 全員 `strength: 'normal'` で登録する。組同士は人が重複しない（2*count 人を
- * 一度シャッフルして先頭から2人ずつ組にする）。`count` がロースター人数の半分を
- * 超える場合は選べるだけ選ぶ（3c: 実用上の推奨は1〜3組なのでベンチも1〜6組しか
- * 振らない想定だが、小規模ロースターで安全側に倒す）。
+ * 全員 `strength: 'normal'` で登録する。組同士は人が重複しない。`count` が
+ * ロースター人数の半分を超える場合は選べるだけ選ぶ（3c: 実用上の推奨は1〜3組
+ * なのでベンチも1〜6組しか振らない想定だが、小規模ロースターで安全側に倒す）。
+ *
+ * `genderMode`（既定 'any'）: `docs/plans/2026-08-31-pair-preference.md` 追記
+ * 「同コート敵バグ」の調査用。同性ペアだけが mixSplit と衝突するという仮説を
+ * 検証するため、登録するペアの性別構成を固定できるようにしてある。
+ * - 'any' : 全員から無作為に2人ずつ（従来の挙動）
+ * - 'same': 同性ペアのみ（男性リスト・女性リストをそれぞれ2人ずつ組む）
+ * - 'diff': 異性ペアのみ（男性と女性を1人ずつ組む）
  */
 function pickPairPreferences(
   players: BenchPlayer[],
   count: number,
-  rng: () => number
+  rng: () => number,
+  genderMode: 'any' | 'same' | 'diff' = 'any'
 ): PairPreference[] {
   if (count <= 0) return [];
-  const shuffled = [...players];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  const maxPairs = Math.min(count, Math.floor(shuffled.length / 2));
   const prefs: PairPreference[] = [];
-  for (let i = 0; i < maxPairs; i++) {
+  const push = (a: BenchPlayer, b: BenchPlayer) => {
     prefs.push({
-      id: `pref${i}`,
-      playerIds: [shuffled[i * 2].id, shuffled[i * 2 + 1].id],
+      id: `pref${prefs.length}`,
+      playerIds: [a.id, b.id],
       strength: 'normal',
       createdAt: 0,
     });
+  };
+
+  if (genderMode === 'any') {
+    const pool = shuffled(players, rng);
+    const maxPairs = Math.min(count, Math.floor(pool.length / 2));
+    for (let i = 0; i < maxPairs; i++) push(pool[i * 2], pool[i * 2 + 1]);
+    return prefs;
+  }
+
+  const men = shuffled(players.filter(p => p.gender === 'M'), rng);
+  const women = shuffled(players.filter(p => p.gender === 'F'), rng);
+
+  if (genderMode === 'diff') {
+    const maxPairs = Math.min(count, men.length, women.length);
+    for (let i = 0; i < maxPairs; i++) push(men[i], women[i]);
+    return prefs;
+  }
+
+  // genderMode === 'same': 男性リスト・女性リストの両方から2人ずつ交互に消費する
+  let mi = 0;
+  let wi = 0;
+  while (prefs.length < count) {
+    if (mi + 2 <= men.length) {
+      push(men[mi], men[mi + 1]);
+      mi += 2;
+    } else if (wi + 2 <= women.length) {
+      push(women[wi], women[wi + 1]);
+      wi += 2;
+    } else {
+      break; // 同性の組める相手が尽きた
+    }
   }
   return prefs;
 }
@@ -213,6 +259,11 @@ interface RunResult {
   prefFulfillRate: number;
   // 公平性リーク = 希望ペア当事者の試合数 − 全体中央値 の平均（負値もあり得る）。NaN = 対象外
   prefFairnessLeak: number;
+  // 「同じコートに入ったのに敵にされた」率 = 敵だった回数 / 同コートだった回数
+  // （実運用バグの主指標。`docs/plans/2026-08-31-pair-preference.md` 追記参照）。
+  // 登録ペアのうち「一度でも同コートになったペア」だけで平均する。NaN = 対象外
+  // （一度も同コートにならなかった場合は判定不能なので除外する）。
+  prefSameCourtEnemyRate: number;
   // 参考
   rotation: number;
   matches: number;
@@ -236,9 +287,15 @@ function runOnce(
   const history: Match[] = []; // 古い順（末尾が最新）
 
   // ペア希望（PREF_PAIRS 組。makeRoster が消費した続きの rng で選ぶので決定的）
-  const pairPreferences = pickPairPreferences(players, PREF_PAIRS, rng);
+  const pairPreferences = pickPairPreferences(players, PREF_PAIRS, rng, PREF_GENDER);
   // 希望ペア成立率の算出用: pairKey → 味方だった回数（session 全体の累計）
   const partnerCounts = new Map<string, number>();
+  // 「同じコートに入ったのに敵にされた」率の算出用: pairKey → 同コートだった回数
+  // （味方・敵の両方を含む。任意の2人の組み合わせについて数える）
+  const sameCourtCounts = new Map<string, number>();
+  // 「同コートで敵」の内訳カウンタ（コーディネーター指摘の案C検証用）
+  let prefEnemyMixSplitCount = 0; // 2-2構成 かつ 同性ペア（mixSplit由来・回避不能）
+  let prefEnemyOtherCount = 0;    // それ以外（competitive等・理論上は回避可能）
 
   const courtBusyUntil = new Map<number, number>(); // courtId -> 終了時刻
   const courtOccupants = new Map<number, string[]>();
@@ -361,6 +418,38 @@ function runOnce(
         };
         incPartner(a.teamA[0], a.teamA[1]);
         incPartner(a.teamB[0], a.teamB[1]);
+        // 「同コート」判定用: このコートに乗った4人の全ペア（6組）を数える
+        const four = [...a.teamA, ...a.teamB];
+        for (let i = 0; i < four.length; i++) {
+          for (let j = i + 1; j < four.length; j++) {
+            const k = pairKeyBench(four[i], four[j]);
+            sameCourtCounts.set(k, (sameCourtCounts.get(k) ?? 0) + 1);
+          }
+        }
+
+        // 「同コートで敵」の内訳（コーディネーター指摘の案C検証用）:
+        //   mixSplit由来 = このコートが2-2構成 かつ 希望ペアが同性
+        //                  （味方にすると必ず男女戦になる＝回避不能）
+        //   その他       = 上記以外で敵にされている（4-0/3-1、または2-2でも
+        //                  異性ペア、または性別未設定混在）＝ competitive 等が
+        //                  理論上は回避可能なのに敵にしているケース
+        const fourGenders = four.map(id => byId.get(id)!.gender);
+        const allGendered = fourGenders.every(g => g === 'M' || g === 'F');
+        const isTwoTwo = allGendered && fourGenders.filter(g => g === 'M').length === 2;
+        for (const pref of pairPreferences) {
+          const [pa, pb] = pref.playerIds;
+          if (!four.includes(pa) || !four.includes(pb)) continue;
+          const isPartner =
+            (a.teamA.includes(pa) && a.teamA.includes(pb)) ||
+            (a.teamB.includes(pa) && a.teamB.includes(pb));
+          if (isPartner) continue; // 味方なら「敵」の内訳には数えない
+          const sameSex = byId.get(pa)!.gender === byId.get(pb)!.gender;
+          if (isTwoTwo && sameSex) {
+            prefEnemyMixSplitCount++;
+          } else {
+            prefEnemyOtherCount++;
+          }
+        }
       }
       courtBusyUntil.set(a.courtId, finishedAt);
       courtOccupants.set(a.courtId, [...a.teamA, ...a.teamB]);
@@ -557,9 +646,11 @@ function runOnce(
   //            試合数 − 全体中央値を求め、平均する
   let prefFulfillRate = NaN;
   let prefFairnessLeak = NaN;
+  let prefSameCourtEnemyRate = NaN;
   if (pairPreferences.length > 0) {
     const overallMedian = median(games);
     const rates: number[] = [];
+    const enemyRates: number[] = [];
     const participantIds = new Set<string>();
     for (const pref of pairPreferences) {
       const [pa, pb] = pref.playerIds;
@@ -570,11 +661,19 @@ function runOnce(
       rates.push(actual / Math.max(1, opportunity));
       participantIds.add(pa);
       participantIds.add(pb);
+
+      // 「同じコートに入ったのに敵にされた」率。一度も同コートにならなかった
+      // ペアは判定不能なので rates に入れない（NaN 除外は集計側で行う）。
+      const sameCourt = sameCourtCounts.get(pairKeyBench(pa, pb)) ?? 0;
+      if (sameCourt > 0) {
+        enemyRates.push((sameCourt - actual) / sameCourt);
+      }
     }
     prefFulfillRate = mean(rates);
     prefFairnessLeak = mean(
       [...participantIds].map(id => byId.get(id)!.gamesPlayed - overallMedian)
     );
+    prefSameCourtEnemyRate = enemyRates.length ? mean(enemyRates) : NaN;
   }
 
   return {
@@ -615,6 +714,7 @@ function runOnce(
     matches: history.length,
     prefFulfillRate,
     prefFairnessLeak,
+    prefSameCourtEnemyRate,
   };
 }
 
@@ -631,11 +731,32 @@ const NOISES = (process.env.NOISE ?? '0,4,8').split(',').map(Number);
  */
 const PREF_PAIRS = Number(process.env.PREF_PAIRS ?? 0);
 /**
+ * 登録する希望ペアの性別構成を固定する（既定 'any' = 無作為）。
+ * `docs/plans/2026-08-31-pair-preference.md` 追記「同コート敵バグ」の調査用。
+ * 'same' で同性ペアのみ、'diff' で異性ペアのみを登録する。
+ */
+const PREF_GENDER = (process.env.PREF_GENDER ?? 'any') as 'any' | 'same' | 'diff';
+/**
  * `AFFINITY_WEIGHT` の重みをこのプロセス内だけ上書きする（bench 専用。本番の
  * `DEFAULT_WEIGHTS.affinity` の既定値は変えない）。未指定ならリポジトリの既定値のまま。
  */
 if (process.env.AFFINITY_WEIGHT !== undefined) {
   DEFAULT_WEIGHTS.affinity = Number(process.env.AFFINITY_WEIGHT);
+}
+/**
+ * `AFFINITY_ENEMY_COST.value` / `AFFINITY_ENEMY_COST_SPLIT.value`
+ * （`src/lib/pairing/objective.ts`）をこのプロセス内だけ上書きする（bench 専用。
+ * 本番の既定値 0.5 は変えない）。`AFFINITY_ENEMY_COST` は `computeAffinity`
+ * （evaluate 側の大局評価）、`AFFINITY_ENEMY_COST_SPLIT` は `splitCost`
+ * （チーム分けの局所決定）に対応する別々の値で、片方だけを振って
+ * 「大局の評価だけ強めても男女戦は増えないか」を検証できる。
+ * `docs/plans/2026-08-31-pair-preference.md` 追記「同コート敵バグ」の調査用。
+ */
+if (process.env.AFFINITY_ENEMY_COST !== undefined) {
+  AFFINITY_ENEMY_COST.value = Number(process.env.AFFINITY_ENEMY_COST);
+}
+if (process.env.AFFINITY_ENEMY_COST_SPLIT !== undefined) {
+  AFFINITY_ENEMY_COST_SPLIT.value = Number(process.env.AFFINITY_ENEMY_COST_SPLIT);
 }
 /**
  * `recency`（目的8: 連続出場を少し嫌う）の重みをこのプロセス内だけ上書きする
@@ -666,7 +787,10 @@ const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
   });
 
 console.log(`SEEDS=${SEEDS} ROUNDS=${ROUNDS} NOISE=${NOISES.join(',')} ENGINE=${USE_OBJECTIVE_ENGINE ? 'objective' : 'legacy'}` +
-  (PREF_PAIRS > 0 ? ` PREF_PAIRS=${PREF_PAIRS} AFFINITY_WEIGHT=${DEFAULT_WEIGHTS.affinity}` : '') +
+  (PREF_PAIRS > 0
+    ? ` PREF_PAIRS=${PREF_PAIRS} PREF_GENDER=${PREF_GENDER} AFFINITY_WEIGHT=${DEFAULT_WEIGHTS.affinity}` +
+      ` AFFINITY_ENEMY_COST=${AFFINITY_ENEMY_COST.value} AFFINITY_ENEMY_COST_SPLIT=${AFFINITY_ENEMY_COST_SPLIT.value}`
+    : '') +
   (process.env.RECENCY_WEIGHT !== undefined ? ` RECENCY_WEIGHT=${DEFAULT_WEIGHTS.recency}` : '') +
   (process.env.STREAK_ALLOWANCE !== undefined || process.env.STREAK_RAMP !== undefined
     ? ` STREAK_ALLOWANCE=${RECENCY_STREAK_SHAPE.allowance} STREAK_RAMP=${RECENCY_STREAK_SHAPE.ramp}`
@@ -680,6 +804,7 @@ if (PREF_PAIRS > 0) {
   console.log('  成立率%=目的7（ペア希望）= 実績(味方だった回数)/機会(min 試合数) の登録ペア平均');
   console.log('    （normal の目標は 50%。docs/plans/2026-08-31-pair-preference.md 6.）');
   console.log('  リーク=希望ペア当事者の試合数−全体中央値の平均（0 に近いほど試合数が公平）');
+  console.log('  同居敵%=「同じコートに入ったのに敵にされた」率（敵/同コート）。実運用バグの主指標。0 が理想');
   if (!USE_OBJECTIVE_ENGINE) {
     console.log('');
     console.log(
@@ -695,7 +820,7 @@ console.log('');
 console.log(
   '  条件      NOISE  幅広%  登録上下%  背負い%  過大勝率%  競り度  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち  待ち途中  連投%  3連続%  待ちσ  勝率SD%' +
     (LATE_JOIN > 0 ? '  遅参加' : '') +
-    (PREF_PAIRS > 0 ? '  成立率%  リーク' : '')
+    (PREF_PAIRS > 0 ? '  成立率%  リーク  同居敵%' : '')
 );
 console.log('  ' + '-'.repeat(72));
 
@@ -752,6 +877,9 @@ for (const { n, courtCount } of CONDITIONS) {
             })()}   ${(() => {
               const vs = results.map(r => r.prefFairnessLeak).filter(v => !Number.isNaN(v));
               return vs.length ? (vs.reduce((a, b) => a + b, 0) / vs.length).toFixed(2) : '--';
+            })()}   ${(() => {
+              const vs = results.map(r => r.prefSameCourtEnemyRate).filter(v => !Number.isNaN(v));
+              return vs.length ? ((vs.reduce((a, b) => a + b, 0) / vs.length) * 100).toFixed(1) : '--';
             })()}`
           : '')
     );

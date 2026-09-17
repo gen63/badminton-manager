@@ -14,6 +14,7 @@ import {
   DEFAULT_WEIGHTS,
   computeObjectiveTerms,
   weightedObjective,
+  AFFINITY_ENEMY_COST_SPLIT,
   type ObjectiveWeights,
   type CourtPlacement,
   type PairCounts,
@@ -465,6 +466,9 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     // `affinityPairs`（実運用1〜3組）だけを回す。`normalizeSplit` は1コートにつき
     // 3通りの分け方を試すたびにこれを呼ぶため、`pairKeyOf`（sort+join の文字列
     // 生成）を避けて ID の直接比較にしている。
+    // `AFFINITY_ENEMY_COST_SPLIT`（objective.ts）を使う。`computeAffinity`
+    // （evaluate 側の大局評価）とは別の定数で、値は同じ 0.5 だが役割が違う
+    // （`AFFINITY_ENEMY_COST` のコメント参照）。
     let affinity = 0;
     if (affinityTargetCount > 0) {
       for (const { a, b } of affinityPairs) {
@@ -474,7 +478,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
         const bInTeamB = slots[2] === b || slots[3] === b;
         const crossTeam = (aInTeamA && bInTeamB) || (aInTeamB && bInTeamA);
         if (!crossTeam) continue;
-        affinity += 0.5 / affinityTargetCount;
+        affinity += AFFINITY_ENEMY_COST_SPLIT.value / affinityTargetCount;
       }
     }
 

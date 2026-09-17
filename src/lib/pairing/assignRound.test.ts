@@ -6,6 +6,7 @@ import {
   computeObjectiveTerms,
   computeAffinity,
   GENDER_BALANCE_OFF_WEIGHTS,
+  AFFINITY_ENEMY_COST,
   type CourtPlacement,
   type PairCounts,
 } from './objective';
@@ -585,10 +586,15 @@ describe('computeAffinity（objective.ts）', () => {
     expect(computeAffinity(courts, [], pairs)).toBe(0);
   });
 
-  it('同コートで敵なら寄与0.5', () => {
+  it('同コートで敵なら寄与は AFFINITY_ENEMY_COST（既定1.0）', () => {
+    // 2026-09-17: 実運用バグ（同性の希望ペアが2-2コートで敵にされる）の調査で
+    // 0.5 → 1.0 に変更した。「同コートで敵」は「別コート」と同じ最大コストになる
+    // （中間の 0.5 を廃止）。詳細は `AFFINITY_ENEMY_COST` のコメント（objective.ts）
+    // と `docs/plans/2026-08-31-pair-preference.md` 追記を参照。
     const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
     const pairs = [{ a: 'p0', b: 'p2' }];
-    expect(computeAffinity(courts, [], pairs)).toBe(0.5);
+    expect(computeAffinity(courts, [], pairs)).toBe(AFFINITY_ENEMY_COST.value);
+    expect(AFFINITY_ENEMY_COST.value).toBe(1.0);
   });
 
   it('別コートなら寄与1.0', () => {
@@ -717,7 +723,192 @@ describe('assignRoundByObjective: affinity（ペア希望・normal）', () => {
   // （複数ペア）」）で引き続き担保している。
 });
 
+describe('assignRoundByObjective: 実運用バグ — 同性の希望ペアが2-2コートで敵にされる', () => {
+  // 実運用報告: strength: 'normal' の希望ペアを設定した同性2人が「同じコートには
+  // 入ったのにペア（味方）にならず、敵同士になった」。
+  //
+  // 原因（修正前の splitCost の重み比較。既定重み: competitive=1.0 / mixSplit=1.0 /
+  // affinity=1.0、`AffinityPair` 1組なので affinityTargetCount=1、修正前の
+  // 「同コートで敵」の寄与は 0.5）。4人を実力順 a<b<c<d、希望ペアが両端 (a, d) で、
+  // b, c が希望ペアと逆の性別（a, d が男性、b, c が女性）だとする:
+  //
+  //   [a,d]vs[b,c]（味方）: competitive=0/7          mixSplit=1.0（男男 vs 女女）  affinity=0      → 合計 1.0
+  //   [a,c]vs[b,d]（敵）  : competitive=2/7=0.286     mixSplit=0                    affinity=0.5    → 合計 0.786
+  //   [a,b]vs[c,d]（敵）  : competitive=4/7=0.571     mixSplit=0                    affinity=0.5    → 合計 1.071
+  //
+  // 「敵にして mixSplit を回避する」(0.786) が「味方にして男女戦にする」(1.0) より
+  // 常に安い（mixSplit の重み1.0 が affinity の最大寄与 0.5 を上回るため）。
+  // `normalizeSplit` はコスト最小の分け方を選ぶので、必ず敵同士に割られていた
+  // （2026-09-17 に発見・再現。詳細な数値と bench 実測は
+  // `docs/plans/2026-08-31-pair-preference.md` 追記を参照）。
+  //
+  // ## 修正と、直っていない範囲
+  //
+  // `splitCost`（チーム分けの局所決定。`AFFINITY_ENEMY_COST_SPLIT`）を上げると
+  // mixSplit との綱引きに直接勝つ形になり、**男女戦を増やす**（bench 実測で
+  // 0.6 から既に非0%）。「3-1・男女戦を避ける」原則に反するため、この値は
+  // 0.5 のまま変更していない。代わりに `computeAffinity`（大局評価。
+  // `AFFINITY_ENEMY_COST`）を 0.5→1.0 に上げた。これは `splitCost` の判断
+  // （＝男女戦の発生条件）には触れないので**男女戦は一切増やさない**が、
+  // 効果は「コート間の入れ替えで、たまたま mixSplit と衝突しないコート構成が
+  // 選べる場合」に限られる。
+  //
+  // **このテストの8人・ベンチ0という構成には、その「逃げ道」が存在しない**
+  // （3-1 に組み替えて mixSplit を回避しようとしても `gender` の重み1.6 が
+  // mixSplit の1.0を上回るため、どのみち割に合わない）。そのため、この
+  // 最悪ケースは修正後も「敵に分けられる」ままになる。これは意図した
+  // トレードオフであり、バグではない。bench では 14〜25人・ベンチありの
+  // 現実的な人数で「同居敵%」が大きく改善する（例: 22人3コートで
+  // 39.9%→11.5%）ことを確認済み（同 plan 追記）。
+  it('現状（修正後も）: 同性の希望ペア（両端の実力・逃げ道が無い8人）は2-2コートで敵に分けられる', () => {
+    // 8人・2コート。wideSpanThreshold なし（8人 < 14人）なので、初期解は
+    // 実力順の先頭4人（p0〜p3）がそのままコート1に入る。ベンチ0人＝コート構成を
+    // 組み替える余地が無い、意図的な最悪ケース。
+    const candidates = [
+      makePlayer('p0', { gender: 'M' }), // 希望ペア（両端の実力: p0 と p3）
+      makePlayer('p1', { gender: 'F' }),
+      makePlayer('p2', { gender: 'F' }),
+      makePlayer('p3', { gender: 'M' }),
+      makePlayer('p4', { gender: 'M' }),
+      makePlayer('p5', { gender: 'F' }),
+      makePlayer('p6', { gender: 'M' }),
+      makePlayer('p7', { gender: 'F' }),
+    ];
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 8,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+      affinityPairs: [{ a: 'p0', b: 'p3' }], // strength: 'normal' 相当
+      // weights は既定値（DEFAULT_WEIGHTS）のまま = 本番と同じ挙動を再現する
+    });
+
+    const courtOf = (id: string) =>
+      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
+    const courtP0 = courtOf('p0');
+    const courtP3 = courtOf('p3');
+
+    // 設計意図: 「同じコートに入ったなら味方にする」。まず同じコートに入ることを確認。
+    expect(courtP0.courtId).toBe(courtP3.courtId);
+
+    // 男女戦を増やさない（原則を守る）ことを優先した結果、この最悪ケースでは
+    // 依然として敵同士に分けられる（上のコメント参照）。ここが true になる
+    // 修正は、mixSplit を弱めて男女戦を増やす代償を払わないと実現できない。
+    const sameTeam =
+      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p3')) ||
+      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p3'));
+    expect(sameTeam).toBe(false);
+
+    // 回帰の担保: この状態でも男女戦（男男 vs 女女）にはなっていないこと
+    // （mixSplit は生きている＝splitCost 側は変更していないことの確認）。
+    const genders = [...courtP0.teamA, ...courtP0.teamB].map(
+      id => candidates.find(p => p.id === id)!.gender
+    );
+    const maleInTeamA = courtP0.teamA.filter(
+      id => candidates.find(p => p.id === id)!.gender === 'M'
+    ).length;
+    if (genders.filter(g => g === 'M').length === 2) {
+      expect(maleInTeamA).toBe(1); // 2-2 なら必ず男女ミックス（男女戦ではない）
+    }
+  });
+
+  it('比較用: 異性の希望ペア（同条件）は mixSplit と衝突しないので味方になる', () => {
+    // p0(M) と p1(F) を希望ペアにする。この2人を同チームにしても
+    // 2-2 の性別構成は保てるので mixSplit は発生しない。affinity だけで解決する
+    // シンプルなケースであり、上のテストが「同性特有」の問題であることの対照。
+    const candidates = [
+      makePlayer('p0', { gender: 'M' }),
+      makePlayer('p1', { gender: 'F' }), // 希望ペア相手
+      makePlayer('p2', { gender: 'F' }),
+      makePlayer('p3', { gender: 'M' }),
+      makePlayer('p4', { gender: 'M' }),
+      makePlayer('p5', { gender: 'F' }),
+      makePlayer('p6', { gender: 'M' }),
+      makePlayer('p7', { gender: 'F' }),
+    ];
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 8,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+      affinityPairs: [{ a: 'p0', b: 'p1' }],
+    });
+
+    const courtOf = (id: string) =>
+      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
+    const courtP0 = courtOf('p0');
+    const courtP1 = courtOf('p1');
+    expect(courtP0.courtId).toBe(courtP1.courtId);
+    const sameTeam =
+      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p1')) ||
+      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p1'));
+    expect(sameTeam).toBe(true);
+  });
+});
+
 describe('assignRoundByObjective: strong（ペア希望・強度「必ず」のハード制約）', () => {
+  it('回帰の担保: mixSplit と衝突する同性ペアでも strong なら必ず味方になる（男女戦バグ修正の影響を受けない）', () => {
+    // 上の「実運用バグ」テストと全く同じ人数構成（同性ペアが両端の実力・2-2・
+    // ベンチ0）で、`strength: 'normal'` の代わりに `strong` を使う。本番の配線
+    // （`algorithm.ts`）は strong なペアも `affinityPairs` と `strongPairs` の
+    // 両方に同時に現れるので、ここでも両方渡して再現する。
+    // ハード制約（`violations`）は目的関数より辞書式で先に評価されるため
+    // （`compareEval`）、`AFFINITY_ENEMY_COST` / `AFFINITY_ENEMY_COST_SPLIT` の
+    // 値を変更しても strong の「必ず味方」は影響を受けない、という回帰テスト。
+    const candidates = [
+      makePlayer('p0', { gender: 'M' }),
+      makePlayer('p1', { gender: 'F' }),
+      makePlayer('p2', { gender: 'F' }),
+      makePlayer('p3', { gender: 'M' }),
+      makePlayer('p4', { gender: 'M' }),
+      makePlayer('p5', { gender: 'F' }),
+      makePlayer('p6', { gender: 'M' }),
+      makePlayer('p7', { gender: 'F' }),
+    ];
+    const rankById = rankByIdFrom(candidates.map(p => p.id));
+
+    const result = assignRoundByObjective({
+      candidates,
+      courtIds: [1, 2],
+      rankById,
+      rosterSize: 8,
+      priorityScoreOf,
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      isRecentDuplicate: () => false,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+      affinityPairs: [{ a: 'p0', b: 'p3' }],
+      strongPairs: [{ a: 'p0', b: 'p3' }],
+    });
+
+    const courtOf = (id: string) =>
+      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
+    const courtP0 = courtOf('p0');
+    const courtP3 = courtOf('p3');
+    expect(courtP0.courtId).toBe(courtP3.courtId);
+    const sameTeam =
+      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p3')) ||
+      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p3'));
+    expect(sameTeam).toBe(true); // strong は男女戦になっても必ず味方にする
+  });
+
   it('両方が出るなら必ず味方になる（候補=必要人数ちょうど・ベンチ0でも解が返る）', () => {
     // 8人ちょうど・2コート（ベンチ0）。この条件自体が「候補が必要人数ちょうど」の
     // 回帰テストを兼ねる。
