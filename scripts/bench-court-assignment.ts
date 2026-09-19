@@ -270,6 +270,15 @@ interface RunResult {
   // その他       = それ以外（competitive 等・理論上は回避可能）。
   prefEnemyMixSplitCount: number;
   prefEnemyOtherCount: number;
+  // 男女戦%を「希望ペアを含むコート」と「含まないコート」で分けて計測する
+  // （2026-09-19 追記。運用者判断で「男女戦を増やさない」原則をペア希望登録
+  // コートに限り緩めたため、希望を含まないコートで 0.0% を維持しているかを
+  // 切り分けて検証する必要がある。生カウント。複数 seed 合算してから比率を出す）。
+  // 分母は mvfRate と同じく「そのバケツの全試合数」（2-2 試合数ではない）。
+  mvfInvolvedMatches: number;    // 希望ペアを含むコートで男女戦になった試合数
+  matchesInvolved: number;      // 希望ペアを含むコートの試合数（分母）
+  mvfNotInvolvedMatches: number; // 希望ペアを含まないコートで男女戦になった試合数
+  matchesNotInvolved: number;   // 希望ペアを含まないコートの試合数（分母）
   // 参考
   rotation: number;
   matches: number;
@@ -484,6 +493,11 @@ function runOnce(
   const winsById = new Map<string, number>(players.map(p => [p.id, 0]));
   let twoTwoMatches = 0;
   let mvfMatches = 0;
+  // 男女戦%の内訳（希望ペアを含むコート / 含まないコート）。2026-09-19 追記
+  let mvfInvolvedMatches = 0;
+  let matchesInvolved = 0;
+  let mvfNotInvolvedMatches = 0;
+  let matchesNotInvolved = 0;
   const gamesByTrueRank = new Array(n).fill(0);
   const courtsSeen = new Map<string, Set<number>>();
   const matesSeen = new Map<string, Set<string>>();
@@ -538,10 +552,33 @@ function runOnce(
     if (femaleCount === 1 || femaleCount === 3) genderSkewMatches++;
 
     // 目的5b: 2-2 のうち「男男 vs 女女」（男女戦）になった試合
+    let isMvf = false;
     if (femaleCount === 2) {
       twoTwoMatches++;
       const femaleInA = m.teamA.filter(id => byId.get(id)!.gender === 'F').length;
-      if (femaleInA !== 1) mvfMatches++;
+      if (femaleInA !== 1) {
+        mvfMatches++;
+        isMvf = true;
+      }
+    }
+
+    // 男女戦%の内訳（2026-09-19 追記。「ペア希望が登録されているコートに限り
+    // 男女戦を許容する」という仕様変更が、希望を含まないコートまで漏れていない
+    // かを検証するための主指標）。「含む」＝このコートの4人に登録ペアの両方が
+    // 揃っている（味方/敵は問わない。パートナーになっていなくても対象コートで
+    // あることに変わりないため）。mvfRate と同じく分母は「そのバケツの全試合数」
+    // （2-2 試合数ではなく、そのバケツに属する全試合数）。
+    if (pairPreferences.length > 0) {
+      const involvesPrefPair = pairPreferences.some(
+        pref => ids.includes(pref.playerIds[0]) && ids.includes(pref.playerIds[1])
+      );
+      if (involvesPrefPair) {
+        matchesInvolved++;
+        if (isMvf) mvfInvolvedMatches++;
+      } else {
+        matchesNotInvolved++;
+        if (isMvf) mvfNotInvolvedMatches++;
+      }
     }
 
     for (const id of ids) {
@@ -723,6 +760,10 @@ function runOnce(
     prefSameCourtEnemyRate,
     prefEnemyMixSplitCount,
     prefEnemyOtherCount,
+    mvfInvolvedMatches,
+    matchesInvolved,
+    mvfNotInvolvedMatches,
+    matchesNotInvolved,
   };
 }
 
@@ -824,6 +865,8 @@ if (PREF_PAIRS > 0) {
   console.log('  リーク=希望ペア当事者の試合数−全体中央値の平均（0 に近いほど試合数が公平）');
   console.log('  同居敵%=「同じコートに入ったのに敵にされた」率（敵/同コート）。実運用バグの主指標。0 が理想');
   console.log('  内訳mixSplit%=「同コートで敵」のうち2-2構成かつ同性ペア（mixSplit由来・回避不能）の割合。件数は mixSplit由来/その他');
+  console.log('  希望コート男女戦%=希望ペアを含むコートの男女戦%（2026-09-19 仕様変更で運用者判断により許容。上がってよい）');
+  console.log('  希望外コート男女戦%=希望ペアを含まないコートの男女戦%（**0.0% を維持すること**。1件でも出たら不採用）');
   if (!USE_OBJECTIVE_ENGINE) {
     console.log('');
     console.log(
@@ -839,7 +882,7 @@ console.log('');
 console.log(
   '  条件      NOISE  幅広%  登録上下%  背負い%  過大勝率%  競り度  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち  待ち途中  連投%  3連続%  待ちσ  勝率SD%' +
     (LATE_JOIN > 0 ? '  遅参加' : '') +
-    (PREF_PAIRS > 0 ? '  成立率%  リーク  同居敵%  内訳mixSplit%(件数)' : '')
+    (PREF_PAIRS > 0 ? '  成立率%  リーク  同居敵%  内訳mixSplit%(件数)  希望コート男女戦%  希望外コート男女戦%' : '')
 );
 console.log('  ' + '-'.repeat(72));
 
@@ -908,7 +951,15 @@ for (const { n, courtCount } of CONDITIONS) {
               const mixSplit = results.reduce((s, r) => s + r.prefEnemyMixSplitCount, 0);
               const other = results.reduce((s, r) => s + r.prefEnemyOtherCount, 0);
               return `${mixSplit}/${other}`;
-            })()})`
+            })()})   ${(() => {
+              const mvf = results.reduce((s, r) => s + r.mvfInvolvedMatches, 0);
+              const total = results.reduce((s, r) => s + r.matchesInvolved, 0);
+              return total > 0 ? ((mvf / total) * 100).toFixed(1) : '--';
+            })()}   ${(() => {
+              const mvf = results.reduce((s, r) => s + r.mvfNotInvolvedMatches, 0);
+              const total = results.reduce((s, r) => s + r.matchesNotInvolved, 0);
+              return total > 0 ? ((mvf / total) * 100).toFixed(1) : '--';
+            })()}`
           : '')
     );
   }

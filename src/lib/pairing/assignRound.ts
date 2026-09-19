@@ -255,24 +255,6 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     sortedCandidates.map((p, index) => [p.id, index] as const)
   );
 
-  // affinity（ペア希望）の評価対象ペア数。`computeAffinity` と同じ「courts ∪ bench」
-  // = このラウンドの候補プール全体（= sortedCandidates 全員）で数える。courts と
-  // bench の中身は探索中に変わるが、その和集合（母集団）は不変なので、
-  // 探索前に一度だけ数えれば足りる（`splitCost` は毎回この値で割る）。
-  //
-  // **候補プールの全ペアではなく `affinityPairs`（実運用1〜3組）だけを回す。**
-  // 候補人数の2乗で回す実装は、局所探索が `evaluate()`/`splitCost` を数万回
-  // 呼ぶ構造と組み合わさって実測 4〜8倍の性能回帰になったため、希望ペア側から
-  // 走査する向きに変えている（`AffinityPair` のコメント参照）。
-  const candidateIdSet = new Set(sortedCandidates.map(p => p.id));
-  const affinityTargetCount = (() => {
-    let count = 0;
-    for (const { a, b } of affinityPairs) {
-      if (candidateIdSet.has(a) && candidateIdSet.has(b)) count++;
-    }
-    return count;
-  })();
-
   const neededCount = Math.min(4 * courtIds.length, candidateCount - (candidateCount % 4));
   const usableCourtCount = Math.min(courtIds.length, Math.floor(candidateCount / 4));
   const usedCourtIds = courtIds.slice(0, usableCourtCount);
@@ -468,17 +450,42 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     // 3通りの分け方を試すたびにこれを呼ぶため、`pairKeyOf`（sort+join の文字列
     // 生成）を避けて ID の直接比較にしている。
     //
+    // **`affinityTargetCount`（登録組数）では割らない**（2026-09-19 変更）。
+    // `computeAffinity`（大局評価）は「予算制」として評価対象ペア数で割る必要が
+    // あるが（コート間の入れ替えを比較する土俵を揃えるため）、`splitCost` は
+    // **1つのコートの3通りの分け方から argmin を選ぶだけ**の関数で、
+    // `affinityTargetCount` はその3択のどれでも同じ値（このコートに含まれる
+    // ペアとは無関係に、候補プール全体の登録組数で決まる）。同じ定数で割っても
+    // 3択の順位（どれが最小か）自体は変わらない ―― はずだが、実際には
+    // `competitive` と `mixSplit` は割られていないため、割ることで
+    // affinity 項だけが他の2項に対して相対的に弱まる。結果、**このコートとは
+    // 無関係な別のコートに登録ペアがあるだけで、このコートのチーム分けの
+    // 強さが 1/N に薄まる**という筋の悪い依存が生じていた（例: N=3 なら
+    // どのコートも効き目が1/3。3組のうち2組が全く別のコートにいても関係ない）。
+    // 割り算をやめても実際の登録組数は実運用で1〜3組（`affinityPairs` のコメント
+    // 参照）なのでループ回数は変わらず、N=1 と N=3 で挙動が一致することを
+    // `docs/plans/2026-08-31-pair-preference.md` の追記で数値確認済み。
+    //
     // 「敵」の寄与は2種類の定数を条件付きで使い分ける（案C。
     // `docs/plans/2026-08-31-pair-preference.md` 追記参照）:
-    //   `AFFINITY_ENEMY_COST_SPLIT`      … 味方にすると男女戦になる場合（0.5・不変）
+    //   `AFFINITY_ENEMY_COST_SPLIT`      … 味方にすると男女戦になる場合
     //   `AFFINITY_ENEMY_COST_SPLIT_SAFE` … 味方にしても男女戦にならない場合
     // 「味方にすると男女戦になるか」= このコートが2-2構成（`isTwoTwo`。このコートに
     // 乗っている4人の性別構成だけで決まり、3択のどの分け方を見ているかに依存しない
     // ので options のループの外＝コートごとに一度だけ判定すればよい）かつ、
     // ペアの2人が同性（性別未設定を含むペアは対象外＝ SAFE 側を使う。性別未設定は
     // `computeMixSplit` / `isTwoTwo` の対象外＝男女戦の判定自体が及ばないため）。
+    //
+    // **2026-09-19: 運用者判断で「男女戦を増やさない」原則を、ペア希望が
+    // 登録されているコートに限り緩めた。** `AFFINITY_ENEMY_COST_SPLIT` を
+    // `mixSplit`（重み1.0）に確実に勝つ値まで引き上げたため、このコートに
+    // registered な同性ペアが2-2コートの両端実力に来ると、今後は味方にする
+    // （＝男女戦になる）ことを選ぶ。希望ペアを含まないコートは、この分岐に
+    // 一切入らない（`affinityPairs` に無い4人は affinity=0 のまま）ので
+    // `mixSplit` がそのまま効き、男女戦は増えない。詳細は
+    // `AFFINITY_ENEMY_COST_SPLIT` のコメント（objective.ts）参照。
     let affinity = 0;
-    if (affinityTargetCount > 0) {
+    if (affinityPairs.length > 0) {
       for (const { a, b } of affinityPairs) {
         const aInTeamA = slots[0] === a || slots[1] === a;
         const aInTeamB = slots[2] === a || slots[3] === a;
@@ -493,7 +500,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
         const enemyCost = wouldCauseMixSplit
           ? AFFINITY_ENEMY_COST_SPLIT.value
           : AFFINITY_ENEMY_COST_SPLIT_SAFE.value;
-        affinity += enemyCost / affinityTargetCount;
+        affinity += enemyCost;
       }
     }
 
