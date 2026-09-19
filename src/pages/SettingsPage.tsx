@@ -387,9 +387,6 @@ export function SettingsPage() {
               詳細（点数入力）
             </button>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1">
-            自分の試合の結果を聞かれたときに、勝敗だけ選ぶか、点数まで入力するかを選べます。既定は簡易です。点数まで記録したい人だけ詳細にしてください。この端末だけの設定で、他の人には影響しません（結果を記録するかどうか自体は「セッションの設定」の試合記録モードです）。
-          </p>
         </div>
 
         {!userIsAdmin && (
