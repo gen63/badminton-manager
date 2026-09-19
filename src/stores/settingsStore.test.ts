@@ -78,6 +78,21 @@ describe('settingsStore - persist (Phase A: 同期対象を localStorage から�
     expect(stored).toHaveProperty('accountingWebAppUrl');
   });
 
+  it('端末ローカル設定 matchResultInputMode は localStorage に書かれる', () => {
+    useSettingsStore.getState().setMatchResultInputMode('score');
+
+    const raw = localStorage.getItem('badminton-settings');
+    expect(raw).toBeTruthy();
+    const parsed = JSON.parse(raw!);
+    const stored = parsed.state ?? parsed;
+    expect(stored.matchResultInputMode).toBe('score');
+
+    // 既定は簡易入力（既存ユーザーの挙動を変えない）
+    useSettingsStore.getState().setMatchResultInputMode('simple');
+    const stored2 = JSON.parse(localStorage.getItem('badminton-settings')!).state;
+    expect(stored2.matchResultInputMode).toBe('simple');
+  });
+
   it('migrate (version 0 → 1) で旧 persisted state から同期対象を剥がす', () => {
     // settingsStore.ts の migrate と同じロジックを再現してテストする
     // (zustand persist 内部の migrate を再エクスポートしていないため)

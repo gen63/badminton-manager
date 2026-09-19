@@ -15,7 +15,7 @@ import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
 import { SessionQrCode } from '../components/SessionQrCode';
-import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2, StopCircle, Link as LinkIcon, Copy, QrCode, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2, StopCircle, ClipboardList, Link as LinkIcon, Copy, QrCode, ChevronDown } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -48,6 +48,8 @@ export function SettingsPage() {
   const adminMatchCallAnnounce = useSettingsStore((s) => s.adminMatchCallAnnounce);
   const setAdminMatchCallAnnounce = useSettingsStore((s) => s.setAdminMatchCallAnnounce);
   const finishHoldToConfirm = useSettingsStore((s) => s.finishHoldToConfirm);
+  const matchResultInputMode = useSettingsStore((s) => s.matchResultInputMode);
+  const setMatchResultInputMode = useSettingsStore((s) => s.setMatchResultInputMode);
   const setFinishHoldToConfirm = useSettingsStore((s) => s.setFinishHoldToConfirm);
   const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
@@ -355,6 +357,36 @@ export function SettingsPage() {
           <p className="text-[10px] text-muted-foreground mt-1">
             ON なら試合終了は長押しで確定します（誤タップ防止）。操作に慣れていれば OFF でタップ1回にできます。開始直後のロックと、始まったばかりの試合の確認ダイアログは OFF でも出ます。
           </p>
+        </div>
+
+        {/* 試合結果の入力方式（端末ローカル） */}
+        <div className="card p-4">
+          <h2 className="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+            <span className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center">
+              <ClipboardList size={14} className="text-indigo-600" />
+            </span>
+            試合結果の入力方式
+          </h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setMatchResultInputMode('simple')}
+              className={`flex-1 select-button text-xs px-2 ${
+                matchResultInputMode === 'simple' ? 'select-button-active' : 'select-button-inactive'
+              }`}
+            >
+              {matchResultInputMode === 'simple' && <span className="mr-1">✓</span>}
+              簡易（勝敗のみ）
+            </button>
+            <button
+              onClick={() => setMatchResultInputMode('score')}
+              className={`flex-1 select-button text-xs px-2 ${
+                matchResultInputMode === 'score' ? 'select-button-active' : 'select-button-inactive'
+              }`}
+            >
+              {matchResultInputMode === 'score' && <span className="mr-1">✓</span>}
+              詳細（点数入力）
+            </button>
+          </div>
         </div>
 
         {!userIsAdmin && (
