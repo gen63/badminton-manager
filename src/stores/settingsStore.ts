@@ -48,6 +48,17 @@ interface SettingsState {
    */
   finishHoldToConfirm: boolean;
   setFinishHoldToConfirm: (value: boolean) => void;
+  /**
+   * 試合結果の入力方式。端末ローカル設定（Firestore 同期しない）。
+   *
+   * - 'simple': 勝敗のみ選ぶ（既定）。未記録試合プロンプトは WinnerSelectModal。
+   * - 'score' : 点数入力ページ (/score/:matchId) へ遷移する。
+   *
+   * セッション共有の `recordScores`（結果を記録するか否か）とは別軸で、
+   * 「記録する」と決まっているセッションで各自が入力の細かさを選ぶための設定。
+   */
+  matchResultInputMode: 'simple' | 'score';
+  setMatchResultInputMode: (value: 'simple' | 'score') => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -87,6 +98,8 @@ export const useSettingsStore = create<SettingsState>()(
       setAdminMatchCallAnnounce: (value) => set({ adminMatchCallAnnounce: value }),
       finishHoldToConfirm: true,
       setFinishHoldToConfirm: (value) => set({ finishHoldToConfirm: value }),
+      matchResultInputMode: 'simple',
+      setMatchResultInputMode: (value) => set({ matchResultInputMode: value }),
     }),
     {
       name: 'badminton-settings',
@@ -145,6 +158,7 @@ export const useSettingsStore = create<SettingsState>()(
         matchCallAlert: state.matchCallAlert,
         adminMatchCallAnnounce: state.adminMatchCallAnnounce,
         finishHoldToConfirm: state.finishHoldToConfirm,
+        matchResultInputMode: state.matchResultInputMode,
       }),
       onRehydrateStorage: () => (state) => {
         // 旧バージョンで保存された localStorage から復元したとき、

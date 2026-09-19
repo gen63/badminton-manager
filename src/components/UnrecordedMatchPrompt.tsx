@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { WinnerSelectModal } from './WinnerSelectModal';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -34,6 +35,8 @@ export function UnrecordedMatchPrompt() {
   const matchHistory = useGameStore((s) => s.matchHistory);
   const players = usePlayerStore((s) => s.players);
   const recordScores = useSettingsStore((s) => s.recordScores);
+  const matchResultInputMode = useSettingsStore((s) => s.matchResultInputMode);
+  const navigate = useNavigate();
   const isGameStateLoaded = useSyncStatusStore((s) => s.isGameStateLoaded);
   const dismissedUntil = useUnrecordedDismissStore((s) => s.dismissedUntil);
   const dismissMatch = useUnrecordedDismissStore((s) => s.dismiss);
@@ -59,7 +62,17 @@ export function UnrecordedMatchPrompt() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canShow, matchHistory, currentUser, players, dismissedUntil, tick]);
 
-  if (!target) return null;
+  // 詳細入力モード: モーダルを出さず点数入力ページへ送る。
+  // 遷移前にスヌーズしておくことで、入力せずに戻ってきた直後に同じ試合で
+  // 再度プロンプトが発火して画面遷移がループするのを防ぐ（10 分後に再提示）。
+  // 入力して戻った場合は scoreA/scoreB が入るので target 自体が消える。
+  useEffect(() => {
+    if (!target || matchResultInputMode !== 'score') return;
+    dismissMatch(target.id);
+    navigate(`/score/${target.id}`, { state: { from: '/main' } });
+  }, [target, matchResultInputMode, dismissMatch, navigate]);
+
+  if (!target || matchResultInputMode === 'score') return null;
 
   const getPlayerName = (id: string) =>
     players.find((p) => p.id === id)?.name || '未設定';
