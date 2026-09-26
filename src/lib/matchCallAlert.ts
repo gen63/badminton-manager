@@ -108,6 +108,14 @@ export function playMatchCallChime(): void {
  * いずれも安全）。
  */
 export function installMatchCallAudioUnlock(): () => void {
+  // Chromium は音声一覧を非同期でロードし、初回の getVoices() が空を返す。
+  // 最初の呼び出しまでに日本語音声を選べるよう、ここでロードを始めさせておく。
+  try {
+    window.speechSynthesis?.getVoices?.();
+  } catch {
+    // 未対応環境では何もしない。
+  }
+
   const handleFirstInteraction = () => {
     document.removeEventListener('pointerdown', handleFirstInteraction);
     document.removeEventListener('keydown', handleFirstInteraction);
@@ -165,11 +173,7 @@ function removeCancelOnTapListener(): void {
  * 未対応環境・失敗時は throw しない。
  */
 export function cancelMatchCallSpeech(): void {
-  if (pendingSpeechTimeoutId !== null) {
-    clearTimeout(pendingSpeechTimeoutId);
-    pendingSpeechTimeoutId = null;
-  }
-  removeCancelOnTapListener();
+  clearPendingSpeech();
   if (!('speechSynthesis' in window)) return;
   try {
     window.speechSynthesis.cancel();
@@ -180,7 +184,8 @@ export function cancelMatchCallSpeech(): void {
 
 /**
  * `speechSynthesis` で読み上げる。未対応環境・失敗時は黙って何もしない
- * （throw しない）。発話前に `cancel()` して読み上げの積み残しを消す。
+ * （throw しない）。前の発話が残っていれば `cancel()` して消し、
+ * `CANCEL_SETTLE_MS` 待ってから話す（Windows の Edge / Chrome 対策）。
  *
  * 読み上げ中に画面のどこかをタップしたら即座に止められるよう、`speak()` の
  * 呼び出しと同時（同期的に、同じタイミングで）に `document` へ `pointerdown`
@@ -205,30 +210,107 @@ export function speakMatchCall(text: string): void {
   if (isPageHidden()) return;
 
   try {
+    // Chromium（Windows の Edge / Chrome）は cancel() 直後の speak() を捨てることが
+    // あるため、cancel() は前の発話が残っているときだけにし、その場合は
+    // `CANCEL_SETTLE_MS` 待ってから話す。残っていなければ従来どおり即座に話す。
+    const synth = window.speechSynthesis;
+    const busy = Boolean(synth.speaking || synth.pending);
+    if (!busy) {
+      // 保留中のタイマー・リスナーだけ片付ける（cancel() は呼ばない）。
+      clearPendingSpeech();
+      startSpeaking(text);
+      return;
+    }
     // 前回の発話が残っていれば、まずそのリスナーを解除してから cancel する。
     cancelMatchCallSpeech();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'ja-JP';
-
-    const handleTapCancel = () => {
-      // cancelMatchCallSpeech 内でリスナー解除も行われる。
-      cancelMatchCallSpeech();
-    };
-    activeCancelOnTapListener = handleTapCancel;
-    document.addEventListener('pointerdown', handleTapCancel);
-
-    utterance.onend = () => {
-      removeCancelOnTapListener();
-    };
-    utterance.onerror = () => {
-      removeCancelOnTapListener();
-    };
-
-    window.speechSynthesis.speak(utterance);
+    pendingSpeechTimeoutId = setTimeout(() => {
+      pendingSpeechTimeoutId = null;
+      // 待っている間にバックグラウンドへ回った場合は話さない。
+      if (isPageHidden()) return;
+      startSpeaking(text);
+    }, CANCEL_SETTLE_MS);
   } catch (error) {
     console.error('[matchCallAlert] speakMatchCall failed:', error);
   }
+}
+
+/** 前の発話を cancel() してから次の speak() までの待ち時間（ms）。 */
+export const CANCEL_SETTLE_MS = 100;
+
+/**
+ * 発話中の utterance への参照。Chromium は参照の切れた utterance を GC で回収し、
+ * 読み上げが途中で止まったり `onend` が来なかったりするため、終わるまで保持する。
+ */
+let activeUtterance: SpeechSynthesisUtterance | null = null;
+
+function clearPendingSpeech(): void {
+  if (pendingSpeechTimeoutId !== null) {
+    clearTimeout(pendingSpeechTimeoutId);
+    pendingSpeechTimeoutId = null;
+  }
+  removeCancelOnTapListener();
+}
+
+/**
+ * 端末の音声一覧から日本語の音声を選ぶ。一覧が未ロード・日本語音声なしなら null。
+ *
+ * `lang` だけ指定して `voice` を空にすると、Windows では既定音声（英語や
+ * 「Online (Natural)」系のネットワーク音声）に回されて無音になることがある。
+ * そのため端末内蔵（`localService`）の日本語音声（Microsoft Haruka / Ayumi 等）を
+ * 優先し、無ければネットワーク音声も含めた日本語音声を使う。
+ */
+export function pickJapaneseVoice(): SpeechSynthesisVoice | null {
+  let voices: SpeechSynthesisVoice[] = [];
+  try {
+    voices = window.speechSynthesis.getVoices?.() ?? [];
+  } catch {
+    return null;
+  }
+  const japanese = voices.filter((voice) =>
+    voice.lang?.replace('_', '-').toLowerCase().startsWith('ja'),
+  );
+  return japanese.find((voice) => voice.localService) ?? japanese[0] ?? null;
+}
+
+/**
+ * 実際に utterance を作って speak() する（内部ヘルパー）。
+ *
+ * タップキャンセル用のリスナーはここで `speak()` と同じタイミングで登録する
+ * （`speakMatchCall` の JSDoc 参照）。
+ */
+function startSpeaking(text: string): void {
+  const synth = window.speechSynthesis;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'ja-JP';
+  const voice = pickJapaneseVoice();
+  if (voice) utterance.voice = voice;
+
+  const handleTapCancel = () => {
+    // cancelMatchCallSpeech 内でリスナー解除も行われる。
+    cancelMatchCallSpeech();
+  };
+  activeCancelOnTapListener = handleTapCancel;
+  document.addEventListener('pointerdown', handleTapCancel);
+
+  utterance.onend = () => {
+    removeCancelOnTapListener();
+    if (activeUtterance === utterance) activeUtterance = null;
+  };
+  utterance.onerror = (event) => {
+    removeCancelOnTapListener();
+    if (activeUtterance === utterance) activeUtterance = null;
+    // interrupted / canceled は cancel() による正常な中断なので記録しない。
+    const reason = (event as SpeechSynthesisErrorEvent | undefined)?.error;
+    if (reason && reason !== 'interrupted' && reason !== 'canceled') {
+      console.warn('[matchCallAlert] speech error:', reason, voice?.name ?? '(default voice)');
+    }
+  };
+
+  activeUtterance = utterance;
+  // Chromium は speechSynthesis が内部的に一時停止のまま固まり、以降の speak() が
+  // キューに溜まるだけになることがあるため、話す前に resume() しておく。
+  synth.resume?.();
+  synth.speak(utterance);
 }
 
 /**

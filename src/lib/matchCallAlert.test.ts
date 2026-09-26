@@ -9,6 +9,8 @@ import {
   primeSpeechSynthesis,
   cancelMatchCallSpeech,
   installMatchCallSpeechHideGuard,
+  pickJapaneseVoice,
+  CANCEL_SETTLE_MS,
   getLastMatchCallSpeech,
   clearLastMatchCallSpeech,
   SPEECH_DELAY_MS,
@@ -265,20 +267,32 @@ describe('speakMatchCall / primeSpeechSynthesis', () => {
     vi.unstubAllGlobals();
   });
 
-  function stubSpeechSynthesis() {
+  function stubSpeechSynthesis(
+    options: { speaking?: boolean; voices?: Partial<SpeechSynthesisVoice>[] } = {},
+  ) {
     const speakMock = vi.fn();
     const cancelMock = vi.fn();
-    vi.stubGlobal('speechSynthesis', { cancel: cancelMock, speak: speakMock });
+    const resumeMock = vi.fn();
+    const synth = {
+      cancel: cancelMock,
+      speak: speakMock,
+      resume: resumeMock,
+      speaking: options.speaking ?? false,
+      pending: false,
+      getVoices: () => options.voices ?? [],
+    };
+    vi.stubGlobal('speechSynthesis', synth);
     class UtteranceMock {
       text: string;
       lang = '';
       volume = 1;
+      voice: Partial<SpeechSynthesisVoice> | null = null;
       constructor(text: string) {
         this.text = text;
       }
     }
     vi.stubGlobal('SpeechSynthesisUtterance', UtteranceMock);
-    return { speakMock, cancelMock, UtteranceMock };
+    return { speakMock, cancelMock, resumeMock, synth, UtteranceMock };
   }
 
   it('speechSynthesis 未対応環境（window に無い）で throw しない', () => {
@@ -292,14 +306,68 @@ describe('speakMatchCall / primeSpeechSynthesis', () => {
     expect(speakMock).not.toHaveBeenCalled();
   });
 
-  it('speak 前に cancel を呼び、lang=ja-JP で speak する', () => {
-    const { speakMock, cancelMock } = stubSpeechSynthesis();
+  it('前の発話が無ければ cancel せず、resume してから lang=ja-JP で即座に speak する', () => {
+    const { speakMock, cancelMock, resumeMock } = stubSpeechSynthesis();
     speakMatchCall('太郎さん');
-    expect(cancelMock).toHaveBeenCalledTimes(1);
+    expect(cancelMock).not.toHaveBeenCalled();
+    expect(resumeMock).toHaveBeenCalledTimes(1);
     expect(speakMock).toHaveBeenCalledTimes(1);
     const utterance = speakMock.mock.calls[0][0];
     expect(utterance.lang).toBe('ja-JP');
     expect(utterance.text).toBe('太郎さん');
+  });
+
+  it('前の発話が残っていれば cancel し、CANCEL_SETTLE_MS 待ってから speak する', () => {
+    const { speakMock, cancelMock } = stubSpeechSynthesis({ speaking: true });
+    vi.useFakeTimers();
+    try {
+      speakMatchCall('太郎さん');
+      expect(cancelMock).toHaveBeenCalledTimes(1);
+      expect(speakMock).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(CANCEL_SETTLE_MS);
+      expect(speakMock).toHaveBeenCalledTimes(1);
+      expect(speakMock.mock.calls[0][0].text).toBe('太郎さん');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancel 後の待ち時間中に画面タップでキャンセルすると speak しない', () => {
+    const { speakMock } = stubSpeechSynthesis({ speaking: true });
+    vi.useFakeTimers();
+    try {
+      speakMatchCall('太郎さん');
+      cancelMatchCallSpeech();
+      vi.advanceTimersByTime(CANCEL_SETTLE_MS);
+      expect(speakMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('日本語の端末内蔵音声を voice に指定する', () => {
+    const haruka = { name: 'Microsoft Haruka', lang: 'ja-JP', localService: true };
+    const { speakMock } = stubSpeechSynthesis({
+      voices: [
+        { name: 'Microsoft David', lang: 'en-US', localService: true },
+        { name: 'Microsoft Nanami Online (Natural)', lang: 'ja-JP', localService: false },
+        haruka,
+      ],
+    });
+    speakMatchCall('太郎さん');
+    expect(speakMock.mock.calls[0][0].voice).toBe(haruka);
+  });
+
+  it('pickJapaneseVoice: 内蔵音声が無ければネットワーク音声、日本語が無ければ null', () => {
+    const nanami = { name: 'Microsoft Nanami Online (Natural)', lang: 'ja-JP', localService: false };
+    stubSpeechSynthesis({ voices: [{ name: 'David', lang: 'en-US', localService: true }, nanami] });
+    expect(pickJapaneseVoice()).toBe(nanami);
+
+    stubSpeechSynthesis({ voices: [{ name: 'David', lang: 'en-US', localService: true }] });
+    expect(pickJapaneseVoice()).toBeNull();
+
+    stubSpeechSynthesis({ voices: [{ name: 'Kyoko', lang: 'ja_JP', localService: true }] });
+    expect(pickJapaneseVoice()?.name).toBe('Kyoko');
   });
 
   it('primeSpeechSynthesis は volume=0 の発話を speak する（冪等）', () => {
