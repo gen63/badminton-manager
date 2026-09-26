@@ -1005,10 +1005,17 @@ export function MainPage() {
     sortedWaitingPlayers.length + callableReservedCount >= playersPerCourt;
   const canAddCourt = courts.length < 3 && totalActiveCount >= (courts.length + 1) * playersPerCourt;
 
-  const handleSwapPlayer = async (courtId: number, position: number, newPlayerId: string) => {
+  // expectedOutgoingId: 画面上でそのスロットにいた人。他端末が先に入れ替えていたら
+  // transaction 側で中止する（同じメンバーが2箇所に乗る二重配置の防止）。
+  const handleSwapPlayer = async (
+    courtId: number,
+    position: number,
+    newPlayerId: string,
+    expectedOutgoingId: string,
+  ) => {
     if (position < 0 || position > 3) return;
     // CON2: コート更新と isResting=false への遷移を 1 transaction でアトミックに
-    await writer.swapPlayer(courtId, position as 0 | 1 | 2 | 3, newPlayerId);
+    await writer.swapPlayer(courtId, position as 0 | 1 | 2 | 3, newPlayerId, expectedOutgoingId);
   };
 
   const handleToggleRestWithLock = async (playerId: string) => {
@@ -1085,7 +1092,12 @@ export function MainPage() {
       }
       // コート上のメンバーが選択されている場合のみ交換
       if (selectedPlayer?.courtId !== undefined && selectedPlayer?.position !== undefined) {
-        const swapPromise = handleSwapPlayer(selectedPlayer.courtId, selectedPlayer.position, playerId);
+        const swapPromise = handleSwapPlayer(
+          selectedPlayer.courtId,
+          selectedPlayer.position,
+          playerId,
+          selectedPlayer.id,
+        );
         setSelectedPlayer(null);
         await swapPromise;
       } else {
@@ -1112,8 +1124,12 @@ export function MainPage() {
         // 旧実装は updateCourt × 2 の sequential await でレース / 部分失敗時に
         // 同じプレイヤーが両コートに乗る不整合があった。
         await writer.swapPositions(
-          { courtId: selectedPlayer.courtId, position: selectedPlayer.position as 0 | 1 | 2 | 3 },
-          { courtId, position: position as 0 | 1 | 2 | 3 },
+          {
+            courtId: selectedPlayer.courtId,
+            position: selectedPlayer.position as 0 | 1 | 2 | 3,
+            expectedPlayerId: selectedPlayer.id,
+          },
+          { courtId, position: position as 0 | 1 | 2 | 3, expectedPlayerId: playerId },
         );
       } else if (
         selectedPlayer.courtId !== undefined &&
@@ -1122,10 +1138,11 @@ export function MainPage() {
         await handleSwapPlayer(
           selectedPlayer.courtId,
           selectedPlayer.position,
-          playerId
+          playerId,
+          selectedPlayer.id,
         );
       } else if (courtId !== undefined && position !== undefined) {
-        await handleSwapPlayer(courtId, position, selectedPlayer.id);
+        await handleSwapPlayer(courtId, position, selectedPlayer.id, playerId);
       }
       setSelectedPlayer(null);
     }
@@ -1412,7 +1429,10 @@ export function MainPage() {
                   {hasPlayers ? (
                     <div className={`p-2 flex flex-col gap-2 ${courtBodyMinHeight}`}>
                       <div className="flex flex-col gap-1">
-                        {court.teamA.filter((id) => id).map((playerId, idx) => {
+                        {court.teamA.map((playerId, idx) => {
+                          // 空きスロットは描画しないが、idx は実際のポジションのまま使う
+                          // （filter 後の idx だと空きの後ろの人が別スロット扱いになる）
+                          if (!playerId) return null;
                           const playerGender = getPlayerGender(playerId);
                           const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
                           return (
@@ -1441,7 +1461,10 @@ export function MainPage() {
                       </div>
 
                       <div className="flex flex-col gap-1">
-                        {court.teamB.filter((id) => id).map((playerId, idx) => {
+                        {court.teamB.map((playerId, idx) => {
+                          // 空きスロットは描画しないが、idx は実際のポジションのまま使う
+                          // （filter 後の idx だと空きの後ろの人が別スロット扱いになる）
+                          if (!playerId) return null;
                           const playerGender = getPlayerGender(playerId);
                           const textColor = playerGender === 'M' ? 'text-blue-600' : playerGender === 'F' ? 'text-pink-600' : 'text-muted-foreground';
                           return (

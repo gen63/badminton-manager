@@ -2287,6 +2287,47 @@ describe('sessionMutations - autoAssignAndFulfill (H4 fix)', () => {
     expect(next.courts[0]).toMatchObject({ teamA: ['a', 'b'], isPlaying: true, startedAt: 5000 });
     expect(next.courts[1]).toMatchObject({ teamA: ['e', 'f'], isPlaying: false, assignedAt: 5000 });
   });
+
+  it('配置するメンバーが他端末の操作で既に別コートにいたら、書き込まずに conflict', async () => {
+    const state = baseState({
+      courts: [makeCourt(1), makeCourt(2, { teamA: ['a', 'x'], teamB: ['y', 'z'] })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await expect(
+      autoAssignAndFulfill(
+        's',
+        [{ courtId: 1, teamA: ['a', 'b'], teamB: ['c', 'd'], isPlaying: false, startedAt: 0, assignedAt: 5000 }],
+        [],
+        5000,
+      ),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('配置し直すコート自身に乗っていたメンバーは再配置してよい', async () => {
+    const state = baseState({
+      courts: [makeCourt(1, { teamA: ['a', 'b'], teamB: ['c', 'd'] })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await autoAssignAndFulfill(
+      's',
+      [{ courtId: 1, teamA: ['a', 'c'], teamB: ['b', 'd'], isPlaying: false, startedAt: 0, assignedAt: 5000 }],
+      [],
+      5000,
+    );
+
+    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
+  });
 });
 
 // =============================================================================
@@ -2488,6 +2529,55 @@ describe('sessionMutations - swapPlayer (CON2 fix)', () => {
     expect(next.courts[0].restingPlayerIds).toEqual([]);
     expect(next.players.find((p: { id: string }) => p.id === 'rest').isResting).toBe(true);
   });
+
+  it('入れるメンバーが他端末の操作で既に別コートにいたら、二重配置せず conflict', async () => {
+    // 端末A/Bが同じ待機メンバー w1 を別々のコートへ同時に入れたケース（B が先に確定）
+    const state = baseState({
+      players: [makePlayer('p1'), makePlayer('p2'), makePlayer('w1')],
+      courts: [
+        makeCourt(1, { teamA: ['p1', 'a'], teamB: ['b', 'c'] }),
+        makeCourt(2, { teamA: ['w1', 'd'], teamB: ['e', 'f'] }),
+      ],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await expect(swapPlayer('s', 1, 0, 'w1', 'p1')).rejects.toMatchObject({ code: 'conflict' });
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('入れるメンバーが同じコートの別スロットにいても conflict（コート内の二重配置防止）', async () => {
+    const state = baseState({
+      players: [makePlayer('p1'), makePlayer('w1')],
+      courts: [makeCourt(1, { teamA: ['p1', 'w1'], teamB: ['b', 'c'] })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await expect(swapPlayer('s', 1, 0, 'w1')).rejects.toMatchObject({ code: 'conflict' });
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('スロットの中身が画面で見ていた人から変わっていたら conflict', async () => {
+    const state = baseState({
+      players: [makePlayer('p9'), makePlayer('w1')],
+      courts: [makeCourt(1, { teamA: ['p9', 'a'], teamB: ['b', 'c'] })],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await expect(swapPlayer('s', 1, 0, 'w1', 'p1')).rejects.toMatchObject({ code: 'conflict' });
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+  });
 });
 
 describe('sessionMutations - swapPositions (CON5 fix)', () => {
@@ -2596,6 +2686,30 @@ describe('sessionMutations - swapPositions (CON5 fix)', () => {
     const next = mockTransactionUpdate.mock.calls[0][1].gameState;
     expect(next.courts[0].restingPlayerIds).toEqual([]);
     expect(next.courts[1].restingPlayerIds).toEqual(['A']);
+  });
+
+  it('スロットの中身が画面で見ていた人から変わっていたら入れ替えず conflict', async () => {
+    // 端末Aが p1⇔p5 を選んでいる間に、端末Bが p1 を別の人と交換済み
+    const state = baseState({
+      courts: [
+        makeCourt(1, { teamA: ['q1', 'p2'], teamB: ['p3', 'p4'] }),
+        makeCourt(2, { teamA: ['p5', 'p6'], teamB: ['p7', 'p8'] }),
+      ],
+    });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state }),
+      ref: { __docRef: true },
+    });
+
+    await expect(
+      swapPositions(
+        's',
+        { courtId: 1, position: 0, expectedPlayerId: 'p1' },
+        { courtId: 2, position: 0, expectedPlayerId: 'p5' },
+      ),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
   });
 });
 

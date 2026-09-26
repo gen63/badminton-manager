@@ -130,15 +130,22 @@ export function useSessionWriter(options?: SessionWriterOptions) {
   );
 
   const swapPlayer = useCallback(
-    (courtId: number, position: 0 | 1 | 2 | 3, newPlayerId: string) =>
-      handle('swapPlayer', (sid) => sm.swapPlayer(sid, courtId, position, newPlayerId)),
+    (
+      courtId: number,
+      position: 0 | 1 | 2 | 3,
+      newPlayerId: string,
+      expectedOutgoingId?: string,
+    ) =>
+      handle('swapPlayer', (sid) =>
+        sm.swapPlayer(sid, courtId, position, newPlayerId, expectedOutgoingId),
+      ),
     [handle],
   );
 
   const swapPositions = useCallback(
     (
-      posA: { courtId: number; position: 0 | 1 | 2 | 3 },
-      posB: { courtId: number; position: 0 | 1 | 2 | 3 },
+      posA: { courtId: number; position: 0 | 1 | 2 | 3; expectedPlayerId?: string },
+      posB: { courtId: number; position: 0 | 1 | 2 | 3; expectedPlayerId?: string },
     ) => handle('swapPositions', (sid) => sm.swapPositions(sid, posA, posB)),
     [handle],
   );
