@@ -1400,6 +1400,23 @@ export function updateMatch(
  * await していたため、N+M 回の round-trip + 中間状態の露出があった。
  * これを単一 transaction にまとめてアトミックにする（H4）。
  */
+/** コート上（全スロット）にいるプレイヤー ID の集合。空きスロット `''` は含めない。 */
+function playerIdsOnCourts(courts: Court[]): Set<string> {
+  return new Set(courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id !== ''));
+}
+
+/**
+ * 操作の前提（画面で見ていたコートの並び）が他端末の更新で崩れていたときのエラー。
+ * そのまま書くと同じメンバーが2箇所に乗るなどの不整合になるため、書き込まずに
+ * `conflict` として呼び出し側へ返す（トーストで「他のユーザーが更新しました」）。
+ */
+function staleCourtError(): SessionError {
+  return new SessionError(
+    '他のユーザーがコートを更新しました。画面を確認してもう一度お試しください',
+    'conflict',
+  );
+}
+
 export interface AutoAssignSpec {
   courtId: number;
   teamA: [string, string];
@@ -1419,6 +1436,20 @@ export function autoAssignAndFulfill(
   now: number = Date.now(),
 ) {
   return mutateGameState(sessionId, (state) => {
+    // 配置はローカル（古いかもしれない）待機リストから計算している。その間に他端末が
+    // 同じメンバーを別コートへ入れていたら、そのまま書くと二重配置になるので中止する。
+    const targetCourtIds = new Set(assignments.map((a) => a.courtId));
+    const onOtherCourts = playerIdsOnCourts(
+      state.courts.filter((c) => !targetCourtIds.has(c.id)),
+    );
+    const assignedIds = assignments.flatMap((a) => [...a.teamA, ...a.teamB]).filter((id) => id !== '');
+    if (
+      assignedIds.some((id) => onOtherCourts.has(id)) ||
+      new Set(assignedIds).size !== assignedIds.length
+    ) {
+      throw staleCourtError();
+    }
+
     let next = state;
     for (const id of fulfilledReservationIds) {
       next = computeFulfillReservation(next, id, now);
@@ -1454,16 +1485,33 @@ export function autoAssignAndFulfill(
  * メンバーは積まず、computeFinishAndContinue の予約ルール（全員出場で予約消化
  * → 待機、未成立予約が残れば休憩）に委ねる。
  * 外れたメンバーが restingPlayerIds に含まれる場合は、その場で休憩へ戻す。
+ *
+ * 同時操作対策: 入れるメンバーが既にどこかのコートにいる場合（他端末が先に配置/交換
+ * した）と、`expectedOutgoingId` 指定時にスロットの中身が画面で見ていた人から
+ * 変わっている場合は、書き込まずに `conflict` を投げる。前者を素通しすると同じ
+ * メンバーが2箇所に乗る。
  */
 export function swapPlayer(
   sessionId: string,
   courtId: number,
   position: 0 | 1 | 2 | 3,
   newPlayerId: string,
+  expectedOutgoingId?: string,
 ) {
   return mutateGameState(sessionId, (state) => {
     const court = state.courts.find((c) => c.id === courtId);
     if (!court) return state;
+    const currentAtSlot =
+      position === 0 || position === 1
+        ? court.teamA[position]
+        : court.teamB[(position - 2) as 0 | 1];
+    if (expectedOutgoingId !== undefined && currentAtSlot !== expectedOutgoingId) {
+      throw staleCourtError();
+    }
+    if (currentAtSlot === newPlayerId) return state;
+    if (playerIdsOnCourts(state.courts).has(newPlayerId)) {
+      throw staleCourtError();
+    }
 
     const newTeamA: [string, string] = [court.teamA[0], court.teamA[1]];
     const newTeamB: [string, string] = [court.teamB[0], court.teamB[1]];
@@ -1526,11 +1574,14 @@ export function swapPlayer(
  *     スワップを巻き戻すレースがあった。
  *
  * フレッシュなリモート状態を読んでスワップを計算するのでレース耐性もある。
+ * さらに `expectedPlayerId` を渡すと、各スロットの中身が画面で見ていた人から
+ * 変わっていた場合（他端末が先に交換した）は書き込まずに `conflict` を投げる。
+ * 位置だけで入れ替えると、意図しないメンバーを動かしてしまうため。
  */
 export function swapPositions(
   sessionId: string,
-  posA: { courtId: number; position: 0 | 1 | 2 | 3 },
-  posB: { courtId: number; position: 0 | 1 | 2 | 3 },
+  posA: { courtId: number; position: 0 | 1 | 2 | 3; expectedPlayerId?: string },
+  posB: { courtId: number; position: 0 | 1 | 2 | 3; expectedPlayerId?: string },
 ) {
   return mutateGameState(sessionId, (state) => {
     const courtA = state.courts.find((c) => c.id === posA.courtId);
@@ -1554,6 +1605,12 @@ export function swapPositions(
 
     const playerAtA = getSlot(courtA, posA.position);
     const playerAtB = getSlot(courtB, posB.position);
+    if (
+      (posA.expectedPlayerId !== undefined && playerAtA !== posA.expectedPlayerId) ||
+      (posB.expectedPlayerId !== undefined && playerAtB !== posB.expectedPlayerId)
+    ) {
+      throw staleCourtError();
+    }
 
     if (posA.courtId === posB.courtId) {
       // 同一コート: 両ポジションを 1 回の computeUpdateCourt で更新
