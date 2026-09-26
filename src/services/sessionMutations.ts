@@ -27,6 +27,7 @@ import {
   resolveStartedAtFromAssignedAt,
 } from '../lib/gameOperations';
 import { sanitizePlayerName } from '../lib/inputValidation';
+import { getPracticeEndPhase, isPastLastCall } from '../lib/practiceEndPhase';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
@@ -1693,6 +1694,44 @@ export async function resizeCourtsWithConfig(
   }
 }
 
+/**
+ * 練習終了日時（`session.config.practiceEndTime`）を設定する。`null` で解除
+ * （終了前の配置停止を行わない旧挙動に戻る）。gameState は触らない。
+ *
+ * 解除はフィールド削除ではなく 0 を書く。自動作成の再実行は「未設定（undefined）の
+ * 旧セッション」にだけ E-ToMo の終了時刻を補完するので、管理者の解除を区別して
+ * 残すため。
+ * 詳細: docs/plans/2026-09-26-practice-end-time.md
+ */
+export async function setPracticeEndTime(
+  sessionId: string,
+  practiceEndTime: number | null,
+): Promise<void> {
+  const _db = requireDb();
+  const ref = doc(_db, 'sessions', sessionId);
+
+  try {
+    await runTransaction(_db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) {
+        throw new SessionError('セッションが見つかりません', 'not-found');
+      }
+      transaction.update(ref, {
+        'config.practiceEndTime': practiceEndTime ?? 0,
+        updatedAt: serverTimestamp(),
+      });
+    });
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === 'aborted') {
+      throw new SessionError(
+        '他のユーザーが更新しました。もう一度お試しください',
+        'conflict',
+      );
+    }
+    throw error;
+  }
+}
+
 // =============================================================================
 // Composite operations: 試合開始
 // =============================================================================
@@ -1801,6 +1840,8 @@ export async function finishMatchAndContinue(
   /** 連続モード配置の結果（成功 / ブロック理由）。GAMEOPS4: 呼び出し側で toast 表示用。 */
   continuousNextApplied?: boolean;
   continuousError?: string;
+  /** 練習終了20分前を過ぎていたため、連続モードを OFF にして次の配置を見送った。 */
+  continuousStoppedForPracticeEnd?: boolean;
 }> {
   if (matchStartedAt <= 0) {
     throw new SessionError(
@@ -1837,7 +1878,15 @@ export async function finishMatchAndContinue(
       const gameMode = gameModeFromPracticeType(remoteSettings?.practiceType);
       // 練習開始日時はセッション設定。同じ snapshot から読めるので追加 read は不要。
       // 待機時間優先モードの滞在時間算出に必須（欠損時のみ従来どおり now 相当）。
-      const remoteConfig = snap.data().config as { practiceStartTime?: number } | undefined;
+      const remoteConfig = snap.data().config as
+        | { practiceStartTime?: number; practiceEndTime?: number }
+        | undefined;
+      // 練習終了20分前を過ぎたら新しい試合は入れない。どの端末から終了しても同じ
+      // 判定になるよう transaction 内で見て、連続モード自体も同じ書き込みで OFF にする。
+      const remoteContinuous = remoteSettings?.continuousMatchMode ?? false;
+      const pastLastCall = isPastLastCall(
+        getPracticeEndPhase(remoteConfig?.practiceEndTime, Date.now()),
+      );
       const computed = computeFinishAndContinue(remote, courtId, {
         continuousMatchMode: remoteSettings?.continuousMatchMode ?? false,
         // 配置モードはセッション設定を優先。リモート未設定の旧セッションのみ、
@@ -1855,16 +1904,21 @@ export async function finishMatchAndContinue(
         genderBalanceMode: remoteSettings?.genderBalanceMode ?? true,
         reservationBlockThreshold: remoteSettings?.reservationBlockThreshold,
         practiceStartTime: remoteConfig?.practiceStartTime,
-        skipContinuous: options.skipContinuous,
+        skipContinuous: options.skipContinuous || pastLastCall,
       });
+      const continuousStoppedForPracticeEnd = pastLastCall && remoteContinuous;
+      const nextState = continuousStoppedForPracticeEnd
+        ? computeSetSetting(computed.newState, 'continuousMatchMode', false)
+        : computed.newState;
 
-      transaction.update(ref, buildGameStatePayload(computed.newState));
+      transaction.update(ref, buildGameStatePayload(nextState));
 
       return {
         result: 'success' as const,
-        writtenState: computed.newState,
+        writtenState: nextState,
         continuousNextApplied: computed.continuousNextApplied,
         continuousError: computed.continuousError,
+        continuousStoppedForPracticeEnd,
       };
     });
   } catch (error: unknown) {

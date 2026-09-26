@@ -2138,6 +2138,66 @@ describe('sessionMutations - finishMatchAndContinue', () => {
     expect(result.result).toBe('success');
     expect(mockTransactionUpdate).toHaveBeenCalled();
   });
+
+  // 練習終了20分前以降は連続モードを OFF にして次の配置を見送る
+  // （docs/plans/2026-09-26-practice-end-time.md）
+  function playingWithWaiting(startedAt: number) {
+    const state = playingSince(startedAt);
+    return {
+      ...state,
+      players: [
+        ...state.players,
+        ...['p5', 'p6', 'p7', 'p8'].map((id) => makePlayer(id, { name: id, isResting: false })),
+      ],
+      settings: { ...(state.settings ?? {}), continuousMatchMode: true, forceBulkAssignment: false },
+    };
+  }
+
+  it('終了20分前を過ぎていたら連続モードを OFF にし、次の配置をしない', async () => {
+    const startedAt = Date.now() - 6 * 60 * 1000;
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        gameState: playingWithWaiting(startedAt),
+        config: { practiceStartTime: Date.now() - 3 * 60 * 60 * 1000, practiceEndTime: Date.now() + 18 * 60 * 1000 },
+      }),
+      ref: { __docRef: true },
+    });
+
+    const result = await finishMatchAndContinue('s', 1, startedAt, {
+      matchId: 'm1',
+      useStayDurationPriority: false,
+      forceBulkAssignment: false,
+    });
+    expect(result.result).toBe('success');
+    expect(result.continuousStoppedForPracticeEnd).toBe(true);
+    expect(result.continuousNextApplied).toBe(false);
+    expect(result.writtenState?.settings?.continuousMatchMode).toBe(false);
+    expect(result.writtenState?.courts[0].isPlaying).toBe(false);
+    expect(result.writtenState?.courts[0].teamA).toEqual(['', '']);
+  });
+
+  it('終了時刻が先（20分より前）なら連続モードはそのまま', async () => {
+    const startedAt = Date.now() - 6 * 60 * 1000;
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        gameState: playingWithWaiting(startedAt),
+        config: { practiceStartTime: Date.now() - 60 * 60 * 1000, practiceEndTime: Date.now() + 60 * 60 * 1000 },
+      }),
+      ref: { __docRef: true },
+    });
+
+    const result = await finishMatchAndContinue('s', 1, startedAt, {
+      matchId: 'm1',
+      useStayDurationPriority: false,
+      forceBulkAssignment: false,
+    });
+    expect(result.result).toBe('success');
+    expect(result.continuousStoppedForPracticeEnd).toBe(false);
+    expect(result.continuousNextApplied).toBe(true);
+    expect(result.writtenState?.settings?.continuousMatchMode).toBe(true);
+  });
 });
 
 // =============================================================================

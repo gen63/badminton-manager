@@ -30,6 +30,7 @@ import {
 import iconv from 'iconv-lite';
 import type { GameState } from '../src/services/sessionService';
 import { AUTO_SESSION_BOT_CREATOR } from '../src/constants/autoSession';
+import { buildPracticeEndTime } from '../src/lib/practiceEndPhase';
 import type { Player } from '../src/types/player';
 
 // ============================================================
@@ -616,6 +617,9 @@ function buildSessionData(
   defaultAnnouncementText?: string,
 ) {
   const practiceStartTime = buildPracticeStartTime(targetDate, event.startTime);
+  // E-ToMo のタイトル「18:30〜21:30」の終了側。終了20分前以降の配置停止に使う。
+  // 詳細: docs/plans/2026-09-26-practice-end-time.md
+  const practiceEndTime = buildPracticeEndTime(practiceStartTime, event.endTime);
   const gameMode = event.note === '単' ? 'singles' : 'doubles';
 
   const players = event.participants.map((name) => {
@@ -638,7 +642,14 @@ function buildSessionData(
   const presentAdmins = AUTO_SESSION_ADMINS.filter((name) => event.participants.includes(name));
 
   return {
-    config: { courtCount: 1, targetScore: 15, practiceStartTime, gym: event.venue, gameMode },
+    config: {
+      courtCount: 1,
+      targetScore: 15,
+      practiceStartTime,
+      ...(practiceEndTime !== null && { practiceEndTime }),
+      gym: event.venue,
+      gameMode,
+    },
     // 作成者は AUTO_SESSION_ADMINS の序列で参加者に含まれる先頭のメンバー。
     // 誰も居なければ sentinel（bot）に留め、初回参加者が作成者を引き継ぐ既存挙動を温存する。
     createdBy: presentAdmins[0] ?? AUTO_SESSION_BOT_CREATOR,
@@ -910,7 +921,7 @@ async function syncSessionRoster(
   sessionId: string,
   event: EtomoEventDetail,
   memberMap: Map<string, MemberData>,
-): Promise<RosterSyncResult> {
+): Promise<RosterSyncResult & { practiceEndTimeBackfilled: boolean }> {
   const docRef = doc(db, 'sessions', sessionId);
 
   return await runTransaction(db, async (transaction) => {
@@ -926,16 +937,29 @@ async function syncSessionRoster(
 
     const result = computeRosterSync(gameState, event, memberMap);
     const { state: nextState, added, removed, ratingUpdated } = result;
+    const rosterChanged = added.length > 0 || removed.length > 0 || ratingUpdated.length > 0;
 
-    if (added.length > 0 || removed.length > 0 || ratingUpdated.length > 0) {
+    // 終了時刻導入前に作られたセッションへの補完。管理者が設定画面で変更・解除した
+    // 値を上書きしないよう、フィールドが一度も書かれていない（undefined）ときだけ入れる
+    // （設定画面の解除は 0 を書くので、ここでは補完されない）。
+    const config = data.config as { practiceStartTime?: number; practiceEndTime?: number } | undefined;
+    const backfillEndTime =
+      config?.practiceEndTime === undefined && config?.practiceStartTime
+        ? buildPracticeEndTime(config.practiceStartTime, event.endTime)
+        : null;
+
+    if (rosterChanged || backfillEndTime !== null) {
       transaction.update(docRef, {
-        gameState: sanitize(nextState),
-        registeredPlayers: nextState.players.map((p) => p.name),
+        ...(rosterChanged && {
+          gameState: sanitize(nextState),
+          registeredPlayers: nextState.players.map((p) => p.name),
+        }),
+        ...(backfillEndTime !== null && { 'config.practiceEndTime': backfillEndTime }),
         updatedAt: serverTimestamp(),
       });
     }
 
-    return result;
+    return { ...result, practiceEndTimeBackfilled: backfillEndTime !== null };
   });
 }
 
@@ -1191,8 +1215,11 @@ async function processEvents(
           continue;
         }
         console.log(`  -> Already created (${existingSessionId}), syncing roster`);
-        const { added, removed, skippedRemovals, sessionStarted, ratingUpdated } =
+        const { added, removed, skippedRemovals, sessionStarted, ratingUpdated, practiceEndTimeBackfilled } =
           await syncSessionRoster(db, existingSessionId, event, memberMap);
+        if (practiceEndTimeBackfilled) {
+          console.log(`  -> Practice end time backfilled (${event.endTime})`);
+        }
         const changed = added.length > 0 || removed.length > 0 || ratingUpdated.length > 0;
         if (changed) {
           console.log(

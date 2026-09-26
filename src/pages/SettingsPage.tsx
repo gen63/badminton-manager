@@ -15,6 +15,7 @@ import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
 import { SessionQrCode } from '../components/SessionQrCode';
+import { PracticeEndTimeSetting } from '../components/PracticeEndTimeSetting';
 import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2, StopCircle, ClipboardList, Link as LinkIcon, Copy, QrCode, ChevronDown } from 'lucide-react';
 
 export function SettingsPage() {
@@ -406,6 +407,13 @@ export function SettingsPage() {
             コート設定
           </h2>
           <div className="space-y-3">
+            <PracticeEndTimeSetting
+              key={session.config.practiceEndTime ?? 'none'}
+              practiceStartTime={session.config.practiceStartTime}
+              practiceEndTime={session.config.practiceEndTime}
+              onSave={writer.setPracticeEndTime}
+            />
+
             <div>
               <label className="text-xs font-semibold text-gray-700 mb-1.5 block">練習種別</label>
               <div className="flex gap-2">
