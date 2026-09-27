@@ -4,6 +4,11 @@ export interface SessionConfig {
   courtCount: number;
   targetScore: number;
   practiceStartTime: number; // 練習開始日時（Unix timestamp）
+  /**
+   * 練習終了日時（Unix timestamp）。未設定の旧セッション・手動作成セッション・
+   * 管理者が解除したセッション（0）は終了前の配置停止を行わない。詳細: docs/plans/2026-09-26-practice-end-time.md
+   */
+  practiceEndTime?: number;
   gym?: string; // 体育館名
   gameMode?: GameMode; // シングルス/ダブルス（デフォルト: doubles）
 }

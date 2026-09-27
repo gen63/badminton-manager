@@ -438,6 +438,8 @@ describe('buildSessionData', () => {
     expect(data.config.gym).toBe('千川館');
     expect(data.config.gameMode).toBe('doubles');
     expect(formatPracticeDate(new Date(data.config.practiceStartTime))).toBe('2026-04-09');
+    // E-ToMo の「18:30〜21:30」の終了側を練習終了日時として持つ
+    expect(data.config.practiceEndTime).toBe(new Date(2026, 3, 9, 21, 30).getTime());
     expect(data.etomoEventId).toBe('123');
     expect(data.gameState.players).toHaveLength(2);
     expect(data.gameState.players[0].name).toBe('田中太郎');

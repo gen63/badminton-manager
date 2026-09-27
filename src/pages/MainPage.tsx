@@ -29,7 +29,9 @@ import { CourtTimer } from '../components/CourtTimer';
 import { CourtCardFrame } from '../components/CourtCardFrame';
 import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { FinishOperationGuide } from '../components/FinishOperationGuide';
-import { predictNextMatchPlayers } from '../lib/nextMatchPrediction';
+import { EMPTY_PREDICTION, predictNextMatchPlayers } from '../lib/nextMatchPrediction';
+import { usePracticeEndPhase } from '../hooks/usePracticeEndPhase';
+import { formatHHMM, isPastLastCall, PRACTICE_CLOSED_MS, PRACTICE_LAST_CALL_MS } from '../lib/practiceEndPhase';
 import {
   canFinishGame,
   buildFinishBlockedMessage,
@@ -107,8 +109,22 @@ export function MainPage() {
   const writer = useSessionWriterWithToast(toast);
   const isGameStateLoaded = useSyncStatusStore((s) => s.isGameStateLoaded);
 
+  // 練習終了時刻に向けた進行段階。終了20分前以降は新しい試合を入れない
+  // （連続モード OFF・手動配置は確認・次の試合の予測/呼び出しを止める）、
+  // 15分前で完全終了の案内を出す。
+  // 詳細: docs/plans/2026-09-26-practice-end-time.md
+  const practiceEndTime = session?.config.practiceEndTime;
+  const practiceEndPhase = usePracticeEndPhase(practiceEndTime);
+  const pastLastCall = isPastLastCall(practiceEndPhase);
+
   // 連続クリックでトグルが打ち消し合うのを防ぐガード（CON1）。
   const continuousModeToggle = useGuardedAction(async (next: boolean) => {
+    // 終了20分前以降は新しい試合を入れない運用なので ON にさせない。
+    // 延長するときは会計ページで終了時刻を変える。
+    if (next && pastLastCall) {
+      toast.warning('練習終了20分前を過ぎているため連続モードはONにできません（延長は会計ページで終了時刻を変更）');
+      return;
+    }
     await writer.setContinuousMatchMode(next);
   });
   const rosterToggle = useGuardedAction(async (playerId: string) => {
@@ -133,6 +149,16 @@ export function MainPage() {
   const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
   const matchCallAlert = useSettingsStore((s) => s.matchCallAlert);
   const setMatchCallAlert = useSettingsStore((s) => s.setMatchCallAlert);
+
+  // 終了20分前を跨いだら連続モードを OFF にする。試合終了の transaction でも同じ
+  // 判定で OFF にして次の配置を見送るので、これは「次の終了を待たずにトグル表示を
+  // 実態に合わせる」ための補助。書き込みの重複を減らすため管理者端末だけが行う
+  // （トグル自体も管理者にしか見えない）。
+  useEffect(() => {
+    if (!pastLastCall || !continuousMatchMode || !isGameStateLoaded || !isAdmin()) return;
+    void writer.setContinuousMatchMode(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- isAdmin is a stable Zustand selector
+  }, [pastLastCall, continuousMatchMode, isGameStateLoaded, writer]);
   const adminMatchCallAnnounce = useSettingsStore((s) => s.adminMatchCallAnnounce);
   const finishHoldToConfirm = useSettingsStore((s) => s.finishHoldToConfirm);
 
@@ -510,8 +536,10 @@ export function MainPage() {
   // 次の試合に入るメンバーの予測（配置アルゴリズムの空打ち）。
   // 空きコートがあればその配置結果、全コート稼働中はプレイ中の各コートが
   // 終わったケースを全部シミュレートし、全ケース共通 = ほぼ確定 / 一部のみ = 候補。
+  // 終了20分前以降は次の試合が無いので予測を空にする。これで予測バー・待機ガイド・
+  // 呼び出し通知が止まり、終了操作も誰でもできる（担当不在時のフォールバック）。
   const nextMatchPrediction = useMemo(
-    () => predictNextMatchPlayers(players, courts, matchHistory, reservations, {
+    () => pastLastCall ? EMPTY_PREDICTION : predictNextMatchPlayers(players, courts, matchHistory, reservations, {
       practiceStartTime: session?.config.practiceStartTime,
       useStayDurationPriority,
       gameMode,
@@ -520,7 +548,7 @@ export function MainPage() {
       reservationBlockThreshold,
       pairPreferences,
     }),
-    [players, courts, matchHistory, reservations, session?.config.practiceStartTime,
+    [pastLastCall, players, courts, matchHistory, reservations, session?.config.practiceStartTime,
       useStayDurationPriority, gameMode, lateBalanceMode, genderBalanceMode, reservationBlockThreshold,
       pairPreferences],
   );
@@ -777,6 +805,12 @@ export function MainPage() {
   const pendingReservations = reservations.filter(r => r.status === 'pending');
 
   const handleAutoAssign = async (courtId?: number) => {
+    if (pastLastCall && practiceEndTime) {
+      const confirmed = window.confirm(
+        `練習終了（${formatHHMM(practiceEndTime)}）の20分前を過ぎています。新しい試合を配置しますか？`
+      );
+      if (!confirmed) return;
+    }
     try {
       let courtsToAssign: number[];
       if (courtId) {
@@ -915,8 +949,11 @@ export function MainPage() {
       // undo は Firestore へ書き戻すので全員の画面が戻る（スタックは押した端末のみ）。
       // トーストは重ねると重なって読めないため、連続配置の通知を出したときは譲る。
       if (!notified) {
+        const endNote = res.continuousStoppedForPracticeEnd
+          ? '（終了20分前のため連続モードをOFFにしました）'
+          : '';
         toast.showToast(
-          `${courts.length > 1 ? `${courtId}コート` : '試合'}を終了しました`,
+          `${courts.length > 1 ? `${courtId}コート` : '試合'}を終了しました${endNote}`,
           'info',
           FINISH_UNDO_TOAST_MS,
           { label: '取り消す', onClick: () => void undo() },
@@ -1373,7 +1410,28 @@ export function MainPage() {
         );
       })()}
 
-      {assignmentGate !== 'free' && (
+      {practiceEndTime && practiceEndPhase !== 'normal' && (
+        <div
+          className={`border-b px-4 py-2.5 flex items-center justify-center gap-2 ${
+            practiceEndPhase === 'closed'
+              ? 'bg-red-50 border-red-200'
+              : 'bg-amber-50 border-amber-200'
+          }`}
+          role="status"
+        >
+          <span
+            className={`text-xs font-medium text-center ${
+              practiceEndPhase === 'closed' ? 'text-red-800' : 'text-amber-800'
+            }`}
+          >
+            {practiceEndPhase === 'closed'
+              ? `🏁 練習終了（${formatHHMM(practiceEndTime - PRACTICE_CLOSED_MS)}〜）。試合を終えて片付けをお願いします`
+              : `⏰ ラスト（${formatHHMM(practiceEndTime - PRACTICE_LAST_CALL_MS)}〜）。新しい試合は入れません`}
+          </span>
+        </div>
+      )}
+
+      {!pastLastCall && assignmentGate !== 'free' && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-center gap-2">
           <span className="text-xs text-amber-800 font-medium text-center">
             {assignmentGate === 'waiting'

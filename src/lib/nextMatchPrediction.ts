@@ -77,7 +77,7 @@ export interface NextMatchPredictionOptions {
   pairPreferences?: PairPreference[];
 }
 
-const EMPTY_PREDICTION: NextMatchPrediction = {
+export const EMPTY_PREDICTION: NextMatchPrediction = {
   certainIds: new Set(),
   likelyIds: new Set(),
   appearanceRate: new Map(),
