@@ -31,7 +31,7 @@ import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { FinishOperationGuide } from '../components/FinishOperationGuide';
 import { EMPTY_PREDICTION, predictNextMatchPlayers } from '../lib/nextMatchPrediction';
 import { usePracticeEndPhase } from '../hooks/usePracticeEndPhase';
-import { buildPracticeEndAnnouncement, formatHHMM, isPastLastCall, PRACTICE_CLOSED_MS, PRACTICE_LAST_CALL_MS, shouldAnnouncePracticeEndPhase, type PracticeEndPhase } from '../lib/practiceEndPhase';
+import { buildPracticeEndAnnouncement, formatHHMM, isPastLastCall, PRACTICE_CLOSED_MS, PRACTICE_LAST_CALL_MS, resolvePracticeEndTime, shouldAnnouncePracticeEndPhase, type PracticeEndPhase } from '../lib/practiceEndPhase';
 import {
   canFinishGame,
   buildFinishBlockedMessage,
@@ -113,7 +113,8 @@ export function MainPage() {
   // （連続モード OFF・手動配置は確認・次の試合の予測/呼び出しを止める）、
   // 15分前で完全終了の案内を出す。
   // 詳細: docs/plans/2026-09-26-practice-end-time.md
-  const practiceEndTime = session?.config.practiceEndTime;
+  // 未設定なら練習開始の3時間後（resolvePracticeEndTime）。
+  const practiceEndTime = resolvePracticeEndTime(session?.config);
   const practiceEndPhase = usePracticeEndPhase(practiceEndTime);
   const pastLastCall = isPastLastCall(practiceEndPhase);
 

@@ -8,7 +8,7 @@ import { useGameStore } from '../stores/gameStore';
 import { sendAccountingToSheets } from '../lib/sheetsApi';
 import { updateSession } from '../services/sessionService';
 import { GYM_OPTIONS } from '../types/session';
-import { buildPracticeEndTime, formatHHMM, PRACTICE_CLOSED_MS, PRACTICE_LAST_CALL_MS } from '../lib/practiceEndPhase';
+import { buildPracticeEndTime, formatHHMM, PRACTICE_CLOSED_MS, PRACTICE_LAST_CALL_MS, resolvePracticeEndTime } from '../lib/practiceEndPhase';
 import { useDevMode } from '../hooks/useDevMode';
 import { DollarSign, Copy, Upload, MapPin, Clock } from 'lucide-react';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
@@ -424,6 +424,9 @@ export function AccountingPage() {
     return <Navigate to="/" replace />;
   }
 
+  // 未設定なら練習開始の3時間後（メイン画面・試合終了の判定と同じ値）
+  const effectiveEndTime = resolvePracticeEndTime(session.config);
+
   const appropriateFee = calculateAppropriateFee({
     gymCost, shuttleTotal, otherAmount, maleCount, femaleCount, practiceType,
     feeOverrides: defaultFees,
@@ -769,10 +772,10 @@ export function AccountingPage() {
             </label>
             <input
               type="time"
-              value={session.config.practiceEndTime ? formatHHMM(session.config.practiceEndTime) : ''}
+              value={effectiveEndTime ? formatHHMM(effectiveEndTime) : ''}
               onChange={(e) => {
-                // 空欄は解除。フィールド削除ではなく 0 を書き、自動作成の再実行で
-                // E-ToMo の終了時刻が補完されないようにする。
+                // 空欄は解除（＝開始の3時間後に戻す）。フィールド削除ではなく 0 を書き、
+                // 自動作成の再実行で E-ToMo の終了時刻が補完されないようにする。
                 if (e.target.value === '') {
                   updateConfig({ practiceEndTime: 0 });
                   return;
@@ -783,9 +786,9 @@ export function AccountingPage() {
               className="input-field min-h-[44px] w-full"
             />
             <p className="text-[10px] text-muted-foreground mt-1">
-              {session.config.practiceEndTime
-                ? `${formatHHMM(session.config.practiceEndTime - PRACTICE_LAST_CALL_MS)} 以降は新しい試合を入れず連続モードをOFF、${formatHHMM(session.config.practiceEndTime - PRACTICE_CLOSED_MS)} で練習終了の案内を出します`
-                : '未設定のときは終了前の自動停止を行いません'}
+              {!session.config.practiceEndTime && '未設定のため開始の3時間後を使います。'}
+              {effectiveEndTime &&
+                `${formatHHMM(effectiveEndTime - PRACTICE_LAST_CALL_MS)} 以降は新しい試合を入れず連続モードをOFF、${formatHHMM(effectiveEndTime - PRACTICE_CLOSED_MS)} で練習終了の案内を出します`}
             </p>
           </div>
 

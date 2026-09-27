@@ -9,6 +9,7 @@ import {
   PRACTICE_END_ANNOUNCE_MAX_LATE_MS,
   PRACTICE_LAST_CALL_MS,
   PRACTICE_CLOSED_MS,
+  resolvePracticeEndTime,
 } from './practiceEndPhase';
 
 const MIN = 60 * 1000;
@@ -115,5 +116,25 @@ describe('buildPracticeEndAnnouncement', () => {
   it('段階ごとの文言', () => {
     expect(buildPracticeEndAnnouncement('lastCall')).toBe('練習終了20分前です。現在入ってる試合でラストです。');
     expect(buildPracticeEndAnnouncement('closed')).toBe('片付けの時間です、お願いします');
+  });
+});
+
+describe('resolvePracticeEndTime', () => {
+  const start = new Date(2026, 8, 26, 18, 30).getTime();
+
+  it('設定値があればそれを使う', () => {
+    const end = new Date(2026, 8, 26, 21, 0).getTime();
+    expect(resolvePracticeEndTime({ practiceStartTime: start, practiceEndTime: end })).toBe(end);
+  });
+
+  it('未設定・0（空欄）は開始の3時間後', () => {
+    const expected = new Date(2026, 8, 26, 21, 30).getTime();
+    expect(resolvePracticeEndTime({ practiceStartTime: start })).toBe(expected);
+    expect(resolvePracticeEndTime({ practiceStartTime: start, practiceEndTime: 0 })).toBe(expected);
+  });
+
+  it('開始日時も無ければ undefined', () => {
+    expect(resolvePracticeEndTime(undefined)).toBeUndefined();
+    expect(resolvePracticeEndTime({})).toBeUndefined();
   });
 });

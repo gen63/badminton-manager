@@ -112,3 +112,21 @@ export function buildPracticeEndAnnouncement(phase: 'lastCall' | 'closed'): stri
     ? '片付けの時間です、お願いします'
     : '練習終了20分前です。現在入ってる試合でラストです。';
 }
+
+/** 終了時刻が未設定のときに使う、練習開始からの長さ（3時間）。 */
+export const DEFAULT_PRACTICE_DURATION_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * 実際に使う練習終了日時。設定値（> 0）があればそれ、無ければ（未設定 undefined・
+ * 会計ページで空欄にした 0 とも）練習開始の3時間後。開始日時も無ければ `undefined`。
+ */
+export function resolvePracticeEndTime(config: {
+  practiceStartTime?: number;
+  practiceEndTime?: number;
+} | undefined | null): number | undefined {
+  if (config?.practiceEndTime && config.practiceEndTime > 0) return config.practiceEndTime;
+  if (config?.practiceStartTime && config.practiceStartTime > 0) {
+    return config.practiceStartTime + DEFAULT_PRACTICE_DURATION_MS;
+  }
+  return undefined;
+}
