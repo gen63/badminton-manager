@@ -1694,44 +1694,6 @@ export async function resizeCourtsWithConfig(
   }
 }
 
-/**
- * 練習終了日時（`session.config.practiceEndTime`）を設定する。`null` で解除
- * （終了前の配置停止を行わない旧挙動に戻る）。gameState は触らない。
- *
- * 解除はフィールド削除ではなく 0 を書く。自動作成の再実行は「未設定（undefined）の
- * 旧セッション」にだけ E-ToMo の終了時刻を補完するので、管理者の解除を区別して
- * 残すため。
- * 詳細: docs/plans/2026-09-26-practice-end-time.md
- */
-export async function setPracticeEndTime(
-  sessionId: string,
-  practiceEndTime: number | null,
-): Promise<void> {
-  const _db = requireDb();
-  const ref = doc(_db, 'sessions', sessionId);
-
-  try {
-    await runTransaction(_db, async (transaction) => {
-      const snap = await transaction.get(ref);
-      if (!snap.exists()) {
-        throw new SessionError('セッションが見つかりません', 'not-found');
-      }
-      transaction.update(ref, {
-        'config.practiceEndTime': practiceEndTime ?? 0,
-        updatedAt: serverTimestamp(),
-      });
-    });
-  } catch (error: unknown) {
-    if ((error as { code?: string })?.code === 'aborted') {
-      throw new SessionError(
-        '他のユーザーが更新しました。もう一度お試しください',
-        'conflict',
-      );
-    }
-    throw error;
-  }
-}
-
 // =============================================================================
 // Composite operations: 試合開始
 // =============================================================================

@@ -120,9 +120,9 @@ export function MainPage() {
   // 連続クリックでトグルが打ち消し合うのを防ぐガード（CON1）。
   const continuousModeToggle = useGuardedAction(async (next: boolean) => {
     // 終了20分前以降は新しい試合を入れない運用なので ON にさせない。
-    // 延長するときは設定画面で終了時刻を変える。
+    // 延長するときは会計ページで終了時刻を変える。
     if (next && pastLastCall) {
-      toast.warning('練習終了20分前を過ぎているため連続モードはONにできません（延長は設定画面で終了時刻を変更）');
+      toast.warning('練習終了20分前を過ぎているため連続モードはONにできません（延長は会計ページで終了時刻を変更）');
       return;
     }
     await writer.setContinuousMatchMode(next);

@@ -260,12 +260,6 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
-  const setPracticeEndTime = useCallback(
-    (value: number | null) =>
-      handle('setPracticeEndTime', (sid) => sm.setPracticeEndTime(sid, value)),
-    [handle],
-  );
-
   const setPracticeType = useCallback(
     (value: '単' | '複' | '楽') =>
       handle('setPracticeType', (sid) => sm.setPracticeType(sid, value)),
@@ -352,7 +346,6 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       // settings
       setRecordScores,
       setContinuousMatchMode,
-      setPracticeEndTime,
       setPracticeType,
       setLateBalanceMode,
       setUseStayDurationPriority,
@@ -396,7 +389,6 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       removePairPreference,
       setRecordScores,
       setContinuousMatchMode,
-      setPracticeEndTime,
       setPracticeType,
       setLateBalanceMode,
       setUseStayDurationPriority,
