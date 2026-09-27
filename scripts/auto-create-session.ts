@@ -939,9 +939,9 @@ async function syncSessionRoster(
     const { state: nextState, added, removed, ratingUpdated } = result;
     const rosterChanged = added.length > 0 || removed.length > 0 || ratingUpdated.length > 0;
 
-    // 終了時刻導入前に作られたセッションへの補完。管理者が設定画面で変更・解除した
-    // 値を上書きしないよう、フィールドが一度も書かれていない（undefined）ときだけ入れる
-    // （設定画面の解除は 0 を書くので、ここでは補完されない）。
+    // 終了時刻導入前に作られたセッションへの補完。会計ページで変更・解除した値を
+    // 上書きしないよう、フィールドが一度も書かれていない（undefined）ときだけ入れる
+    // （会計ページで空欄にすると 0 を書くので、ここでは補完されない）。
     const config = data.config as { practiceStartTime?: number; practiceEndTime?: number } | undefined;
     const backfillEndTime =
       config?.practiceEndTime === undefined && config?.practiceStartTime
