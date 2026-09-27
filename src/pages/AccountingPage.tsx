@@ -9,6 +9,7 @@ import { sendAccountingToSheets } from '../lib/sheetsApi';
 import { updateSession } from '../services/sessionService';
 import { GYM_OPTIONS } from '../types/session';
 import { buildPracticeEndTime, formatHHMM, PRACTICE_CLOSED_MS, PRACTICE_LAST_CALL_MS, resolvePracticeEndTime } from '../lib/practiceEndPhase';
+import { formatLocalDate } from '../lib/sessionArchive';
 import { useDevMode } from '../hooks/useDevMode';
 import { DollarSign, Copy, Upload, MapPin, Clock } from 'lucide-react';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
@@ -427,6 +428,19 @@ export function AccountingPage() {
   // 未設定なら練習開始の3時間後（メイン画面・試合終了の判定と同じ値）
   const effectiveEndTime = resolvePracticeEndTime(session.config);
 
+  // 練習開始日時を日付・時刻から更新する。設定済みの終了時刻は同じ HH:MM のまま
+  // 新しい開始に載せ替える（日付の修正に追従し、開始以前なら翌日扱い）。
+  const updatePracticeStart = (date: string, time: string) => {
+    const newStart = new Date(`${date}T${time}`).getTime();
+    if (isNaN(newStart)) return;
+    const endTime = session.config.practiceEndTime;
+    const movedEnd = endTime ? buildPracticeEndTime(newStart, formatHHMM(endTime)) : null;
+    updateConfig({
+      practiceStartTime: newStart,
+      ...(movedEnd !== null && { practiceEndTime: movedEnd }),
+    });
+  };
+
   const appropriateFee = calculateAppropriateFee({
     gymCost, shuttleTotal, otherAmount, maleCount, femaleCount, practiceType,
     feeOverrides: defaultFees,
@@ -738,58 +752,58 @@ export function AccountingPage() {
         <div className="max-w-md mx-auto p-3 space-y-3">
         {/* 練習日時（開始・終了）・体育館 */}
         <div className="card p-4 space-y-3">
-          {/* 練習開始日時 */}
+          {/* 練習日時（日付 + 開始〜終了）。終了は開始日の HH:MM で、未設定なら開始の3時間後。
+              終了20分前以降は新しい試合を入れない。詳細: docs/plans/2026-09-26-practice-end-time.md */}
           <div>
             <label className="text-xs font-semibold text-gray-700 mb-1.5 block flex items-center gap-1.5">
               <Clock size={12} />
-              練習開始日時
+              練習日時
             </label>
-            <input
-              type="datetime-local"
-              value={new Date(session.config.practiceStartTime - new Date(session.config.practiceStartTime).getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
-              onChange={(e) => {
-                const newTime = new Date(e.target.value).getTime();
-                if (!isNaN(newTime)) {
-                  // 終了時刻は同じ HH:MM のまま新しい開始日に載せ替える（日付の修正に追従）
-                  const endTime = session.config.practiceEndTime;
-                  const movedEnd = endTime ? buildPracticeEndTime(newTime, formatHHMM(endTime)) : null;
-                  updateConfig({
-                    practiceStartTime: newTime,
-                    ...(movedEnd !== null && { practiceEndTime: movedEnd }),
-                  });
-                }
-              }}
-              className="input-field min-h-[44px] w-full"
-            />
-          </div>
-
-          {/* 練習終了時刻（終了20分前以降は新しい試合を入れない。
-              詳細: docs/plans/2026-09-26-practice-end-time.md） */}
-          <div>
-            <label className="text-xs font-semibold text-gray-700 mb-1.5 block flex items-center gap-1.5">
-              <Clock size={12} />
-              練習終了時刻
-            </label>
-            <input
-              type="time"
-              value={effectiveEndTime ? formatHHMM(effectiveEndTime) : ''}
-              onChange={(e) => {
-                // 空欄は解除（＝開始の3時間後に戻す）。フィールド削除ではなく 0 を書き、
-                // 自動作成の再実行で E-ToMo の終了時刻が補完されないようにする。
-                if (e.target.value === '') {
-                  updateConfig({ practiceEndTime: 0 });
-                  return;
-                }
-                const endTime = buildPracticeEndTime(session.config.practiceStartTime, e.target.value);
-                if (endTime !== null) updateConfig({ practiceEndTime: endTime });
-              }}
-              className="input-field min-h-[44px] w-full"
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">
-              {!session.config.practiceEndTime && '未設定のため開始の3時間後を使います。'}
-              {effectiveEndTime &&
-                `${formatHHMM(effectiveEndTime - PRACTICE_LAST_CALL_MS)} 以降は新しい試合を入れず連続モードをOFF、${formatHHMM(effectiveEndTime - PRACTICE_CLOSED_MS)} で練習終了の案内を出します`}
-            </p>
+            <div className="space-y-2">
+              <input
+                type="date"
+                aria-label="練習日"
+                value={formatLocalDate(session.config.practiceStartTime)}
+                onChange={(e) => {
+                  if (e.target.value) updatePracticeStart(e.target.value, formatHHMM(session.config.practiceStartTime));
+                }}
+                className="input-field min-h-[44px] w-full"
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  aria-label="練習開始時刻"
+                  value={formatHHMM(session.config.practiceStartTime)}
+                  onChange={(e) => {
+                    if (e.target.value) updatePracticeStart(formatLocalDate(session.config.practiceStartTime), e.target.value);
+                  }}
+                  className="input-field min-h-[44px] flex-1 min-w-0"
+                />
+                <span className="text-sm text-muted-foreground shrink-0">〜</span>
+                <input
+                  type="time"
+                  aria-label="練習終了時刻"
+                  value={effectiveEndTime ? formatHHMM(effectiveEndTime) : ''}
+                  onChange={(e) => {
+                    // 空欄は解除（＝開始の3時間後に戻す）。フィールド削除ではなく 0 を書き、
+                    // 自動作成の再実行で E-ToMo の終了時刻が補完されないようにする。
+                    if (e.target.value === '') {
+                      updateConfig({ practiceEndTime: 0 });
+                      return;
+                    }
+                    const endTime = buildPracticeEndTime(session.config.practiceStartTime, e.target.value);
+                    if (endTime !== null) updateConfig({ practiceEndTime: endTime });
+                  }}
+                  className="input-field min-h-[44px] flex-1 min-w-0"
+                />
+              </div>
+            </div>
+            {effectiveEndTime && (
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {formatHHMM(effectiveEndTime - PRACTICE_LAST_CALL_MS)} ラスト・{formatHHMM(effectiveEndTime - PRACTICE_CLOSED_MS)} 片付け
+                {!session.config.practiceEndTime && '（終了は開始の3時間後）'}
+              </p>
+            )}
           </div>
 
           {/* 体育館選択 */}
