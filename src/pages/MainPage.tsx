@@ -31,7 +31,7 @@ import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { FinishOperationGuide } from '../components/FinishOperationGuide';
 import { EMPTY_PREDICTION, predictNextMatchPlayers } from '../lib/nextMatchPrediction';
 import { usePracticeEndPhase } from '../hooks/usePracticeEndPhase';
-import { formatHHMM, isPastLastCall, PRACTICE_CLOSED_MS, PRACTICE_LAST_CALL_MS } from '../lib/practiceEndPhase';
+import { buildPracticeEndAnnouncement, formatHHMM, isPastLastCall, PRACTICE_CLOSED_MS, PRACTICE_LAST_CALL_MS, shouldAnnouncePracticeEndPhase, type PracticeEndPhase } from '../lib/practiceEndPhase';
 import {
   canFinishGame,
   buildFinishBlockedMessage,
@@ -159,6 +159,21 @@ export function MainPage() {
     void writer.setContinuousMatchMode(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- isAdmin is a stable Zustand selector
   }, [pastLastCall, continuousMatchMode, isGameStateLoaded, writer]);
+
+  // 終了20分前・片付け開始の読み上げ。呼び出し通知と同じ入口（ベル ON の全端末で
+  // チャイム→読み上げ、hidden 中は鳴らさない）。アプリが動いている間に段階が進んだ
+  // 瞬間だけ鳴らし、表示直後や復帰時の遅れた切り替えでは鳴らさない。
+  const prevPracticeEndPhaseRef = useRef<PracticeEndPhase | null>(null);
+  useEffect(() => {
+    const prev = prevPracticeEndPhaseRef.current;
+    prevPracticeEndPhaseRef.current = practiceEndPhase;
+    if (
+      practiceEndPhase !== 'normal' &&
+      shouldAnnouncePracticeEndPhase({ prev, next: practiceEndPhase, practiceEndTime, now: Date.now() })
+    ) {
+      fireMatchCallAlert(buildPracticeEndAnnouncement(practiceEndPhase));
+    }
+  }, [practiceEndPhase, practiceEndTime]);
   const adminMatchCallAnnounce = useSettingsStore((s) => s.adminMatchCallAnnounce);
   const finishHoldToConfirm = useSettingsStore((s) => s.finishHoldToConfirm);
 

@@ -28,6 +28,17 @@
   （2026-09-08-auto-end-stale-timer）があり、人の終了操作に委ねる。
 - 再描画は段階の切り替え時刻までの `setTimeout` 1本（`usePracticeEndPhase`）。
 
+## 読み上げ（2026-09-27 追記）
+- 終了20分前「練習終了20分前です。新しい試合は入れません」、15分前「練習終了の時間です。
+  片付けをお願いします」を読み上げる。入口は呼び出し通知と同じ `fireMatchCallAlert`
+  （チャイム→振動→読み上げ、**ヘッダーのベルが ON の全端末**、hidden 中は鳴らさない）。
+  管理者だけに絞らず全員にしたのは運用者判断（全員に気づかせたい）。
+- 鳴らすのはアプリの動作中に段階が**進んだ瞬間**だけ（`shouldAnnouncePracticeEndPhase`）。
+  初回表示・段階が戻った（延長）・切り替えから60秒超の遅れ（バックグラウンド復帰で
+  間引かれたタイマーが遅れて発火）では鳴らさない。とっくに過ぎた節目を復帰時に
+  読み上げる問題（2026-08-22-match-call-stale-audio-on-resume）と同じ轍を避ける。
+- ベルの OFF→ON で鳴らし直す「直前のコール」にもこの文言が記録される（入口が同じため）。
+
 ## 終了時刻の入力
 - **自動作成**（`scripts/auto-create-session.ts`）: E-ToMo タイトル「18:30〜21:30」の
   終了側を `buildPracticeEndTime(practiceStartTime, endTime)` で `config.practiceEndTime`

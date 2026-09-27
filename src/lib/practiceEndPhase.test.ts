@@ -4,6 +4,9 @@ import {
   getNextPracticeEndPhaseChangeAt,
   buildPracticeEndTime,
   formatHHMM,
+  shouldAnnouncePracticeEndPhase,
+  buildPracticeEndAnnouncement,
+  PRACTICE_END_ANNOUNCE_MAX_LATE_MS,
   PRACTICE_LAST_CALL_MS,
   PRACTICE_CLOSED_MS,
 } from './practiceEndPhase';
@@ -74,5 +77,43 @@ describe('buildPracticeEndTime', () => {
 describe('formatHHMM', () => {
   it('ゼロ埋めした HH:MM', () => {
     expect(formatHHMM(new Date(2026, 8, 26, 9, 5).getTime())).toBe('09:05');
+  });
+});
+
+describe('shouldAnnouncePracticeEndPhase', () => {
+  const end = new Date(2026, 8, 26, 21, 30).getTime();
+  const lastCallAt = end - PRACTICE_LAST_CALL_MS;
+  const closedAt = end - PRACTICE_CLOSED_MS;
+
+  it('normal → lastCall を切り替え直後に読み上げる', () => {
+    expect(shouldAnnouncePracticeEndPhase({ prev: 'normal', next: 'lastCall', practiceEndTime: end, now: lastCallAt + 100 })).toBe(true);
+  });
+
+  it('lastCall → closed を切り替え直後に読み上げる', () => {
+    expect(shouldAnnouncePracticeEndPhase({ prev: 'lastCall', next: 'closed', practiceEndTime: end, now: closedAt + 100 })).toBe(true);
+  });
+
+  it('初回表示（prev なし）は鳴らさない', () => {
+    expect(shouldAnnouncePracticeEndPhase({ prev: null, next: 'lastCall', practiceEndTime: end, now: lastCallAt + 100 })).toBe(false);
+  });
+
+  it('切り替えから60秒を超えて遅れていたら鳴らさない（バックグラウンド復帰）', () => {
+    expect(shouldAnnouncePracticeEndPhase({ prev: 'normal', next: 'lastCall', practiceEndTime: end, now: lastCallAt + PRACTICE_END_ANNOUNCE_MAX_LATE_MS + 1 })).toBe(false);
+  });
+
+  it('段階が戻った・変わらないときは鳴らさない', () => {
+    expect(shouldAnnouncePracticeEndPhase({ prev: 'closed', next: 'lastCall', practiceEndTime: end, now: lastCallAt + 100 })).toBe(false);
+    expect(shouldAnnouncePracticeEndPhase({ prev: 'lastCall', next: 'lastCall', practiceEndTime: end, now: lastCallAt + 100 })).toBe(false);
+  });
+
+  it('終了時刻が未設定なら鳴らさない', () => {
+    expect(shouldAnnouncePracticeEndPhase({ prev: 'normal', next: 'lastCall', practiceEndTime: 0, now: lastCallAt })).toBe(false);
+  });
+});
+
+describe('buildPracticeEndAnnouncement', () => {
+  it('段階ごとの文言', () => {
+    expect(buildPracticeEndAnnouncement('lastCall')).toBe('練習終了20分前です。新しい試合は入れません');
+    expect(buildPracticeEndAnnouncement('closed')).toBe('練習終了の時間です。片付けをお願いします');
   });
 });
