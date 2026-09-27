@@ -109,6 +109,6 @@ export function shouldAnnouncePracticeEndPhase({
 /** 段階の切り替わりで読み上げる文言。 */
 export function buildPracticeEndAnnouncement(phase: 'lastCall' | 'closed'): string {
   return phase === 'closed'
-    ? '練習終了の時間です。片付けをお願いします'
-    : '練習終了20分前です。新しい試合は入れません';
+    ? '片付けの時間です、お願いします'
+    : '練習終了20分前です。現在入ってる試合でラストです。';
 }

@@ -113,7 +113,7 @@ describe('shouldAnnouncePracticeEndPhase', () => {
 
 describe('buildPracticeEndAnnouncement', () => {
   it('段階ごとの文言', () => {
-    expect(buildPracticeEndAnnouncement('lastCall')).toBe('練習終了20分前です。新しい試合は入れません');
-    expect(buildPracticeEndAnnouncement('closed')).toBe('練習終了の時間です。片付けをお願いします');
+    expect(buildPracticeEndAnnouncement('lastCall')).toBe('練習終了20分前です。現在入ってる試合でラストです。');
+    expect(buildPracticeEndAnnouncement('closed')).toBe('片付けの時間です、お願いします');
   });
 });
