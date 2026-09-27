@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
-  getNextPracticeEndPhaseChangeAt,
   getPracticeEndPhase,
+  getPracticeEndPhaseTimerDelay,
   type PracticeEndPhase,
 } from '../lib/practiceEndPhase';
 
@@ -21,9 +21,10 @@ export function usePracticeEndPhase(practiceEndTime: number | undefined): Practi
     const tick = () => {
       const now = Date.now();
       setPhase(getPracticeEndPhase(practiceEndTime, now));
-      const changeAt = getNextPracticeEndPhaseChangeAt(practiceEndTime, now);
-      // バックグラウンド復帰などで遅れて発火しても now から再計算するので問題ない
-      if (changeAt !== null) timer = setTimeout(tick, changeAt - now + 50);
+      // バックグラウンド復帰などで遅れて発火しても now から再計算するので問題ない。
+      // 終了時刻が遠い未来でも空回りしないよう、待ち時間には上限がある。
+      const delay = getPracticeEndPhaseTimerDelay(practiceEndTime, now);
+      if (delay !== null) timer = setTimeout(tick, delay);
     };
 
     // setState in effect の lint を避けるためマイクロタスク相当で初回を回す

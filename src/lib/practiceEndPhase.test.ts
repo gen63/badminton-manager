@@ -10,6 +10,8 @@ import {
   PRACTICE_LAST_CALL_MS,
   PRACTICE_CLOSED_MS,
   resolvePracticeEndTime,
+  getPracticeEndPhaseTimerDelay,
+  PRACTICE_END_TIMER_MAX_DELAY_MS,
 } from './practiceEndPhase';
 
 const MIN = 60 * 1000;
@@ -136,5 +138,25 @@ describe('resolvePracticeEndTime', () => {
   it('開始日時も無ければ undefined', () => {
     expect(resolvePracticeEndTime(undefined)).toBeUndefined();
     expect(resolvePracticeEndTime({})).toBeUndefined();
+  });
+});
+
+describe('getPracticeEndPhaseTimerDelay', () => {
+  const end = new Date(2026, 8, 26, 21, 30).getTime();
+
+  it('次の切り替え時刻の少し後まで待つ', () => {
+    expect(getPracticeEndPhaseTimerDelay(end, end - 25 * MIN)).toBe(5 * MIN + 50);
+  });
+
+  it('終了時刻が遠い未来でも上限（setTimeout の 2^31-1 ms を超えない）で区切る', () => {
+    const farEnd = end + 60 * 24 * 60 * MIN; // 60日後
+    const delay = getPracticeEndPhaseTimerDelay(farEnd, end);
+    expect(delay).toBe(PRACTICE_END_TIMER_MAX_DELAY_MS);
+    expect(delay!).toBeLessThan(2 ** 31 - 1);
+  });
+
+  it('これ以上切り替わらないなら null', () => {
+    expect(getPracticeEndPhaseTimerDelay(end, end)).toBeNull();
+    expect(getPracticeEndPhaseTimerDelay(undefined, end)).toBeNull();
   });
 });

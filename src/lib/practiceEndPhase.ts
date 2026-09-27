@@ -47,6 +47,26 @@ export function getNextPracticeEndPhaseChangeAt(
   return null;
 }
 
+/**
+ * 段階の再評価タイマーの待ち時間の上限（1時間）。`setTimeout` は約24.8日
+ * （2^31-1 ms）を超える遅延を即時発火に丸めるため、終了時刻が遠い未来だと
+ * 再評価が空回りし続ける。上限で区切って途中で再評価させる。
+ */
+export const PRACTICE_END_TIMER_MAX_DELAY_MS = 60 * 60 * 1000;
+
+/**
+ * 次に段階を再評価するまでの待ち時間。切り替えが無ければ `null`。
+ * 切り替え時刻の少し後（+50ms）に評価し、上限は `PRACTICE_END_TIMER_MAX_DELAY_MS`。
+ */
+export function getPracticeEndPhaseTimerDelay(
+  practiceEndTime: number | undefined | null,
+  now: number,
+): number | null {
+  const changeAt = getNextPracticeEndPhaseChangeAt(practiceEndTime, now);
+  if (changeAt === null) return null;
+  return Math.min(changeAt - now + 50, PRACTICE_END_TIMER_MAX_DELAY_MS);
+}
+
 /** 新しい試合の配置を止める段階か（`lastCall` / `closed`）。 */
 export function isPastLastCall(phase: PracticeEndPhase): boolean {
   return phase !== 'normal';
