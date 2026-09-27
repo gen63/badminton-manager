@@ -2177,6 +2177,27 @@ describe('sessionMutations - finishMatchAndContinue', () => {
     expect(result.writtenState?.courts[0].teamA).toEqual(['', '']);
   });
 
+  it('終了時刻が未設定なら開始の3時間後を終了とみなして止める', async () => {
+    const startedAt = Date.now() - 6 * 60 * 1000;
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        gameState: playingWithWaiting(startedAt),
+        // 開始から 2時間45分 = 既定の終了（3時間後）の15分前
+        config: { practiceStartTime: Date.now() - (2 * 60 + 45) * 60 * 1000 },
+      }),
+      ref: { __docRef: true },
+    });
+
+    const result = await finishMatchAndContinue('s', 1, startedAt, {
+      matchId: 'm1',
+      useStayDurationPriority: false,
+      forceBulkAssignment: false,
+    });
+    expect(result.continuousStoppedForPracticeEnd).toBe(true);
+    expect(result.writtenState?.settings?.continuousMatchMode).toBe(false);
+  });
+
   it('終了時刻が先（20分より前）なら連続モードはそのまま', async () => {
     const startedAt = Date.now() - 6 * 60 * 1000;
     mockTransactionGet.mockResolvedValueOnce({

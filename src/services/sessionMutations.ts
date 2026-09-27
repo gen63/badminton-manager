@@ -27,7 +27,7 @@ import {
   resolveStartedAtFromAssignedAt,
 } from '../lib/gameOperations';
 import { sanitizePlayerName } from '../lib/inputValidation';
-import { getPracticeEndPhase, isPastLastCall } from '../lib/practiceEndPhase';
+import { getPracticeEndPhase, isPastLastCall, resolvePracticeEndTime } from '../lib/practiceEndPhase';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
@@ -1847,7 +1847,7 @@ export async function finishMatchAndContinue(
       // 判定になるよう transaction 内で見て、連続モード自体も同じ書き込みで OFF にする。
       const remoteContinuous = remoteSettings?.continuousMatchMode ?? false;
       const pastLastCall = isPastLastCall(
-        getPracticeEndPhase(remoteConfig?.practiceEndTime, Date.now()),
+        getPracticeEndPhase(resolvePracticeEndTime(remoteConfig), Date.now()),
       );
       const computed = computeFinishAndContinue(remote, courtId, {
         continuousMatchMode: remoteSettings?.continuousMatchMode ?? false,

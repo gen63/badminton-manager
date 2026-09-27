@@ -74,3 +74,59 @@ export function formatHHMM(time: number): string {
   const d = new Date(time);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
+
+/**
+ * 段階の切り替わりを読み上げてよい遅れの上限（60秒）。バックグラウンド中は
+ * タイマーが間引かれ、復帰時に遅れて段階が切り替わる。とっくに過ぎた節目を
+ * 復帰の瞬間に読み上げないよう、切り替え時刻からこれ以上遅れていたら鳴らさない。
+ */
+export const PRACTICE_END_ANNOUNCE_MAX_LATE_MS = 60 * 1000;
+
+const PHASE_ORDER: Record<PracticeEndPhase, number> = { normal: 0, lastCall: 1, closed: 2 };
+
+/**
+ * アプリの動作中に段階が進んだ瞬間だけ読み上げる。初回表示（`prev` が無い）・
+ * 段階が戻った（終了時刻の延長）・切り替えから時間が経っている場合は鳴らさない。
+ */
+export function shouldAnnouncePracticeEndPhase({
+  prev,
+  next,
+  practiceEndTime,
+  now,
+}: {
+  prev: PracticeEndPhase | null;
+  next: PracticeEndPhase;
+  practiceEndTime: number | undefined | null;
+  now: number;
+}): boolean {
+  if (prev === null || !practiceEndTime || next === 'normal') return false;
+  if (PHASE_ORDER[next] <= PHASE_ORDER[prev]) return false;
+  const changedAt =
+    practiceEndTime - (next === 'closed' ? PRACTICE_CLOSED_MS : PRACTICE_LAST_CALL_MS);
+  return now - changedAt <= PRACTICE_END_ANNOUNCE_MAX_LATE_MS;
+}
+
+/** 段階の切り替わりで読み上げる文言。 */
+export function buildPracticeEndAnnouncement(phase: 'lastCall' | 'closed'): string {
+  return phase === 'closed'
+    ? '片付けの時間です、お願いします'
+    : '練習終了20分前です。現在入ってる試合でラストです。';
+}
+
+/** 終了時刻が未設定のときに使う、練習開始からの長さ（3時間）。 */
+export const DEFAULT_PRACTICE_DURATION_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * 実際に使う練習終了日時。設定値（> 0）があればそれ、無ければ（未設定 undefined・
+ * 会計ページで空欄にした 0 とも）練習開始の3時間後。開始日時も無ければ `undefined`。
+ */
+export function resolvePracticeEndTime(config: {
+  practiceStartTime?: number;
+  practiceEndTime?: number;
+} | undefined | null): number | undefined {
+  if (config?.practiceEndTime && config.practiceEndTime > 0) return config.practiceEndTime;
+  if (config?.practiceStartTime && config.practiceStartTime > 0) {
+    return config.practiceStartTime + DEFAULT_PRACTICE_DURATION_MS;
+  }
+  return undefined;
+}

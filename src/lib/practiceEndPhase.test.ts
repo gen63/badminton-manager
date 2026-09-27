@@ -4,8 +4,12 @@ import {
   getNextPracticeEndPhaseChangeAt,
   buildPracticeEndTime,
   formatHHMM,
+  shouldAnnouncePracticeEndPhase,
+  buildPracticeEndAnnouncement,
+  PRACTICE_END_ANNOUNCE_MAX_LATE_MS,
   PRACTICE_LAST_CALL_MS,
   PRACTICE_CLOSED_MS,
+  resolvePracticeEndTime,
 } from './practiceEndPhase';
 
 const MIN = 60 * 1000;
@@ -74,5 +78,63 @@ describe('buildPracticeEndTime', () => {
 describe('formatHHMM', () => {
   it('ゼロ埋めした HH:MM', () => {
     expect(formatHHMM(new Date(2026, 8, 26, 9, 5).getTime())).toBe('09:05');
+  });
+});
+
+describe('shouldAnnouncePracticeEndPhase', () => {
+  const end = new Date(2026, 8, 26, 21, 30).getTime();
+  const lastCallAt = end - PRACTICE_LAST_CALL_MS;
+  const closedAt = end - PRACTICE_CLOSED_MS;
+
+  it('normal → lastCall を切り替え直後に読み上げる', () => {
+    expect(shouldAnnouncePracticeEndPhase({ prev: 'normal', next: 'lastCall', practiceEndTime: end, now: lastCallAt + 100 })).toBe(true);
+  });
+
+  it('lastCall → closed を切り替え直後に読み上げる', () => {
+    expect(shouldAnnouncePracticeEndPhase({ prev: 'lastCall', next: 'closed', practiceEndTime: end, now: closedAt + 100 })).toBe(true);
+  });
+
+  it('初回表示（prev なし）は鳴らさない', () => {
+    expect(shouldAnnouncePracticeEndPhase({ prev: null, next: 'lastCall', practiceEndTime: end, now: lastCallAt + 100 })).toBe(false);
+  });
+
+  it('切り替えから60秒を超えて遅れていたら鳴らさない（バックグラウンド復帰）', () => {
+    expect(shouldAnnouncePracticeEndPhase({ prev: 'normal', next: 'lastCall', practiceEndTime: end, now: lastCallAt + PRACTICE_END_ANNOUNCE_MAX_LATE_MS + 1 })).toBe(false);
+  });
+
+  it('段階が戻った・変わらないときは鳴らさない', () => {
+    expect(shouldAnnouncePracticeEndPhase({ prev: 'closed', next: 'lastCall', practiceEndTime: end, now: lastCallAt + 100 })).toBe(false);
+    expect(shouldAnnouncePracticeEndPhase({ prev: 'lastCall', next: 'lastCall', practiceEndTime: end, now: lastCallAt + 100 })).toBe(false);
+  });
+
+  it('終了時刻が未設定なら鳴らさない', () => {
+    expect(shouldAnnouncePracticeEndPhase({ prev: 'normal', next: 'lastCall', practiceEndTime: 0, now: lastCallAt })).toBe(false);
+  });
+});
+
+describe('buildPracticeEndAnnouncement', () => {
+  it('段階ごとの文言', () => {
+    expect(buildPracticeEndAnnouncement('lastCall')).toBe('練習終了20分前です。現在入ってる試合でラストです。');
+    expect(buildPracticeEndAnnouncement('closed')).toBe('片付けの時間です、お願いします');
+  });
+});
+
+describe('resolvePracticeEndTime', () => {
+  const start = new Date(2026, 8, 26, 18, 30).getTime();
+
+  it('設定値があればそれを使う', () => {
+    const end = new Date(2026, 8, 26, 21, 0).getTime();
+    expect(resolvePracticeEndTime({ practiceStartTime: start, practiceEndTime: end })).toBe(end);
+  });
+
+  it('未設定・0（空欄）は開始の3時間後', () => {
+    const expected = new Date(2026, 8, 26, 21, 30).getTime();
+    expect(resolvePracticeEndTime({ practiceStartTime: start })).toBe(expected);
+    expect(resolvePracticeEndTime({ practiceStartTime: start, practiceEndTime: 0 })).toBe(expected);
+  });
+
+  it('開始日時も無ければ undefined', () => {
+    expect(resolvePracticeEndTime(undefined)).toBeUndefined();
+    expect(resolvePracticeEndTime({})).toBeUndefined();
   });
 });
