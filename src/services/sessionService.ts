@@ -79,6 +79,13 @@ export interface SyncSettings {
    * setTimeout が消失していても、未発火なら復帰時にすぐ発火させるための判定に使う。
    */
   lateBalanceAutoFired?: boolean;
+  /**
+   * 終了20分前以降の連続モード延長。作成者（開発モード含む）が ON にした時点の
+   * 練習終了日時（`resolvePracticeEndTime`）を記録する。今の終了日時と一致する間だけ
+   * 終了前の自動停止を行わない。0 / 未設定は延長なし。
+   * 詳細: docs/plans/2026-09-26-practice-end-time.md
+   */
+  continuousPastEndOverrideFor?: number;
 }
 
 /** ゲーム状態の型（Firestore同期用） */

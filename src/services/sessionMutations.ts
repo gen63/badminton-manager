@@ -27,7 +27,7 @@ import {
   resolveStartedAtFromAssignedAt,
 } from '../lib/gameOperations';
 import { sanitizePlayerName } from '../lib/inputValidation';
-import { getPracticeEndPhase, isPastLastCall, resolvePracticeEndTime } from '../lib/practiceEndPhase';
+import { getPracticeEndPhase, isPastEndOverrideActive, isPastLastCall, resolvePracticeEndTime } from '../lib/practiceEndPhase';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
@@ -1246,8 +1246,23 @@ export function setRecordScores(sessionId: string, value: boolean) {
   return mutateGameState(sessionId, (s) => computeSetSetting(s, 'recordScores', value));
 }
 
-export function setContinuousMatchMode(sessionId: string, value: boolean) {
-  return mutateGameState(sessionId, (s) => computeSetSetting(s, 'continuousMatchMode', value));
+/**
+ * 連続モードを切り替える。`pastEndOverrideFor` を渡すと ON と同時に終了20分前以降の
+ * 延長を記録する（作成者のみ。呼び出し側で判定）。OFF にするときは延長も消す。
+ */
+export function setContinuousMatchMode(
+  sessionId: string,
+  value: boolean,
+  options?: { pastEndOverrideFor?: number },
+) {
+  return mutateGameState(sessionId, (s) => {
+    const next = computeSetSetting(s, 'continuousMatchMode', value);
+    if (!value) return computeSetSetting(next, 'continuousPastEndOverrideFor', 0);
+    if (options?.pastEndOverrideFor) {
+      return computeSetSetting(next, 'continuousPastEndOverrideFor', options.pastEndOverrideFor);
+    }
+    return next;
+  });
 }
 
 /**
@@ -1846,9 +1861,11 @@ export async function finishMatchAndContinue(
       // 練習終了20分前を過ぎたら新しい試合は入れない。どの端末から終了しても同じ
       // 判定になるよう transaction 内で見て、連続モード自体も同じ書き込みで OFF にする。
       const remoteContinuous = remoteSettings?.continuousMatchMode ?? false;
-      const pastLastCall = isPastLastCall(
-        getPracticeEndPhase(resolvePracticeEndTime(remoteConfig), Date.now()),
-      );
+      // 作成者が延長した（今の終了時刻に対する override がある）ときは止めない。
+      const resolvedEndTime = resolvePracticeEndTime(remoteConfig);
+      const pastLastCall =
+        isPastLastCall(getPracticeEndPhase(resolvedEndTime, Date.now())) &&
+        !isPastEndOverrideActive(remoteSettings?.continuousPastEndOverrideFor, resolvedEndTime);
       const computed = computeFinishAndContinue(remote, courtId, {
         continuousMatchMode: remoteSettings?.continuousMatchMode ?? false,
         // 配置モードはセッション設定を優先。リモート未設定の旧セッションのみ、

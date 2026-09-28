@@ -150,3 +150,15 @@ export function resolvePracticeEndTime(config: {
   }
   return undefined;
 }
+
+/**
+ * 作成者（開発モード含む）が終了20分前以降に連続モードを ON にした「延長」が
+ * 今の終了時刻に対して有効か。延長は ON にした時点の終了時刻を記録しておき、
+ * 終了時刻が変わったら無効（新しい終了時刻では通常どおり止まる）。
+ */
+export function isPastEndOverrideActive(
+  overrideFor: number | undefined | null,
+  practiceEndTime: number | undefined | null,
+): boolean {
+  return !!overrideFor && !!practiceEndTime && overrideFor === practiceEndTime;
+}
