@@ -15,7 +15,7 @@
 - **バージョンはコミット数から自動採番**される（`1.0.<git rev-list --count HEAD>`）。
   画面下部の `v1.0.NNN` 表示がこれ。手動で `package.json` の version を上げる必要はない。
 - **Firebase の環境変数はビルド時に GitHub Actions Secrets から注入**される
-  （`VITE_FIREBASE_*` / `VITE_DISCORD_WEBHOOK_URL`）。ローカルの `.env` は本番ビルドには
+  （`VITE_FIREBASE_*`）。ローカルの `.env` は本番ビルドには
   使われない。Secrets は Firebase console / リポジトリ設定側で管理。
 
 > 補足: `package.json` に `npm run deploy`（`gh-pages -d dist`）が残っているが、
