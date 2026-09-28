@@ -1257,23 +1257,28 @@ export function MainPage() {
         <div className="flex items-center justify-between gap-1">
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
+              {/* ON/OFF でボタン幅を変えない（幅が伸びるとヘッダー右端の設定アイコンが
+                  画面外へはみ出す）。ON は緑の配色と右上の点で示す。 */}
               {isAdmin() && (
                 <button
                   onClick={() => void continuousModeToggle.run(!continuousMatchMode)}
                   disabled={continuousModeToggle.isPending}
-                  className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
+                  aria-pressed={continuousMatchMode}
+                  aria-label={continuousMatchMode ? '連続モード（ON）' : '連続モード（OFF）'}
+                  className={`relative flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 ${
                     continuousMatchMode
-                      ? 'bg-green-50 text-green-700 border border-green-200'
+                      ? 'bg-green-50 text-green-700 border border-green-300'
                       : 'bg-muted text-muted-foreground border border-border'
                   }`}
                 >
                   <Repeat size={16} />
                   <span>連続</span>
-                  <span className={`text-[10px] bg-green-200 py-0.5 rounded-full font-bold transition-all duration-150 ${
-                    continuousMatchMode
-                      ? 'opacity-100 max-w-[2rem] px-1.5'
-                      : 'opacity-0 max-w-0 overflow-hidden px-0'
-                  }`}>ON</span>
+                  {continuousMatchMode && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-green-500 ring-2 ring-background"
+                    />
+                  )}
                 </button>
               )}
               <button
