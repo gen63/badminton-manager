@@ -13,7 +13,7 @@ import { EMPTY_COURT_STATE } from '../types/court';
 import { parsePlayerInput } from '../lib/utils';
 import { clearPresence, createSession, leaveSession } from '../services/sessionService';
 import { fetchDefaultAnnouncementTextSafe } from '../services/appConfigService';
-import { getPracticeTypeDefaults } from '../lib/sessionDefaults';
+import { NEW_SESSION_DEFAULTS } from '../lib/sessionDefaults';
 import { getErrorMessage } from '../lib/errorHandler';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
@@ -155,8 +155,8 @@ export function SessionCreate() {
         // writer が使えないので画面上の選択（メモリ上の settingsStore）をここで
         // 初期 settings に焼き込む。
         settings: {
-          // 男女比調整・予約の試合数制限は作成画面に出さないので練習種別の既定値を焼き込む
-          ...getPracticeTypeDefaults(practiceType),
+          // 男女比調整・予約の試合数制限は作成画面に出さないので既定値を焼き込む
+          ...NEW_SESSION_DEFAULTS,
           recordScores,
           continuousMatchMode,
           practiceType,
@@ -359,10 +359,7 @@ export function SessionCreate() {
               {(['単', '複', '楽'] as const).map((type) => (
                 <button
                   key={type}
-                  onClick={() => {
-                    setPracticeType(type);
-                    setUseStayDurationPriority(getPracticeTypeDefaults(type).useStayDurationPriority ?? true);
-                  }}
+                  onClick={() => setPracticeType(type)}
                   className={`flex-1 select-button text-xs px-2 ${
                     practiceType === type ? 'select-button-active' : 'select-button-inactive'
                   }`}

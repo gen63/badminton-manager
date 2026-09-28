@@ -518,7 +518,7 @@ describe('buildSessionData', () => {
     expect(relaxed.gameState.settings.forceBulkAssignment).toBe(true);
   });
 
-  it('複は 男女比調整OFF / 試合回数優先 / 予約制限+3、単・楽は従来の既定値を書く', () => {
+  it('全練習種別で 男女比調整OFF / 試合回数優先 / 予約制限+3 を書く', () => {
     const baseEvent = {
       eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
       startTime: '18:30', endTime: '21:30', venue: '千川館',
@@ -526,16 +526,11 @@ describe('buildSessionData', () => {
       location: '', participants: [], genders: {},
     };
 
-    const doubles = buildSessionData({ ...baseEvent, note: '複' }, new Map(), new Date(2026, 3, 9));
-    expect(doubles.gameState.settings.genderBalanceMode).toBe(false);
-    expect(doubles.gameState.settings.useStayDurationPriority).toBe(false);
-    expect(doubles.gameState.settings.reservationBlockThreshold).toBe(3);
-
-    for (const note of ['単', '楽'] as const) {
+    for (const note of ['単', '複', '楽'] as const) {
       const data = buildSessionData({ ...baseEvent, note }, new Map(), new Date(2026, 3, 9));
-      expect(data.gameState.settings.genderBalanceMode).toBe(true);
-      expect(data.gameState.settings.useStayDurationPriority).toBe(true);
-      expect(data.gameState.settings.reservationBlockThreshold).toBe(2);
+      expect(data.gameState.settings.genderBalanceMode).toBe(false);
+      expect(data.gameState.settings.useStayDurationPriority).toBe(false);
+      expect(data.gameState.settings.reservationBlockThreshold).toBe(3);
     }
   });
 

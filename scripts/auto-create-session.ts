@@ -31,7 +31,7 @@ import iconv from 'iconv-lite';
 import type { GameState } from '../src/services/sessionService';
 import { AUTO_SESSION_BOT_CREATOR } from '../src/constants/autoSession';
 import { buildPracticeEndTime } from '../src/lib/practiceEndPhase';
-import { getPracticeTypeDefaults } from '../src/lib/sessionDefaults';
+import { NEW_SESSION_DEFAULTS } from '../src/lib/sessionDefaults';
 import type { Player } from '../src/types/player';
 
 // ============================================================
@@ -672,9 +672,8 @@ function buildSessionData(
         practiceType: event.note as '単' | '複' | '楽',
         recordScores: event.note !== '楽',
         continuousMatchMode: true,
-        // 男女比調整・予約の試合数制限・配置モードは練習種別ごとの既定値を明示する
-        // （複＝男女比調整OFF / 試合回数優先 / +3）。端末ローカルの値に依存させない。
-        ...getPracticeTypeDefaults(event.note as '単' | '複' | '楽'),
+        // 男女比調整OFF / 試合回数優先 / 予約制限+3 を明示し、端末ローカルの値に依存させない。
+        ...NEW_SESSION_DEFAULTS,
         // 単＝OFF固定 / 楽＝ON固定 / 複＝新デフォルトの ON。未設定は受信側で `?? true`
         // になるため、明示しないと単が誤って ON になってしまう（不変条件を明示する）。
         forceBulkAssignment: event.note !== '単',
