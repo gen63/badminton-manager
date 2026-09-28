@@ -4,7 +4,10 @@ import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useReservationStore } from '../stores/reservationStore';
+import { usePairPreferenceStore } from '../stores/pairPreferenceStore';
 import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
+import { useNextMatchPrediction } from '../hooks/useNextMatchPrediction';
 import { formatTime, copyToClipboard } from '../lib/utils';
 import { formatLocalDate } from '../lib/sessionArchive';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
@@ -14,15 +17,29 @@ import type { PlayerRecord } from '../lib/matchFilter';
 import { computePerformanceRatings, findPerformance } from '../lib/performanceRating';
 import type { PlayerPerformance } from '../lib/performanceRating';
 import { useDevMode } from '../hooks/useDevMode';
-import { Copy, Trash2, Edit3, Clock, Upload, History, ChevronDown, ChevronUp, User, AlertTriangle, BarChart3 } from 'lucide-react';
+import { Copy, Trash2, Edit3, Clock, Upload, History, ChevronDown, ChevronUp, User, AlertTriangle, BarChart3, RotateCcw } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
 import { EmptyState } from '../components/EmptyState';
 import { BottomNav } from '../components/BottomNav';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { OrphanPlayerAssignModal, type AssignScope } from '../components/OrphanPlayerAssignModal';
 import { countOrphanMatches } from '../services/sessionMutations';
+import { FINISH_REVERT_WINDOW_MS, gameModeFromPracticeType } from '../lib/gameOperations';
+import { canFinishGame } from '../lib/finishOperationGuide';
+import type { RevertFinishError } from '../lib/gameOperations';
 
 import type { Match } from '../types/match';
+
+/** 履歴画面「コートに戻す」の失敗理由（コード）→ トースト文言 */
+const REVERT_ERROR_MESSAGES: Record<RevertFinishError, string> = {
+  not_found: '試合が見つかりませんでした',
+  expired: '終了から2分を過ぎたため戻せません',
+  no_revert_info: 'この試合は戻せません（対応前の記録です）',
+  court_busy: '次の試合が進んでいるため戻せません',
+  player_elsewhere: 'メンバーが別のコートにいるため戻せません',
+  not_latest: 'このコートで新しい試合が始まっているため戻せません',
+};
 
 const SHORT_MATCH_WARNING_MESSAGE = '試合時間が短すぎます（操作ミスの可能性）';
 
@@ -78,6 +95,52 @@ function TeamNames({
   );
 }
 
+/**
+ * 「コートに戻す」ボタン。終了2分以内だけ表示する。
+ *
+ * 期限までの残り時間を自分だけで管理する（1秒ごとの `setInterval` はこの
+ * コンポーネントに閉じており、期限切れの試合が並ぶ一覧全体は再描画されない）。
+ * 期限が来たら自身を非表示にする（`null` を返す）。
+ */
+function RevertToCourtButton({
+  finishedAt,
+  onClick,
+}: {
+  finishedAt: number;
+  onClick: () => void;
+}) {
+  const [remainingMs, setRemainingMs] = useState(
+    () => FINISH_REVERT_WINDOW_MS - (Date.now() - finishedAt),
+  );
+
+  const expired = remainingMs <= 0;
+  useEffect(() => {
+    // 期限切れのカードではタイマーを張らない（履歴が増えても毎秒の再描画が積もらない）
+    if (expired) return;
+    const id = setInterval(() => {
+      setRemainingMs(FINISH_REVERT_WINDOW_MS - (Date.now() - finishedAt));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [finishedAt, expired]);
+
+  if (expired) return null;
+
+  const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+  const mm = Math.floor(totalSeconds / 60);
+  const ss = String(totalSeconds % 60).padStart(2, '0');
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-1.5 w-full flex items-center justify-center gap-1 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 active:scale-[0.98] rounded-lg py-1.5 transition-all duration-150"
+    >
+      <RotateCcw size={12} />
+      コートに戻す（残り {mm}:{ss}）
+    </button>
+  );
+}
+
 function MatchCard({
   match,
   matchNumber,
@@ -90,6 +153,8 @@ function MatchCard({
   highlightName,
   isOrphanId,
   onAssignOrphan,
+  canRevert,
+  onRevertClick,
 }: {
   match: Match;
   matchNumber: number;
@@ -102,6 +167,9 @@ function MatchCard({
   highlightName: string | null;
   isOrphanId: (id: string) => boolean;
   onAssignOrphan?: (orphanId: string, match: Match, matchNumber: number) => void;
+  /** 終了操作と同じ権限（`canFinishGame`）。無ければ「コートに戻す」は出さない */
+  canRevert: boolean;
+  onRevertClick: (match: Match) => void;
 }) {
   const durationMs = match.finishedAt - match.startedAt;
   const duration = Math.round(durationMs / 60000);
@@ -127,6 +195,11 @@ function MatchCard({
     });
   const leftIds = isMatchSingles ? [leftTeam[0]] : sortPairForDisplay(leftTeam);
   const rightIds = isMatchSingles ? [rightTeam[0]] : sortPairForDisplay(rightTeam);
+
+  // 旧データ（finishRevert 無し）はそもそも出さない。既に2分を過ぎている場合は
+  // `RevertToCourtButton` が自身の初期状態（`Date.now()` は useState の遅延初期化
+  // 内で評価するのでレンダー本体では呼ばない）で判定して null を返す。
+  const showRevert = canRevert && !!match.finishRevert;
 
   return (
     <div
@@ -214,6 +287,9 @@ function MatchCard({
           )}
         </div>
       </div>
+      {showRevert && (
+        <RevertToCourtButton finishedAt={match.finishedAt} onClick={() => onRevertClick(match)} />
+      )}
     </div>
   );
 }
@@ -234,6 +310,8 @@ function MatchList({
   highlightName,
   isOrphanId,
   onAssignOrphan,
+  canRevert,
+  onRevertClick,
 }: {
   unscoredMatches: { match: Match; matchNumber: number }[];
   scoredMatches: { match: Match; matchNumber: number }[];
@@ -250,6 +328,8 @@ function MatchList({
   highlightName: string | null;
   isOrphanId: (id: string) => boolean;
   onAssignOrphan?: (orphanId: string, match: Match, matchNumber: number) => void;
+  canRevert: boolean;
+  onRevertClick: (match: Match) => void;
 }) {
   return (
     <div className="space-y-2">
@@ -281,6 +361,8 @@ function MatchList({
               highlightName={highlightName}
               isOrphanId={isOrphanId}
               onAssignOrphan={onAssignOrphan}
+              canRevert={canRevert}
+              onRevertClick={onRevertClick}
             />
           ))}
         </>
@@ -314,6 +396,8 @@ function MatchList({
               highlightName={highlightName}
               isOrphanId={isOrphanId}
               onAssignOrphan={onAssignOrphan}
+              canRevert={canRevert}
+              onRevertClick={onRevertClick}
             />
           ))}
         </>
@@ -536,6 +620,45 @@ export function HistoryPage() {
     matchNumber: number;
   } | null>(null);
 
+  // ===== 「コートに戻す」権限判定 =====
+  // 終了ボタンと同じ権限（`canFinishGame`）。予測には試合終了ボタンと同じ
+  // 入力（配置予測の「ほぼ確定」＝操作担当）が要る。
+  const courts = useGameStore((s) => s.courts);
+  const reservations = useReservationStore((s) => s.reservations);
+  const pairPreferences = usePairPreferenceStore((s) => s.pairPreferences);
+  const useStayDurationPriority = useSettingsStore((s) => s.useStayDurationPriority);
+  const practiceType = useSettingsStore((s) => s.practiceType);
+  const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
+  const genderBalanceMode = useSettingsStore((s) => s.genderBalanceMode);
+  const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
+  const gameMode = gameModeFromPracticeType(practiceType);
+
+  const { prediction: nextMatchPrediction } = useNextMatchPrediction({
+    session,
+    players,
+    courts,
+    matchHistory,
+    reservations,
+    useStayDurationPriority,
+    gameMode,
+    lateBalanceMode,
+    genderBalanceMode,
+    reservationBlockThreshold,
+    pairPreferences,
+  });
+  const myPlayerId = useMemo(
+    () => players.find((p) => p.name === currentUser)?.id ?? null,
+    [players, currentUser],
+  );
+  const canRevertFinish = canFinishGame({
+    isAdmin: isAdmin(),
+    certainIds: nextMatchPrediction.certainIds,
+    myPlayerId,
+  });
+
+  // 「コートに戻す」確認ダイアログの対象（null = 非表示）
+  const [revertTarget, setRevertTarget] = useState<Match | null>(null);
+
   // フィルタ対象プレイヤー名（null = フィルタ無し / 全試合表示）。
   // URL クエリ `?player=名前` に保持する。こうすることでスコア入力画面へ遷移して
   // 戻った際（`navigate('/history?player=…')` による再マウント）もフィルタが維持される。
@@ -724,6 +847,56 @@ export function HistoryPage() {
 
   const handleShortMatchWarning = () => {
     toast.warning(SHORT_MATCH_WARNING_MESSAGE, 1000);
+  };
+
+  // 「コートに戻す」タップ: 確認ダイアログを開く
+  const handleRevertClick = (match: Match) => {
+    setRevertTarget(match);
+  };
+
+  // 確認ダイアログの本文（コート・両チーム名。次の組がいれば取り消す旨、
+  // 結果入力済みなら消える旨を添える）。押した瞬間の状態で固定する
+  // （`revertTarget` が state で確定しているため、都度呼んでも表示内容はぶれない）。
+  const buildRevertConfirmMessage = (match: Match): string => {
+    const court = courts.find((c) => c.id === match.courtId);
+    const courtLabel = courts.length > 1 ? `${match.courtId}コート` : 'この試合';
+    const teamANames = match.teamA.filter((id) => id).map(getPlayerName);
+    const teamBNames = match.teamB.filter((id) => id).map(getPlayerName);
+    const lines = [`${courtLabel}: ${teamANames.join('・')} vs ${teamBNames.join('・')}`];
+
+    const hasResult = match.winner !== undefined || match.scoreA !== 0 || match.scoreB !== 0;
+    if (hasResult) {
+      lines.push('入力した結果は消えます。');
+    }
+
+    // コートが連続配置で自動開始した次の組のままなら、戻すときにその試合を取り消す
+    const nextGroupOnCourt =
+      !!court?.isPlaying &&
+      match.finishRevert?.nextStartedAt !== undefined &&
+      court.startedAt === match.finishRevert.nextStartedAt;
+    if (nextGroupOnCourt && court) {
+      const nextANames = court.teamA.filter((id) => id).map(getPlayerName);
+      const nextBNames = court.teamB.filter((id) => id).map(getPlayerName);
+      lines.push(`${nextANames.join('・')} vs ${nextBNames.join('・')} の試合は取り消されます。`);
+    }
+
+    return lines.join('\n');
+  };
+
+  const handleRevertConfirm = async () => {
+    if (!revertTarget) return;
+    const match = revertTarget;
+    setRevertTarget(null);
+    const res = await writer.revertMatchFinish(match.id);
+    // undefined = SessionError（conflict 等）。useSessionWriterWithToast が
+    // 既定文言のトーストを既に出しているのでここでは何もしない。
+    if (!res) return;
+    if (res.result === 'success') {
+      const label = courts.length > 1 ? `${match.courtId}コート` : 'コート';
+      toast.success(`${label}に戻しました`);
+      return;
+    }
+    toast.error(REVERT_ERROR_MESSAGES[res.result]);
   };
 
   // CSV1 fix: RFC 4180 のエスケープ。`,`/`"`/`\n`/`\r` を含むフィールドは
@@ -950,6 +1123,8 @@ export function HistoryPage() {
                           setOrphanTarget({ orphanId, match, matchNumber })
                       : undefined
                   }
+                  canRevert={canRevertFinish}
+                  onRevertClick={handleRevertClick}
                 />
               )}
             </div>
@@ -966,6 +1141,18 @@ export function HistoryPage() {
           idsInMatch={[...orphanTarget.match.teamA, ...orphanTarget.match.teamB].filter(Boolean)}
           onConfirm={handleAssignOrphan}
           onCancel={() => setOrphanTarget(null)}
+        />
+      )}
+
+      {/* 「コートに戻す」確認ダイアログ */}
+      {revertTarget && (
+        <ConfirmDialog
+          title="この試合をコートに戻しますか？"
+          message={buildRevertConfirmMessage(revertTarget)}
+          confirmLabel="コートに戻す"
+          cancelLabel="キャンセル"
+          onConfirm={() => void handleRevertConfirm()}
+          onCancel={() => setRevertTarget(null)}
         />
       )}
 

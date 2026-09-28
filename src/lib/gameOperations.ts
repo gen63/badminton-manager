@@ -45,6 +45,13 @@ export const MATCH_AUTO_START_MS = 3 * 60 * 1000;
 export const AUTO_TIMER_MAX_LATENESS_MS = 2 * 60 * 1000;
 
 /**
+ * 履歴画面「コートに戻す」を許す猶予（終了から2分）。
+ * アンドゥ/リドゥ撤廃の代替として、押し間違いを戻せる短い窓だけ残す。
+ * 詳細: docs/plans/2026-09-28-remove-undo-revert-finish.md
+ */
+export const FINISH_REVERT_WINDOW_MS = 2 * 60 * 1000;
+
+/**
  * タイマーの発火が早すぎる分の許容（1秒）。`setTimeout` はごく僅かに期限より早く
  * 発火することがあるため、その分だけ手前も「期限に達した」とみなす。
  */
@@ -197,6 +204,42 @@ export interface FinishGameResult {
 }
 
 /**
+ * 与えられた matchHistory からプレイヤーの試合統計を再計算する。
+ * - gamesPlayed = 履歴での出場試合数
+ * - lastPlayedAt = 最後に出場した試合の finishedAt（未出場は 0）
+ *
+ * 試合終了時 (`computeFinishAndContinue`) は出場者の gamesPlayed を +1 し
+ * lastPlayedAt を finishedAt にするのと同時に同じ試合を履歴へ追加する。
+ * よって両値は常に matchHistory から導出可能であり、履歴削除・全消去・
+ * 「コートに戻す」の後にこの関数で再計算すれば、gamesPlayed / lastPlayedAt を
+ * 履歴と整合させられる。
+ *
+ * 元は `sessionMutations.ts` に private で持っていたが、`computeRevertFinish`
+ * （このファイル）からも使うため、循環 import を避けてここへ移設した。
+ * `sessionMutations.ts` はここから re-export する。
+ */
+export function recomputePlayerMatchStats(
+  players: GameState['players'],
+  matchHistory: Match[],
+): GameState['players'] {
+  const games = new Map<string, number>();
+  const last = new Map<string, number>();
+  for (const m of matchHistory) {
+    for (const id of [...m.teamA, ...m.teamB]) {
+      if (!id) continue;
+      games.set(id, (games.get(id) ?? 0) + 1);
+      if (m.finishedAt > (last.get(id) ?? 0)) last.set(id, m.finishedAt);
+    }
+  }
+  return players.map((p) => {
+    const gamesPlayed = games.get(p.id) ?? 0;
+    const lastPlayedAt = last.get(p.id) ?? 0;
+    if (gamesPlayed === p.gamesPlayed && lastPlayedAt === p.lastPlayedAt) return p;
+    return { ...p, gamesPlayed, lastPlayedAt };
+  });
+}
+
+/**
  * 試合終了 + 連続モード配置を純粋関数として計算。
  * Transaction内でリモート状態に対して適用する。
  */
@@ -259,6 +302,20 @@ export function computeFinishAndContinue(
   //   待機に復帰する。
   const activePlayerIds = [...court.teamA, ...court.teamB].filter(id => id);
   const participantSet = new Set(activePlayerIds);
+
+  // finishRevert 用: 終了前のスナップショット（コートをクリアする前・
+  // isResting/forcedRestAt を書き換える前の値）。
+  const playersBeforeSnapshot: NonNullable<Match['finishRevert']>['playersBefore'] =
+    // 名簿に居ない ID（孤児）が混ざっていても終了自体は止めない
+    activePlayerIds.flatMap((id) => {
+      const p = state.players.find((pl) => pl.id === id);
+      return p ? [{ id, isResting: p.isResting, forcedRestAt: p.forcedRestAt }] : [];
+    });
+  const courtBeforeSnapshot: NonNullable<Match['finishRevert']>['court'] = {
+    assignedAt: court.assignedAt,
+    startPressedAt: court.startPressedAt,
+    restingPlayerIds: court.restingPlayerIds,
+  };
   const reservationsAfterFinish = state.reservations.map(r =>
     r.status === 'pending' &&
     r.playerIds.length > 0 &&
@@ -303,6 +360,9 @@ export function computeFinishAndContinue(
   // 5. 連続モード配置
   let continuousNextApplied = false;
   let continuousError: string | undefined;
+  // finishRevert 用: 連続配置で開始した次の試合の startedAt / 休憩から呼び出した ID
+  let nextStartedAtForRevert: number | undefined;
+  let nextActivatedFromRestIdsForRevert: string[] | undefined;
 
   if (options.continuousMatchMode && !options.skipContinuous) {
     const playersInCourts = new Set(
@@ -402,7 +462,9 @@ export function computeFinishAndContinue(
           updatedPlayers = updatedPlayers.map(p =>
             activateSet.has(p.id) ? { ...p, isResting: false } : p
           );
+          nextActivatedFromRestIdsForRevert = assignment.activatedFromRestIds;
         }
+        nextStartedAtForRevert = nextStartedAt;
         continuousNextApplied = true;
       } else {
         continuousError = 'assignment_failed';
@@ -428,15 +490,182 @@ export function computeFinishAndContinue(
     }
   }
 
+  // finishRevert: 終了時（+連続配置）で pending → fulfilled にした予約 ID。
+  // 元の状態と最終状態を比較して求める（どちらのタイミングで消化されても拾える）。
+  const originalReservationStatusById = new Map(
+    state.reservations.map((r) => [r.id, r.status]),
+  );
+  const fulfilledReservationIds = updatedReservations
+    .filter((r) => r.status === 'fulfilled' && originalReservationStatusById.get(r.id) === 'pending')
+    .map((r) => r.id);
+
+  const finishRevert: NonNullable<Match['finishRevert']> = {
+    playersBefore: playersBeforeSnapshot,
+    court: courtBeforeSnapshot,
+    fulfilledReservationIds,
+    ...(continuousNextApplied
+      ? {
+          nextStartedAt: nextStartedAtForRevert,
+          ...(nextActivatedFromRestIdsForRevert
+            ? { nextActivatedFromRestIds: nextActivatedFromRestIdsForRevert }
+            : {}),
+        }
+      : {}),
+  };
+  const finalMatchHistory = updatedMatchHistory.map((m) =>
+    m.id === match.id ? { ...m, finishRevert } : m,
+  );
+
   return {
     newState: {
       ...state,
       players: updatedPlayers,
       courts: updatedCourts,
-      matchHistory: updatedMatchHistory,
+      matchHistory: finalMatchHistory,
       reservations: updatedReservations,
     },
     continuousNextApplied,
     continuousError,
+  };
+}
+
+/** `computeRevertFinish` が失敗したときの理由コード */
+export type RevertFinishError =
+  | 'not_found'
+  | 'expired'
+  | 'no_revert_info'
+  | 'court_busy'
+  | 'player_elsewhere'
+  | 'not_latest';
+
+export type RevertFinishResult =
+  | { newState: GameState }
+  | { error: RevertFinishError };
+
+/**
+ * 試合終了を取り消し、対象コートへ試合を戻す純粋関数。
+ *
+ * アンドゥ/リドゥ撤廃の代替として、履歴画面から「終了2分以内・そのコートの最新の
+ * 試合・押せる権限がある」場合にだけ許す限定的な取り消し。`gameState` を丸ごと
+ * 上書きするのではなく、関係箇所だけを `Match.finishRevert` の記録どおりに戻す。
+ *
+ * 条件（順に判定）:
+ *   1. 対象の試合が存在し `finishRevert` を持つこと（旧データは戻せない）
+ *   2. `now - finishedAt <= FINISH_REVERT_WINDOW_MS`
+ *   3. そのコートの最新の試合であること（同じコートでより新しい試合が無い）
+ *   4. コートが「空」または「連続配置で開始した次の組のまま」であること
+ *      （`court.startedAt === finishRevert.nextStartedAt`）
+ *   5. 元の出場者が（そのコートの次の組を除き）他コートに居ないこと
+ *
+ * 処理:
+ *   1. `matchHistory` から対象を削除し、`recomputePlayerMatchStats` で
+ *      gamesPlayed / lastPlayedAt を再計算
+ *   2. 次の組があれば外す（コートを空に）。休憩から呼び出されていたメンバーは
+ *      `isResting: true` に戻す
+ *   3. `finishRevert.fulfilledReservationIds` の予約を `pending` / `fulfilledAt: 0` に戻す
+ *   4. 元の出場者の `isResting` / `forcedRestAt` を `playersBefore` の値に戻す
+ *   5. コートへ元の試合を復元（teamA/B・`isPlaying: true`・`startedAt`・スコア0 など）
+ *
+ * `pairPreferences` / `settings` には触れない。練習終了間際に自動 OFF になった
+ * 連続モードなどの設定も戻さない（ユーザー決定）。
+ * 詳細: docs/plans/2026-09-28-remove-undo-revert-finish.md
+ */
+export function computeRevertFinish(
+  state: GameState,
+  matchId: string,
+  now: number,
+): RevertFinishResult {
+  const match = state.matchHistory.find((m) => m.id === matchId);
+  if (!match) return { error: 'not_found' };
+
+  const finishRevert = match.finishRevert;
+  if (!finishRevert) return { error: 'no_revert_info' };
+
+  if (now - match.finishedAt > FINISH_REVERT_WINDOW_MS) return { error: 'expired' };
+
+  // そのコートの最新の試合か（同じコートでより新しい finishedAt の試合が無いこと）
+  const isLatestOnCourt = !state.matchHistory.some(
+    (m) => m.id !== matchId && m.courtId === match.courtId && m.finishedAt > match.finishedAt,
+  );
+  if (!isLatestOnCourt) return { error: 'not_latest' };
+
+  const court = state.courts.find((c) => c.id === match.courtId);
+  if (!court) return { error: 'not_found' };
+
+  const courtIsEmpty =
+    !court.isPlaying && !court.teamA[0] && !court.teamA[1] && !court.teamB[0] && !court.teamB[1];
+  const courtHasNextGroup =
+    court.isPlaying &&
+    finishRevert.nextStartedAt !== undefined &&
+    court.startedAt === finishRevert.nextStartedAt;
+  if (!courtIsEmpty && !courtHasNextGroup) return { error: 'court_busy' };
+
+  // コートに残っている次の組のメンバー（無ければ空集合）。元の出場者がそこに
+  // 含まれるのは「連続配置がその人を再度選んだだけ」であり他コートではないので許容する。
+  const nextGroupIds = courtHasNextGroup
+    ? new Set([...court.teamA, ...court.teamB].filter((id) => id))
+    : new Set<string>();
+  const originalIds = finishRevert.playersBefore.map((p) => p.id);
+  const playerElsewhere = state.courts.some((c) => {
+    if (c.id === match.courtId) return false;
+    return [...c.teamA, ...c.teamB].some((id) => id && originalIds.includes(id) && !nextGroupIds.has(id));
+  });
+  if (playerElsewhere) return { error: 'player_elsewhere' };
+
+  // ==== 1. matchHistory から削除 + 統計再計算 ====
+  const matchHistory = state.matchHistory.filter((m) => m.id !== matchId);
+  let players = recomputePlayerMatchStats(state.players, matchHistory);
+
+  // ==== 2. 次の組があれば外す（コートは後で復元するのでここでは触らない）+
+  //          休憩から呼び出していたメンバーを isResting: true に戻す ====
+  if (courtHasNextGroup && finishRevert.nextActivatedFromRestIds?.length) {
+    const restoreSet = new Set(finishRevert.nextActivatedFromRestIds);
+    players = players.map((p) => (restoreSet.has(p.id) ? { ...p, isResting: true } : p));
+  }
+
+  // ==== 3. 予約を pending へ戻す ====
+  let reservations = state.reservations;
+  if (finishRevert.fulfilledReservationIds.length > 0) {
+    const restoreSet = new Set(finishRevert.fulfilledReservationIds);
+    reservations = reservations.map((r) =>
+      restoreSet.has(r.id) ? { ...r, status: 'pending' as const, fulfilledAt: 0 } : r,
+    );
+  }
+
+  // ==== 4. 元の出場者の isResting / forcedRestAt を戻す ====
+  const beforeById = new Map(finishRevert.playersBefore.map((p) => [p.id, p]));
+  players = players.map((p) => {
+    const before = beforeById.get(p.id);
+    if (!before) return p;
+    return { ...p, isResting: before.isResting, forcedRestAt: before.forcedRestAt };
+  });
+
+  // ==== 5. コートへ元の試合を復元 ====
+  const courts = state.courts.map((c) =>
+    c.id === match.courtId
+      ? {
+          ...c,
+          teamA: match.teamA,
+          teamB: match.teamB,
+          scoreA: 0,
+          scoreB: 0,
+          isPlaying: true,
+          startedAt: match.startedAt,
+          finishedAt: 0,
+          assignedAt: finishRevert.court.assignedAt,
+          startPressedAt: finishRevert.court.startPressedAt,
+          restingPlayerIds: finishRevert.court.restingPlayerIds,
+        }
+      : c,
+  );
+
+  return {
+    newState: {
+      ...state,
+      players,
+      courts,
+      matchHistory,
+      reservations,
+    },
   };
 }

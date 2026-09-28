@@ -187,6 +187,14 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  // 履歴画面「コートに戻す」。戻り値の result（success / エラーコード）は
+  // 呼び出し側（HistoryPage）が理由別のトーストを出すために使う。
+  // conflict（transaction の aborted）は handle() 経由の onError で汎用トースト。
+  const revertMatchFinish = useCallback(
+    (matchId: string) => handle('revertMatchFinish', (sid) => sm.revertMatchFinish(sid, matchId)),
+    [handle],
+  );
+
   const updateMatchScore = useCallback(
     (matchId: string, scoreA: number, scoreB: number, winner?: 'A' | 'B') =>
       handle('updateMatchScore', (sid) =>
@@ -332,6 +340,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       // match history
       clearHistory,
       removeMatch,
+      revertMatchFinish,
       updateMatchScore,
       updateMatch,
       assignOrphanPlayer,
@@ -378,6 +387,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       swapPositions,
       clearHistory,
       removeMatch,
+      revertMatchFinish,
       updateMatchScore,
       updateMatch,
       assignOrphanPlayer,

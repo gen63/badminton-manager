@@ -64,6 +64,7 @@ import {
   setPracticeType,
   setContinuousMatchMode,
   finishMatchAndContinue,
+  revertMatchFinish,
   updateMatch,
   updatePlayer,
   autoAssignAndFulfill,
@@ -2301,6 +2302,110 @@ describe('sessionMutations - finishMatchAndContinue', () => {
     expect(result.continuousStoppedForPracticeEnd).toBe(false);
     expect(result.continuousNextApplied).toBe(true);
     expect(result.writtenState?.settings?.continuousMatchMode).toBe(true);
+  });
+});
+
+// =============================================================================
+// 履歴画面「コートに戻す」（試合終了の取り消し）
+// docs/plans/2026-09-28-remove-undo-revert-finish.md
+// =============================================================================
+
+describe('sessionMutations - revertMatchFinish', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  // revertMatchFinish は Date.now() を基準に猶予判定するため、成功系テストは
+  // 現在時刻からの相対値を使う（過去の固定値は expired 扱いになってしまう）。
+  const FINISHED_AT = Date.now() - 30_000;
+  const STARTED_AT = FINISHED_AT - 600_000;
+
+  function makeFinishedMatch(overrides: Partial<Match> = {}): Match {
+    return makeMatch('m1', {
+      courtId: 1,
+      teamA: ['p1', 'p2'],
+      teamB: ['p3', 'p4'],
+      startedAt: STARTED_AT,
+      finishedAt: FINISHED_AT,
+      finishRevert: {
+        playersBefore: [
+          { id: 'p1', isResting: false },
+          { id: 'p2', isResting: false },
+          { id: 'p3', isResting: false },
+          { id: 'p4', isResting: false },
+        ],
+        court: {},
+        fulfilledReservationIds: [],
+      },
+      ...overrides,
+    });
+  }
+
+  function remoteStateWithFinishedMatch(overrides: Partial<GameState> = {}): GameState {
+    return baseState({
+      players: [
+        makePlayer('p1'), makePlayer('p2'), makePlayer('p3'), makePlayer('p4'),
+      ],
+      courts: [makeCourt(1)],
+      matchHistory: [makeFinishedMatch()],
+      ...overrides,
+    });
+  }
+
+  it('リモート状態に対して computeRevertFinish を実行し、update する', async () => {
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: remoteStateWithFinishedMatch() }),
+      ref: { __docRef: true },
+    });
+
+    const result = await revertMatchFinish('s', 'm1');
+    expect(result.result).toBe('success');
+    expect(mockTransactionUpdate).toHaveBeenCalled();
+    const payload = mockTransactionUpdate.mock.calls[0][1] as { gameState: GameState };
+    expect(payload.gameState.matchHistory).toHaveLength(0);
+    expect(payload.gameState.courts[0].isPlaying).toBe(true);
+    expect(payload.gameState.courts[0].teamA).toEqual(['p1', 'p2']);
+  });
+
+  it('条件を満たさない場合はエラーコードを結果として返し、update しない', async () => {
+    // 2分の猶予を過ぎている
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        gameState: remoteStateWithFinishedMatch({
+          matchHistory: [
+            makeFinishedMatch({ finishedAt: Date.now() - 10 * 60 * 1000 }),
+          ],
+        }),
+      }),
+      ref: { __docRef: true },
+    });
+
+    const result = await revertMatchFinish('s', 'm1');
+    expect(result.result).toBe('expired');
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('セッションが存在しなければ not-found を throw', async () => {
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => false,
+      data: () => undefined,
+      ref: { __docRef: true },
+    });
+
+    await expect(revertMatchFinish('s', 'm1')).rejects.toMatchObject({ code: 'not-found' });
+  });
+
+  it('aborted を SessionError("conflict") に変換する', async () => {
+    mockRunTransaction.mockImplementationOnce(async () => {
+      const err = new Error('aborted') as Error & { code?: string };
+      err.code = 'aborted';
+      throw err;
+    });
+
+    await expect(revertMatchFinish('s', 'm1')).rejects.toBeInstanceOf(SessionError);
   });
 });
 

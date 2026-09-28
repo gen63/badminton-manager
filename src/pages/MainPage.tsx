@@ -28,7 +28,7 @@ import { CourtTimer } from '../components/CourtTimer';
 import { CourtCardFrame } from '../components/CourtCardFrame';
 import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { FinishOperationGuide } from '../components/FinishOperationGuide';
-import { EMPTY_PREDICTION, predictNextMatchPlayers } from '../lib/nextMatchPrediction';
+import { useNextMatchPrediction } from '../hooks/useNextMatchPrediction';
 import { usePracticeEndPhase } from '../hooks/usePracticeEndPhase';
 import { buildPracticeEndAnnouncement, formatHHMM, isPastEndOverrideActive, isPastLastCall, PRACTICE_CLOSED_MS, PRACTICE_LAST_CALL_MS, resolvePracticeEndTime, shouldAnnouncePracticeEndPhase, type PracticeEndPhase } from '../lib/practiceEndPhase';
 import {
@@ -549,20 +549,19 @@ export function MainPage() {
   // 終わったケースを全部シミュレートし、全ケース共通 = ほぼ確定 / 一部のみ = 候補。
   // 終了20分前以降は次の試合が無いので予測を空にする。これで予測バー・待機ガイド・
   // 呼び出し通知が止まり、終了操作も誰でもできる（担当不在時のフォールバック）。
-  const nextMatchPrediction = useMemo(
-    () => pastLastCall ? EMPTY_PREDICTION : predictNextMatchPlayers(players, courts, matchHistory, reservations, {
-      practiceStartTime: session?.config.practiceStartTime,
-      useStayDurationPriority,
-      gameMode,
-      lateBalanceMode,
-      genderBalanceMode,
-      reservationBlockThreshold,
-      pairPreferences,
-    }),
-    [pastLastCall, players, courts, matchHistory, reservations, session?.config.practiceStartTime,
-      useStayDurationPriority, gameMode, lateBalanceMode, genderBalanceMode, reservationBlockThreshold,
-      pairPreferences],
-  );
+  const { prediction: nextMatchPrediction } = useNextMatchPrediction({
+    session,
+    players,
+    courts,
+    matchHistory,
+    reservations,
+    useStayDurationPriority,
+    gameMode,
+    lateBalanceMode,
+    genderBalanceMode,
+    reservationBlockThreshold,
+    pairPreferences,
+  });
 
   const myPlayerId = useMemo(
     () => players.find(p => p.name === currentUser)?.id ?? null,
