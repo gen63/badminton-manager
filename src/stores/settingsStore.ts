@@ -67,7 +67,8 @@ export const useSettingsStore = create<SettingsState>()(
       gasWebAppUrl: 'https://script.google.com/macros/s/AKfycbz4sCGJS-6aXtkzTYrrtpNBQRGJBwE2DmONwOBGhFLy4XZjOWMySjDi768yscdF0n6IWA/exec',
       setGasWebAppUrl: (url) => set({ gasWebAppUrl: url }),
       accountingWebAppUrl: 'https://script.google.com/macros/s/AKfycbxNDglh8HEedqjDcYV0lsJQmPh-VZv5IQUA-VrvQlhC-DqoJnwLmMYnRm4YukP4Ir_0/exec',
-      useStayDurationPriority: true,
+      // 作成画面の初期表示。既定の練習種別（複）に合わせて試合回数優先。
+      useStayDurationPriority: false,
       setUseStayDurationPriority: (value) => set({ useStayDurationPriority: value }),
       continuousMatchMode: true,
       setContinuousMatchMode: (value) => set({ continuousMatchMode: value }),
