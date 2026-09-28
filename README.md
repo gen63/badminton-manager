@@ -43,7 +43,6 @@
   - 試合開始・終了、リアルタイムタイマー表示
   - 試合終了後は自動的にプレイヤーが待機に戻る
   - 終了直後の勝者選択モーダルは撤去、結果は履歴ページの「未入力」セクションから記録
-- ✅ **Undo/Redo** - 操作の取り消し・やり直し
 - ✅ **勝敗記録モード（設定画面で切替可能）**
   - **ON**: スコア入力画面でスコアを記録
   - **OFF**: 勝者のみ選択（スコアはダミー値で保存）
@@ -390,11 +389,10 @@ badminton-manager/
 │   │   ├── sessionStore.ts            # セッション（currentUser のみ persist）
 │   │   ├── settingsStore.ts           # 設定（端末ローカル設定のみ persist）
 │   │   ├── syncStatusStore.ts         # 同期状態
-│   │   ├── undoStore.ts               # Undo/Redo
 │   │   └── unrecordedDismissStore.ts  # 未入力試合プロンプトの dismiss
 │   └── types/
 │       ├── player.ts, court.ts, match.ts, session.ts
-│       ├── accounting.ts, reservation.ts, undo.ts
+│       ├── accounting.ts, reservation.ts
 │       └── ...
 ├── e2e/
 │   └── sync.spec.ts                   # Firebase同期E2Eテスト
@@ -422,7 +420,7 @@ badminton-manager/
 - ✅ 連続モード（自動配置＋自動開始）
 - ✅ 予約機能（1〜4人のコート予約キュー）
 - ✅ メンバー交換（待機中・休憩中含む）
-- ✅ ゲーム進行管理（タイマー、Undo/Redo）
+- ✅ ゲーム進行管理（タイマー）
 - ✅ スコア入力（専用画面 / モーダル）/ 勝者のみ記録モード
 - ✅ 未入力試合プロンプト
 - ✅ 試合履歴・編集・削除・コピー・「自分の試合のみ」フィルタ

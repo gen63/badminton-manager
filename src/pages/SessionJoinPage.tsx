@@ -14,7 +14,6 @@ import { useGameStore } from '../stores/gameStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { usePairPreferenceStore } from '../stores/pairPreferenceStore';
 import { useAccountingStore } from '../stores/accountingStore';
-import { useUndoStore } from '../stores/undoStore';
 import { useDevMode } from '../hooks/useDevMode';
 import { Loader2, Plus, ChevronDown, EyeOff } from 'lucide-react';
 
@@ -155,7 +154,6 @@ export function SessionJoinPage() {
         useReservationStore.getState().clearReservations();
         usePairPreferenceStore.getState().clearPairPreferences();
         useAccountingStore.getState().clearRecords();
-        useUndoStore.getState().clearAll();
       }
 
       initializeSession({
@@ -238,7 +236,6 @@ export function SessionJoinPage() {
         useReservationStore.getState().clearReservations();
         usePairPreferenceStore.getState().clearPairPreferences();
         useAccountingStore.getState().clearRecords();
-        useUndoStore.getState().clearAll();
       }
 
       initializeSession({

@@ -4,7 +4,6 @@ import { useSessionStore } from '../stores/sessionStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
 import { useSettingsStore } from '../stores/settingsStore';
-import { useUndoStore } from '../stores/undoStore';
 import { useAccountingStore } from '../stores/accountingStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
@@ -51,7 +50,6 @@ export function SettingsPage() {
   const matchResultInputMode = useSettingsStore((s) => s.matchResultInputMode);
   const setMatchResultInputMode = useSettingsStore((s) => s.setMatchResultInputMode);
   const setFinishHoldToConfirm = useSettingsStore((s) => s.setFinishHoldToConfirm);
-  const { clearAll: clearUndo } = useUndoStore();
   const { clearRecords } = useAccountingStore();
   const writer = useSessionWriterWithToast(toast);
 
@@ -120,7 +118,6 @@ export function SettingsPage() {
 
     // ローカル専用ストアもクリア
     clearRecords();
-    clearUndo();
   };
 
   const handleFullReset = async () => {
@@ -151,7 +148,6 @@ export function SettingsPage() {
     useGameStore.setState({ matchHistory: [], courts: [] });
     usePlayerStore.setState({ players: [] });
     useReservationStore.setState({ reservations: [] });
-    clearUndo();
     clearRecords();
     clearSession();
 
@@ -179,7 +175,6 @@ export function SettingsPage() {
     useGameStore.setState({ matchHistory: [], courts: [] });
     usePlayerStore.setState({ players: [] });
     useReservationStore.setState({ reservations: [] });
-    clearUndo();
     clearRecords();
     clearSession();
     await clearAppBadge();

@@ -64,7 +64,6 @@ import {
   setPracticeType,
   setContinuousMatchMode,
   finishMatchAndContinue,
-  overwriteGameState,
   updateMatch,
   updatePlayer,
   autoAssignAndFulfill,
@@ -2302,62 +2301,6 @@ describe('sessionMutations - finishMatchAndContinue', () => {
     expect(result.continuousStoppedForPracticeEnd).toBe(false);
     expect(result.continuousNextApplied).toBe(true);
     expect(result.writtenState?.settings?.continuousMatchMode).toBe(true);
-  });
-});
-
-// =============================================================================
-// Phase 6: overwriteGameState（mutateGameState を使わず remote.gameState 未初期化でも動く）
-// =============================================================================
-
-describe('sessionMutations - overwriteGameState (B1 fix)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
-  });
-
-  it('remote.gameState が未定義でも書き込み成功する（新規セッション初期化）', async () => {
-    mockTransactionGet.mockResolvedValueOnce({
-      exists: () => true,
-      // createSession 直後の doc: gameState フィールド無し
-      data: () => ({ id: 'sess', config: {}, createdBy: 'Alice' }),
-      ref: { __docRef: true },
-    });
-
-    const initial = baseState({
-      players: [makePlayer('p1', { name: 'Alice' })],
-      courts: [makeCourt(1)],
-    });
-
-    const result = await overwriteGameState('sess', initial);
-
-    expect(result).toBe(initial);
-    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
-    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
-    expect(updateArgs.gameState.players).toHaveLength(1);
-    expect(updateArgs.registeredPlayers).toEqual(['Alice']);
-  });
-
-  it('snap.exists()=false なら not-found を throw（書き込み無し）', async () => {
-    mockTransactionGet.mockResolvedValueOnce({
-      exists: () => false,
-      data: () => undefined,
-      ref: { __docRef: true },
-    });
-    await expect(overwriteGameState('missing', baseState())).rejects.toMatchObject({
-      code: 'not-found',
-    });
-    expect(mockTransactionUpdate).not.toHaveBeenCalled();
-  });
-
-  it('aborted を SessionError("conflict") に変換', async () => {
-    mockRunTransaction.mockImplementationOnce(async () => {
-      const err = new Error('aborted') as Error & { code?: string };
-      err.code = 'aborted';
-      throw err;
-    });
-    await expect(overwriteGameState('s', baseState())).rejects.toMatchObject({
-      code: 'conflict',
-    });
   });
 });
 

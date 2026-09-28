@@ -94,43 +94,6 @@ async function mutateGameState(
   }
 }
 
-/**
- * 既存の remote `gameState` を無視して `state` で **上書き** する。
- *
- * 用途:
- *   - 新規セッション初期化（`createSession` 直後、まだ `gameState` フィールドが無い）
- *   - undo / redo（保存されたスナップショットを丸ごと復元する）
- *
- * `mutateGameState` と異なり `gameState` 未初期化でも throw しない。
- * セッション document 自体は存在している必要がある。
- */
-export async function overwriteGameState(
-  sessionId: string,
-  state: GameState,
-): Promise<GameState> {
-  const _db = requireDb();
-  const ref = doc(_db, 'sessions', sessionId);
-
-  try {
-    return await runTransaction(_db, async (transaction) => {
-      const snap = await transaction.get(ref);
-      if (!snap.exists()) {
-        throw new SessionError('セッションが見つかりません', 'not-found');
-      }
-      transaction.update(ref, buildGameStatePayload(state));
-      return state;
-    });
-  } catch (error: unknown) {
-    if ((error as { code?: string })?.code === 'aborted') {
-      throw new SessionError(
-        '他のユーザーが更新しました。もう一度お試しください',
-        'conflict',
-      );
-    }
-    throw error;
-  }
-}
-
 // =============================================================================
 // Players: pure compute
 // =============================================================================
