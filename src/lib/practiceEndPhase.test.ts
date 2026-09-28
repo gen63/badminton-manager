@@ -12,6 +12,7 @@ import {
   resolvePracticeEndTime,
   getPracticeEndPhaseTimerDelay,
   PRACTICE_END_TIMER_MAX_DELAY_MS,
+  isPastEndOverrideActive,
 } from './practiceEndPhase';
 
 const MIN = 60 * 1000;
@@ -158,5 +159,22 @@ describe('getPracticeEndPhaseTimerDelay', () => {
   it('これ以上切り替わらないなら null', () => {
     expect(getPracticeEndPhaseTimerDelay(end, end)).toBeNull();
     expect(getPracticeEndPhaseTimerDelay(undefined, end)).toBeNull();
+  });
+});
+
+describe('isPastEndOverrideActive', () => {
+  const end = new Date(2026, 8, 26, 21, 30).getTime();
+
+  it('延長した時点の終了時刻と今の終了時刻が一致する間だけ有効', () => {
+    expect(isPastEndOverrideActive(end, end)).toBe(true);
+  });
+
+  it('終了時刻が変わったら無効（新しい終了時刻では通常どおり止まる）', () => {
+    expect(isPastEndOverrideActive(end, end + 30 * MIN)).toBe(false);
+  });
+
+  it('延長なし（0・未設定）は無効', () => {
+    expect(isPastEndOverrideActive(0, end)).toBe(false);
+    expect(isPastEndOverrideActive(undefined, end)).toBe(false);
   });
 });

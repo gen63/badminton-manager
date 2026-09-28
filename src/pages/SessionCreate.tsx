@@ -13,6 +13,7 @@ import { EMPTY_COURT_STATE } from '../types/court';
 import { parsePlayerInput } from '../lib/utils';
 import { clearPresence, createSession, leaveSession } from '../services/sessionService';
 import { fetchDefaultAnnouncementTextSafe } from '../services/appConfigService';
+import { NEW_SESSION_DEFAULTS } from '../lib/sessionDefaults';
 import { getErrorMessage } from '../lib/errorHandler';
 import { requestNotificationPermission } from '../lib/notifications';
 import { clearAppBadge } from '../lib/badge';
@@ -154,6 +155,8 @@ export function SessionCreate() {
         // writer が使えないので画面上の選択（メモリ上の settingsStore）をここで
         // 初期 settings に焼き込む。
         settings: {
+          // 男女比調整・予約の試合数制限は作成画面に出さないので既定値を焼き込む
+          ...NEW_SESSION_DEFAULTS,
           recordScores,
           continuousMatchMode,
           practiceType,

@@ -27,6 +27,9 @@ interface SettingsState {
   setGenderBalanceMode: (value: boolean) => void;
   lateBalanceAutoFired: boolean;
   setLateBalanceAutoFired: (value: boolean) => void;
+  /** 終了20分前以降の連続モード延長（ON にした時点の終了日時。0 = なし）。Firestore 同期。 */
+  continuousPastEndOverrideFor: number;
+  setContinuousPastEndOverrideFor: (value: number) => void;
   /** 予約保留の閾値（中央値+この値以上の試合数のメンバーを含む予約を保留）。Firestore 同期。 */
   reservationBlockThreshold: number;
   setReservationBlockThreshold: (value: number) => void;
@@ -67,7 +70,8 @@ export const useSettingsStore = create<SettingsState>()(
       gasWebAppUrl: 'https://script.google.com/macros/s/AKfycbz4sCGJS-6aXtkzTYrrtpNBQRGJBwE2DmONwOBGhFLy4XZjOWMySjDi768yscdF0n6IWA/exec',
       setGasWebAppUrl: (url) => set({ gasWebAppUrl: url }),
       accountingWebAppUrl: 'https://script.google.com/macros/s/AKfycbxNDglh8HEedqjDcYV0lsJQmPh-VZv5IQUA-VrvQlhC-DqoJnwLmMYnRm4YukP4Ir_0/exec',
-      useStayDurationPriority: true,
+      // 作成画面の初期表示（新規セッションの既定は試合回数優先）。
+      useStayDurationPriority: false,
       setUseStayDurationPriority: (value) => set({ useStayDurationPriority: value }),
       continuousMatchMode: true,
       setContinuousMatchMode: (value) => set({ continuousMatchMode: value }),
@@ -90,6 +94,8 @@ export const useSettingsStore = create<SettingsState>()(
       setGenderBalanceMode: (value) => set({ genderBalanceMode: value }),
       lateBalanceAutoFired: false,
       setLateBalanceAutoFired: (value) => set({ lateBalanceAutoFired: value }),
+      continuousPastEndOverrideFor: 0,
+      setContinuousPastEndOverrideFor: (value) => set({ continuousPastEndOverrideFor: value }),
       reservationBlockThreshold: DEFAULT_RESERVATION_BLOCK_THRESHOLD,
       setReservationBlockThreshold: (value) => set({ reservationBlockThreshold: value }),
       matchCallAlert: true,

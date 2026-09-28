@@ -255,8 +255,8 @@ export function useSessionWriter(options?: SessionWriterOptions) {
   );
 
   const setContinuousMatchMode = useCallback(
-    (value: boolean) =>
-      handle('setContinuousMatchMode', (sid) => sm.setContinuousMatchMode(sid, value)),
+    (value: boolean, options?: { pastEndOverrideFor?: number }) =>
+      handle('setContinuousMatchMode', (sid) => sm.setContinuousMatchMode(sid, value, options)),
     [handle],
   );
 

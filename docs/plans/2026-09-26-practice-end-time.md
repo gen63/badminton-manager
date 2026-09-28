@@ -30,6 +30,19 @@
   （2026-09-08-auto-end-stale-timer）があり、人の終了操作に委ねる。
 - 再描画は段階の切り替え時刻までの `setTimeout` 1本（`usePracticeEndPhase`）。
 
+## 作成者による延長（2026-09-28 追記）
+- 終了20分前以降に連続モードを ON にできるのは `isCreator()`（作成者本人・開発モード）だけ。
+  管理者リストのメンバーは従来どおり ON にできない（「本当に一部の権限者のみ」という運用者判断）。
+- ON にするとき確認ダイアログを出し、`settings.continuousPastEndOverrideFor` に**その時点の終了日時**
+  （`resolvePracticeEndTime`）を記録する（`setContinuousMatchMode(true, { pastEndOverrideFor })`）。
+  連続モードを OFF にすると 0 に戻す。
+- `isPastEndOverrideActive(overrideFor, 今の終了日時)` が true の間は「延長中」とし、
+  `finishMatchAndContinue` の自動停止・管理者端末の自動 OFF・手動配置の確認・予測/呼び出しの停止を
+  行わない。**終了日時が変わったら延長は無効**（延長後に終了時刻を直した場合、新しい終了時刻では
+  通常どおり止まる。boolean にしなかったのはこのため）。
+- 延長中のバナーは「⏩ 延長中（終了 HH:MM）。作成者の指示で試合を続けています」（黄色）。
+  「ラスト」「片付け」の読み上げは実態と食い違うので鳴らさない。
+
 ## 読み上げ（2026-09-27 追記）
 - 終了20分前「練習終了20分前です。現在入ってる試合でラストです。」、15分前「片付けの
   時間です、お願いします」を読み上げる（文言は運用者指定）。入口は呼び出し通知と同じ `fireMatchCallAlert`
