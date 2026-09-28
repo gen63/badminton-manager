@@ -1,5 +1,6 @@
 import type { Match } from '../types/match';
 import type { Court } from '../types/court';
+import { resolvePracticeEndTime } from './practiceEndPhase';
 
 export const ARCHIVE_THRESHOLD_MS = 12 * 60 * 60 * 1000;
 
@@ -53,14 +54,19 @@ export function isSessionVisible(
     firstMatchStartedAt?: number | null;
     lastMatchFinishedAt?: number | null;
     hasActiveCourt?: boolean;
-    config?: { practiceStartTime?: number };
+    config?: { practiceStartTime?: number; practiceEndTime?: number };
   },
   now: number = Date.now(),
 ): boolean {
   if (session.firstMatchStartedAt) {
     // 絶対上限。「試合終了」を押さずに解散してコートが進行中のまま残ったセッションが
-    // hasActiveCourt で永久に一覧へ居座るのを防ぐ。
+    // hasActiveCourt で永久に一覧へ居座るのを防ぐ。これが最優先で、以降のどの条件より勝つ。
     if (session.firstMatchStartedAt <= now - ARCHIVE_THRESHOLD_MS) return false;
+    // 練習終了予定時刻（未設定なら開始の3時間後）をまだ迎えていなければ無条件で表示。
+    // コートが一時的に空く休憩・基礎打ちなどの長い無試合区間で「最終試合から30分」ルールに
+    // 引っかからないようにするためのガード（詳細: docs/plans/2026-09-28-auto-exit-respect-practice-end.md）。
+    const practiceEndTime = resolvePracticeEndTime(session.config);
+    if (practiceEndTime !== undefined && now < practiceEndTime) return true;
     // 練習中（休憩明けの再開直後を含む）は無条件で表示
     if (session.hasActiveCourt) return true;
     // 終了時刻を持つ試合が 1 つも無い場合は従来どおり 12h 判定にフォールバック
@@ -81,13 +87,17 @@ export function isSessionVisible(
  * セッションだけ**を対象にする。試合未開始の「開始90分前まで非表示」は
  * *一覧に出さない* だけのルールで（`docs/plans/2026-05-19-hide-sessions-until-90min-before-start.md`）、
  * 開始前に入っている作成者や早く来た人を追い出す意図ではないため対象外。
+ *
+ * 練習終了予定時刻（`resolvePracticeEndTime`）をまだ迎えていない間は、`isSessionVisible`
+ * が無条件で true を返すため、休憩・基礎打ちなどコートが空く時間が30分を超えても
+ * 自動退出しない（`docs/plans/2026-09-28-auto-exit-respect-practice-end.md`）。
  */
 export function shouldAutoExitSession(
   session: {
     firstMatchStartedAt?: number | null;
     lastMatchFinishedAt?: number | null;
     hasActiveCourt?: boolean;
-    config?: { practiceStartTime?: number };
+    config?: { practiceStartTime?: number; practiceEndTime?: number };
   },
   now: number = Date.now(),
 ): boolean {
