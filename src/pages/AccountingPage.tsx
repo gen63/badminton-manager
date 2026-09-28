@@ -29,6 +29,12 @@ import {
 import { useDefaultFees } from '../hooks/useDefaultFees';
 
 // 旧形式（ダブルス/シングルス/初級）の練習種別を新形式（複/単/楽）に変換
+/** 年を省いた「M/D(曜)」表記（例: 9/28(月)） */
+function formatMonthDayWeekday(timestamp: number): string {
+  const d = new Date(timestamp);
+  return `${d.getMonth() + 1}/${d.getDate()}(${'日月火水木金土'[d.getDay()]})`;
+}
+
 function normalizePracticeType(type: string): string {
   if (type === 'ダブルス') return '複';
   if (type === 'シングルス') return '単';
@@ -759,44 +765,47 @@ export function AccountingPage() {
               <Clock size={12} />
               練習日時
             </label>
-            <div className="space-y-2">
-              <input
-                type="date"
-                aria-label="練習日"
-                value={formatLocalDate(session.config.practiceStartTime)}
-                onChange={(e) => {
-                  if (e.target.value) updatePracticeStart(e.target.value, formatHHMM(session.config.practiceStartTime));
-                }}
-                className="input-field min-h-[44px] w-full"
-              />
-              <div className="flex items-center gap-2">
+            {/* 日付・開始・終了を1行に並べる。日付は年を省いた M/D(曜) を表示し、
+                透明な date input を重ねてタップでネイティブピッカー（年も表示）を開く */}
+            <div className="flex items-center gap-1.5">
+              <div className="input-field relative min-h-[44px] flex-[1.2] min-w-0 px-2 flex items-center justify-center">
+                <span className="truncate">{formatMonthDayWeekday(session.config.practiceStartTime)}</span>
                 <input
-                  type="time"
-                  aria-label="練習開始時刻"
-                  value={formatHHMM(session.config.practiceStartTime)}
+                  type="date"
+                  aria-label="練習日"
+                  value={formatLocalDate(session.config.practiceStartTime)}
                   onChange={(e) => {
-                    if (e.target.value) updatePracticeStart(formatLocalDate(session.config.practiceStartTime), e.target.value);
+                    if (e.target.value) updatePracticeStart(e.target.value, formatHHMM(session.config.practiceStartTime));
                   }}
-                  className="input-field min-h-[44px] flex-1 min-w-0"
-                />
-                <span className="text-sm text-muted-foreground shrink-0">〜</span>
-                <input
-                  type="time"
-                  aria-label="練習終了時刻"
-                  value={effectiveEndTime ? formatHHMM(effectiveEndTime) : ''}
-                  onChange={(e) => {
-                    // 空欄は解除（＝開始の3時間後に戻す）。フィールド削除ではなく 0 を書き、
-                    // 自動作成の再実行で E-ToMo の終了時刻が補完されないようにする。
-                    if (e.target.value === '') {
-                      updateConfig({ practiceEndTime: 0 });
-                      return;
-                    }
-                    const endTime = buildPracticeEndTime(session.config.practiceStartTime, e.target.value);
-                    if (endTime !== null) updateConfig({ practiceEndTime: endTime });
-                  }}
-                  className="input-field min-h-[44px] flex-1 min-w-0"
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
               </div>
+              <input
+                type="time"
+                aria-label="練習開始時刻"
+                value={formatHHMM(session.config.practiceStartTime)}
+                onChange={(e) => {
+                  if (e.target.value) updatePracticeStart(formatLocalDate(session.config.practiceStartTime), e.target.value);
+                }}
+                className="input-field min-h-[44px] flex-1 min-w-0 px-2 text-center"
+              />
+              <span className="text-sm text-muted-foreground shrink-0">〜</span>
+              <input
+                type="time"
+                aria-label="練習終了時刻"
+                value={effectiveEndTime ? formatHHMM(effectiveEndTime) : ''}
+                onChange={(e) => {
+                  // 空欄は解除（＝開始の3時間後に戻す）。フィールド削除ではなく 0 を書き、
+                  // 自動作成の再実行で E-ToMo の終了時刻が補完されないようにする。
+                  if (e.target.value === '') {
+                    updateConfig({ practiceEndTime: 0 });
+                    return;
+                  }
+                  const endTime = buildPracticeEndTime(session.config.practiceStartTime, e.target.value);
+                  if (endTime !== null) updateConfig({ practiceEndTime: endTime });
+                }}
+                className="input-field min-h-[44px] flex-1 min-w-0 px-2 text-center"
+              />
             </div>
             {effectiveEndTime && (
               <p className="text-[10px] text-muted-foreground mt-1">
