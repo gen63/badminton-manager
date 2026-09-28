@@ -20,7 +20,6 @@
 - ✅ **権限管理（クライアント側）** - 一般ユーザはコート増減・連続モード操作・参加者の休憩切替等を不可
 - ✅ **プレゼンス表示** - 接続中の参加者をヘッダにアイコン表示
 - ✅ **お知らせ機能** - 管理者アナウンス + 参加者の既読管理
-- ✅ **バグ報告機能** - メイン画面から Discord Webhook にテンプレ付き報告を送信
 - ✅ **オフライン対応** - Firestore SDK の IndexedDB cache で読み取り可（書き込みは復帰待ち）
 
 #### コート配置
@@ -253,7 +252,6 @@ git push origin master
 ### 環境変数
 
 - `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_PROJECT_ID` 等 - Firestore 必須（未設定時は `requireDb()` でエラー）
-- `VITE_DISCORD_WEBHOOK_URL` - バグ報告機能の送信先（未設定時は送信エラーをトースト表示）
 
 ## 📱 使い方
 
@@ -353,7 +351,6 @@ badminton-manager/
 │   │   ├── accountingCalc.ts          # 会計計算
 │   │   ├── algorithm.ts               # 配置アルゴリズム
 │   │   ├── badge.ts                   # アプリアイコンバッジ
-│   │   ├── bugReport.ts               # Discord Webhook 送信
 │   │   ├── errorHandler.ts            # エラーハンドリング
 │   │   ├── firebase.ts                # Firebase初期化・設定
 │   │   ├── firestoreUtils.ts          # requireDb / 共通ヘルパー
@@ -428,7 +425,6 @@ badminton-manager/
 - ✅ 試合履歴・編集・削除・コピー・「自分の試合のみ」フィルタ
 - ✅ 会計機能（収支管理、シャトル直接入力、運営協力割引、Sheets送信）
 - ✅ お知らせ機能（管理者アナウンス + 既読管理）
-- ✅ バグ報告機能（Discord Webhook）
 - ✅ プレゼンス表示（接続中ユーザー）
 - ✅ 一般ユーザの権限制限（コート増減・連続モード等は管理者のみ）
 
