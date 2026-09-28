@@ -158,6 +158,75 @@ describe('isSessionVisible', () => {
     });
   });
 
+  describe('練習終了予定時刻のガード', () => {
+    const firstMatchStartedAt = now - 3 * 60 * 60 * 1000;
+    const lastMatchFinishedAt = now - 40 * 60 * 1000; // 30分ルールなら非表示になる条件
+
+    it('practiceEndTime を過ぎていなければコートが空・30分超でも表示', () => {
+      expect(
+        isSessionVisible(
+          {
+            firstMatchStartedAt,
+            lastMatchFinishedAt,
+            hasActiveCourt: false,
+            config: { practiceEndTime: now + 10 * 60 * 1000 },
+          },
+          now,
+        ),
+      ).toBe(true);
+    });
+
+    it('practiceEndTime 未設定でも practiceStartTime + 3時間 を過ぎていなければ表示（既定終了時刻）', () => {
+      expect(
+        isSessionVisible(
+          {
+            firstMatchStartedAt,
+            lastMatchFinishedAt,
+            hasActiveCourt: false,
+            config: { practiceStartTime: now - 60 * 60 * 1000 }, // +3h = now+2h でまだ先
+          },
+          now,
+        ),
+      ).toBe(true);
+    });
+
+    it('practiceEndTime を過ぎていれば最終試合から30分ルールどおり非表示', () => {
+      expect(
+        isSessionVisible(
+          {
+            firstMatchStartedAt,
+            lastMatchFinishedAt,
+            hasActiveCourt: false,
+            config: { practiceEndTime: now - 1000 },
+          },
+          now,
+        ),
+      ).toBe(false);
+    });
+
+    it('practiceEndTime が遠い未来でも12時間の絶対上限が勝つ', () => {
+      expect(
+        isSessionVisible(
+          {
+            firstMatchStartedAt: now - ARCHIVE_THRESHOLD_MS - 1000,
+            lastMatchFinishedAt: now - 1000,
+            config: { practiceEndTime: now + 24 * 60 * 60 * 1000 },
+          },
+          now,
+        ),
+      ).toBe(false);
+    });
+
+    it('practiceStartTime も practiceEndTime も無ければ従来どおり30分ルールのみで判定', () => {
+      expect(
+        isSessionVisible(
+          { firstMatchStartedAt, lastMatchFinishedAt, hasActiveCourt: false },
+          now,
+        ),
+      ).toBe(false);
+    });
+  });
+
   describe('進行中コートのガード', () => {
     it('最終試合が3時間前でもコートが進行中なら表示', () => {
       expect(
@@ -313,6 +382,34 @@ describe('shouldAutoExitSession', () => {
           firstMatchStartedAt: now - ARCHIVE_THRESHOLD_MS - 1000,
           lastMatchFinishedAt: now - 1000,
           hasActiveCourt: true,
+        },
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it('練習終了予定時刻をまだ迎えていなければ、最後の試合から31分でも退出しない', () => {
+    const lastMatchFinishedAt = now - VISIBLE_AFTER_LAST_MATCH_MS - 60_000;
+    expect(
+      shouldAutoExitSession(
+        {
+          firstMatchStartedAt,
+          lastMatchFinishedAt,
+          config: { practiceEndTime: now + 10 * 60 * 1000 },
+        },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it('練習終了予定時刻を過ぎていれば、従来どおり最後の試合から31分で退出する', () => {
+    const lastMatchFinishedAt = now - VISIBLE_AFTER_LAST_MATCH_MS - 60_000;
+    expect(
+      shouldAutoExitSession(
+        {
+          firstMatchStartedAt,
+          lastMatchFinishedAt,
+          config: { practiceEndTime: now - 1000 },
         },
         now,
       ),
