@@ -518,7 +518,7 @@ describe('buildSessionData', () => {
     expect(relaxed.gameState.settings.forceBulkAssignment).toBe(true);
   });
 
-  it('全練習種別で 男女比調整OFF / 試合回数優先 / 予約制限+3 を書く', () => {
+  it('全練習種別で 男女比調整OFF / 試合回数優先 / 予約制限+1 を書く', () => {
     const baseEvent = {
       eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
       startTime: '18:30', endTime: '21:30', venue: '千川館',
@@ -530,7 +530,7 @@ describe('buildSessionData', () => {
       const data = buildSessionData({ ...baseEvent, note }, new Map(), new Date(2026, 3, 9));
       expect(data.gameState.settings.genderBalanceMode).toBe(false);
       expect(data.gameState.settings.useStayDurationPriority).toBe(false);
-      expect(data.gameState.settings.reservationBlockThreshold).toBe(3);
+      expect(data.gameState.settings.reservationBlockThreshold).toBe(1);
     }
   });
 
