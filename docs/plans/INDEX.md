@@ -13,7 +13,7 @@
 - `2026-02-09-gender-matching-logic.md` — 性別を考慮した配置ロジック改善
 - `2026-02-09-match-focused-mode.md` — 試合回数重視モードの追加
 - `2026-02-10-court-assignment-fixed.md` — コート配置の固定化 (upper→C1, middle→C2, lower→C3)
-- `2026-02-10-undo-match-end.md` — 試合終了の取り消し機能（Undo Match End）
+- `2026-02-10-undo-match-end.md` — 試合終了の取り消し機能（Undo Match End）（2026-09-28 撤廃。代替は 2026-09-28-remove-undo-revert-finish.md）
 - `2026-02-12-session-start-improvements.md` — セッション開始画面の改善
 - `2026-02-23-fix-female-player-balance.md` — 女性プレイヤーのバランス改善
 - `2026-02-sync-fix-plan.md` — Firebase同期 修正プラン
@@ -190,3 +190,4 @@
 - `2026-09-26-swap-concurrent-duplicate.md` — 同時操作でメンバーが2箇所に表示される問題の修正。`swapPlayer` / `swapPositions` / `autoAssignAndFulfill` の transaction 内で「入れる人が既に別コートにいない」「スロットの中身が画面で見ていた人のまま」を検証し、崩れていたら書き込まずに `conflict`（自動で辻褄合わせはしない）。コートカードの空きスロットで idx がずれる描画バグも修正
 - `2026-09-26-practice-end-time.md` — 練習終了時刻（`config.practiceEndTime`）を追加し、終了20分前以降は連続モードを OFF にして新しい試合を入れない（判定は `finishMatchAndContinue` の transaction 内が本体、手動配置は確認ダイアログで許可、次の試合の予測・呼び出しも停止）、15分前で「練習終了・片付け」バナー（プレイ中試合は自動終了しない）。自動作成は E-ToMo タイトルの終了時刻を保存（再実行で未設定の既存セッションにも補完）、会計ページの「練習開始日時」の下で変更・解除（解除は 0 を書いて補完と区別）。**2026-09-27 追記**: 20分前・15分前の切り替わりをベル ON の全端末で読み上げ（`fireMatchCallAlert` 経由、動作中に進んだ瞬間のみ・60秒超の遅れは鳴らさない）。未設定・空欄の終了時刻は練習開始の3時間後（`resolvePracticeEndTime`）。**2026-09-28 追記**: 終了20分前以降も作成者（開発モード含む）だけは確認のうえ連続モードを ON にして延長できる（`continuousPastEndOverrideFor` にその時点の終了日時を記録、終了時刻が変われば無効）
 - `2026-09-28-auto-exit-respect-practice-end.md` — 練習中に一部メンバーだけ participants から消える不具合の修正。原因は `useSessionAutoExit`（60秒 tick）と一覧の非表示判定が共有する「最後の試合から30分でコート進行中でなければ非表示/自動退出」条件が、休憩・基礎打ちなどコートが空く30分超の区間で成立してしまい、その瞬間アプリを開いていた端末だけが自分から `leaveSession` してしまうこと（閉じている端末は tick が走らず巻き込まれないため一部だけ消えて見える）。`isSessionVisible` の `firstMatchStartedAt` 分岐に、12h絶対上限チェックの直後・`hasActiveCourt` チェックより前で `resolvePracticeEndTime(config)`（`practiceEndPhase.ts` の既存関数）を使ったガードを追加し、練習終了予定時刻（未設定なら開始+3時間）を迎えるまでは無条件で表示＝自動退出しないようにした。12h絶対上限は従来どおりこのガードより優先
+- `2026-09-28-remove-undo-revert-finish.md` — アンドゥ/リドゥ撤廃（`overwriteGameState` の全体上書きで `pairPreferences`・未撮影の同期設定を消し、他端末の変更も上書きしていた）。代替として履歴画面に「コートに戻す」: 終了2分以内・終了ボタンと同じ権限（`canFinishGame`、予測は `useNextMatchPrediction` に切り出し）で、transaction 内で該当試合を履歴から外しコートへ復元。連続モードで自動開始された次の組は取り消して待機へ。復元情報は終了時に `Match.finishRevert` に記録（休憩フラグ・fulfilled 予約・次の組の startedAt 等）
