@@ -48,10 +48,19 @@ function makeCourt(id: number, overrides: Partial<Court> = {}): Court {
   return { id, ...EMPTY_COURT_STATE, ...overrides };
 }
 
-function setupSession(matchHistory: Match[], courts: Court[] = [makeCourt(1)]) {
+function setupSession(
+  matchHistory: Match[],
+  courts: Court[] = [makeCourt(1)],
+  configOverrides: Partial<Session['config']> = {},
+) {
   const session = {
     id: 'ABC123',
-    config: { courtCount: 1, targetScore: 21, practiceStartTime: NOW - 4 * 60 * 60 * 1000 },
+    config: {
+      courtCount: 1,
+      targetScore: 21,
+      practiceStartTime: NOW - 4 * 60 * 60 * 1000,
+      ...configOverrides,
+    },
     createdAt: NOW,
     updatedAt: NOW,
     createdBy: 'たろう',
@@ -141,6 +150,23 @@ describe('useSessionAutoExit', () => {
     });
 
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('休憩などで最後の試合から31分経っても、練習終了予定時刻前なら退出しない', () => {
+    const finishedAt = NOW - 40 * 60 * 1000;
+    setupSession(
+      [makeMatch(finishedAt - 10 * 60 * 1000, finishedAt)],
+      [makeCourt(1)],
+      { practiceStartTime: NOW - 60 * 60 * 1000 }, // +3h の既定終了時刻はまだ先
+    );
+
+    renderHook(() => useSessionAutoExit());
+    act(() => {
+      vi.advanceTimersByTime(AUTO_EXIT_CHECK_INTERVAL_MS * 5);
+    });
+
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(useSessionStore.getState().session).not.toBeNull();
   });
 
   it('dev モードでは退出しない', () => {

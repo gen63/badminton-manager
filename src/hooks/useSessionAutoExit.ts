@@ -2,9 +2,10 @@
  * 練習が終わったセッションから自動退出する。
  *
  * 一覧の非表示条件（`isSessionVisible`）と同じ判定で、最後の試合が終わってから
- * 30 分（コートに試合が進行中なら継続、12 時間で絶対に打ち切り）経ったら、
- * セッションを離脱してセッション選択画面へ戻す。
- * 詳細: `docs/plans/2026-08-18-session-auto-exit-after-practice.md`
+ * 30 分（コートに試合が進行中なら継続、練習終了予定時刻を迎えるまでは継続、
+ * 12 時間で絶対に打ち切り）経ったら、セッションを離脱してセッション選択画面へ戻す。
+ * 詳細: `docs/plans/2026-08-18-session-auto-exit-after-practice.md` /
+ * `docs/plans/2026-09-28-auto-exit-respect-practice-end.md`
  *
  * サーバー側のスケジューラは無いので「全員を一斉に蹴る」処理は書けない。
  * **各端末が自分で判定して自分から出る**（＝ `leaveSession` で participants から
