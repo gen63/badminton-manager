@@ -160,9 +160,8 @@ function docToSession(id: string, data: Record<string, unknown>): Session {
  * セッションを作成する。
  *
  * `gameState` を同時に渡すと session document と gameState が **1 回の書き込み**
- * で揃う。これを渡さない場合は session のみ作成され、後から
- * `overwriteGameState` で gameState を初期化する必要がある（CON3 修正で
- * 同梱書き込みを推奨）。
+ * で揃う。これを渡さない場合は session のみ作成され、後から別途
+ * gameState を初期化する必要がある（CON3 修正で同梱書き込みを推奨）。
  */
 export async function createSession(
   session: Partial<Session>,

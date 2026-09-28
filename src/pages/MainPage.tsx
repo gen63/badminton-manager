@@ -8,10 +8,9 @@ import { assignCourts, sortWaitingPlayers, getCallableReservationRestingIds } fr
 import { getRecommendedCourtCount, getAssignmentGate } from '../lib/utils';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { useSettingsStore } from '../stores/settingsStore';
-import { Coffee, Users, Plus, X, Repeat, Undo2, Redo2, Trash2, ChevronDown, Minus, Settings, Info, Bell, BellOff } from 'lucide-react';
+import { Coffee, Users, Plus, X, Repeat, Trash2, ChevronDown, Minus, Settings, Info, Bell, BellOff } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
-import { useUndoStore } from '../stores/undoStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { usePairPreferenceStore } from '../stores/pairPreferenceStore';
 import { usePresence } from '../hooks/usePresence';
@@ -28,7 +27,7 @@ import { CourtTimer } from '../components/CourtTimer';
 import { CourtCardFrame } from '../components/CourtCardFrame';
 import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { FinishOperationGuide } from '../components/FinishOperationGuide';
-import { EMPTY_PREDICTION, predictNextMatchPlayers } from '../lib/nextMatchPrediction';
+import { useNextMatchPrediction } from '../hooks/useNextMatchPrediction';
 import { usePracticeEndPhase } from '../hooks/usePracticeEndPhase';
 import { buildPracticeEndAnnouncement, formatHHMM, isPastEndOverrideActive, isPastLastCall, PRACTICE_CLOSED_MS, PRACTICE_LAST_CALL_MS, resolvePracticeEndTime, shouldAnnouncePracticeEndPhase, type PracticeEndPhase } from '../lib/practiceEndPhase';
 import {
@@ -85,8 +84,8 @@ function buildBellSpeech(courtCount: number): string {
   return buildNextMatchCallMessage(testCourtNumber, [SPEECH_TEST_NAME], SPEECH_TEST_NAME).speech;
 }
 
-/** 試合終了後に「取り消す」を出しておく時間（ms）。気づいて押すまでの余裕を見て長め。 */
-const FINISH_UNDO_TOAST_MS = 10_000;
+/** 試合終了トーストの表示時間（ms）。 */
+const FINISH_TOAST_MS = 10_000;
 
 export function MainPage() {
   const navigate = useNavigate();
@@ -201,11 +200,6 @@ export function MainPage() {
 
   // total active players cache used by flow-priority checks
   const totalActiveCount = players.filter(p => !p.isResting).length;
-  const undoStack = useUndoStore((s) => s.undoStack);
-  const redoStack = useUndoStore((s) => s.redoStack);
-  const pushUndo = useUndoStore((s) => s.pushUndo);
-  const undo = useUndoStore((s) => s.undo);
-  const redo = useUndoStore((s) => s.redo);
   const reservations = useReservationStore((s) => s.reservations);
   const pairPreferences = usePairPreferenceStore((s) => s.pairPreferences);
   // 会費は「セッション保存値 → グローバル既定 → コード定数」の順に解決する
@@ -257,22 +251,6 @@ export function MainPage() {
   // post-finish 状態に対して行い、必要なら settings.continuousMatchMode=false に
   // する（GAMEOPS5）。試合中のスナップショットで予防 OFF していた旧 useEffect は
   // 「終了後なら配置可能」ケースで誤って continuous をオフにしていたため撤去。
-
-  // Ctrl+Z / Ctrl+Y キーボードショートカット
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        void undo();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
-        e.preventDefault();
-        void redo();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
 
   // config.courtCount と courts.length を同期。
   // 初回 onSnapshot 受信前に走ると空配列を「正規」と誤認して Firestore を上書きするので
@@ -565,20 +543,19 @@ export function MainPage() {
   // 終わったケースを全部シミュレートし、全ケース共通 = ほぼ確定 / 一部のみ = 候補。
   // 終了20分前以降は次の試合が無いので予測を空にする。これで予測バー・待機ガイド・
   // 呼び出し通知が止まり、終了操作も誰でもできる（担当不在時のフォールバック）。
-  const nextMatchPrediction = useMemo(
-    () => pastLastCall ? EMPTY_PREDICTION : predictNextMatchPlayers(players, courts, matchHistory, reservations, {
-      practiceStartTime: session?.config.practiceStartTime,
-      useStayDurationPriority,
-      gameMode,
-      lateBalanceMode,
-      genderBalanceMode,
-      reservationBlockThreshold,
-      pairPreferences,
-    }),
-    [pastLastCall, players, courts, matchHistory, reservations, session?.config.practiceStartTime,
-      useStayDurationPriority, gameMode, lateBalanceMode, genderBalanceMode, reservationBlockThreshold,
-      pairPreferences],
-  );
+  const { prediction: nextMatchPrediction } = useNextMatchPrediction({
+    session,
+    players,
+    courts,
+    matchHistory,
+    reservations,
+    useStayDurationPriority,
+    gameMode,
+    lateBalanceMode,
+    genderBalanceMode,
+    reservationBlockThreshold,
+    pairPreferences,
+  });
 
   const myPlayerId = useMemo(
     () => players.find(p => p.name === currentUser)?.id ?? null,
@@ -793,7 +770,6 @@ export function MainPage() {
   }
 
   const handleClearCourt = async (courtId: number) => {
-    pushUndo();
     await writer.updateCourt(courtId, EMPTY_COURT_STATE);
   };
 
@@ -939,9 +915,6 @@ export function MainPage() {
     const matchStartedAt = currentCourt.startedAt;
     const matchId = crypto.randomUUID();
 
-    // Undo 用に試合終了前の状態を保存
-    pushUndo();
-
     try {
       const res = await sm.finishMatchAndContinue(
         session.id,
@@ -972,18 +945,15 @@ export function MainPage() {
         }
       }
 
-      // 誤終了は「押した本人が直後に気づく」ことが多いので、その場で戻せる導線を出す。
-      // undo は Firestore へ書き戻すので全員の画面が戻る（スタックは押した端末のみ）。
       // トーストは重ねると重なって読めないため、連続配置の通知を出したときは譲る。
       if (!notified) {
         const endNote = res.continuousStoppedForPracticeEnd
           ? '（終了20分前のため連続モードをOFFにしました）'
           : '';
         toast.showToast(
-          `${courts.length > 1 ? `${courtId}コート` : '試合'}を終了しました${endNote}`,
+          `${courts.length > 1 ? `${courtId}コート` : '試合'}を終了しました${endNote}（間違えたら履歴から2分以内に戻せます）`,
           'info',
-          FINISH_UNDO_TOAST_MS,
-          { label: '取り消す', onClick: () => void undo() },
+          FINISH_TOAST_MS,
         );
       }
     } catch (err) {
@@ -1212,14 +1182,6 @@ export function MainPage() {
     }
   };
 
-  const handleUndo = () => {
-    void undo();
-  };
-
-  const handleRedo = () => {
-    void redo();
-  };
-
   return (
     <div className="flex flex-col h-full bg-muted/30 font-sans relative overflow-x-hidden overflow-y-auto scrollbar-hide text-foreground">
       <header className="sticky top-0 flex-none bg-background border-b border-border px-3 py-2.5 shadow-sm z-20">
@@ -1294,22 +1256,6 @@ export function MainPage() {
             </div>
           </div>
           <div className="flex items-center gap-0.5">
-            <button
-              onClick={handleUndo}
-              disabled={undoStack.length === 0}
-              className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              aria-label="元に戻す"
-            >
-              <Undo2 size={18} />
-            </button>
-            <button
-              onClick={handleRedo}
-              disabled={redoStack.length === 0}
-              className="flex items-center justify-center min-w-[36px] min-h-[36px] shrink-0 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              aria-label="やり直し"
-            >
-              <Redo2 size={18} />
-            </button>
             <button
               onClick={() => {
                 unlockMatchCallAudio();
@@ -1794,7 +1740,6 @@ export function MainPage() {
           message={t.message}
           type={t.type}
           duration={t.duration}
-          action={t.action}
           onClose={() => toast.hideToast(t.id)}
         />
       ))}

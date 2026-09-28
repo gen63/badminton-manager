@@ -3,6 +3,8 @@ import {
   ASSIGNED_AT_BASIS_MAX_AGE_MS,
   AUTO_TIMER_MAX_LATENESS_MS,
   computeFinishAndContinue,
+  computeRevertFinish,
+  FINISH_REVERT_WINDOW_MS,
   gameModeFromPracticeType,
   isAutoEndDue,
   MATCH_AUTO_END_MS,
@@ -11,6 +13,7 @@ import {
 } from './gameOperations';
 import type { Player } from '../types/player';
 import type { Court } from '../types/court';
+import type { Match } from '../types/match';
 import * as algorithm from './algorithm';
 
 /** テスト用プレイヤー生成 */
@@ -763,6 +766,56 @@ describe('computeFinishAndContinue', () => {
       expect([...nextCourt.teamA, ...nextCourt.teamB]).not.toContain('p1');
     });
   });
+
+  // 履歴画面「コートに戻す」用の復元情報（docs/plans/2026-09-28-remove-undo-revert-finish.md）
+  describe('finishRevert の記録', () => {
+    it('連続モードOFF: 終了前の court / players のスナップショットと空の予約リストを持つ', () => {
+      const state = makeBaseState();
+      state.courts[0].assignedAt = 1710499000000;
+      state.courts[0].startPressedAt = 1710499500000;
+      state.courts[0].restingPlayerIds = ['p11'];
+      state.players.find(p => p.id === 'p2')!.isResting = false;
+
+      const result = computeFinishAndContinue(state, 1, defaultOptions);
+      const match = result.newState.matchHistory[0];
+      expect(match.finishRevert).toBeDefined();
+      expect(match.finishRevert?.playersBefore).toEqual([
+        { id: 'p1', isResting: false, forcedRestAt: undefined },
+        { id: 'p2', isResting: false, forcedRestAt: undefined },
+        { id: 'p3', isResting: false, forcedRestAt: undefined },
+        { id: 'p4', isResting: false, forcedRestAt: undefined },
+      ]);
+      expect(match.finishRevert?.court).toEqual({
+        assignedAt: 1710499000000,
+        startPressedAt: 1710499500000,
+        restingPlayerIds: ['p11'],
+      });
+      expect(match.finishRevert?.fulfilledReservationIds).toEqual([]);
+      expect(match.finishRevert?.nextStartedAt).toBeUndefined();
+      expect(match.finishRevert?.nextActivatedFromRestIds).toBeUndefined();
+    });
+
+    it('連続モードON: 次の試合の startedAt と休憩から呼び出した ID を記録する', () => {
+      const state = makeBaseState();
+      const continuousOptions = { ...defaultOptions, continuousMatchMode: true };
+      const result = computeFinishAndContinue(state, 1, continuousOptions);
+
+      expect(result.continuousNextApplied).toBe(true);
+      const match = result.newState.matchHistory[0];
+      const nextCourt = result.newState.courts[0];
+      expect(match.finishRevert?.nextStartedAt).toBe(nextCourt.startedAt);
+    });
+
+    it('終了時に予約を fulfilled にしたら fulfilledReservationIds に入る', () => {
+      const state = makeBaseState();
+      state.reservations = [
+        { id: 'r1', orderNumber: 1, playerIds: ['p1', 'p2', 'p3', 'p4'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+      ];
+      const result = computeFinishAndContinue(state, 1, defaultOptions);
+      const match = result.newState.matchHistory[0];
+      expect(match.finishRevert?.fulfilledReservationIds).toEqual(['r1']);
+    });
+  });
 });
 
 /**
@@ -868,6 +921,302 @@ describe('computeFinishAndContinue: practiceStartTime と待機時間優先モ�
     // つまり滞在時間が下限に潰れる前提が変わったということ。上 2 つの
     // テストと合わせて「practiceStartTime を渡す実装」を担保する。
     expect(nextMembers(true)).toEqual(nextMembers(false));
+  });
+});
+
+// =============================================================================
+// 履歴画面「コートに戻す」（試合終了の取り消し）
+// docs/plans/2026-09-28-remove-undo-revert-finish.md
+// =============================================================================
+
+describe('computeRevertFinish', () => {
+  const FINISHED_AT = 1_710_500_600_000;
+  const STARTED_AT = 1_710_500_000_000;
+
+  function makeMatch(id: string, overrides: Partial<Match> = {}): Match {
+    return {
+      id,
+      courtId: 1,
+      teamA: ['p1', 'p2'],
+      teamB: ['p3', 'p4'],
+      scoreA: 0,
+      scoreB: 0,
+      startedAt: STARTED_AT,
+      finishedAt: FINISHED_AT,
+      ...overrides,
+    };
+  }
+
+  function baseFinishRevert(
+    overrides: Partial<NonNullable<Match['finishRevert']>> = {},
+  ): NonNullable<Match['finishRevert']> {
+    return {
+      playersBefore: [
+        { id: 'p1', isResting: false },
+        { id: 'p2', isResting: false },
+        { id: 'p3', isResting: false },
+        { id: 'p4', isResting: false },
+      ],
+      court: {},
+      fulfilledReservationIds: [],
+      ...overrides,
+    };
+  }
+
+  function revertBaseState(overrides: Partial<GameState> = {}): GameState {
+    return {
+      players: [
+        makePlayer('p1', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT }),
+        makePlayer('p2', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT }),
+        makePlayer('p3', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT }),
+        makePlayer('p4', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT }),
+        makePlayer('p5'), makePlayer('p6'),
+      ],
+      courts: [makeCourt(1)], // 終了直後は空
+      matchHistory: [],
+      reservations: [],
+      ...overrides,
+    };
+  }
+
+  it('通常モード: コート・履歴・gamesPlayedを終了前に戻す', () => {
+    const match = makeMatch('m1', {
+      finishRevert: baseFinishRevert({
+        court: { assignedAt: 1000, startPressedAt: 1000, restingPlayerIds: ['p9'] },
+      }),
+    });
+    const state = revertBaseState({ matchHistory: [match] });
+
+    const result = computeRevertFinish(state, 'm1', FINISHED_AT + 10_000);
+    if ('error' in result) throw new Error(`expected success, got ${result.error}`);
+
+    expect(result.newState.matchHistory).toHaveLength(0);
+    const court = result.newState.courts[0];
+    expect(court.isPlaying).toBe(true);
+    expect(court.teamA).toEqual(['p1', 'p2']);
+    expect(court.teamB).toEqual(['p3', 'p4']);
+    expect(court.startedAt).toBe(STARTED_AT);
+    expect(court.finishedAt).toBe(0);
+    expect(court.scoreA).toBe(0);
+    expect(court.scoreB).toBe(0);
+    expect(court.assignedAt).toBe(1000);
+    expect(court.startPressedAt).toBe(1000);
+    expect(court.restingPlayerIds).toEqual(['p9']);
+
+    for (const id of ['p1', 'p2', 'p3', 'p4']) {
+      const p = result.newState.players.find((pl) => pl.id === id);
+      expect(p?.gamesPlayed).toBe(0);
+      expect(p?.lastPlayedAt).toBe(0);
+    }
+  });
+
+  it('連続モード: 次の組を取り消し、休憩から呼び出したメンバーを休憩に戻す', () => {
+    const match = makeMatch('m1', {
+      finishRevert: baseFinishRevert({ nextStartedAt: 2_000_000, nextActivatedFromRestIds: ['p5'] }),
+    });
+    const state = revertBaseState({
+      players: [
+        makePlayer('p1', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT }),
+        makePlayer('p2', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT }),
+        makePlayer('p3', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT }),
+        makePlayer('p4', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT }),
+        makePlayer('p5', { isResting: false }), // 休憩から呼び出されて次の組に出場中
+        makePlayer('p6'),
+      ],
+      courts: [
+        makeCourt(1, {
+          teamA: ['p5', 'p6'],
+          teamB: ['', ''],
+          isPlaying: true,
+          startedAt: 2_000_000,
+        }),
+      ],
+      matchHistory: [match],
+    });
+
+    const result = computeRevertFinish(state, 'm1', FINISHED_AT + 10_000);
+    if ('error' in result) throw new Error(`expected success, got ${result.error}`);
+
+    const court = result.newState.courts[0];
+    // 元の試合が復元されている（次の組は跡形もない）
+    expect(court.teamA).toEqual(['p1', 'p2']);
+    expect(court.teamB).toEqual(['p3', 'p4']);
+    expect(court.startedAt).toBe(STARTED_AT);
+    // 休憩から呼び出されていた p5 は休憩に戻る
+    expect(result.newState.players.find((p) => p.id === 'p5')?.isResting).toBe(true);
+  });
+
+  it('予約の fulfilled を pending に戻す', () => {
+    const match = makeMatch('m1', {
+      finishRevert: baseFinishRevert({ fulfilledReservationIds: ['r1'] }),
+    });
+    const state = revertBaseState({
+      matchHistory: [match],
+      reservations: [
+        { id: 'r1', orderNumber: 1, playerIds: ['p5', 'p6'], status: 'fulfilled', createdAt: 0, fulfilledAt: 12345 },
+      ],
+    });
+
+    const result = computeRevertFinish(state, 'm1', FINISHED_AT + 10_000);
+    if ('error' in result) throw new Error(`expected success, got ${result.error}`);
+
+    const reservation = result.newState.reservations.find((r) => r.id === 'r1');
+    expect(reservation?.status).toBe('pending');
+    expect(reservation?.fulfilledAt).toBe(0);
+  });
+
+  it('休憩フラグ（restReturn・強制休憩）を終了前の値に戻す', () => {
+    const match = makeMatch('m1', {
+      finishRevert: baseFinishRevert({
+        playersBefore: [
+          // restReturn: 終了後は休憩に戻る想定だったメンバー（終了前は待機=false）
+          { id: 'p1', isResting: false },
+          // 強制休憩中だったメンバー（forcedRestAt 済み）
+          { id: 'p2', isResting: true, forcedRestAt: 555 },
+          { id: 'p3', isResting: false },
+          { id: 'p4', isResting: false },
+        ],
+      }),
+    });
+    const state = revertBaseState({
+      players: [
+        // 終了処理で restReturn により isResting: true になった p1
+        makePlayer('p1', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT, isResting: true }),
+        // 終了処理で forcedRestAt が現在時刻に更新された p2
+        makePlayer('p2', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT, isResting: true, forcedRestAt: 999999 }),
+        makePlayer('p3', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT }),
+        makePlayer('p4', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT }),
+        makePlayer('p5'), makePlayer('p6'),
+      ],
+      matchHistory: [match],
+    });
+
+    const result = computeRevertFinish(state, 'm1', FINISHED_AT + 10_000);
+    if ('error' in result) throw new Error(`expected success, got ${result.error}`);
+
+    const p1 = result.newState.players.find((p) => p.id === 'p1');
+    const p2 = result.newState.players.find((p) => p.id === 'p2');
+    expect(p1?.isResting).toBe(false);
+    expect(p2?.isResting).toBe(true);
+    expect(p2?.forcedRestAt).toBe(555);
+  });
+
+  it('forcedRestAt が終了前は未設定なら、戻したときも未設定に戻る', () => {
+    const match = makeMatch('m1', { finishRevert: baseFinishRevert() });
+    const state = revertBaseState({
+      players: [
+        // 終了処理で forceRestAgain により forcedRestAt が付いたケース
+        makePlayer('p1', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT, isResting: true, forcedRestAt: 999999 }),
+        makePlayer('p2', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT }),
+        makePlayer('p3', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT }),
+        makePlayer('p4', { gamesPlayed: 1, lastPlayedAt: FINISHED_AT }),
+        makePlayer('p5'), makePlayer('p6'),
+      ],
+      matchHistory: [match],
+    });
+
+    const result = computeRevertFinish(state, 'm1', FINISHED_AT + 10_000);
+    if ('error' in result) throw new Error(`expected success, got ${result.error}`);
+    expect(result.newState.players.find((p) => p.id === 'p1')?.forcedRestAt).toBeUndefined();
+  });
+
+  it('2分を超えていたら expired', () => {
+    const match = makeMatch('m1', { finishRevert: baseFinishRevert() });
+    const state = revertBaseState({ matchHistory: [match] });
+
+    const result = computeRevertFinish(state, 'm1', FINISHED_AT + FINISH_REVERT_WINDOW_MS + 1);
+    expect(result).toEqual({ error: 'expired' });
+  });
+
+  it('finishRevert が無い（旧データ）試合は no_revert_info', () => {
+    const match = makeMatch('m1'); // finishRevert 無し
+    const state = revertBaseState({ matchHistory: [match] });
+
+    const result = computeRevertFinish(state, 'm1', FINISHED_AT + 1000);
+    expect(result).toEqual({ error: 'no_revert_info' });
+  });
+
+  it('存在しない matchId は not_found', () => {
+    const state = revertBaseState();
+    const result = computeRevertFinish(state, 'does-not-exist', FINISHED_AT + 1000);
+    expect(result).toEqual({ error: 'not_found' });
+  });
+
+  it('コートが別の試合（startedAt 不一致）で埋まっていたら court_busy', () => {
+    const match = makeMatch('m1', { finishRevert: baseFinishRevert() });
+    const state = revertBaseState({
+      courts: [
+        makeCourt(1, { teamA: ['p5', 'p6'], teamB: ['', ''], isPlaying: true, startedAt: 9_999_999 }),
+      ],
+      matchHistory: [match],
+    });
+
+    const result = computeRevertFinish(state, 'm1', FINISHED_AT + 10_000);
+    expect(result).toEqual({ error: 'court_busy' });
+  });
+
+  it('コートが手動配置済み（未開始・空でない）なら court_busy', () => {
+    const match = makeMatch('m1', { finishRevert: baseFinishRevert() });
+    const state = revertBaseState({
+      courts: [
+        makeCourt(1, { teamA: ['p5', 'p6'], teamB: ['', ''], isPlaying: false, assignedAt: 123 }),
+      ],
+      matchHistory: [match],
+    });
+
+    const result = computeRevertFinish(state, 'm1', FINISHED_AT + 10_000);
+    expect(result).toEqual({ error: 'court_busy' });
+  });
+
+  it('元の出場者が他コートに居たら player_elsewhere', () => {
+    const match = makeMatch('m1', { finishRevert: baseFinishRevert() });
+    const state = revertBaseState({
+      courts: [
+        makeCourt(1),
+        makeCourt(2, { teamA: ['p1', 'p6'], teamB: ['', ''], isPlaying: true, startedAt: 5_000_000 }),
+      ],
+      matchHistory: [match],
+    });
+
+    const result = computeRevertFinish(state, 'm1', FINISHED_AT + 10_000);
+    expect(result).toEqual({ error: 'player_elsewhere' });
+  });
+
+  it('元の出場者が次の組（そのコート自身）に含まれるのは player_elsewhere にしない', () => {
+    const match = makeMatch('m1', {
+      finishRevert: baseFinishRevert({ nextStartedAt: 2_000_000 }),
+    });
+    const state = revertBaseState({
+      courts: [
+        // p1 が連続配置で再度選ばれて次の組に入っている
+        makeCourt(1, { teamA: ['p1', 'p6'], teamB: ['', ''], isPlaying: true, startedAt: 2_000_000 }),
+      ],
+      matchHistory: [match],
+    });
+
+    const result = computeRevertFinish(state, 'm1', FINISHED_AT + 10_000);
+    expect('error' in result).toBe(false);
+  });
+
+  it('同じコートでより新しい試合が既にあれば not_latest', () => {
+    const match = makeMatch('m1', { finishRevert: baseFinishRevert() });
+    const newerMatch = makeMatch('m2', { finishedAt: FINISHED_AT + 5000, finishRevert: undefined });
+    const state = revertBaseState({ matchHistory: [match, newerMatch] });
+
+    const result = computeRevertFinish(state, 'm1', FINISHED_AT + 10_000);
+    expect(result).toEqual({ error: 'not_latest' });
+  });
+
+  it('pairPreferences・settings は変更しない', () => {
+    const match = makeMatch('m1', { finishRevert: baseFinishRevert() });
+    const pairPreferences = [{ id: 'pp1', playerIds: ['p1', 'p2'] as [string, string], strength: 'normal' as const, createdAt: 0 }];
+    const settings = { recordScores: true, practiceType: '複' as const };
+    const state = revertBaseState({ matchHistory: [match], pairPreferences, settings });
+
+    const result = computeRevertFinish(state, 'm1', FINISHED_AT + 10_000);
+    if ('error' in result) throw new Error(`expected success, got ${result.error}`);
+    expect(result.newState.pairPreferences).toBe(pairPreferences);
+    expect(result.newState.settings).toBe(settings);
   });
 });
 

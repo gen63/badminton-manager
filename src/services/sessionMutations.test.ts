@@ -64,7 +64,7 @@ import {
   setPracticeType,
   setContinuousMatchMode,
   finishMatchAndContinue,
-  overwriteGameState,
+  revertMatchFinish,
   updateMatch,
   updatePlayer,
   autoAssignAndFulfill,
@@ -2306,58 +2306,106 @@ describe('sessionMutations - finishMatchAndContinue', () => {
 });
 
 // =============================================================================
-// Phase 6: overwriteGameState（mutateGameState を使わず remote.gameState 未初期化でも動く）
+// 履歴画面「コートに戻す」（試合終了の取り消し）
+// docs/plans/2026-09-28-remove-undo-revert-finish.md
 // =============================================================================
 
-describe('sessionMutations - overwriteGameState (B1 fix)', () => {
+describe('sessionMutations - revertMatchFinish', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
   });
 
-  it('remote.gameState が未定義でも書き込み成功する（新規セッション初期化）', async () => {
+  // revertMatchFinish は Date.now() を基準に猶予判定するため、成功系テストは
+  // 現在時刻からの相対値を使う（過去の固定値は expired 扱いになってしまう）。
+  const FINISHED_AT = Date.now() - 30_000;
+  const STARTED_AT = FINISHED_AT - 600_000;
+
+  function makeFinishedMatch(overrides: Partial<Match> = {}): Match {
+    return makeMatch('m1', {
+      courtId: 1,
+      teamA: ['p1', 'p2'],
+      teamB: ['p3', 'p4'],
+      startedAt: STARTED_AT,
+      finishedAt: FINISHED_AT,
+      finishRevert: {
+        playersBefore: [
+          { id: 'p1', isResting: false },
+          { id: 'p2', isResting: false },
+          { id: 'p3', isResting: false },
+          { id: 'p4', isResting: false },
+        ],
+        court: {},
+        fulfilledReservationIds: [],
+      },
+      ...overrides,
+    });
+  }
+
+  function remoteStateWithFinishedMatch(overrides: Partial<GameState> = {}): GameState {
+    return baseState({
+      players: [
+        makePlayer('p1'), makePlayer('p2'), makePlayer('p3'), makePlayer('p4'),
+      ],
+      courts: [makeCourt(1)],
+      matchHistory: [makeFinishedMatch()],
+      ...overrides,
+    });
+  }
+
+  it('リモート状態に対して computeRevertFinish を実行し、update する', async () => {
     mockTransactionGet.mockResolvedValueOnce({
       exists: () => true,
-      // createSession 直後の doc: gameState フィールド無し
-      data: () => ({ id: 'sess', config: {}, createdBy: 'Alice' }),
+      data: () => ({ gameState: remoteStateWithFinishedMatch() }),
       ref: { __docRef: true },
     });
 
-    const initial = baseState({
-      players: [makePlayer('p1', { name: 'Alice' })],
-      courts: [makeCourt(1)],
-    });
-
-    const result = await overwriteGameState('sess', initial);
-
-    expect(result).toBe(initial);
-    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
-    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
-    expect(updateArgs.gameState.players).toHaveLength(1);
-    expect(updateArgs.registeredPlayers).toEqual(['Alice']);
+    const result = await revertMatchFinish('s', 'm1');
+    expect(result.result).toBe('success');
+    expect(mockTransactionUpdate).toHaveBeenCalled();
+    const payload = mockTransactionUpdate.mock.calls[0][1] as { gameState: GameState };
+    expect(payload.gameState.matchHistory).toHaveLength(0);
+    expect(payload.gameState.courts[0].isPlaying).toBe(true);
+    expect(payload.gameState.courts[0].teamA).toEqual(['p1', 'p2']);
   });
 
-  it('snap.exists()=false なら not-found を throw（書き込み無し）', async () => {
+  it('条件を満たさない場合はエラーコードを結果として返し、update しない', async () => {
+    // 2分の猶予を過ぎている
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        gameState: remoteStateWithFinishedMatch({
+          matchHistory: [
+            makeFinishedMatch({ finishedAt: Date.now() - 10 * 60 * 1000 }),
+          ],
+        }),
+      }),
+      ref: { __docRef: true },
+    });
+
+    const result = await revertMatchFinish('s', 'm1');
+    expect(result.result).toBe('expired');
+    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('セッションが存在しなければ not-found を throw', async () => {
     mockTransactionGet.mockResolvedValueOnce({
       exists: () => false,
       data: () => undefined,
       ref: { __docRef: true },
     });
-    await expect(overwriteGameState('missing', baseState())).rejects.toMatchObject({
-      code: 'not-found',
-    });
-    expect(mockTransactionUpdate).not.toHaveBeenCalled();
+
+    await expect(revertMatchFinish('s', 'm1')).rejects.toMatchObject({ code: 'not-found' });
   });
 
-  it('aborted を SessionError("conflict") に変換', async () => {
+  it('aborted を SessionError("conflict") に変換する', async () => {
     mockRunTransaction.mockImplementationOnce(async () => {
       const err = new Error('aborted') as Error & { code?: string };
       err.code = 'aborted';
       throw err;
     });
-    await expect(overwriteGameState('s', baseState())).rejects.toMatchObject({
-      code: 'conflict',
-    });
+
+    await expect(revertMatchFinish('s', 'm1')).rejects.toBeInstanceOf(SessionError);
   });
 });
 

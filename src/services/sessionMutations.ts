@@ -22,9 +22,12 @@ import { computeFirstMatchStartedAt } from '../lib/sessionArchive';
 import {
   ASSIGNED_AT_BASIS_MAX_AGE_MS,
   computeFinishAndContinue,
+  computeRevertFinish,
   gameModeFromPracticeType,
   isAutoEndDue,
+  recomputePlayerMatchStats,
   resolveStartedAtFromAssignedAt,
+  type RevertFinishError,
 } from '../lib/gameOperations';
 import { sanitizePlayerName } from '../lib/inputValidation';
 import { getPracticeEndPhase, isPastEndOverrideActive, isPastLastCall, resolvePracticeEndTime } from '../lib/practiceEndPhase';
@@ -82,43 +85,6 @@ async function mutateGameState(
       const next = apply(remote);
       transaction.update(ref, buildGameStatePayload(next));
       return next;
-    });
-  } catch (error: unknown) {
-    if ((error as { code?: string })?.code === 'aborted') {
-      throw new SessionError(
-        '他のユーザーが更新しました。もう一度お試しください',
-        'conflict',
-      );
-    }
-    throw error;
-  }
-}
-
-/**
- * 既存の remote `gameState` を無視して `state` で **上書き** する。
- *
- * 用途:
- *   - 新規セッション初期化（`createSession` 直後、まだ `gameState` フィールドが無い）
- *   - undo / redo（保存されたスナップショットを丸ごと復元する）
- *
- * `mutateGameState` と異なり `gameState` 未初期化でも throw しない。
- * セッション document 自体は存在している必要がある。
- */
-export async function overwriteGameState(
-  sessionId: string,
-  state: GameState,
-): Promise<GameState> {
-  const _db = requireDb();
-  const ref = doc(_db, 'sessions', sessionId);
-
-  try {
-    return await runTransaction(_db, async (transaction) => {
-      const snap = await transaction.get(ref);
-      if (!snap.exists()) {
-        throw new SessionError('セッションが見つかりません', 'not-found');
-      }
-      transaction.update(ref, buildGameStatePayload(state));
-      return state;
     });
   } catch (error: unknown) {
     if ((error as { code?: string })?.code === 'aborted') {
@@ -669,37 +635,6 @@ export function computeResetAllCourts(state: GameState): GameState {
 
 export function computeAddMatch(state: GameState, match: Match): GameState {
   return { ...state, matchHistory: [...state.matchHistory, match] };
-}
-
-/**
- * 与えられた matchHistory からプレイヤーの試合統計を再計算する。
- * - gamesPlayed = 履歴での出場試合数
- * - lastPlayedAt = 最後に出場した試合の finishedAt（未出場は 0）
- *
- * 試合終了時 (gameOperations.computeFinishAndContinue) は出場者の gamesPlayed を
- * +1 し lastPlayedAt を finishedAt にするのと同時に同じ試合を履歴へ追加する。
- * よって両値は常に matchHistory から導出可能であり、履歴削除・全消去の後に
- * この関数で再計算すれば、gamesPlayed / lastPlayedAt を履歴と整合させられる。
- */
-function recomputePlayerMatchStats(
-  players: GameState['players'],
-  matchHistory: Match[],
-): GameState['players'] {
-  const games = new Map<string, number>();
-  const last = new Map<string, number>();
-  for (const m of matchHistory) {
-    for (const id of [...m.teamA, ...m.teamB]) {
-      if (!id) continue;
-      games.set(id, (games.get(id) ?? 0) + 1);
-      if (m.finishedAt > (last.get(id) ?? 0)) last.set(id, m.finishedAt);
-    }
-  }
-  return players.map((p) => {
-    const gamesPlayed = games.get(p.id) ?? 0;
-    const lastPlayedAt = last.get(p.id) ?? 0;
-    if (gamesPlayed === p.gamesPlayed && lastPlayedAt === p.lastPlayedAt) return p;
-    return { ...p, gamesPlayed, lastPlayedAt };
-  });
 }
 
 export function computeRemoveMatch(state: GameState, matchId: string): GameState {
@@ -1899,6 +1834,52 @@ export async function finishMatchAndContinue(
         continuousError: computed.continuousError,
         continuousStoppedForPracticeEnd,
       };
+    });
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === 'aborted') {
+      throw new SessionError(
+        '他のユーザーが更新しました。もう一度お試しください',
+        'conflict',
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * 試合終了の取り消し（履歴画面「コートに戻す」）を 1 transaction で実行する。
+ *
+ * `finishMatchAndContinue` と同じ `runTransaction(read → compute → write)` パターン。
+ * 条件を満たさない場合は書き込まず、理由コードを結果として返す
+ * （`computeRevertFinish` 参照）。競合（aborted）だけは例外として
+ * `SessionError('conflict')` に変換する。
+ * 詳細: docs/plans/2026-09-28-remove-undo-revert-finish.md
+ */
+export async function revertMatchFinish(
+  sessionId: string,
+  matchId: string,
+): Promise<{ result: 'success' | RevertFinishError }> {
+  const _db = requireDb();
+  const ref = doc(_db, 'sessions', sessionId);
+
+  try {
+    return await runTransaction(_db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) {
+        throw new SessionError('セッションが見つかりません', 'not-found');
+      }
+      const remote = snap.data().gameState as GameState | undefined;
+      if (!remote) {
+        throw new SessionError('セッションの状態が初期化されていません', 'invalid-state');
+      }
+
+      const computed = computeRevertFinish(remote, matchId, Date.now());
+      if ('error' in computed) {
+        return { result: computed.error };
+      }
+
+      transaction.update(ref, buildGameStatePayload(computed.newState));
+      return { result: 'success' as const };
     });
   } catch (error: unknown) {
     if ((error as { code?: string })?.code === 'aborted') {

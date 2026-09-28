@@ -7,7 +7,6 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useReservationStore } from '../stores/reservationStore';
 import { usePairPreferenceStore } from '../stores/pairPreferenceStore';
 import { useAccountingStore } from '../stores/accountingStore';
-import { useUndoStore } from '../stores/undoStore';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { parsePlayerInput } from '../lib/utils';
@@ -191,7 +190,6 @@ export function SessionCreate() {
       useReservationStore.getState().clearReservations();
       usePairPreferenceStore.getState().clearPairPreferences();
       useAccountingStore.getState().clearRecords();
-      useUndoStore.getState().clearAll();
 
       // session を local sessionStore にセット（onSnapshot 購読のトリガー）
       initializeSession({

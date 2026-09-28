@@ -55,26 +55,6 @@ describe('Toast', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('アクションを押すと onClick が走り、トーストも閉じる', () => {
-    const onClose = vi.fn();
-    const onClick = vi.fn();
-    render(
-      <Toast
-        message="⚫︎コートを終了しました"
-        type="info"
-        duration={10_000}
-        onClose={onClose}
-        action={{ label: '取り消す', onClick }}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: '取り消す' }));
-    expect(onClick).toHaveBeenCalledTimes(1);
-
-    advance(400);
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
   it('閉じるボタンで閉じる', () => {
     const onClose = vi.fn();
     render(<Toast message="メッセージ" type="info" onClose={onClose} />);
