@@ -284,6 +284,10 @@ export function useFirebaseSync() {
           if (remoteGenderBalance !== s.genderBalanceMode) {
             s.setGenderBalanceMode(remoteGenderBalance);
           }
+          const remoteOverrideFor = gameState.settings.continuousPastEndOverrideFor ?? 0;
+          if (remoteOverrideFor !== s.continuousPastEndOverrideFor) {
+            s.setContinuousPastEndOverrideFor(remoteOverrideFor);
+          }
           const remoteAutoFired = gameState.settings.lateBalanceAutoFired ?? false;
           if (remoteAutoFired !== s.lateBalanceAutoFired) {
             s.setLateBalanceAutoFired(remoteAutoFired);

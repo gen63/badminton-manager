@@ -31,7 +31,7 @@ import { NextMatchPredictionBar } from '../components/NextMatchPredictionBar';
 import { FinishOperationGuide } from '../components/FinishOperationGuide';
 import { EMPTY_PREDICTION, predictNextMatchPlayers } from '../lib/nextMatchPrediction';
 import { usePracticeEndPhase } from '../hooks/usePracticeEndPhase';
-import { buildPracticeEndAnnouncement, formatHHMM, isPastLastCall, PRACTICE_CLOSED_MS, PRACTICE_LAST_CALL_MS, resolvePracticeEndTime, shouldAnnouncePracticeEndPhase, type PracticeEndPhase } from '../lib/practiceEndPhase';
+import { buildPracticeEndAnnouncement, formatHHMM, isPastEndOverrideActive, isPastLastCall, PRACTICE_CLOSED_MS, PRACTICE_LAST_CALL_MS, resolvePracticeEndTime, shouldAnnouncePracticeEndPhase, type PracticeEndPhase } from '../lib/practiceEndPhase';
 import {
   canFinishGame,
   buildFinishBlockedMessage,
@@ -97,6 +97,7 @@ export function MainPage() {
   const updateConfig = useSessionStore((s) => s.updateConfig);
   const currentUser = useSessionStore((s) => s.currentUser);
   const isAdmin = useSessionStore((s) => s.isAdmin);
+  const isCreator = useSessionStore((s) => s.isCreator);
   const updateInformation = useSessionStore((s) => s.updateInformation);
   const markInformationAsRead = useSessionStore((s) => s.markInformationAsRead);
 
@@ -116,14 +117,27 @@ export function MainPage() {
   // 未設定なら練習開始の3時間後（resolvePracticeEndTime）。
   const practiceEndTime = resolvePracticeEndTime(session?.config);
   const practiceEndPhase = usePracticeEndPhase(practiceEndTime);
-  const pastLastCall = isPastLastCall(practiceEndPhase);
+  // 作成者（開発モード含む）が終了20分前以降に連続モードを ON にした「延長」中は、
+  // 終了前の停止（連続モード OFF・手動配置の確認・予測/呼び出しの停止）を行わない。
+  const continuousPastEndOverrideFor = useSettingsStore((s) => s.continuousPastEndOverrideFor);
+  const practiceExtended = isPastEndOverrideActive(continuousPastEndOverrideFor, practiceEndTime);
+  const pastLastCall = isPastLastCall(practiceEndPhase) && !practiceExtended;
 
   // 連続クリックでトグルが打ち消し合うのを防ぐガード（CON1）。
   const continuousModeToggle = useGuardedAction(async (next: boolean) => {
-    // 終了20分前以降は新しい試合を入れない運用なので ON にさせない。
-    // 延長するときは会計ページで終了時刻を変える。
+    // 終了20分前以降は新しい試合を入れない運用なので、ON にできるのは作成者
+    // （開発モード含む）だけ。ON にした時点の終了時刻を「延長」として記録し、
+    // 試合終了時の自動 OFF もそれを見て止めない。
     if (next && pastLastCall) {
-      toast.warning('練習終了20分前を過ぎているため連続モードはONにできません（延長は会計ページで終了時刻を変更）');
+      if (!isCreator() || !practiceEndTime) {
+        toast.warning('練習終了20分前を過ぎているため連続モードはONにできません（作成者のみ延長できます）');
+        return;
+      }
+      const confirmed = window.confirm(
+        '練習終了20分前を過ぎています。連続モードをONにして試合を続けますか？'
+      );
+      if (!confirmed) return;
+      await writer.setContinuousMatchMode(true, { pastEndOverrideFor: practiceEndTime });
       return;
     }
     await writer.setContinuousMatchMode(next);
@@ -168,13 +182,16 @@ export function MainPage() {
   useEffect(() => {
     const prev = prevPracticeEndPhaseRef.current;
     prevPracticeEndPhaseRef.current = practiceEndPhase;
+    // 延長中（作成者が連続モードを続けている）は「ラスト」「片付け」を告げると
+    // 実態と食い違うので鳴らさない。
     if (
       practiceEndPhase !== 'normal' &&
+      !practiceExtended &&
       shouldAnnouncePracticeEndPhase({ prev, next: practiceEndPhase, practiceEndTime, now: Date.now() })
     ) {
       fireMatchCallAlert(buildPracticeEndAnnouncement(practiceEndPhase));
     }
-  }, [practiceEndPhase, practiceEndTime]);
+  }, [practiceEndPhase, practiceEndTime, practiceExtended]);
   const adminMatchCallAnnounce = useSettingsStore((s) => s.adminMatchCallAnnounce);
   const finishHoldToConfirm = useSettingsStore((s) => s.finishHoldToConfirm);
 
@@ -1429,7 +1446,7 @@ export function MainPage() {
       {practiceEndTime && practiceEndPhase !== 'normal' && (
         <div
           className={`border-b px-4 py-2.5 flex items-center justify-center gap-2 ${
-            practiceEndPhase === 'closed'
+            practiceEndPhase === 'closed' && !practiceExtended
               ? 'bg-red-50 border-red-200'
               : 'bg-amber-50 border-amber-200'
           }`}
@@ -1437,10 +1454,12 @@ export function MainPage() {
         >
           <span
             className={`text-xs font-medium text-center ${
-              practiceEndPhase === 'closed' ? 'text-red-800' : 'text-amber-800'
+              practiceEndPhase === 'closed' && !practiceExtended ? 'text-red-800' : 'text-amber-800'
             }`}
           >
-            {practiceEndPhase === 'closed'
+            {practiceExtended
+              ? `⏩ 延長中（終了 ${formatHHMM(practiceEndTime)}）。作成者の指示で試合を続けています`
+              : practiceEndPhase === 'closed'
               ? `🏁 練習終了（${formatHHMM(practiceEndTime - PRACTICE_CLOSED_MS)}〜）。試合を終えて片付けをお願いします`
               : `⏰ ラスト（${formatHHMM(practiceEndTime - PRACTICE_LAST_CALL_MS)}〜）。新しい試合は入れません`}
           </span>

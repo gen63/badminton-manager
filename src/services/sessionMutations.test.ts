@@ -62,6 +62,7 @@ import {
   addPlayers,
   resetMatchState,
   setPracticeType,
+  setContinuousMatchMode,
   finishMatchAndContinue,
   overwriteGameState,
   updateMatch,
@@ -1192,6 +1193,44 @@ describe('sessionMutations - settings', () => {
   });
 });
 
+describe('sessionMutations - setContinuousMatchMode（終了20分前以降の延長）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunTransaction.mockImplementation(async (_db, cb) => cb(mockTransaction));
+  });
+
+  async function run(initial: Record<string, unknown>, value: boolean, options?: { pastEndOverrideFor?: number }) {
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: baseState({ settings: initial }) }),
+      ref: { __docRef: true },
+    });
+    await setContinuousMatchMode('s', value, options);
+    const payload = mockTransactionUpdate.mock.calls[0][1] as {
+      gameState: { settings?: Record<string, unknown> };
+    };
+    return payload.gameState.settings as Record<string, unknown>;
+  }
+
+  it('延長つきで ON にすると終了時刻を同じ書き込みで記録する', async () => {
+    const settings = await run({ continuousMatchMode: false }, true, { pastEndOverrideFor: 12345 });
+    expect(settings.continuousMatchMode).toBe(true);
+    expect(settings.continuousPastEndOverrideFor).toBe(12345);
+  });
+
+  it('OFF にすると延長も消す', async () => {
+    const settings = await run({ continuousMatchMode: true, continuousPastEndOverrideFor: 12345 }, false);
+    expect(settings.continuousMatchMode).toBe(false);
+    expect(settings.continuousPastEndOverrideFor).toBe(0);
+  });
+
+  it('通常の ON は延長を変えない', async () => {
+    const settings = await run({ continuousMatchMode: false }, true);
+    expect(settings.continuousMatchMode).toBe(true);
+    expect(settings.continuousPastEndOverrideFor).toBeUndefined();
+  });
+});
+
 describe('sessionMutations - setPracticeType', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -2175,6 +2214,51 @@ describe('sessionMutations - finishMatchAndContinue', () => {
     expect(result.writtenState?.settings?.continuousMatchMode).toBe(false);
     expect(result.writtenState?.courts[0].isPlaying).toBe(false);
     expect(result.writtenState?.courts[0].teamA).toEqual(['', '']);
+  });
+
+  it('作成者が延長した（今の終了時刻の override がある）ときは止めずに次を配置する', async () => {
+    const startedAt = Date.now() - 6 * 60 * 1000;
+    const practiceEndTime = Date.now() + 18 * 60 * 1000;
+    const state = playingWithWaiting(startedAt);
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        gameState: { ...state, settings: { ...state.settings, continuousPastEndOverrideFor: practiceEndTime } },
+        config: { practiceStartTime: Date.now() - 3 * 60 * 60 * 1000, practiceEndTime },
+      }),
+      ref: { __docRef: true },
+    });
+
+    const result = await finishMatchAndContinue('s', 1, startedAt, {
+      matchId: 'm1',
+      useStayDurationPriority: false,
+      forceBulkAssignment: false,
+    });
+    expect(result.continuousStoppedForPracticeEnd).toBe(false);
+    expect(result.continuousNextApplied).toBe(true);
+    expect(result.writtenState?.settings?.continuousMatchMode).toBe(true);
+  });
+
+  it('延長後に終了時刻が変わったら延長は無効で止める', async () => {
+    const startedAt = Date.now() - 6 * 60 * 1000;
+    const practiceEndTime = Date.now() + 18 * 60 * 1000;
+    const state = playingWithWaiting(startedAt);
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        gameState: { ...state, settings: { ...state.settings, continuousPastEndOverrideFor: practiceEndTime - 30 * 60 * 1000 } },
+        config: { practiceStartTime: Date.now() - 3 * 60 * 60 * 1000, practiceEndTime },
+      }),
+      ref: { __docRef: true },
+    });
+
+    const result = await finishMatchAndContinue('s', 1, startedAt, {
+      matchId: 'm1',
+      useStayDurationPriority: false,
+      forceBulkAssignment: false,
+    });
+    expect(result.continuousStoppedForPracticeEnd).toBe(true);
+    expect(result.writtenState?.settings?.continuousMatchMode).toBe(false);
   });
 
   it('終了時刻が未設定なら開始の3時間後を終了とみなして止める', async () => {
