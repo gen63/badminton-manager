@@ -50,6 +50,15 @@ export interface PlayerPerformance {
    * 同じ値になるようにしている。
    */
   deviation: number;
+  /**
+   * 男女別偏差値（同性の評価対象者だけで標準化した整数）。
+   *
+   * θ の推定は全員で行い（男女混合の試合で物差しが繋がる）、平均・標準偏差だけを
+   * 同性内で取り直す。性別未設定は null。同性が1人（sd≈0）なら 50。
+   */
+  genderDeviation: number | null;
+  /** 男女別偏差値の表示ラベル用。未設定は null。 */
+  gender: 'M' | 'F' | null;
   /** 同じ `deviation` なら同順位（1,2,2,4 形式）。 */
   displayRank: number;
   /** 対戦した相手チームの平均レート（整数）。 */
@@ -224,6 +233,21 @@ export function computePerformanceRatings(
     thetaValues.reduce((sum, v) => sum + (v - mean) ** 2, 0) / thetaValues.length;
   const sd = Math.sqrt(variance);
 
+  const genderByName = new Map<string, 'M' | 'F'>();
+  for (const p of players) {
+    if (p.name && p.gender) genderByName.set(p.name, p.gender);
+  }
+  const genderStats = new Map<'M' | 'F', { mean: number; sd: number }>();
+  for (const g of ['M', 'F'] as const) {
+    const vals = names
+      .filter((n) => genderByName.get(n) === g)
+      .map((n) => theta.get(n) ?? 0);
+    if (vals.length === 0) continue;
+    const m = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const v = vals.reduce((sum, x) => sum + (x - m) ** 2, 0) / vals.length;
+    genderStats.set(g, { mean: m, sd: Math.sqrt(v) });
+  }
+
   const stats = new Map<
     string,
     {
@@ -286,6 +310,13 @@ export function computePerformanceRatings(
     const rating = Math.round(ratingOf(name));
     const deviation =
       sd > 1e-9 ? 50 + (10 * ((theta.get(name) ?? 0) - mean)) / sd : 50;
+    const g = genderByName.get(name);
+    const gs = g ? genderStats.get(g) : undefined;
+    const genderDeviation = gs
+      ? gs.sd > 1e-9
+        ? Math.round(50 + (10 * ((theta.get(name) ?? 0) - gs.mean)) / gs.sd)
+        : 50
+      : null;
     // レート → 偏差値スケールの変換。相手/味方の平均も同じ物差しに載せる
     const toDeviation = (r: number): number =>
       sd > 1e-9 ? 50 + (10 * ((r - BASE_RATING) / RATING_SCALE - mean)) / sd : 50;
@@ -297,6 +328,8 @@ export function computePerformanceRatings(
       winRate: total > 0 ? Math.round((stat.wins / total) * 100) : null,
       rating,
       deviation: Math.round(deviation),
+      genderDeviation,
+      gender: g ?? null,
       displayRank: 0, // ソート後に採番する
       opponentRating: Math.round(stat.opponentRatingSum / total),
       opponentDeviation: Math.round(toDeviation(stat.opponentRatingSum / total)),

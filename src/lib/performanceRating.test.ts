@@ -309,6 +309,76 @@ describe('computePerformanceRatings', () => {
   });
 });
 
+describe('genderDeviation（男女別偏差値）', () => {
+  const withGender = (name: string, gender?: 'M' | 'F'): Player => ({
+    ...makePlayer(name),
+    gender,
+  });
+  const names = ['M1', 'M2', 'M3', 'M4', 'F1', 'F2', 'F3', 'F4'];
+  const build = (genders: Record<string, 'M' | 'F' | undefined>) => {
+    const players = names.map((n) => withGender(n, genders[n]));
+    const matches = [
+      match(['M1', 'F1'], ['M2', 'F2'], 'A'),
+      match(['M1', 'F2'], ['M3', 'F3'], 'A'),
+      match(['M2', 'F1'], ['M4', 'F4'], 'A'),
+      match(['M3', 'F4'], ['M4', 'F3'], 'B'),
+      match(['M1', 'M4'], ['M2', 'M3'], 'A'),
+      match(['F1', 'F4'], ['F2', 'F3'], 'A'),
+      match(['M1', 'F3'], ['M4', 'F2'], 'A'),
+    ];
+    return { players, matches };
+  };
+  const allGenders = Object.fromEntries(
+    names.map((n) => [n, n.startsWith('M') ? 'M' : 'F'])
+  ) as Record<string, 'M' | 'F'>;
+
+  it('各性別内で平均≒50・標準偏差≒10', () => {
+    const { players, matches } = build(allGenders);
+    const res = computePerformanceRatings(matches, players);
+    for (const g of ['M', 'F'] as const) {
+      const vals = res.players
+        .filter((p) => p.gender === g)
+        .map((p) => p.genderDeviation as number);
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const sd = Math.sqrt(
+        vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length
+      );
+      expect(mean).toBeCloseTo(50, 0);
+      expect(sd).toBeGreaterThan(8);
+      expect(sd).toBeLessThan(12);
+    }
+  });
+
+  it('性別未設定は null', () => {
+    const { players, matches } = build({ ...allGenders, M1: undefined });
+    const res = computePerformanceRatings(matches, players);
+    expect(findPerformance(res, 'M1')!.genderDeviation).toBeNull();
+    expect(findPerformance(res, 'M2')!.genderDeviation).not.toBeNull();
+  });
+
+  it('同性が1人だけなら 50', () => {
+    const { players, matches } = build({
+      ...allGenders,
+      F2: undefined,
+      F3: undefined,
+      F4: undefined,
+    });
+    const res = computePerformanceRatings(matches, players);
+    expect(findPerformance(res, 'F1')!.genderDeviation).toBe(50);
+  });
+
+  it('全体の deviation は性別設定の有無で変わらない', () => {
+    const { players, matches } = build(allGenders);
+    const plain = build({});
+    const a = computePerformanceRatings(matches, players);
+    const b = computePerformanceRatings(plain.matches, plain.players);
+    for (const p of a.players) {
+      expect(findPerformance(b, p.name)!.deviation).toBe(p.deviation);
+      expect(findPerformance(b, p.name)!.rating).toBe(p.rating);
+    }
+  });
+});
+
 function round1(value: number) {
   return Math.round(value * 10) / 10;
 }
