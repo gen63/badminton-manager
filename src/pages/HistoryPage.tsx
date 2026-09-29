@@ -457,6 +457,11 @@ function PlayerRecordSummary({
               <span className="text-base font-bold">
                 {performance.deviation}
               </span>
+              {performance.genderDeviation !== null && (
+                <span className="text-xs opacity-90">
+                  （{performance.gender === 'F' ? '女' : '男'} {performance.genderDeviation}）
+                </span>
+              )}
             </span>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs opacity-90">
@@ -526,7 +531,8 @@ function PerformanceRanking({
           <p className="text-[11px] text-muted-foreground leading-snug px-1">
             対戦相手と味方の強さを加味した本日限定の推定値です（偏差値
             50 がその日の平均）。1日分では誤差が ±5 前後あるため、同じ偏差値は
-            同順位にしています。試合数が少ない人ほど平均寄りになります。
+            同順位にしています。試合数が少ない人ほど平均寄りになります。男女別（男・女）は
+            本日の同性メンバー内で標準化した値です。
           </p>
           {players.map((p) => {
             const isSelected = p.name === selectedName;
@@ -554,6 +560,12 @@ function PerformanceRanking({
                   </span>
                   <span className="text-sm font-bold text-foreground flex-shrink-0">
                     偏差 {p.deviation}
+                    {p.genderDeviation !== null && (
+                      <span className="text-[11px] font-normal text-muted-foreground">
+                        {' '}
+                        / {p.gender === 'F' ? '女' : '男'} {p.genderDeviation}
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 pl-7 text-[11px] text-muted-foreground">
