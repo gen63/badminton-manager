@@ -475,9 +475,6 @@ function PlayerRecordSummary({
               {formatSigned(performance.winsAboveExpected)}勝 ±
               {performance.winsAboveExpectedError.toFixed(1)}）
             </span>
-            {!performance.isSignificant && (
-              <span className="opacity-75">この試合数では誤差の範囲</span>
-            )}
           </div>
         </div>
       )}
@@ -574,9 +571,7 @@ function PerformanceRanking({
                             : ''
                         }`}
                         title={
-                          p.isSignificant
-                            ? '偶然では説明しにくい差'
-                            : 'この試合数では誤差の範囲'
+                          p.isSignificant ? '偶然では説明しにくい差' : undefined
                         }
                       >
                         期待比 {formatSigned(p.winsAboveExpected)}勝
