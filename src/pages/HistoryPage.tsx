@@ -1259,6 +1259,8 @@ export function HistoryPage() {
                           type="button"
                           onClick={() => {
                             setGenderFilter(gender);
+                            // 性別を選び直したら、画面上部のメンバー絞り込みは「全員」に戻す
+                            setFilterPlayerName(null);
                             // 結果集計が閉じているときだけ開く
                             if (rankingCollapsed) {
                               openRanking();
