@@ -7,6 +7,7 @@ import {
   FINISH_REVERT_WINDOW_MS,
   gameModeFromPracticeType,
   isAutoEndDue,
+  resolveAutoEndFinishedAt,
   MATCH_AUTO_END_MS,
   resolveStartedAtFromAssignedAt,
   type GameState,
@@ -1242,14 +1243,25 @@ describe('isAutoEndDue', () => {
     expect(isAutoEndDue(started, deadline + 60_000)).toBe(true);
   });
 
-  it('許容を超えて遅れたら false（アプリが止まっていた間に期限が過ぎた）', () => {
-    expect(isAutoEndDue(started, deadline + AUTO_TIMER_MAX_LATENESS_MS + 1)).toBe(false);
-    // 実際に起きたケース: 復帰時に 25 分経過した試合がいっせいに終了した
-    expect(isAutoEndDue(started, started + 25 * 60 * 1000)).toBe(false);
+  it('大きく遅れても true（アプリが止まっていた間に期限が過ぎても復帰時に終了する）', () => {
+    expect(isAutoEndDue(started, deadline + AUTO_TIMER_MAX_LATENESS_MS + 1)).toBe(true);
+    expect(isAutoEndDue(started, started + 25 * 60 * 1000)).toBe(true);
   });
 
   it('未開始（startedAt が 0）は false', () => {
     expect(isAutoEndDue(0, Date.now())).toBe(false);
+  });
+});
+
+describe('resolveAutoEndFinishedAt', () => {
+  const started = 1_000_000;
+
+  it('期限どおりなら now', () => {
+    expect(resolveAutoEndFinishedAt(started, started + MATCH_AUTO_END_MS)).toBe(started + MATCH_AUTO_END_MS);
+  });
+
+  it('遅れて終了しても記録上の終了時刻は開始 + 15 分に丸める', () => {
+    expect(resolveAutoEndFinishedAt(started, started + 25 * 60 * 1000)).toBe(started + MATCH_AUTO_END_MS);
   });
 });
 

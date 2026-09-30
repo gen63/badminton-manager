@@ -2136,7 +2136,7 @@ describe('sessionMutations - finishMatchAndContinue', () => {
     });
   }
 
-  it('autoEnd: アプリ停止中に 15 分を過ぎた試合は stale_auto_end で終了しない', async () => {
+  it('autoEnd: アプリ停止中に 15 分を過ぎた試合も終了し、試合時間は 15 分に丸める', async () => {
     // 25 分前に開始 = タイマーが遅れて発火した（＝アプリが止まっていた）状態
     const startedAt = Date.now() - 25 * 60 * 1000;
     mockTransactionGet.mockResolvedValueOnce({
@@ -2152,7 +2152,28 @@ describe('sessionMutations - finishMatchAndContinue', () => {
       skipContinuous: true,
       autoEnd: true,
     });
-    expect(result.result).toBe('stale_auto_end');
+    expect(result.result).toBe('success');
+    const match = result.writtenState?.matchHistory[0];
+    expect(match?.finishedAt).toBe(startedAt + MATCH_AUTO_END_MS);
+    expect(mockTransactionUpdate).toHaveBeenCalled();
+  });
+
+  it('autoEnd: 15 分未満なら not_due で終了しない', async () => {
+    const startedAt = Date.now() - 10 * 60 * 1000;
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: playingSince(startedAt) }),
+      ref: { __docRef: true },
+    });
+
+    const result = await finishMatchAndContinue('s', 1, startedAt, {
+      matchId: 'm1',
+      useStayDurationPriority: false,
+      forceBulkAssignment: false,
+      skipContinuous: true,
+      autoEnd: true,
+    });
+    expect(result.result).toBe('not_due');
     expect(mockTransactionUpdate).not.toHaveBeenCalled();
   });
 
@@ -2206,6 +2227,28 @@ describe('sessionMutations - finishMatchAndContinue', () => {
       settings: { ...(state.settings ?? {}), continuousMatchMode: true, forceBulkAssignment: false },
     };
   }
+
+  it('autoEnd: 連続モード ON でも自動終了したコートには次の試合を配置しない', async () => {
+    const startedAt = Date.now() - (MATCH_AUTO_END_MS + 1000);
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: playingWithWaiting(startedAt) }),
+      ref: { __docRef: true },
+    });
+
+    // 呼び出し側が skipContinuous を付け忘れても transaction 側で抑止する
+    const result = await finishMatchAndContinue('s', 1, startedAt, {
+      matchId: 'm1',
+      useStayDurationPriority: false,
+      forceBulkAssignment: false,
+      autoEnd: true,
+    });
+    expect(result.result).toBe('success');
+    expect(result.continuousNextApplied).toBe(false);
+    expect(result.writtenState?.settings?.continuousMatchMode).toBe(true);
+    expect(result.writtenState?.courts[0].isPlaying).toBe(false);
+    expect(result.writtenState?.courts[0].teamA).toEqual(['', '']);
+  });
 
   it('終了20分前を過ぎていたら連続モードを OFF にし、次の配置をしない', async () => {
     const startedAt = Date.now() - 6 * 60 * 1000;
