@@ -18,9 +18,10 @@
  *   - `imminent`: 経過最大のコートが 4:30 を超えた。オレンジで強調する
  *     （同じ閾値でコートカードの外枠も太くなるので見た目が連動する）。
  *
- * 4:30 の呼び出し通知（`nextMatchCall.ts`）は OS 通知・チャイム・読み上げで
+ * 4:30 の呼び出し通知（`nextMatchCall.ts`）はチャイム・振動・読み上げで
  * 「画面を見ていない人に気づかせる」役割、こちらは画面上に出続けて
- * 「いつでも確認できる」役割で補完する。
+ * 「いつでも確認できる」役割で補完する。OS 通知（プッシュ）は 4:30 ではなく、
+ * 担当になった時点の「試合配置担当です」（`decideOperatorNotification`）だけが出す。
  *
  * 判定に必要な「経過最大のプレイ中コート」は `nextMatchCall.ts` の
  * `maxPlayingCourt` / `maxPlayingElapsedMs` をそのまま再利用する。
@@ -209,6 +210,46 @@ export function buildFinishOperationGuide(
 function circledCourt(courtId: number): string {
   if (!Number.isInteger(courtId) || courtId < 1 || courtId > 20) return `${courtId}コート`;
   return String.fromCharCode(0x2460 + courtId - 1);
+}
+
+export type OperatorNotificationDecision = 'notify' | 'markOnly' | 'none';
+
+export interface OperatorNotificationArgs {
+  operatorIds: Set<string>;
+  myPlayerId: string | null;
+  courts: Court[];
+  /** この待機期間で既に通知した（または通知済み扱いにした）か */
+  alreadyNotified: boolean;
+  /** 復帰（またはアプリ起動）後の最初の判定か */
+  firstAfterResume: boolean;
+}
+
+/**
+ * 「試合配置担当です」OS 通知を出すかの判定。
+ * - `none`: 何もしない（未特定・通知済み・コート上・担当でない）
+ * - `markOnly`: 復帰後の最初の判定。画面の予測バー・待機ガイドが既に担当を示しているので
+ *   通知は出さず、通知済みにするだけ（アプリを開いた直後に遅れて鳴るのを防ぐ）
+ * - `notify`: 通知を出す
+ * 詳細: docs/plans/2026-09-30-operator-assigned-notification.md
+ */
+export function decideOperatorNotification(
+  args: OperatorNotificationArgs,
+): OperatorNotificationDecision {
+  const { operatorIds, myPlayerId, courts, alreadyNotified, firstAfterResume } = args;
+  if (myPlayerId === null || alreadyNotified) return 'none';
+  if (isOnAnyCourt(courts, myPlayerId)) return 'none';
+  if (!operatorIds.has(myPlayerId)) return 'none';
+  return firstAfterResume ? 'markOnly' : 'notify';
+}
+
+/**
+ * 「試合配置担当です」通知の本文。待機コートが絞れていれば番号を添える
+ * （見出しと同じ丸数字の連結）。
+ */
+export function buildOperatorAssignedMessage(courtIds: number[]): string {
+  const action = '試合が終わったら終了→配置→開始をお願いします';
+  if (courtIds.length === 0) return action;
+  return `${courtIds.map(circledCourt).join('')}付近で待機し、${action}`;
 }
 
 /**

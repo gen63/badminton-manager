@@ -60,20 +60,42 @@ function showNotificationSafely(title: string, options: AppNotificationOptions):
   })();
 }
 
+/** 「試合配置担当です」通知の tag。同じ tag は通知センターで上書きされ、片付け時の検索キーにもなる。 */
+const OPERATOR_ASSIGNED_TAG = 'operator-assigned';
+
 /**
- * 次の試合に入りそうなメンバーへの事前呼び出し通知を送信。
- * body の組み立ては呼び出し側（buildNextMatchCallMessage）の責務。
+ * 自分が操作担当（次の試合の 終了→配置→開始 をする人）になったことを通知する。
+ * body の組み立ては呼び出し側（buildOperatorAssignedMessage）の責務。
  */
-export function notifyNextMatchSoon(body: string): void {
+export function notifyOperatorAssigned(body: string): void {
   if (!isNotificationSupported()) return;
   if (Notification.permission !== 'granted') return;
 
-  showNotificationSafely('まもなく出番です', {
+  showNotificationSafely('試合配置担当です', {
     body,
     icon: '/badminton-manager/icons/icon-192x192.png',
-    tag: 'next-match-soon',
+    tag: OPERATOR_ASSIGNED_TAG,
     vibrate: [200, 100, 200],
   });
+}
+
+/**
+ * 通知センターに残っている「試合配置担当です」を消す。コートに配置された・担当から
+ * 外れた後に古い通知が残り続けないようにするため。SW 経由で出した通知しか取れないが、
+ * Android（SW 必須）と iOS PWA はこちらなので実用上足りる。失敗は握り潰す。
+ */
+export function closeOperatorAssignedNotification(): void {
+  if (!('serviceWorker' in navigator)) return;
+  void (async () => {
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (!registration) return;
+      const notifications = await registration.getNotifications({ tag: OPERATOR_ASSIGNED_TAG });
+      notifications.forEach((n) => n.close());
+    } catch (error) {
+      console.error('[Notifications] closeOperatorAssignedNotification failed:', error);
+    }
+  })();
 }
 
 /**
