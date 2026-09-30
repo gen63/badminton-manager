@@ -615,14 +615,19 @@ describe('decideOperatorNotification', () => {
 
 describe('buildOperatorAssignedMessage', () => {
   it('コート未指定なら番号なし', () => {
-    expect(buildOperatorAssignedMessage([])).toBe('試合が終わったら終了→配置→開始をお願いします');
+    expect(buildOperatorAssignedMessage([], false)).toBe('試合が終わったら終了→配置→開始をお願いします');
   });
 
   it('1面なら丸数字1つ', () => {
-    expect(buildOperatorAssignedMessage([2])).toBe('②付近で待機し、試合が終わったら終了→配置→開始をお願いします');
+    expect(buildOperatorAssignedMessage([2], false)).toBe('②付近で待機し、試合が終わったら終了→配置→開始をお願いします');
   });
 
   it('2面は区切り無しで連結', () => {
-    expect(buildOperatorAssignedMessage([1, 2])).toBe('①②付近で待機し、試合が終わったら終了→配置→開始をお願いします');
+    expect(buildOperatorAssignedMessage([1, 2], false)).toBe('①②付近で待機し、試合が終わったら終了→配置→開始をお願いします');
+  });
+
+  it('空きコートがあれば待機文言ではなく配置→開始を促す（courtIds は無視）', () => {
+    expect(buildOperatorAssignedMessage([], true)).toBe('空いているコートに配置→開始をお願いします');
+    expect(buildOperatorAssignedMessage([1, 2], true)).toBe('空いているコートに配置→開始をお願いします');
   });
 });

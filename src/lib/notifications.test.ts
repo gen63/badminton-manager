@@ -33,7 +33,7 @@ describe('notifyOperatorAssigned', () => {
 
     expect(getRegistrationMock).toHaveBeenCalled();
     expect(showNotificationMock).toHaveBeenCalledWith(
-      '試合配置担当です',
+      '次の試合配置担当です',
       expect.objectContaining({
         body: '①付近で待機し、試合が終わったら終了→配置→開始をお願いします',
         tag: 'operator-assigned',
@@ -57,7 +57,7 @@ describe('notifyOperatorAssigned', () => {
     await flushPromises();
 
     expect(ctorSpy).toHaveBeenCalledWith(
-      '試合配置担当です',
+      '次の試合配置担当です',
       expect.objectContaining({ body: 'body', tag: 'operator-assigned' })
     );
   });

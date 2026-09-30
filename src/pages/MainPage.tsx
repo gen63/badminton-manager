@@ -635,19 +635,23 @@ export function MainPage() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
-  // 操作担当（次の試合の 終了→配置→開始 をする人）になった時点で OS 通知を出す。
+  // 操作担当（次の試合の 終了→配置→開始 をする人）になった時点で OS 通知を出し、
+  // 本人の端末だけにトーストも出す（markOnly では出さない＝画面が既に担当を示しているため）。
   // 遅れて届く通知の防止: 判定は同期済み・復帰直後でないときだけ行い、復帰後の最初の
   // 判定では通知せず通知済み扱いにする（画面が既に担当を示しているため）。コート配置・
   // 担当から外れたら残っている通知を片付ける。担当の出入りでは再通知しない（コートに
   // 乗るまで1回）。詳細: docs/plans/2026-09-30-operator-assigned-notification.md
   const notifiedOperatorRef = useRef(false);
   const operatorNotificationShownRef = useRef(false);
+  const showToast = toast.showToast;
   useEffect(() => {
     const evaluate = () => {
       const onAnyCourt = myPlayerId !== null && courts.some(
         (c) => c.teamA.includes(myPlayerId) || c.teamB.includes(myPlayerId)
       );
-      if (onAnyCourt) {
+      // 休憩中はコート上と同様に扱い、通知済みフラグを戻して片付ける
+      const isMyPlayerResting = myPlayerId !== null && playerMap.get(myPlayerId)?.isResting === true;
+      if (onAnyCourt || isMyPlayerResting) {
         notifiedOperatorRef.current = false;
         if (operatorNotificationShownRef.current) {
           closeOperatorAssignedNotification();
@@ -684,7 +688,13 @@ export function MainPage() {
       if (decision === 'notify') {
         // 運用コートが1面のみのときは番号を出さない
         const courtIds = courts.length > 1 ? standbyCourtIds(courts, Date.now()) : [];
-        notifyOperatorAssigned(buildOperatorAssignedMessage(courtIds));
+        const hasEmptyCourt = courts.some((c) => !c.teamA[0] || c.teamA[0] === '');
+        const body = buildOperatorAssignedMessage(courtIds, hasEmptyCourt);
+        notifyOperatorAssigned(body);
+        // 裏にいる間に作ったトーストは Chrome のタイマー間引きで消えずに残り、復帰時に遅れて見えるため
+        if (document.visibilityState === 'visible') {
+          showToast(`次の試合配置担当です。${body}`, 'info', 8000);
+        }
         notifiedOperatorRef.current = true;
         operatorNotificationShownRef.current = true;
       } else if (decision === 'markOnly') {
@@ -694,7 +704,7 @@ export function MainPage() {
     evaluate();
     const intervalId = setInterval(evaluate, 10_000);
     return () => clearInterval(intervalId);
-  }, [courts, operatorIds, myPlayerId, isGameStateLoaded]);
+  }, [courts, operatorIds, myPlayerId, isGameStateLoaded, showToast, playerMap]);
 
   useEffect(() => {
     const evaluate = () => {
@@ -743,7 +753,7 @@ export function MainPage() {
         // 画面表示は継続表示のガイド（`FinishOperationGuide`）が担うので、ここでは
         // 「画面を見ていない人に気づかせる」音・振動・読み上げだけを鳴らす。以前は8秒
         // トーストも出していたが、ガイドと同じ情報が消えずに出るようになり重複したため廃止。
-        // OS 通知は廃止（担当になった時点の「試合配置担当です」に置き換え）。
+        // OS 通知は廃止（担当になった時点の「次の試合配置担当です」に置き換え）。
         fireMatchCallAlert(speech);
         calledForNextMatchRef.current = true;
       }

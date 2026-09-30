@@ -60,7 +60,7 @@ function showNotificationSafely(title: string, options: AppNotificationOptions):
   })();
 }
 
-/** 「試合配置担当です」通知の tag。同じ tag は通知センターで上書きされ、片付け時の検索キーにもなる。 */
+/** 「次の試合配置担当です」通知の tag。同じ tag は通知センターで上書きされ、片付け時の検索キーにもなる。 */
 const OPERATOR_ASSIGNED_TAG = 'operator-assigned';
 
 /**
@@ -71,7 +71,7 @@ export function notifyOperatorAssigned(body: string): void {
   if (!isNotificationSupported()) return;
   if (Notification.permission !== 'granted') return;
 
-  showNotificationSafely('試合配置担当です', {
+  showNotificationSafely('次の試合配置担当です', {
     body,
     icon: '/badminton-manager/icons/icon-192x192.png',
     tag: OPERATOR_ASSIGNED_TAG,
@@ -80,7 +80,7 @@ export function notifyOperatorAssigned(body: string): void {
 }
 
 /**
- * 通知センターに残っている「試合配置担当です」を消す。コートに配置された・担当から
+ * 通知センターに残っている「次の試合配置担当です」を消す。コートに配置された・担当から
  * 外れた後に古い通知が残り続けないようにするため。SW 経由で出した通知しか取れないが、
  * Android（SW 必須）と iOS PWA はこちらなので実用上足りる。失敗は握り潰す。
  */

@@ -21,7 +21,7 @@
  * 4:30 の呼び出し通知（`nextMatchCall.ts`）はチャイム・振動・読み上げで
  * 「画面を見ていない人に気づかせる」役割、こちらは画面上に出続けて
  * 「いつでも確認できる」役割で補完する。OS 通知（プッシュ）は 4:30 ではなく、
- * 担当になった時点の「試合配置担当です」（`decideOperatorNotification`）だけが出す。
+ * 担当になった時点の「次の試合配置担当です」（`decideOperatorNotification`）だけが出す。
  *
  * 判定に必要な「経過最大のプレイ中コート」は `nextMatchCall.ts` の
  * `maxPlayingCourt` / `maxPlayingElapsedMs` をそのまま再利用する。
@@ -225,7 +225,7 @@ export interface OperatorNotificationArgs {
 }
 
 /**
- * 「試合配置担当です」OS 通知を出すかの判定。
+ * 「次の試合配置担当です」OS 通知を出すかの判定。
  * - `none`: 何もしない（未特定・通知済み・コート上・担当でない）
  * - `markOnly`: 復帰後の最初の判定。画面の予測バー・待機ガイドが既に担当を示しているので
  *   通知は出さず、通知済みにするだけ（アプリを開いた直後に遅れて鳴るのを防ぐ）
@@ -243,10 +243,12 @@ export function decideOperatorNotification(
 }
 
 /**
- * 「試合配置担当です」通知の本文。待機コートが絞れていれば番号を添える
+ * 「次の試合配置担当です」通知の本文。待機コートが絞れていれば番号を添える
  * （見出しと同じ丸数字の連結）。
  */
-export function buildOperatorAssignedMessage(courtIds: number[]): string {
+export function buildOperatorAssignedMessage(courtIds: number[], hasEmptyCourt: boolean): string {
+  // 空きコートがあるなら待機せず、すぐ配置→開始できる
+  if (hasEmptyCourt) return '空いているコートに配置→開始をお願いします';
   const action = '試合が終わったら終了→配置→開始をお願いします';
   if (courtIds.length === 0) return action;
   return `${courtIds.map(circledCourt).join('')}付近で待機し、${action}`;

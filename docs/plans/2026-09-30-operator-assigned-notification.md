@@ -1,21 +1,22 @@
-# 「まもなく出番です」OS通知の廃止 ＋「試合配置担当です」OS通知の追加
+# 「まもなく出番です」OS通知の廃止 ＋「次の試合配置担当です」OS通知の追加
 
 ## Context
 PWA の OS 通知（プッシュ通知）は現在2種類。そのうち「まもなく出番です」（4:30 経過時に
 次の試合がほぼ確定した本人へ出す）は実際の試合時間と噛み合わず機能していないため削除する。
 代わりに、運用上いちばん行動を求めたい相手＝**操作担当**（`selectOperatorIds` の結果。
 次の試合の 終了→配置→開始 をする人。予測バーの「配置予測（操作担当）」）に、
-**担当になった時点**で「試合配置担当です」と OS 通知を出す。
+**担当になった時点**で「次の試合配置担当です」と OS 通知を出す。
 
 ## 変更内容
 
 ### 1. `src/lib/notifications.ts`
 - `notifyNextMatchSoon` を削除。
-- `notifyOperatorAssigned(body: string)` を追加。タイトル `試合配置担当です`、
+- `notifyOperatorAssigned(body: string)` を追加。タイトル `次の試合配置担当です`、
   tag `operator-assigned`、振動 `[200, 100, 200]`、既存の `showNotificationSafely` を使用
   （権限チェック・SW 優先・throw しない性質はそのまま）。
 - body 例: `①付近で待機し、試合が終わったら終了→配置→開始をお願いします`
   （待機コートは既存の待機ガイドと同じ判定を流用。取れなければ `コート付近で待機し…`）。
+  通知と同時に、本人の端末だけにページ内トースト（8秒）も出す（`markOnly` では出さない）。
 
 ### 2. `src/lib/finishOperationGuide.ts`（判定は純粋関数で）
 - `decideOperatorNotification({ operatorIds, myPlayerId, courts, alreadyNotified, firstAfterResume })` を追加:
@@ -46,7 +47,7 @@ PWA の OS 通知（プッシュ通知）は現在2種類。そのうち「ま�
   3. **古い通知を片付ける**: 自分がコートに配置された／担当から外れたら、
      `registration.getNotifications({ tag: 'operator-assigned' })` で残っている通知を `close()`
      （`notifications.ts` に `closeOperatorAssignedNotification()` を追加、失敗は握り潰す）。
-     通知センターに古い「試合配置担当です」が残り続けない。
+     通知センターに古い「次の試合配置担当です」が残り続けない。
   4. tag 固定なので、連続で出ても通知センターでは上書きされ1件のみ。
 - 制約（明記）: サーバープッシュ（FCM）は使っていないため、iOS で PWA が完全にバックグラウンド
   停止中は通知自体が出ない（従来の「まもなく出番です」と同じ）。止まっていた間の分を
@@ -72,3 +73,9 @@ PWA の OS 通知（プッシュ通知）は現在2種類。そのうち「ま�
 ## 検証
 - `npm run build` / `npm run lint` / `npm run test:run` をすべて通す。
 - 実機確認: 担当になった端末に通知が出ること、バックグラウンドから復帰した直後には出ないこと、コートに入ると通知センターから消えること。
+
+## レビュー反映
+- トーストは `document.visibilityState === 'visible'` のときだけ出す（裏で作ると Chrome のタイマー間引きで残るため。OS 通知は従来どおり）。
+- 自分が休憩中（`isResting`）ならコート上と同様に扱い、通知済みフラグを戻して表示中の通知を閉じる。
+- 空きコートがあるときの本文は「空いているコートに配置→開始をお願いします」（`buildOperatorAssignedMessage(courtIds, hasEmptyCourt)`）。
+- effect の依存配列は `toast` ではなく安定参照の `showToast`（と `playerMap`）にする。
