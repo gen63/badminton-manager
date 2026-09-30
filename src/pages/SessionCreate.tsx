@@ -10,6 +10,7 @@ import { useAccountingStore } from '../stores/accountingStore';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { parsePlayerInput } from '../lib/utils';
+import { defaultExcludeFromOperator } from '../lib/operatorExclusion';
 import { clearPresence, createSession, leaveSession } from '../services/sessionService';
 import { fetchDefaultAnnouncementTextSafe } from '../services/appConfigService';
 import { NEW_SESSION_DEFAULTS } from '../lib/sessionDefaults';
@@ -134,6 +135,8 @@ export function SessionCreate() {
         name: input.name,
         rating: input.rating,
         gender: input.gender,
+        // 名前に「外部」を含む人は終了操作の担当外を初期値にする（管理者が後から変更可）
+        ...(defaultExcludeFromOperator(input.name) && { excludeFromOperator: true }),
         isResting: true,
         gamesPlayed: 0,
         lastPlayedAt: 0,

@@ -31,6 +31,7 @@ import iconv from 'iconv-lite';
 import type { GameState } from '../src/services/sessionService';
 import { AUTO_SESSION_BOT_CREATOR } from '../src/constants/autoSession';
 import { buildPracticeEndTime } from '../src/lib/practiceEndPhase';
+import { defaultExcludeFromOperator } from '../src/lib/operatorExclusion';
 import { NEW_SESSION_DEFAULTS } from '../src/lib/sessionDefaults';
 import type { Player } from '../src/types/player';
 
@@ -632,6 +633,8 @@ function buildSessionData(
       name,
       ...(rating != null && { rating }),
       ...(gender && { gender }),
+      // 名前に「外部」を含む人は終了操作の担当外を初期値にする（管理者が後から変更可）
+      ...(defaultExcludeFromOperator(name) && { excludeFromOperator: true }),
       isResting: true,
       gamesPlayed: 0,
       lastPlayedAt: 0,
@@ -798,6 +801,8 @@ function computeRosterSync(
       name,
       ...(rating != null && { rating }),
       ...(gender && { gender }),
+      // 名前に「外部」を含む人は終了操作の担当外を初期値にする（管理者が後から変更可）
+      ...(defaultExcludeFromOperator(name) && { excludeFromOperator: true }),
       isResting: true,
       gamesPlayed: 0,
       lastPlayedAt: 0,

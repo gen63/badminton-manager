@@ -26,7 +26,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { OrphanPlayerAssignModal, type AssignScope } from '../components/OrphanPlayerAssignModal';
 import { countOrphanMatches } from '../services/sessionMutations';
 import { FINISH_REVERT_WINDOW_MS, gameModeFromPracticeType } from '../lib/gameOperations';
-import { canFinishGame } from '../lib/finishOperationGuide';
+import { canFinishGame, filterOperatorIds } from '../lib/finishOperationGuide';
 import type { RevertFinishError } from '../lib/gameOperations';
 
 import type { Match } from '../types/match';
@@ -664,7 +664,8 @@ export function HistoryPage() {
   );
   const canRevertFinish = canFinishGame({
     isAdmin: isAdmin(),
-    certainIds: nextMatchPrediction.certainIds,
+    // 終了ボタンと同じく、担当外（外部メンバー等）を除いた操作担当で判定する
+    certainIds: filterOperatorIds(nextMatchPrediction.certainIds, players),
     myPlayerId,
   });
 

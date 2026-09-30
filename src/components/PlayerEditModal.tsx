@@ -5,14 +5,28 @@ import { parsePlayerInput } from '../lib/utils';
 interface PlayerEditModalProps {
   playerName: string;
   playerGender?: 'M' | 'F';
+  /** 「終了操作の担当外」の現在値（管理者が設定。未設定＝担当） */
+  playerExcludeFromOperator?: boolean;
+  /** 管理者のみ担当トグルを出す */
+  isAdmin?: boolean;
   existingNames: string[];
-  onSave: (name: string, gender?: 'M' | 'F', rating?: number) => void;
+  onSave: (name: string, gender?: 'M' | 'F', rating?: number, excludeFromOperator?: boolean) => void;
   onCancel: () => void;
 }
 
-export function PlayerEditModal({ playerName, playerGender, existingNames, onSave, onCancel }: PlayerEditModalProps) {
+export function PlayerEditModal({
+  playerName,
+  playerGender,
+  playerExcludeFromOperator,
+  isAdmin = false,
+  existingNames,
+  onSave,
+  onCancel,
+}: PlayerEditModalProps) {
   const [name, setName] = useState(playerName);
   const [gender, setGender] = useState<'M' | 'F' | undefined>(playerGender);
+  // 画面上は肯定形（ON＝担当）。保存時に excludeFromOperator（OFF→true）へ反転する
+  const [isOperator, setIsOperator] = useState(playerExcludeFromOperator !== true);
   const [error, setError] = useState('');
 
   const handleSave = () => {
@@ -26,7 +40,7 @@ export function PlayerEditModal({ playerName, playerGender, existingNames, onSav
       setError('同じ名前の参加者が既に存在します');
       return;
     }
-    onSave(parsedName, parsedGender ?? gender, rating);
+    onSave(parsedName, parsedGender ?? gender, rating, !isOperator);
   };
 
   return (
@@ -95,6 +109,29 @@ export function PlayerEditModal({ playerName, playerGender, existingNames, onSav
               </button>
             </div>
           </div>
+
+          {/* 終了操作の担当（管理者のみ）。ON＝担当になる、OFF＝担当外 */}
+          {isAdmin && (
+            <div>
+              <label className="label">終了操作の担当</label>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isOperator}
+                onClick={() => setIsOperator((v) => !v)}
+                className={`w-full py-2 px-3 rounded-lg font-medium transition-colors ${
+                  isOperator
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+              >
+                終了操作担当{isOperator ? '：ON' : '：OFF'}
+              </button>
+              <p className="text-xs text-muted-foreground mt-1">
+                OFFにすると次の試合に入る予測でも終了操作の担当になりません（外部の方・端末不調の方など）
+              </p>
+            </div>
+          )}
 
           {/* エラーメッセージ */}
           <div className="min-h-[20px]">
