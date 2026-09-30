@@ -918,6 +918,14 @@ export function HistoryPage() {
 
   // 結果集計を開いたときは、未入力・入力済みの試合一覧を畳んで見やすくする
   const [rankingCollapsed, setRankingCollapsed] = useState(() => !showPerformance);
+
+  // 結果集計を開く（未入力・入力済みの試合一覧を畳む）。フィルター選択でも使用。
+  const openRanking = () => {
+    setRankingCollapsed(false);
+    setUnscoredCollapsed(true);
+    setScoredCollapsed(true);
+  };
+
   const handleToggleRanking = () => {
     setRankingCollapsed((prev) => {
       const next = !prev;
@@ -1230,7 +1238,13 @@ export function HistoryPage() {
                         <button
                           key={gender}
                           type="button"
-                          onClick={() => setGenderFilter(gender)}
+                          onClick={() => {
+                            setGenderFilter(gender);
+                            // 結果集計が閉じているときだけ開く
+                            if (rankingCollapsed) {
+                              openRanking();
+                            }
+                          }}
                           aria-pressed={isSelected}
                           className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors active:scale-[0.98] ${
                             isSelected
