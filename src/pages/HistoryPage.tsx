@@ -344,7 +344,7 @@ function MatchList({
               color: '#c2410c',
             }}
           >
-            <span>未入力（{unscoredMatches.length}件）</span>
+            <span>結果未入力（{unscoredMatches.length}件）</span>
             {unscoredCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
           </button>
           {!unscoredCollapsed && unscoredMatches.map(({ match, matchNumber }) => (
@@ -379,7 +379,7 @@ function MatchList({
               color: '#3730a3',
             }}
           >
-            <span>入力済み（{scoredMatches.length}件）</span>
+            <span>結果入力済み（{scoredMatches.length}件）</span>
             {scoredCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
           </button>
           {!scoredCollapsed && scoredMatches.map(({ match, matchNumber }) => (
@@ -486,7 +486,7 @@ function PlayerRecordSummary({
 }
 
 /**
- * 本日の強さランキング（開発モード限定）。
+ * 本日のランキング（開発モード限定）。
  * 対戦相手・味方の強さを加味した偏差値順に並べる。単純な勝率順ではないため、
  * 弱い相手にだけ勝った人は上位に来ない。
  *
@@ -521,7 +521,7 @@ function PerformanceRanking({
       >
         <span className="flex items-center gap-2">
           <BarChart3 size={16} />
-          強さランキング（{ratedMatchCount}試合から算出）
+          ランキング（{ratedMatchCount}試合から算出）
         </span>
         {collapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
       </button>
@@ -785,7 +785,7 @@ export function HistoryPage() {
 
   // フィルタ適用後の未入力有無で折り畳みを判定（自分視点に合わせる）
   const hasUnscored = unscoredMatches.length > 0;
-  const [scoredCollapsed, setScoredCollapsed] = useState(() => hasUnscored);
+  const [scoredCollapsed, setScoredCollapsed] = useState(() => devMode || hasUnscored);
   const [unscoredCollapsed, setUnscoredCollapsed] = useState(() => devMode);
   // フィルタ切り替えなどで hasUnscored が変わった直近の値を覚えておき、
   // レンダー中に折り畳み状態を再判定する（Effect を使わない同期パターン）
@@ -796,15 +796,15 @@ export function HistoryPage() {
   if (skipScoredAutoCollapse) {
     setSkipScoredAutoCollapse(false);
   } else if (hasUnscored !== prevHasUnscored) {
-    setScoredCollapsed(hasUnscored);
+    setScoredCollapsed(devMode || hasUnscored);
   }
   if (hasUnscored !== prevHasUnscored) {
     setPrevHasUnscored(hasUnscored);
     setUnscoredCollapsed(devMode);
   }
 
-  // 強さランキングを開いたときは、未入力・入力済みの試合一覧を畳んで見やすくする
-  const [rankingCollapsed, setRankingCollapsed] = useState(true);
+  // ランキングを開いたときは、未入力・入力済みの試合一覧を畳んで見やすくする
+  const [rankingCollapsed, setRankingCollapsed] = useState(() => !showPerformance);
   const handleToggleRanking = () => {
     setRankingCollapsed((prev) => {
       const next = !prev;
@@ -1086,7 +1086,7 @@ export function HistoryPage() {
                 />
               )}
 
-              {/* 強さランキング（開発モード限定） */}
+              {/* ランキング（開発モード限定） */}
               {performanceResult && performanceResult.players.length > 0 && (
                 <PerformanceRanking
                   players={performanceResult.players}
