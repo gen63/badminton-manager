@@ -2,7 +2,7 @@
  * 「待機場所」ガイドの判定
  *
  * 「気づいた人が終了操作をする」運用を「次の試合に入るメンバー（配置予測の
- * ほぼ確定＝濃い青）が操作する」運用へ変えるための案内。担当に期待するのは
+ * 操作担当＝濃い青。ほぼ確定、居なければ最も入りやすい人）が操作する」運用へ変えるための案内。担当に期待するのは
  * 終了ボタンだけでなく **終了 → 配置 → 開始** の一連だが、役割（操作担当）は
  * 配置予測バー（`NextMatchPredictionBar`）の見出しが常時示しているので、
  * このガイドが言うのは **どのコート付近で待てばいいか** だけにする。
@@ -30,6 +30,7 @@
 
 import type { Court } from '../types/court';
 import type { Player } from '../types/player';
+import type { NextMatchPrediction } from './nextMatchPrediction';
 import { MATCH_CALL_THRESHOLD_MS } from './gameOperations';
 import { maxPlayingCourt, maxPlayingElapsedMs } from './nextMatchCall';
 
@@ -43,7 +44,8 @@ export function isOperatorExcluded(player: Pick<Player, 'excludeFromOperator'>):
 }
 
 /**
- * 配置予測の「ほぼ確定」メンバーから担当外の人を除いた **操作担当** の集合。
+ * 配置予測の「ほぼ確定」メンバーから担当外の人を除いた集合（操作担当の第一候補）。
+ * 実際の担当は繰り上げ込みの `selectOperatorIds` で決める。
  * 4:30 の呼び出し通知は「試合に入る人への呼び出し」なので `certainIds` のまま使い、
  * 待機ガイド・終了ボタン権限・案内文言だけこの集合を使う。
  * `players` に居ない ID は判定できないので担当のまま残す。
@@ -51,6 +53,48 @@ export function isOperatorExcluded(player: Pick<Player, 'excludeFromOperator'>):
 export function filterOperatorIds(certainIds: Set<string>, players: Player[]): Set<string> {
   const excluded = new Set(players.filter(isOperatorExcluded).map((p) => p.id));
   return new Set(Array.from(certainIds).filter((id) => !excluded.has(id)));
+}
+
+/**
+ * 操作担当の集合を決める。
+ *
+ * まず `filterOperatorIds(certainIds, players)`（ほぼ確定から担当外を除いた人）を使う。
+ * 3コート稼働などで確定者が居ない、または確定者が全員担当外だと空になり、
+ * `canFinishGame` が全員に開放して「気づいた人が押す」運用に戻ってしまうので、
+ * その場合だけ **繰り上げ** る: 予測バーに出る人（`certainIds` + `likelyIds`）のうち
+ * 担当外でなく出現率が 0 より大きい人の **最高出現率の人（同率は全員）** を担当にする。
+ * 候補が居なければ空集合（`canFinishGame` の全員開放は最後の保険として残る）。
+ *
+ * 繰り上げ対象を予測バー表示者に限るのは、担当なのに画面に出ない人を作らないため。
+ * `players` に居ない ID は `filterOperatorIds` と同じく担当外判定できないので除外しない。
+ */
+export function selectOperatorIds(
+  prediction: Pick<NextMatchPrediction, 'certainIds' | 'likelyIds' | 'appearanceRate'>,
+  players: Player[],
+): Set<string> {
+  const certainOperators = filterOperatorIds(prediction.certainIds, players);
+  if (certainOperators.size > 0) return certainOperators;
+
+  const shown = new Set([...prediction.certainIds, ...prediction.likelyIds]);
+  const candidates = filterOperatorIds(shown, players);
+  let best = 0;
+  for (const id of candidates) {
+    best = Math.max(best, prediction.appearanceRate.get(id) ?? 0);
+  }
+  if (best <= 0) return new Set();
+  return new Set(Array.from(candidates).filter((id) => (prediction.appearanceRate.get(id) ?? 0) === best));
+}
+
+/**
+ * 試合終了ボタンを押してよい人（管理者を除く）。操作担当に加え、担当外でも
+ * 「ほぼ確定」の人は次の試合に入る本人なので押せる。担当外は「名指しで任せない」
+ * だけで、押すことまでは禁じない。
+ * 担当が 0 人なら空を返し、`canFinishGame` の全員開放フォールバックに委ねる
+ * （担当外の確定者だけに絞ると、外部の方などしか押せない状態になるため）。
+ */
+export function finishAllowedIds(operatorIds: Set<string>, certainIds: Set<string>): Set<string> {
+  if (operatorIds.size === 0) return new Set();
+  return new Set([...operatorIds, ...certainIds]);
 }
 
 /**
@@ -82,13 +126,13 @@ export interface FinishOperationGuide {
    * 1面運用（`showCourtNumber === false`）では空配列。
    */
   courtIds: number[];
-  /** 操作の担当（`certainIds`（担当外除外済み）のうちまだコートに乗っていない人） */
+  /** 操作担当（`selectOperatorIds` の結果のうちまだコートに乗っていない人） */
   playerIds: string[];
 }
 
 export interface FinishOperationGuideArgs {
   courts: Court[];
-  /** 操作担当＝配置予測の「ほぼ確定」から担当外を除いたもの（`filterOperatorIds`。候補 likelyIds は対象外） */
+  /** 操作担当＝`selectOperatorIds` の結果（ほぼ確定から担当外を除いたもの。空なら最高出現率の候補を繰り上げ） */
   certainIds: Set<string>;
   now: number;
   /** コート番号を出すか。呼び出し側が `courts.length > 1` で判断する */
@@ -203,7 +247,7 @@ export function getNextFinishGuideDelay(courts: Court[], now: number): number | 
 export interface CanFinishGameArgs {
   /** `useSessionStore.isAdmin()`（作成者 / 管理権限 / 開発モードを含む） */
   isAdmin: boolean;
-  /** 操作担当（`filterOperatorIds` 済み。候補 likelyIds・担当外は対象外） */
+  /** 押せる人＝`finishAllowedIds`（操作担当＋ほぼ確定） */
   certainIds: Set<string>;
   /** 自分の Player ID。特定できないときは null */
   myPlayerId: string | null;
@@ -216,11 +260,16 @@ export interface CanFinishGameArgs {
  * UX ガード。認証境界ではない（CLAUDE.md の信頼モデル通り、`currentUser` は
  * localStorage の単なる文字列で改変できる）。
  *
+ * `certainIds` は `finishAllowedIds(operatorIds, nextMatchPrediction.certainIds)`
+ * で構成される（操作担当＋ほぼ確定）。担当外でも「ほぼ確定」の人は次の試合に入る
+ * 本人なので押せる。
+ *
  * **担当が 1 人も居ないときは全員に開放する**（フォールバック）。待機者が定員に
  * 満たない練習終盤や、配置が成立せず予測不能（`scenarioCount === 0`）のときは
- * `certainIds` が空になり得るため、そのまま絞ると管理者以外は誰も試合を終われず
- * 運用が止まってしまう。確定が担当外だけのときも、担当外を除いた結果が空に
- * なるのでこのフォールバックで全員に開放される。
+ * 担当が空になり得るため、そのまま絞ると管理者以外は誰も試合を終われず
+ * 運用が止まってしまう。確定が居ない・担当外だけのときは `selectOperatorIds` が
+ * 最高出現率の候補を繰り上げるので、このフォールバックは繰り上げ候補も居ない
+ * ときの最後の保険。
  */
 export function canFinishGame({ isAdmin, certainIds, myPlayerId }: CanFinishGameArgs): boolean {
   if (isAdmin) return true;

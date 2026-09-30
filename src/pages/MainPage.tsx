@@ -33,7 +33,8 @@ import { buildPracticeEndAnnouncement, formatHHMM, isPastEndOverrideActive, isPa
 import {
   canFinishGame,
   buildFinishBlockedMessage,
-  filterOperatorIds,
+  selectOperatorIds,
+  finishAllowedIds,
   buildFinishConfirmMessage,
   FINISH_CONFIRM_THRESHOLD_MS,
 } from '../lib/finishOperationGuide';
@@ -564,10 +565,11 @@ export function MainPage() {
   );
 
   // 終了操作の担当＝ほぼ確定から担当外（管理者設定。外部メンバーは作成時の初期値）を除いたもの。
+  // 該当者が居なければ最高出現率の候補を繰り上げる（`selectOperatorIds`）。
   // 4:30 の呼び出し通知・管理者アナウンスは「試合に入る人」向けなので certainIds のまま。
   const operatorIds = useMemo(
-    () => filterOperatorIds(nextMatchPrediction.certainIds, players),
-    [nextMatchPrediction.certainIds, players],
+    () => selectOperatorIds(nextMatchPrediction, players),
+    [nextMatchPrediction, players],
   );
 
   // 表示対象（ほぼ確定 + 候補）を入りやすい順に並べる
@@ -743,12 +745,12 @@ export function MainPage() {
   }, [playerMap]);
 
   // 試合終了ボタンを押してよいか。管理者（作成者・管理権限・開発モードを含む
-  // `isAdmin()`）か、配置予測の「ほぼ確定」＝操作担当（`NextMatchPredictionBar`
-  // の濃い青、`FinishOperationGuide` が待機場所を案内する相手）のみ。担当が
-  // 居ないときのフォールバックも含めて判定は `canFinishGame` に持たせている。
+  // `isAdmin()`）か、操作担当（`operatorIds`）または「ほぼ確定」（`nextMatchPrediction.certainIds`）
+  // のメンバーのみ。担当外でも「ほぼ確定」の人は次の試合に入る本人なので押せる。
+  // 担当が居ないときのフォールバックも含めて判定は `canFinishGame` に持たせている。
   const canFinish = canFinishGame({
     isAdmin: isAdmin(),
-    certainIds: operatorIds,
+    certainIds: finishAllowedIds(operatorIds, nextMatchPrediction.certainIds),
     myPlayerId,
   });
 

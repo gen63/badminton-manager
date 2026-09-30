@@ -6,7 +6,8 @@ interface NextMatchPredictionBarProps {
   /** 出現率 100%（ほぼ確定）のメンバー ID。塗りチップで表示する */
   certainIds: Set<string>;
   /**
-   * 操作担当（`certainIds` から担当外を除いたもの）。省略時は `certainIds` と同じ。
+   * 操作担当（`selectOperatorIds`: `certainIds` から担当外を除いたもの。空なら最高出現率の
+   * 候補を繰り上げるので `certainIds` に居ない人も含み得る）。省略時は `certainIds` と同じ。
    * 確定だが担当外の人は濃い青にせず、青枠・白背景で「確定だが担当ではない」と示す。
    */
   operatorIds?: Set<string>;
@@ -17,7 +18,7 @@ interface NextMatchPredictionBarProps {
  * 入りやすい順に並べて見せ、準備を促す（`src/lib/nextMatchPrediction.ts` の
  * 予測結果を表示する）。
  *
- * 塗り（ほぼ確定かつ担当外でない）のメンバーが「操作担当」＝試合終了→配置→開始の操作をする人。
+ * 塗り（ほぼ確定かつ担当外でない人。居なければ繰り上げた最高出現率の候補）のメンバーが「操作担当」＝試合終了→配置→開始の操作をする人。
  * その運用ルールは常時ここに出し、画面上部のガイド（`FinishOperationGuide`）は
  * 4:30 を過ぎて「どのコート脇で待つか」が決まってからだけ出す（同じ情報を2箇所に
  * 常時出すと冗長なため）。
@@ -39,7 +40,7 @@ export function NextMatchPredictionBar({
   const isCertainExcluded = (id: string) => certainIds.has(id) && !operatorIds.has(id);
   const hasOperator = players.some(p => isOperator(p.id));
   const hasExcluded = players.some(p => isCertainExcluded(p.id));
-  const hasLikely = players.some(p => !certainIds.has(p.id));
+  const hasLikely = players.some(p => !certainIds.has(p.id) && !isOperator(p.id));
   const legendCount = [hasOperator, hasExcluded, hasLikely].filter(Boolean).length;
 
   return (
@@ -67,7 +68,7 @@ export function NextMatchPredictionBar({
           {hasOperator && (
             <span className="flex items-center gap-1">
               <span className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
-              ほぼ確定＝操作担当
+              操作担当
             </span>
           )}
           {hasExcluded && (
