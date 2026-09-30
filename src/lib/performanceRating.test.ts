@@ -522,14 +522,6 @@ describe('matchInsights', () => {
     expect(Number.isInteger(insight.teamADeviation)).toBe(true);
   });
 
-  it('チーム平均偏差は所属メンバーの偏差値の平均（丸め）', () => {
-    const result = computePerformanceRatings(history, players);
-    const dev = (n: string) => findPerformance(result, n)!.deviation;
-    const insight = result.matchInsights.get(history[0].id)!;
-    expect(Math.abs(insight.teamADeviation - (dev('A') + dev('B')) / 2)).toBeLessThanOrEqual(1);
-    expect(Math.abs(insight.teamBDeviation - (dev('C') + dev('D')) / 2)).toBeLessThanOrEqual(1);
-  });
-
   it('結果未入力の試合は含まれない', () => {
     const pending = unscored(['A', 'B'], ['C', 'D']);
     const result = computePerformanceRatings([...history, pending], players);
@@ -585,18 +577,46 @@ describe('matchInsights: leave-one-out', () => {
     expect(result.matchInsights.get(solo.id)!.winProbabilityA).toBeCloseTo(0.5, 10);
   });
 
-  it('平均偏差は全体推定のまま（LOO の影響を受けない）', () => {
-    const players = playersOf('A', 'B', 'C', 'D');
+  it('不変条件: 平均偏差の大小と予想勝率の向きが一致する（複数試合）', () => {
+    const players = playersOf('A', 'B', 'C', 'D', 'E');
     const ms = [
       match(['A', 'B'], ['C', 'D'], 'A'),
-      match(['A', 'B'], ['C', 'D'], 'A'),
-      match(['A', 'C'], ['B', 'D'], 'A'),
+      match(['A', 'C'], ['B', 'E'], 'A'),
+      match(['B', 'D'], ['A', 'E'], 'B'),
+      match(['C', 'E'], ['A', 'D'], 'B'),
+      match(['A', 'B'], ['D', 'E'], 'A'),
+      match(['B', 'C'], ['A', 'D'], 'A'),
     ];
     const result = computePerformanceRatings(ms, players);
-    const dev = (n: string) => findPerformance(result, n)!.deviation;
+    for (const m of ms) {
+      const i = result.matchInsights.get(m.id)!;
+      if (i.teamADeviation > i.teamBDeviation) expect(i.winProbabilityA).toBeGreaterThan(0.5);
+      else if (i.teamADeviation < i.teamBDeviation) expect(i.winProbabilityA).toBeLessThan(0.5);
+    }
+  });
+
+  it('勝ったことで評価が逆転する: LOO では弱い側が勝者で、偏差は勝者側が低く予想勝率 < 0.5', () => {
+    // A は B に 1 勝 2 敗（全体では B が上）。最初の A 勝ちを除くと B がより強く見える
+    const ms = [
+      match(['A'], ['B'], 'A'),
+      match(['A'], ['B'], 'B'),
+      match(['A'], ['B'], 'B'),
+    ];
+    const result = computePerformanceRatings(ms, playersOf('A', 'B'));
     const i = result.matchInsights.get(ms[0].id)!;
-    expect(Math.abs(i.teamADeviation - (dev('A') + dev('B')) / 2)).toBeLessThanOrEqual(1);
-    expect(i.teamADeviation).toBeGreaterThan(50);
+    expect(i.winProbabilityA).toBeLessThan(0.5);
+    expect(i.teamADeviation).toBeLessThan(i.teamBDeviation);
+  });
+
+  it('LOO 偏差は全体推定の mean/sd で正規化される（その試合にしか出ない選手は θ=0 相当）', () => {
+    const others = [match(['A', 'B'], ['C', 'D'], 'A'), match(['A', 'C'], ['B', 'D'], 'B')];
+    const solo = match(['E', 'F'], ['G', 'H'], 'A');
+    const result = computePerformanceRatings(
+      [...others, solo],
+      playersOf('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H')
+    );
+    const i = result.matchInsights.get(solo.id)!;
+    expect(i.teamADeviation).toBe(i.teamBDeviation);
   });
 
   it('80 試合規模でも実行時間が現実的（緩い上限）', () => {
