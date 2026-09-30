@@ -486,7 +486,7 @@ function PlayerRecordSummary({
 }
 
 /**
- * 本日のランキング（開発モード限定）。
+ * 本日の結果集計（開発モード限定）。
  * 対戦相手・味方の強さを加味した偏差値順に並べる。単純な勝率順ではないため、
  * 弱い相手にだけ勝った人は上位に来ない。
  *
@@ -521,7 +521,7 @@ function PerformanceRanking({
       >
         <span className="flex items-center gap-2">
           <BarChart3 size={16} />
-          ランキング（{ratedMatchCount}試合から算出）
+          結果集計（{ratedMatchCount}試合から算出）
         </span>
         {collapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
       </button>
@@ -618,7 +618,7 @@ export function HistoryPage() {
   const canRepairOrphan = isCreator();
   const gasWebAppUrl = useSettingsStore((s) => s.gasWebAppUrl);
   const devMode = useDevMode();
-  // 強さ指標（レート・偏差値・ランキング）は開発モードのときのみ
+  // 強さ指標（レート・偏差値・結果集計）は開発モードのときのみ
   const showPerformance = devMode;
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
@@ -790,7 +790,7 @@ export function HistoryPage() {
   // フィルタ切り替えなどで hasUnscored が変わった直近の値を覚えておき、
   // レンダー中に折り畳み状態を再判定する（Effect を使わない同期パターン）
   const [prevHasUnscored, setPrevHasUnscored] = useState(hasUnscored);
-  // ランキングでの選択直後は、自動判定より「入力済みを開く」を優先する
+  // 結果集計での選択直後は、自動判定より「入力済みを開く」を優先する
   const [skipScoredAutoCollapse, setSkipScoredAutoCollapse] = useState(false);
 
   if (skipScoredAutoCollapse) {
@@ -803,7 +803,7 @@ export function HistoryPage() {
     setUnscoredCollapsed(devMode);
   }
 
-  // ランキングを開いたときは、未入力・入力済みの試合一覧を畳んで見やすくする
+  // 結果集計を開いたときは、未入力・入力済みの試合一覧を畳んで見やすくする
   const [rankingCollapsed, setRankingCollapsed] = useState(() => !showPerformance);
   const handleToggleRanking = () => {
     setRankingCollapsed((prev) => {
@@ -1086,7 +1086,7 @@ export function HistoryPage() {
                 />
               )}
 
-              {/* ランキング（開発モード限定） */}
+              {/* 結果集計（開発モード限定） */}
               {performanceResult && performanceResult.players.length > 0 && (
                 <PerformanceRanking
                   players={performanceResult.players}
