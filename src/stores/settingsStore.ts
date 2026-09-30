@@ -82,10 +82,9 @@ export const useSettingsStore = create<SettingsState>()(
       practiceType: '複',
       setPracticeType: (value) =>
         set(() => {
-          // 楽 は一括配置強制 ON 固定、単 は OFF 固定。
-          // 切替時に forceBulkAssignment も整合させる。
+          // 単 は forceBulkAssignment OFF 固定（シングルスモードは一括配置を使わない）。
+          // 複・楽は forceBulkAssignment を触らず既存値を維持。
           if (value === '単') return { practiceType: value, forceBulkAssignment: false };
-          if (value === '楽') return { practiceType: value, forceBulkAssignment: true };
           return { practiceType: value };
         }),
       lateBalanceMode: false,
@@ -171,11 +170,10 @@ export const useSettingsStore = create<SettingsState>()(
         // practiceType と forceBulkAssignment の整合を取り直す。
         // version 1 以降は practiceType を persist しないので state.practiceType は
         // 必ずデフォルトの '複' になり下記のチェックは no-op になる。安全弁として残す。
+        // 単 = OFF 固定は保持。楽の固定は廃止。
         if (!state) return;
         if (state.practiceType === '単' && state.forceBulkAssignment !== false) {
           state.forceBulkAssignment = false;
-        } else if (state.practiceType === '楽' && state.forceBulkAssignment !== true) {
-          state.forceBulkAssignment = true;
         }
       },
     }

@@ -230,3 +230,32 @@ export function getAssignmentGate(
 ```bash
 npm run build && npm run lint && npm run test:run
 ```
+
+---
+
+## 追記（2026-09-30）：楽モードの一括配置強制の固定を廃止
+
+本 plan の「単＝OFF固定 / 楽＝ON固定」というルールから、**楽のON固定を廃止**。
+以降は単のOFF固定のみ保持する。
+
+### 変更内容
+
+- `src/stores/settingsStore.ts`: `setPracticeType` の楽連動ロジック削除。`onRehydrateStorage`
+  の楽補正（`practiceType === '楽' && forceBulkAssignment !== true` → `true`）も削除。
+- `src/pages/SettingsPage.tsx` / `src/pages/SessionCreate.tsx`: `isLocked = isSinglesMode || isRelaxedMode`
+  → `isSinglesMode` のみ。楽用の説明文（「楽では一括配置強制が適用されます」）を削除。
+- `src/services/sessionMutations.ts`: `setPracticeType` の楽連動削除。コメント更新。
+- `src/hooks/useFirebaseSync.ts`: コメント更新（副作用は単のみになった）。
+- `scripts/auto-create-session.ts`: `buildSessionData` のコメント更新。実装は変わらず
+  （単のみOFF固定、複・楽はON初期値で継続）。
+- テスト更新:
+  - `src/stores/settingsStore.test.ts`: 「楽を設定するとtrueに強制」削除、「楽を設定してもforceBulkAssignmentは変わらない」に変更。
+  - `src/services/sessionMutations.test.ts`: 「楽に切り替えるとtrueで固定」→「楽に切り替えても既存値を維持」
+  - `src/hooks/useFirebaseSync.test.ts`: 「楽受信でtrueに連動」→「楽受信でも既存値を維持」
+  - `scripts/auto-create-session.test.ts`: 変更なし（オートセッション作成時の初期値「単→false / 複・楽→true」は維持）。
+
+### 理由
+
+楽モードはリラックス重視で、一括配置強制の判定ロジック（空き2面待機）がそこまで重要でなく、
+むしろユーザーの任意で OFF にできることが利便性向上につながると判断。
+単は配置戦略が異なる（シングルスは一括配置しない）ため、OFF固定は継続。

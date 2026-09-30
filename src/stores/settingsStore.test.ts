@@ -18,17 +18,14 @@ describe('settingsStore - setPracticeType と forceBulkAssignment の整合', ()
     expect(state.forceBulkAssignment).toBe(false);
   });
 
-  it('楽 を設定すると forceBulkAssignment が true に強制される', () => {
+  it('楽 を設定しても forceBulkAssignment は変更されない（ユーザー任意）', () => {
     useSettingsStore.setState({ forceBulkAssignment: false });
     useSettingsStore.getState().setPracticeType('楽');
     const state = useSettingsStore.getState();
     expect(state.practiceType).toBe('楽');
-    expect(state.forceBulkAssignment).toBe(true);
-  });
+    expect(state.forceBulkAssignment).toBe(false);
 
-  it('単 → 楽 切替で forceBulkAssignment が false → true に補正される', () => {
-    useSettingsStore.getState().setPracticeType('単');
-    expect(useSettingsStore.getState().forceBulkAssignment).toBe(false);
+    useSettingsStore.setState({ forceBulkAssignment: true });
     useSettingsStore.getState().setPracticeType('楽');
     expect(useSettingsStore.getState().forceBulkAssignment).toBe(true);
   });
@@ -41,13 +38,6 @@ describe('settingsStore - setPracticeType と forceBulkAssignment の整合', ()
     useSettingsStore.setState({ forceBulkAssignment: false });
     useSettingsStore.getState().setPracticeType('複');
     expect(useSettingsStore.getState().forceBulkAssignment).toBe(false);
-  });
-
-  it('楽 → 複 切替で forceBulkAssignment は true のまま（明示変更まで保持）', () => {
-    useSettingsStore.getState().setPracticeType('楽');
-    expect(useSettingsStore.getState().forceBulkAssignment).toBe(true);
-    useSettingsStore.getState().setPracticeType('複');
-    expect(useSettingsStore.getState().forceBulkAssignment).toBe(true);
   });
 });
 
