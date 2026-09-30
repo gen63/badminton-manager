@@ -32,6 +32,7 @@ import {
 import { sanitizePlayerName } from '../lib/inputValidation';
 import { getPracticeEndPhase, isPastEndOverrideActive, isPastLastCall, resolvePracticeEndTime } from '../lib/practiceEndPhase';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
+import { defaultExcludeFromOperator } from '../lib/operatorExclusion';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
@@ -147,11 +148,14 @@ export function computeAddPlayers(
       return;
     }
     seen.add(name);
+    // 名前に「外部」を含む人は終了操作の担当外を初期値にする（管理者が後から変更可）
+    const excludeFromOperator = defaultExcludeFromOperator(name);
     additions.push({
       id: newIds[idx] ?? crypto.randomUUID(),
       name,
       rating: input.rating,
       gender: input.gender,
+      ...(excludeFromOperator && { excludeFromOperator }),
       isResting: true,
       gamesPlayed: 0,
       lastPlayedAt: 0,

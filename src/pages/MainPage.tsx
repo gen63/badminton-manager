@@ -563,7 +563,7 @@ export function MainPage() {
     [players, currentUser],
   );
 
-  // 終了操作の担当＝ほぼ確定から担当外（名前に「外部」・管理者設定）を除いたもの。
+  // 終了操作の担当＝ほぼ確定から担当外（管理者設定。外部メンバーは作成時の初期値）を除いたもの。
   // 4:30 の呼び出し通知・管理者アナウンスは「試合に入る人」向けなので certainIds のまま。
   const operatorIds = useMemo(
     () => filterOperatorIds(nextMatchPrediction.certainIds, players),

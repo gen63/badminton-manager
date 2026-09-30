@@ -33,17 +33,13 @@ import type { Player } from '../types/player';
 import { MATCH_CALL_THRESHOLD_MS } from './gameOperations';
 import { maxPlayingCourt, maxPlayingElapsedMs } from './nextMatchCall';
 
-/** 終了操作の担当にしない名前の目印（初参加の外部メンバーには難易度が高いため） */
-const OPERATOR_EXCLUDED_NAME_MARKER = '外部';
-
 /**
- * 終了操作の担当から外す人か。名前に「外部」を含む（`【外部】はなこ` 等）人は常に
- * 担当外、それ以外は管理者が付ける `excludeFromOperator` に従う。
+ * 終了操作の担当から外す人か。`excludeFromOperator === true` のときだけ担当外。
+ * 名前では判定しない（「外部」を含む名前の初期値は作成時に
+ * `defaultExcludeFromOperator` が付け、後から管理者が変更できる）。
  */
-export function isOperatorExcluded(
-  player: Pick<Player, 'name' | 'excludeFromOperator'>,
-): boolean {
-  return player.name.includes(OPERATOR_EXCLUDED_NAME_MARKER) || player.excludeFromOperator === true;
+export function isOperatorExcluded(player: Pick<Player, 'excludeFromOperator'>): boolean {
+  return player.excludeFromOperator === true;
 }
 
 /**
@@ -223,7 +219,7 @@ export interface CanFinishGameArgs {
  * **担当が 1 人も居ないときは全員に開放する**（フォールバック）。待機者が定員に
  * 満たない練習終盤や、配置が成立せず予測不能（`scenarioCount === 0`）のときは
  * `certainIds` が空になり得るため、そのまま絞ると管理者以外は誰も試合を終われず
- * 運用が止まってしまう。確定が外部メンバーだけのときも、担当外を除いた結果が空に
+ * 運用が止まってしまう。確定が担当外だけのときも、担当外を除いた結果が空に
  * なるのでこのフォールバックで全員に開放される。
  */
 export function canFinishGame({ isAdmin, certainIds, myPlayerId }: CanFinishGameArgs): boolean {

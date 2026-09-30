@@ -35,7 +35,7 @@ export function NextMatchPredictionBar({
   if (players.length === 0) return null;
 
   const isOperator = (id: string) => operatorIds.has(id);
-  // 確定だが担当外（外部メンバー・管理者設定）。塗らずに太めの青枠で区別する
+  // 確定だが担当外（管理者設定・外部メンバーは作成時の初期値）。塗らずに太めの青枠で区別する
   const isCertainExcluded = (id: string) => certainIds.has(id) && !operatorIds.has(id);
   const hasOperator = players.some(p => isOperator(p.id));
   const hasExcluded = players.some(p => isCertainExcluded(p.id));
