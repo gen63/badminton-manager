@@ -149,28 +149,34 @@ function RevertToCourtButton({
   );
 }
 
-/** 分析列 1 行目: 上段チームの平均偏差（数字だけ）。 */
-function InsightNumber({ value, own }: { value: number; own: boolean }) {
-  return (
-    <span
-      className={`text-[13px] leading-tight text-right whitespace-nowrap ${
-        own ? 'text-indigo-600 font-bold' : 'text-muted-foreground'
-      }`}
-    >
-      {value}
-    </span>
-  );
-}
-
-/** 分析列 2 行目: 「vs」（小さなグレー文字）+ 下段チームの平均偏差。 */
-function InsightVs({ value, own }: { value: number; own: boolean }) {
+/** 分析列 2 行目: 両チームの平均偏差を「63 vs 53」の形で1行表示。 */
+function InsightVs({
+  leftValue,
+  leftOwn,
+  rightValue,
+  rightOwn,
+}: {
+  leftValue: number;
+  leftOwn: boolean;
+  rightValue: number;
+  rightOwn: boolean;
+}) {
   return (
     <span className="flex items-baseline justify-end gap-0.5 whitespace-nowrap leading-tight">
+      <span
+        className={`text-[13px] ${
+          leftOwn ? 'text-indigo-600 font-bold' : 'text-muted-foreground'
+        }`}
+      >
+        {leftValue}
+      </span>
       <span className="text-[10px] text-muted-foreground">vs</span>
       <span
-        className={`text-[13px] ${own ? 'text-indigo-600 font-bold' : 'text-muted-foreground'}`}
+        className={`text-[13px] ${
+          rightOwn ? 'text-indigo-600 font-bold' : 'text-muted-foreground'
+        }`}
       >
-        {value}
+        {rightValue}
       </span>
     </span>
   );
@@ -259,8 +265,6 @@ function MatchCard({
   const leftDeviation = insight ? (isTeamAWinner ? insight.teamADeviation : insight.teamBDeviation) : 0;
   const rightDeviation = insight ? (isTeamAWinner ? insight.teamBDeviation : insight.teamADeviation) : 0;
   const ownIsLeft = insight ? insight.ownIsA === isTeamAWinner : false;
-  const leftInsightProps = { value: leftDeviation, own: ownIsLeft };
-  const rightInsightProps = { value: rightDeviation, own: !ownIsLeft };
 
   return (
     <div
@@ -307,7 +311,7 @@ function MatchCard({
               onTapOrphan={onAssignOrphan && ((id) => onAssignOrphan(id, match, matchNumber))}
             />
           </div>
-          {insight && <InsightNumber {...leftInsightProps} />}
+          {insight && <div />}
           <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight text-muted-foreground">
             <span className="font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
             <TeamNames
@@ -318,7 +322,14 @@ function MatchCard({
               onTapOrphan={onAssignOrphan && ((id) => onAssignOrphan(id, match, matchNumber))}
             />
           </div>
-          {insight && <InsightVs {...rightInsightProps} />}
+          {insight && (
+            <InsightVs
+              leftValue={leftDeviation}
+              leftOwn={ownIsLeft}
+              rightValue={rightDeviation}
+              rightOwn={!ownIsLeft}
+            />
+          )}
           <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground leading-tight">
             <span className="flex items-center gap-0.5 whitespace-nowrap">
               <Clock size={11} />
