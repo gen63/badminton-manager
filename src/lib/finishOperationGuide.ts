@@ -86,6 +86,18 @@ export function selectOperatorIds(
 }
 
 /**
+ * 試合終了ボタンを押してよい人（管理者を除く）。操作担当に加え、担当外でも
+ * 「ほぼ確定」の人は次の試合に入る本人なので押せる。担当外は「名指しで任せない」
+ * だけで、押すことまでは禁じない。
+ * 担当が 0 人なら空を返し、`canFinishGame` の全員開放フォールバックに委ねる
+ * （担当外の確定者だけに絞ると、外部の方などしか押せない状態になるため）。
+ */
+export function finishAllowedIds(operatorIds: Set<string>, certainIds: Set<string>): Set<string> {
+  if (operatorIds.size === 0) return new Set();
+  return new Set([...operatorIds, ...certainIds]);
+}
+
+/**
  * 「ほぼ同時に始まった」とみなす経過時間の差（60秒）。
  * これ以内なら終わる順番が読めないので、どちらのコート付近で待つべきかを
  * 1面に絞らず両方を案内する。
@@ -235,7 +247,7 @@ export function getNextFinishGuideDelay(courts: Court[], now: number): number | 
 export interface CanFinishGameArgs {
   /** `useSessionStore.isAdmin()`（作成者 / 管理権限 / 開発モードを含む） */
   isAdmin: boolean;
-  /** 操作担当（`selectOperatorIds` 済み。担当外は対象外。ほぼ確定が居なければ繰り上げた候補） */
+  /** 押せる人＝`finishAllowedIds`（操作担当＋ほぼ確定） */
   certainIds: Set<string>;
   /** 自分の Player ID。特定できないときは null */
   myPlayerId: string | null;
@@ -247,6 +259,10 @@ export interface CanFinishGameArgs {
  * 「気づいた人が終了操作をする」運用をやめ、管理者か操作担当に寄せるための
  * UX ガード。認証境界ではない（CLAUDE.md の信頼モデル通り、`currentUser` は
  * localStorage の単なる文字列で改変できる）。
+ *
+ * `certainIds` は `finishAllowedIds(operatorIds, nextMatchPrediction.certainIds)`
+ * で構成される（操作担当＋ほぼ確定）。担当外でも「ほぼ確定」の人は次の試合に入る
+ * 本人なので押せる。
  *
  * **担当が 1 人も居ないときは全員に開放する**（フォールバック）。待機者が定員に
  * 満たない練習終盤や、配置が成立せず予測不能（`scenarioCount === 0`）のときは

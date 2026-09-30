@@ -11,6 +11,7 @@ import {
   isOperatorExcluded,
   filterOperatorIds,
   selectOperatorIds,
+  finishAllowedIds,
   type FinishOperationGuide,
 } from './finishOperationGuide';
 import { defaultExcludeFromOperator } from './operatorExclusion';
@@ -527,5 +528,50 @@ describe('selectOperatorIds（担当の繰り上げ）', () => {
   it('players に居ない ID は担当外判定できないので除外しない', () => {
     const r = selectOperatorIds(pred([], ['zzz', 'a'], { zzz: 0.9, a: 0.5 }), players);
     expect([...r]).toEqual(['zzz']);
+  });
+});
+
+describe('finishAllowedIds（終了ボタン権）', () => {
+  it('操作担当とほぼ確定の和集合', () => {
+    const operators = new Set(['a', 'b']);
+    const certain = new Set(['b', 'c']);
+    const allowed = finishAllowedIds(operators, certain);
+    expect([...allowed].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('操作担当が空なら空（canFinishGame の全員開放に委ねる）', () => {
+    const allowed = finishAllowedIds(new Set(), new Set(['a', 'b']));
+    expect(allowed.size).toBe(0);
+    expect(canFinishGame({ isAdmin: false, certainIds: allowed, myPlayerId: 'z' })).toBe(true);
+  });
+
+  it('確定が空なら操作担当だけ', () => {
+    const allowed = finishAllowedIds(new Set(['a', 'b']), new Set());
+    expect([...allowed].sort()).toEqual(['a', 'b']);
+  });
+
+  it('担当外だが確定の人が canFinishGame で true', () => {
+    const players = [mkPlayer('ext', '外部はなこ', { excludeFromOperator: true }), mkPlayer('me', '自分')];
+    const operatorIds = selectOperatorIds(
+      {
+        certainIds: new Set(['ext']),
+        likelyIds: new Set(),
+        appearanceRate: new Map([['ext', 1]]),
+      },
+      players,
+    );
+    // operatorIds は空（ext が担当外なので除外される）
+    expect(operatorIds.size).toBe(0);
+    // finishAllowedIds で確定を加える
+    const allowed = finishAllowedIds(operatorIds, new Set(['ext']));
+    // ext は確定なので終了できる
+    expect(canFinishGame({ isAdmin: false, certainIds: allowed, myPlayerId: 'ext' })).toBe(true);
+  });
+
+  it('確定でも担当でもない人は canFinishGame で false', () => {
+    const operators = new Set(['a']);
+    const certain = new Set(['a']);
+    const allowed = finishAllowedIds(operators, certain);
+    expect(canFinishGame({ isAdmin: false, certainIds: allowed, myPlayerId: 'b' })).toBe(false);
   });
 });

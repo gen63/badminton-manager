@@ -42,3 +42,14 @@ operatorIds が空 → `canFinishGame` の全員開放で「気づいた人が�
 - 予測バー: `certainIds` に居ないが operatorIds にいる人も濃い青。凡例「ほぼ確定＝操作担当」→「操作担当」
   （見出し「配置予測（操作担当）」と整合）。担当外の太枠は「certainIds 内 & 担当外」のまま。
 - 4:30 呼び出し通知・管理者アナウンスは従来どおり `certainIds`。
+
+## 担当外でも確定なら終了ボタンは押せる
+
+「担当」の意味を「名指しで一連（終了→配置→開始）を任せる」だけに限定した。担当外の人でも
+「ほぼ確定」なら、その人は次の試合に必ず入る本人なので、終了ボタンだけは押してよい（特定の人に
+押させる必要がない）。
+
+- `finishAllowedIds(operatorIds, certainIds)` を追加: 操作担当 + ほぼ確定の和集合。
+- MainPage / HistoryPage の `canFinishGame` の `certainIds` に `finishAllowedIds(...)` を渡す。
+- 待機ガイド（`buildFinishOperationGuide`）・名指し（`buildFinishBlockedMessage`）・予測バー表示は
+  引き続き `operatorIds` （操作担当の提示）を使用（担当外は「任せない」だけ）。

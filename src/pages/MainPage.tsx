@@ -34,6 +34,7 @@ import {
   canFinishGame,
   buildFinishBlockedMessage,
   selectOperatorIds,
+  finishAllowedIds,
   buildFinishConfirmMessage,
   FINISH_CONFIRM_THRESHOLD_MS,
 } from '../lib/finishOperationGuide';
@@ -744,12 +745,12 @@ export function MainPage() {
   }, [playerMap]);
 
   // 試合終了ボタンを押してよいか。管理者（作成者・管理権限・開発モードを含む
-  // `isAdmin()`）か、配置予測の操作担当＝ほぼ確定（居なければ繰り上げた候補。`NextMatchPredictionBar`
-  // の濃い青、`FinishOperationGuide` が待機場所を案内する相手）のみ。担当が
-  // 居ないときのフォールバックも含めて判定は `canFinishGame` に持たせている。
+  // `isAdmin()`）か、操作担当（`operatorIds`）または「ほぼ確定」（`nextMatchPrediction.certainIds`）
+  // のメンバーのみ。担当外でも「ほぼ確定」の人は次の試合に入る本人なので押せる。
+  // 担当が居ないときのフォールバックも含めて判定は `canFinishGame` に持たせている。
   const canFinish = canFinishGame({
     isAdmin: isAdmin(),
-    certainIds: operatorIds,
+    certainIds: finishAllowedIds(operatorIds, nextMatchPrediction.certainIds),
     myPlayerId,
   });
 
