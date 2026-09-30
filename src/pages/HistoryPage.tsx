@@ -9,6 +9,7 @@ import { usePairPreferenceStore } from '../stores/pairPreferenceStore';
 import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { useNextMatchPrediction } from '../hooks/useNextMatchPrediction';
 import { formatTime, copyToClipboard } from '../lib/utils';
+import { nameCharCount, pickNameFontSizePx, NAME_NO_TRUNCATE_MAX_CHARS } from '../lib/matchNameFont';
 import { formatLocalDate } from '../lib/sessionArchive';
 import { sendMatchesToSheets } from '../lib/sheetsApi';
 import { updateSession } from '../services/sessionService';
@@ -76,6 +77,10 @@ function TeamNames({
     <>
       {playerIds.map((id, i) => {
         const isHighlighted = getPlayerName(id) === highlightName;
+        // 3文字以下は省略しない。4文字以上は省略しても最低「3文字＋…」（4em）を残す
+        const short = nameCharCount(getPlayerName(id)) <= NAME_NO_TRUNCATE_MAX_CHARS;
+        const fitClass = short ? 'flex-shrink-0' : 'min-w-0 truncate';
+        const fitStyle = short ? undefined : { minWidth: '4em' };
         // 消えたメンバーの「未設定」だけタップで修復できる。空スロット（3人試合）は対象外
         if (onTapOrphan && isOrphanId(id)) {
           return (
@@ -83,7 +88,8 @@ function TeamNames({
               key={`${id}-${i}`}
               type="button"
               onClick={() => onTapOrphan(id)}
-              className="min-w-0 truncate whitespace-nowrap underline decoration-dotted underline-offset-2 text-amber-700 hover:text-amber-800 active:scale-95 transition-all duration-150"
+              className={`${fitClass} whitespace-nowrap underline decoration-dotted underline-offset-2 text-amber-700 hover:text-amber-800 active:scale-95 transition-all duration-150`}
+              style={fitStyle}
               title="誰だったか割り当てて修復する"
             >
               {getPlayerName(id)}
@@ -93,7 +99,8 @@ function TeamNames({
         return (
           <span
             key={`${id}-${i}`}
-            className={`min-w-0 truncate whitespace-nowrap ${isHighlighted ? 'font-bold text-indigo-600' : ''}`}
+            className={`${fitClass} whitespace-nowrap ${isHighlighted ? 'font-bold text-indigo-600' : ''}`}
+            style={fitStyle}
           >
             {getPlayerName(id)}
           </span>
@@ -273,6 +280,11 @@ function MatchCard({
   const rightDeviation = insight ? (isTeamAWinner ? insight.teamBDeviation : insight.teamADeviation) : 0;
   const ownIsLeft = insight ? insight.ownIsA === isTeamAWinner : false;
 
+  // 名前が入りきらないときは行ごとにフォントを縮小（1行目 / 2行目は VS ピルぶんも考慮）
+  const namesChars = (ids: string[]) => ids.reduce((n, id) => n + nameCharCount(getPlayerName(id)), 0);
+  const leftFontPx = pickNameFontSizePx(namesChars(leftIds), { hasVsPill: false, hasInsight: !!insight, nameCount: leftIds.length });
+  const rightFontPx = pickNameFontSizePx(namesChars(rightIds), { hasVsPill: true, hasInsight: !!insight, nameCount: rightIds.length });
+
   return (
     <div
       className={`rounded-lg p-2 border ${isNoScore ? 'bg-orange-50 border-orange-300' : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-100'}`}
@@ -309,7 +321,7 @@ function MatchCard({
               : 'flex-1 min-w-0 space-y-0.5'
           }
         >
-          <div className="flex flex-nowrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight font-bold text-foreground whitespace-nowrap min-w-0 overflow-hidden">
+          <div className="flex flex-nowrap items-baseline gap-x-1.5 gap-y-0.5 leading-tight font-bold text-foreground whitespace-nowrap min-w-0 overflow-hidden" style={{ fontSize: leftFontPx }}>
             <TeamNames
               playerIds={leftIds}
               getPlayerName={getPlayerName}
@@ -319,7 +331,7 @@ function MatchCard({
             />
           </div>
           {insight && <InsightVerdictChip insight={insight} />}
-          <div className="flex flex-nowrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight text-muted-foreground whitespace-nowrap min-w-0 overflow-hidden">
+          <div className="flex flex-nowrap items-baseline gap-x-1.5 gap-y-0.5 leading-tight text-muted-foreground whitespace-nowrap min-w-0 overflow-hidden" style={{ fontSize: rightFontPx }}>
             <span className="font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
             <TeamNames
               playerIds={rightIds}
@@ -1274,6 +1286,9 @@ export function HistoryPage() {
                       selectedName={filterPlayerName}
                       onSelect={(name) => {
                         setFilterPlayerName(name === filterPlayerName ? null : name);
+                        // 絞り込み結果（試合一覧）を見せるため、選択・解除とも最上部へ戻す
+                        // （この画面のスクロール要素は window）
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
                         setRankingCollapsed(true);
                         setSkipScoredAutoCollapse(true);
                         setScoredCollapsed(false);
