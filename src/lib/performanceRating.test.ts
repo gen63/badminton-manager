@@ -4,6 +4,9 @@ import {
   findPerformance,
   reassignDisplayRanks,
   BASE_RATING,
+  judgeMatch,
+  getPlayerMatchInsight,
+  countVerdicts,
 } from './performanceRating';
 import type { Match } from '../types/match';
 import type { Player } from '../types/player';
@@ -475,6 +478,104 @@ describe('reassignDisplayRanks', () => {
     ];
     const result = reassignDisplayRanks(players);
     expect(result.map((p) => p.name)).toEqual(['Z', 'A', 'M']);
+  });
+});
+
+describe('judgeMatch', () => {
+  it('有利（0.65 以上）: 勝ちは順当勝ち、負けは取りこぼし。境界を含む', () => {
+    expect(judgeMatch(0.65, true)).toBe('expected-win');
+    expect(judgeMatch(0.65, false)).toBe('missed-win');
+    expect(judgeMatch(0.9, true)).toBe('expected-win');
+  });
+  it('不利（0.35 以下）: 勝ちは番狂わせ勝ち、負けは順当負け。境界を含む', () => {
+    expect(judgeMatch(0.35, true)).toBe('upset-win');
+    expect(judgeMatch(0.35, false)).toBe('expected-loss');
+    expect(judgeMatch(0.1, false)).toBe('expected-loss');
+  });
+  it('中間は互角', () => {
+    expect(judgeMatch(0.5, true)).toBe('even-win');
+    expect(judgeMatch(0.5, false)).toBe('even-loss');
+    expect(judgeMatch(0.6499, false)).toBe('even-loss');
+    expect(judgeMatch(0.3501, true)).toBe('even-win');
+  });
+});
+
+describe('matchInsights', () => {
+  const players = playersOf('A', 'B', 'C', 'D');
+  const history = [
+    match(['A', 'B'], ['C', 'D'], 'A'),
+    match(['A', 'B'], ['C', 'D'], 'A'),
+    match(['A', 'C'], ['B', 'D'], 'A'),
+    match(['A', 'D'], ['B', 'C'], 'A'),
+  ];
+
+  it('試合が無ければ空', () => {
+    expect(computePerformanceRatings([], players).matchInsights.size).toBe(0);
+  });
+
+  it('強いチームの予想勝率が 0.5 を超え、平均偏差も高い', () => {
+    const result = computePerformanceRatings(history, players);
+    const insight = result.matchInsights.get(history[0].id)!;
+    expect(insight.winProbabilityA).toBeGreaterThan(0.5);
+    expect(insight.teamADeviation).toBeGreaterThan(insight.teamBDeviation);
+    expect(Number.isInteger(insight.teamADeviation)).toBe(true);
+  });
+
+  it('チーム平均偏差は所属メンバーの偏差値の平均（丸め）', () => {
+    const result = computePerformanceRatings(history, players);
+    const dev = (n: string) => findPerformance(result, n)!.deviation;
+    const insight = result.matchInsights.get(history[0].id)!;
+    expect(Math.abs(insight.teamADeviation - (dev('A') + dev('B')) / 2)).toBeLessThanOrEqual(1);
+    expect(Math.abs(insight.teamBDeviation - (dev('C') + dev('D')) / 2)).toBeLessThanOrEqual(1);
+  });
+
+  it('結果未入力の試合は含まれない', () => {
+    const pending = unscored(['A', 'B'], ['C', 'D']);
+    const result = computePerformanceRatings([...history, pending], players);
+    expect(result.matchInsights.has(pending.id)).toBe(false);
+    expect(result.matchInsights.size).toBe(history.length);
+  });
+
+  it('A/B を入れ替えると予想勝率の和が 1 になり、偏差も入れ替わる', () => {
+    const ab = match(['A', 'B'], ['C', 'D'], 'A');
+    const ba = match(['C', 'D'], ['A', 'B'], 'B');
+    const result = computePerformanceRatings([ab, ba], players);
+    const i1 = result.matchInsights.get(ab.id)!;
+    const i2 = result.matchInsights.get(ba.id)!;
+    expect(i1.winProbabilityA + i2.winProbabilityA).toBeCloseTo(1, 10);
+    expect(i1.teamADeviation).toBe(i2.teamBDeviation);
+    expect(i1.teamBDeviation).toBe(i2.teamADeviation);
+  });
+});
+
+describe('getPlayerMatchInsight / countVerdicts', () => {
+  const players = playersOf('A', 'B', 'C', 'D');
+  const history = [
+    match(['A', 'B'], ['C', 'D'], 'A'),
+    match(['A', 'B'], ['C', 'D'], 'A'),
+    match(['C', 'D'], ['A', 'B'], 'B'),
+    match(['A', 'C'], ['B', 'D'], 'B'),
+  ];
+  const { matchInsights } = computePerformanceRatings(history, players);
+
+  it('本人が B 側なら勝率を反転して返す', () => {
+    const view = getPlayerMatchInsight(history[2], 'A', players, matchInsights)!;
+    expect(view.ownIsA).toBe(false);
+    expect(view.ownWinProbability).toBeCloseTo(1 - matchInsights.get(history[2].id)!.winProbabilityA, 10);
+  });
+
+  it('不参加・分析なしは null', () => {
+    expect(getPlayerMatchInsight(history[0], 'Z', players, matchInsights)).toBeNull();
+    expect(getPlayerMatchInsight(unscored(['A', 'B'], ['C', 'D']), 'A', players, matchInsights)).toBeNull();
+  });
+
+  it('内訳の合計は勝敗確定試合数、0件の種類は含まれず表示順', () => {
+    const counts = countVerdicts(history, 'A', players, matchInsights);
+    expect(counts.reduce((s, c) => s + c.count, 0)).toBe(4);
+    expect(counts.every((c) => c.count > 0)).toBe(true);
+    const order = ['upset-win', 'expected-win', 'even-win', 'even-loss', 'missed-win', 'expected-loss'];
+    const idx = counts.map((c) => order.indexOf(c.verdict));
+    expect(idx).toEqual([...idx].sort((a, b) => a - b));
   });
 });
 

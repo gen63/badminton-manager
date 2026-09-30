@@ -14,8 +14,16 @@ import { sendMatchesToSheets } from '../lib/sheetsApi';
 import { updateSession } from '../services/sessionService';
 import { isMatchOfPlayer, computePlayerRecord } from '../lib/matchFilter';
 import type { PlayerRecord } from '../lib/matchFilter';
-import { computePerformanceRatings, findPerformance, reassignDisplayRanks } from '../lib/performanceRating';
-import type { PlayerPerformance } from '../lib/performanceRating';
+import {
+  computePerformanceRatings,
+  findPerformance,
+  reassignDisplayRanks,
+  getPlayerMatchInsight,
+  countVerdicts,
+  VERDICT_LABELS,
+  VERDICT_CHIP_CLASSES,
+} from '../lib/performanceRating';
+import type { PlayerPerformance, PlayerMatchInsight, MatchVerdict } from '../lib/performanceRating';
 import { useDevMode } from '../hooks/useDevMode';
 import { Copy, Trash2, Edit3, Clock, Upload, History, ChevronDown, ChevronUp, User, AlertTriangle, BarChart3, RotateCcw } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -141,6 +149,48 @@ function RevertToCourtButton({
   );
 }
 
+/** 分析列 1 行目: 上段チームの平均偏差（数字だけ）。 */
+function InsightNumber({ value, own }: { value: number; own: boolean }) {
+  return (
+    <span
+      className={`text-[13px] leading-tight text-right whitespace-nowrap ${
+        own ? 'text-indigo-600 font-bold' : 'text-muted-foreground'
+      }`}
+    >
+      {value}
+    </span>
+  );
+}
+
+/** 分析列 2 行目: 「vs」（小さなグレー文字）+ 下段チームの平均偏差。 */
+function InsightVs({ value, own }: { value: number; own: boolean }) {
+  return (
+    <span className="flex items-baseline justify-end gap-0.5 whitespace-nowrap leading-tight">
+      <span className="text-[10px] text-muted-foreground">vs</span>
+      <span
+        className={`text-[13px] ${own ? 'text-indigo-600 font-bold' : 'text-muted-foreground'}`}
+      >
+        {value}
+      </span>
+    </span>
+  );
+}
+
+/** 分析列 3 行目: 判定チップ + 本人側の予想勝率。 */
+function InsightVerdict({ insight }: { insight: PlayerMatchInsight }) {
+  const cls = VERDICT_CHIP_CLASSES[insight.verdict];
+  return (
+    <span className="flex items-center justify-end gap-1 whitespace-nowrap">
+      <span className={`rounded-full text-[10px] px-1.5 font-bold ${cls.chip}`}>
+        {VERDICT_LABELS[insight.verdict]}
+      </span>
+      <span className={`text-xs font-bold ${cls.text}`}>
+        {Math.round(insight.ownWinProbability * 100)}%
+      </span>
+    </span>
+  );
+}
+
 function MatchCard({
   match,
   matchNumber,
@@ -155,6 +205,7 @@ function MatchCard({
   onAssignOrphan,
   canRevert,
   onRevertClick,
+  insight,
 }: {
   match: Match;
   matchNumber: number;
@@ -170,6 +221,8 @@ function MatchCard({
   /** 終了操作と同じ権限（`canFinishGame`）。無ければ「コートに戻す」は出さない */
   canRevert: boolean;
   onRevertClick: (match: Match) => void;
+  /** 開発モード + メンバー絞り込み中のみ。試合ごとの分析（平均偏差・予想勝率・判定） */
+  insight?: PlayerMatchInsight | null;
 }) {
   const durationMs = match.finishedAt - match.startedAt;
   const duration = Math.round(durationMs / 60000);
@@ -201,6 +254,14 @@ function MatchCard({
   // 内で評価するのでレンダー本体では呼ばない）で判定して null を返す。
   const showRevert = canRevert && !!match.finishRevert;
 
+  // 表示は勝者が上段。分析の A/B を上段(left)/下段(right)へ振り直す。
+  // 勝敗確定済みの試合にしか分析は付かないので isTeamAWinner で決まる。
+  const leftDeviation = insight ? (isTeamAWinner ? insight.teamADeviation : insight.teamBDeviation) : 0;
+  const rightDeviation = insight ? (isTeamAWinner ? insight.teamBDeviation : insight.teamADeviation) : 0;
+  const ownIsLeft = insight ? insight.ownIsA === isTeamAWinner : false;
+  const leftInsightProps = { value: leftDeviation, own: ownIsLeft };
+  const rightInsightProps = { value: rightDeviation, own: !ownIsLeft };
+
   return (
     <div
       className={`rounded-lg p-2 border ${isNoScore ? 'bg-orange-50 border-orange-300' : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-100'}`}
@@ -223,13 +284,20 @@ function MatchCard({
           </span>
         </div>
 
-        <div className="flex-1 min-w-0 space-y-0.5">
-          {/*
-            チームを左右に並べると1チームあたり画面幅の半分弱しか使えず、
-            日本語の名前2人分が入らないため上下2段にする。各段がカード幅を
-            まるごと使えるので、ほとんどの試合で名前を省略せずに表示できる。
-            勝者が上段（太字）、敗者が下段（VS バッジ付き・淡色）。
-          */}
+        {/*
+          分析あり: 中央3行と分析列を 2 列 × 3 行のグリッドに載せ、行ごとに
+          items-center で揃える（名前が折り返して行が高くなっても分析は同じ行の中央）。
+          分析なし: 従来どおりの縦積み。
+          チームは上下2段（日本語の名前2人分が横並びでは入らないため）。
+          勝者が上段（太字）、敗者が下段（VS バッジ付き・淡色）。
+        */}
+        <div
+          className={
+            insight
+              ? 'flex-1 min-w-0 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5'
+              : 'flex-1 min-w-0 space-y-0.5'
+          }
+        >
           <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight font-bold text-foreground">
             <TeamNames
               playerIds={leftIds}
@@ -239,6 +307,7 @@ function MatchCard({
               onTapOrphan={onAssignOrphan && ((id) => onAssignOrphan(id, match, matchNumber))}
             />
           </div>
+          {insight && <InsightNumber {...leftInsightProps} />}
           <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight text-muted-foreground">
             <span className="font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
             <TeamNames
@@ -249,7 +318,7 @@ function MatchCard({
               onTapOrphan={onAssignOrphan && ((id) => onAssignOrphan(id, match, matchNumber))}
             />
           </div>
-
+          {insight && <InsightVs {...rightInsightProps} />}
           <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground leading-tight">
             <span className="flex items-center gap-0.5 whitespace-nowrap">
               <Clock size={11} />
@@ -266,6 +335,7 @@ function MatchCard({
               </span>
             )}
           </div>
+          {insight && <InsightVerdict insight={insight} />}
         </div>
 
         <div className="flex flex-col gap-0.5 flex-shrink-0">
@@ -312,6 +382,7 @@ function MatchList({
   onAssignOrphan,
   canRevert,
   onRevertClick,
+  getInsight,
 }: {
   unscoredMatches: { match: Match; matchNumber: number }[];
   scoredMatches: { match: Match; matchNumber: number }[];
@@ -330,6 +401,7 @@ function MatchList({
   onAssignOrphan?: (orphanId: string, match: Match, matchNumber: number) => void;
   canRevert: boolean;
   onRevertClick: (match: Match) => void;
+  getInsight?: (match: Match) => PlayerMatchInsight | null;
 }) {
   return (
     <div className="space-y-2">
@@ -363,6 +435,7 @@ function MatchList({
               onAssignOrphan={onAssignOrphan}
               canRevert={canRevert}
               onRevertClick={onRevertClick}
+              insight={getInsight?.(match)}
             />
           ))}
         </>
@@ -398,6 +471,7 @@ function MatchList({
               onAssignOrphan={onAssignOrphan}
               canRevert={canRevert}
               onRevertClick={onRevertClick}
+              insight={getInsight?.(match)}
             />
           ))}
         </>
@@ -417,6 +491,7 @@ function PlayerRecordSummary({
   record,
   showWinRate,
   performance,
+  verdictCounts,
 }: {
   playerName: string | null;
   isSelf: boolean;
@@ -425,6 +500,8 @@ function PlayerRecordSummary({
   showWinRate: boolean;
   // 強さ指標（レート・偏差値など）は開発モードのときのみ。対象外なら null
   performance: PlayerPerformance | null;
+  // 判定ごとの内訳（開発モードのみ。0件の種類は含まない）
+  verdictCounts: { verdict: MatchVerdict; count: number }[];
 }) {
   const label = isSelf ? '自分の成績' : `${playerName} さんの成績`;
   return (
@@ -476,6 +553,18 @@ function PlayerRecordSummary({
               {performance.winsAboveExpectedError.toFixed(1)}）
             </span>
           </div>
+          {verdictCounts.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-1">
+              {verdictCounts.map(({ verdict, count }) => (
+                <span
+                  key={verdict}
+                  className={`rounded-full text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap ${VERDICT_CHIP_CLASSES[verdict].chip}`}
+                >
+                  {VERDICT_LABELS[verdict]} {count}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -760,6 +849,19 @@ export function HistoryPage() {
     if (!showPerformance) return null;
     return computePerformanceRatings(matchHistory, players);
   }, [showPerformance, matchHistory, players]);
+  // 試合ごとの分析（開発モード + メンバー絞り込み中のみ）
+  const matchInsights = performanceResult?.matchInsights;
+  const getInsight = useMemo(() => {
+    if (!matchInsights || !filterActive) return undefined;
+    return (m: Match) => getPlayerMatchInsight(m, filterPlayerName, players, matchInsights);
+  }, [matchInsights, filterActive, filterPlayerName, players]);
+  const verdictCounts = useMemo(
+    () =>
+      matchInsights && filterActive
+        ? countVerdicts(matchHistory, filterPlayerName, players, matchInsights)
+        : [],
+    [matchInsights, filterActive, matchHistory, filterPlayerName, players]
+  );
   const playerPerformance = performanceResult
     ? findPerformance(performanceResult, filterPlayerName)
     : null;
@@ -1097,6 +1199,7 @@ export function HistoryPage() {
                   record={playerRecord}
                   showWinRate={showWinRate}
                   performance={playerPerformance}
+                  verdictCounts={verdictCounts}
                 />
               )}
 
@@ -1188,6 +1291,7 @@ export function HistoryPage() {
                   }
                   canRevert={canRevertFinish}
                   onRevertClick={handleRevertClick}
+                  getInsight={getInsight}
                 />
               )}
             </div>

@@ -1,5 +1,6 @@
 import type { Match } from '../types/match';
 import type { Player } from '../types/player';
+import { getMatchResultForPlayer } from './matchFilter';
 
 /**
  * その日のセッション内での「強さ」を、対戦相手・味方の強さを加味して推定する。
@@ -88,15 +89,50 @@ export interface PlayerPerformance {
   isSignificant: boolean;
 }
 
+/** 試合ごとの分析（履歴画面の開発モード表示用）。チーム A/B は Match の teamA/teamB。 */
+export interface MatchInsight {
+  /** チームAメンバーの偏差値の平均（整数。偏差値は全体偏差値スケール）。 */
+  teamADeviation: number;
+  teamBDeviation: number;
+  /** チームAの予想勝率（0〜1）。P(A勝) = sigmoid(mean(θ_A) − mean(θ_B))。 */
+  winProbabilityA: number;
+}
+
+export type MatchVerdict =
+  | 'upset-win'
+  | 'expected-win'
+  | 'even-win'
+  | 'even-loss'
+  | 'missed-win'
+  | 'expected-loss';
+
+/**
+ * 判定の閾値。1日分（10〜15試合）の推定は誤差が大きく、60%程度の「やや有利」で
+ * 負けても不思議ではない。「勝てるはずの試合」「不利な試合」と言い切れるのは
+ * 65% 以上 / 35% 以下からとし、その間は互角として扱う。
+ */
+export const FAVORED_THRESHOLD = 0.65; // これ以上＝有利（勝てるはずの試合）
+export const UNDERDOG_THRESHOLD = 0.35; // これ以下＝不利
+
+/** 本人側の予想勝率と勝敗から試合の判定を返す。 */
+export function judgeMatch(ownWinProbability: number, won: boolean): MatchVerdict {
+  if (ownWinProbability >= FAVORED_THRESHOLD) return won ? 'expected-win' : 'missed-win';
+  if (ownWinProbability <= UNDERDOG_THRESHOLD) return won ? 'upset-win' : 'expected-loss';
+  return won ? 'even-win' : 'even-loss';
+}
+
 export interface PerformanceResult {
   /** レート降順（同レートは勝ち数 → 五十音）。勝敗確定試合がある人のみ。 */
   players: PlayerPerformance[];
   /** 集計対象になった試合数（勝敗が確定し、両チームに有効なメンバーがいる試合）。 */
   ratedMatchCount: number;
+  /** 推定に使われた試合の分析（キーは Match.id）。空結果のときは空。 */
+  matchInsights: Map<string, MatchInsight>;
 }
 
 /** 勝敗が確定し、名前解決済みのメンバーだけが残った試合。 */
 interface RatedMatch {
+  matchId: string;
   teamA: string[];
   teamB: string[];
   winnerIsA: boolean;
@@ -136,7 +172,7 @@ function toRatedMatches(matches: Match[], players: Player[]): RatedMatch[] {
     const teamA = resolve(match.teamA);
     const teamB = resolve(match.teamB);
     if (teamA.length === 0 || teamB.length === 0) continue;
-    rated.push({ teamA, teamB, winnerIsA: match.winner === 'A' });
+    rated.push({ matchId: match.id, teamA, teamB, winnerIsA: match.winner === 'A' });
   }
   return rated;
 }
@@ -211,7 +247,7 @@ export function computePerformanceRatings(
 ): PerformanceResult {
   const ratedMatches = toRatedMatches(matches, players);
   if (ratedMatches.length === 0) {
-    return { players: [], ratedMatchCount: 0 };
+    return { players: [], ratedMatchCount: 0, matchInsights: new Map() };
   }
 
   const names: string[] = [];
@@ -232,6 +268,21 @@ export function computePerformanceRatings(
   const variance =
     thetaValues.reduce((sum, v) => sum + (v - mean) ** 2, 0) / thetaValues.length;
   const sd = Math.sqrt(variance);
+
+  const toTeamDeviation = (team: string[]): number =>
+    Math.round(
+      sd > 1e-9 ? 50 + (10 * (teamStrength(team, theta) - mean)) / sd : 50
+    );
+  const matchInsights = new Map<string, MatchInsight>();
+  for (const match of ratedMatches) {
+    matchInsights.set(match.matchId, {
+      teamADeviation: toTeamDeviation(match.teamA),
+      teamBDeviation: toTeamDeviation(match.teamB),
+      winProbabilityA: sigmoid(
+        teamStrength(match.teamA, theta) - teamStrength(match.teamB, theta)
+      ),
+    });
+  }
 
   const genderByName = new Map<string, 'M' | 'F'>();
   for (const p of players) {
@@ -376,7 +427,7 @@ export function computePerformanceRatings(
   // 同じ偏差値は同順位。次の順位は人数分飛ばす（1, 2, 2, 4 形式）
   const ranked = reassignDisplayRanks(result);
 
-  return { players: ranked, ratedMatchCount: ratedMatches.length };
+  return { players: ranked, ratedMatchCount: ratedMatches.length, matchInsights };
 }
 
 /** 指定した名前のパフォーマンスを取り出す。該当が無ければ null。 */
@@ -413,4 +464,88 @@ export function reassignDisplayRanks(players: PlayerPerformance[]): PlayerPerfor
   });
 
   return result;
+}
+
+/** 指定プレイヤー視点の試合分析（表示用）。 */
+export interface PlayerMatchInsight {
+  ownIsA: boolean;
+  teamADeviation: number;
+  teamBDeviation: number;
+  /** 本人側チームの予想勝率（0〜1）。 */
+  ownWinProbability: number;
+  verdict: MatchVerdict;
+}
+
+/**
+ * 指定プレイヤー視点の試合分析を組み立てる。分析が無い試合（結果未入力・推定対象外）、
+ * プレイヤーが不参加の試合は null。
+ */
+export function getPlayerMatchInsight(
+  match: Match,
+  playerName: string | null,
+  players: Player[],
+  insights: Map<string, MatchInsight>
+): PlayerMatchInsight | null {
+  const insight = insights.get(match.id);
+  const result = getMatchResultForPlayer(match, playerName, players);
+  if (!insight || !result) return null;
+  const nameOf = (id: string) => (id ? players.find((p) => p.id === id)?.name : undefined);
+  const ownIsA = match.teamA.some((id) => nameOf(id) === playerName);
+  const ownWinProbability = ownIsA ? insight.winProbabilityA : 1 - insight.winProbabilityA;
+  return {
+    ownIsA,
+    teamADeviation: insight.teamADeviation,
+    teamBDeviation: insight.teamBDeviation,
+    ownWinProbability,
+    verdict: judgeMatch(ownWinProbability, result === 'win'),
+  };
+}
+
+/** 判定の表示順。 */
+export const VERDICT_ORDER: MatchVerdict[] = [
+  'upset-win',
+  'expected-win',
+  'even-win',
+  'even-loss',
+  'missed-win',
+  'expected-loss',
+];
+
+export const VERDICT_LABELS: Record<MatchVerdict, string> = {
+  'upset-win': '番狂わせ勝ち',
+  'expected-win': '順当勝ち',
+  'even-win': '互角・勝ち',
+  'even-loss': '互角・負け',
+  'missed-win': '取りこぼし',
+  'expected-loss': '順当負け',
+};
+
+/** 判定チップの配色（背景 + 文字）。予想勝率の文字色もこの text-* に揃える。 */
+export const VERDICT_CHIP_CLASSES: Record<MatchVerdict, { chip: string; text: string }> = {
+  'upset-win': { chip: 'bg-emerald-100 text-emerald-700', text: 'text-emerald-700' },
+  'expected-win': { chip: 'bg-blue-100 text-blue-700', text: 'text-blue-700' },
+  'even-win': { chip: 'bg-gray-200 text-gray-700', text: 'text-gray-700' },
+  'even-loss': { chip: 'bg-gray-200 text-gray-700', text: 'text-gray-700' },
+  'missed-win': { chip: 'bg-orange-100 text-orange-700', text: 'text-orange-700' },
+  'expected-loss': { chip: 'bg-gray-100 text-gray-500', text: 'text-gray-500' },
+};
+
+/**
+ * 指定プレイヤーの勝敗確定試合を判定ごとに集計する（0件の種類は含めない、表示順）。
+ */
+export function countVerdicts(
+  matches: Match[],
+  playerName: string | null,
+  players: Player[],
+  insights: Map<string, MatchInsight>
+): { verdict: MatchVerdict; count: number }[] {
+  const counts = new Map<MatchVerdict, number>();
+  for (const match of matches) {
+    const view = getPlayerMatchInsight(match, playerName, players, insights);
+    if (view) counts.set(view.verdict, (counts.get(view.verdict) ?? 0) + 1);
+  }
+  return VERDICT_ORDER.filter((v) => counts.has(v)).map((verdict) => ({
+    verdict,
+    count: counts.get(verdict)!,
+  }));
 }
