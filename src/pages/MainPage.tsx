@@ -37,6 +37,9 @@ import {
   finishAllowedIds,
   buildFinishConfirmMessage,
   FINISH_CONFIRM_THRESHOLD_MS,
+  decideOperatorNotification,
+  buildOperatorAssignedMessage,
+  standbyCourtIds,
 } from '../lib/finishOperationGuide';
 import {
   shouldCallNextMatch,
@@ -53,7 +56,7 @@ import { ASSIGNED_AT_BASIS_MAX_AGE_MS, getPlayersPerCourt, getMinWaitingCount, g
 import { withInProgressGames } from '../lib/effectiveGames';
 import { resolveFees } from '../lib/accountingCalc';
 import { useDefaultFees } from '../hooks/useDefaultFees';
-import { notifyNextMatchSoon } from '../lib/notifications';
+import { notifyOperatorAssigned, closeOperatorAssignedNotification } from '../lib/notifications';
 import { unlockMatchCallAudio, playMatchCallChime, vibrateMatchCall, fireMatchCallAlert, installMatchCallAudioUnlock, installMatchCallSpeechHideGuard, speakMatchCall, getLastMatchCallSpeech, SPEECH_DELAY_MS } from '../lib/matchCallAlert';
 
 import { BottomNav } from '../components/BottomNav';
@@ -609,9 +612,8 @@ export function MainPage() {
 
   // 「次の試合に入りそう」事前呼び出し通知: 自分が予測の「ほぼ確定」メンバーで、
   // まだどのコートにも乗っておらず、経過時間が最大のプレイ中コートが
-  // MATCH_CALL_THRESHOLD_MS を超えたら 1 度だけ通知する。通知許可が無いメンバーにも
-  // 見えるよう、Browser Notification に加えてグローバルトーストでも出す
-  // （強制休憩通知と同じ構成）。閾値 4:30 に対して 10 秒間隔の評価で十分。
+  // MATCH_CALL_THRESHOLD_MS を超えたら 1 度だけ、チャイム・振動・読み上げで知らせる
+  // （OS 通知は出さない。閾値 4:30 に対して 10 秒間隔の評価で十分）。
   // 管理者向け「もうすぐ試合です」アナウンス（5:00、本人向けの30秒後）。
   // 「移動したかどうか」は検知できないため、時間差で情報を渡すだけに徹する。
   // 詳細: docs/plans/2026-08-15-admin-match-call-announce.md
@@ -621,14 +623,89 @@ export function MainPage() {
   // 判定を止めるために記録する。
   // 詳細: docs/plans/2026-08-22-match-call-stale-audio-on-resume.md
   const becameVisibleAtRef = useRef<number | null>(null);
+  // 復帰（およびアプリ起動）後の最初の担当判定かどうか。false のあいだ＝未処理。
+  const resumeHandledRef = useRef(false);
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return;
       becameVisibleAtRef.current = Date.now();
+      resumeHandledRef.current = false;
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
+
+  // 操作担当（次の試合の 終了→配置→開始 をする人）になった時点で OS 通知を出し、
+  // 本人の端末だけにトーストも出す（markOnly では出さない＝画面が既に担当を示しているため）。
+  // 遅れて届く通知の防止: 判定は同期済み・復帰直後でないときだけ行い、復帰後の最初の
+  // 判定では通知せず通知済み扱いにする（画面が既に担当を示しているため）。コート配置・
+  // 担当から外れたら残っている通知を片付ける。担当の出入りでは再通知しない（コートに
+  // 乗るまで1回）。詳細: docs/plans/2026-09-30-operator-assigned-notification.md
+  const notifiedOperatorRef = useRef(false);
+  const operatorNotificationShownRef = useRef(false);
+  const showToast = toast.showToast;
+  useEffect(() => {
+    const evaluate = () => {
+      const onAnyCourt = myPlayerId !== null && courts.some(
+        (c) => c.teamA.includes(myPlayerId) || c.teamB.includes(myPlayerId)
+      );
+      // 休憩中はコート上と同様に扱い、通知済みフラグを戻して片付ける
+      const isMyPlayerResting = myPlayerId !== null && playerMap.get(myPlayerId)?.isResting === true;
+      if (onAnyCourt || isMyPlayerResting) {
+        notifiedOperatorRef.current = false;
+        if (operatorNotificationShownRef.current) {
+          closeOperatorAssignedNotification();
+          operatorNotificationShownRef.current = false;
+        }
+        return;
+      }
+      if (
+        operatorNotificationShownRef.current &&
+        (myPlayerId === null || !operatorIds.has(myPlayerId))
+      ) {
+        // 担当から外れた。通知済みフラグは戻さない（ブレで再通知しないため）
+        closeOperatorAssignedNotification();
+        operatorNotificationShownRef.current = false;
+      }
+      if (
+        !canEvaluateMatchCall({
+          now: Date.now(),
+          gameStateLoaded: isGameStateLoaded,
+          becameVisibleAt: becameVisibleAtRef.current,
+        })
+      ) {
+        return;
+      }
+      const firstAfterResume = !resumeHandledRef.current;
+      resumeHandledRef.current = true;
+      const decision = decideOperatorNotification({
+        operatorIds,
+        myPlayerId,
+        courts,
+        alreadyNotified: notifiedOperatorRef.current,
+        firstAfterResume,
+      });
+      if (decision === 'notify') {
+        // 運用コートが1面のみのときは番号を出さない
+        const courtIds = courts.length > 1 ? standbyCourtIds(courts, Date.now()) : [];
+        const hasEmptyCourt = courts.some((c) => !c.teamA[0] || c.teamA[0] === '');
+        const body = buildOperatorAssignedMessage(courtIds, hasEmptyCourt);
+        notifyOperatorAssigned(body);
+        // 裏にいる間に作ったトーストは Chrome のタイマー間引きで消えずに残り、復帰時に遅れて見えるため
+        if (document.visibilityState === 'visible') {
+          showToast(`次の試合配置担当です。${body}`, 'info', 8000);
+        }
+        notifiedOperatorRef.current = true;
+        operatorNotificationShownRef.current = true;
+      } else if (decision === 'markOnly') {
+        notifiedOperatorRef.current = true;
+      }
+    };
+    evaluate();
+    const intervalId = setInterval(evaluate, 10_000);
+    return () => clearInterval(intervalId);
+  }, [courts, operatorIds, myPlayerId, isGameStateLoaded, showToast, playerMap]);
+
   useEffect(() => {
     const evaluate = () => {
       // 古い状態のまま鳴らさない。飛ばしても 10 秒後の tick で再評価される。
@@ -668,15 +745,15 @@ export function MainPage() {
         const selfName = myPlayerId !== null ? playerMap.get(myPlayerId)?.name : undefined;
         // 運用コートが1面のみのときは「1コート」が冗長なので番号を出さない
         const courtNumberForMessage = courts.length <= 1 ? null : basisCourtId;
-        const { body, speech } = buildNextMatchCallMessage(
+        const { speech } = buildNextMatchCallMessage(
           courtNumberForMessage,
           names,
           selfName,
         );
         // 画面表示は継続表示のガイド（`FinishOperationGuide`）が担うので、ここでは
-        // 「画面を見ていない人に気づかせる」チャネルだけを鳴らす。以前は8秒トースト
-        // も出していたが、ガイドと同じ情報が消えずに出るようになり重複したため廃止。
-        notifyNextMatchSoon(body);
+        // 「画面を見ていない人に気づかせる」音・振動・読み上げだけを鳴らす。以前は8秒
+        // トーストも出していたが、ガイドと同じ情報が消えずに出るようになり重複したため廃止。
+        // OS 通知は廃止（担当になった時点の「次の試合配置担当です」に置き換え）。
         fireMatchCallAlert(speech);
         calledForNextMatchRef.current = true;
       }

@@ -12,6 +12,8 @@ import {
   filterOperatorIds,
   selectOperatorIds,
   finishAllowedIds,
+  decideOperatorNotification,
+  buildOperatorAssignedMessage,
   type FinishOperationGuide,
 } from './finishOperationGuide';
 import { defaultExcludeFromOperator } from './operatorExclusion';
@@ -573,5 +575,59 @@ describe('finishAllowedIds（終了ボタン権）', () => {
     const certain = new Set(['a']);
     const allowed = finishAllowedIds(operators, certain);
     expect(canFinishGame({ isAdmin: false, certainIds: allowed, myPlayerId: 'b' })).toBe(false);
+  });
+});
+
+describe('decideOperatorNotification', () => {
+  const base = {
+    operatorIds: new Set(['p9']),
+    myPlayerId: 'p9' as string | null,
+    courts: [playingCourt(1, startedAtForElapsed(1000))],
+    alreadyNotified: false,
+    firstAfterResume: false,
+  };
+
+  it('担当で未通知・コート外なら notify', () => {
+    expect(decideOperatorNotification(base)).toBe('notify');
+  });
+
+  it('復帰後の最初の判定なら markOnly', () => {
+    expect(decideOperatorNotification({ ...base, firstAfterResume: true })).toBe('markOnly');
+  });
+
+  it('myPlayerId が null なら none', () => {
+    expect(decideOperatorNotification({ ...base, myPlayerId: null })).toBe('none');
+  });
+
+  it('担当でなければ none', () => {
+    expect(decideOperatorNotification({ ...base, operatorIds: new Set(['p8']) })).toBe('none');
+  });
+
+  it('コートに乗っていれば none', () => {
+    expect(decideOperatorNotification({ ...base, operatorIds: new Set(['p1']), myPlayerId: 'p1' })).toBe('none');
+  });
+
+  it('通知済みなら none（firstAfterResume でも）', () => {
+    expect(decideOperatorNotification({ ...base, alreadyNotified: true })).toBe('none');
+    expect(decideOperatorNotification({ ...base, alreadyNotified: true, firstAfterResume: true })).toBe('none');
+  });
+});
+
+describe('buildOperatorAssignedMessage', () => {
+  it('コート未指定なら番号なし', () => {
+    expect(buildOperatorAssignedMessage([], false)).toBe('試合が終わったら終了→配置→開始をお願いします');
+  });
+
+  it('1面なら丸数字1つ', () => {
+    expect(buildOperatorAssignedMessage([2], false)).toBe('②付近で待機し、試合が終わったら終了→配置→開始をお願いします');
+  });
+
+  it('2面は区切り無しで連結', () => {
+    expect(buildOperatorAssignedMessage([1, 2], false)).toBe('①②付近で待機し、試合が終わったら終了→配置→開始をお願いします');
+  });
+
+  it('空きコートがあれば待機文言ではなく配置→開始を促す（courtIds は無視）', () => {
+    expect(buildOperatorAssignedMessage([], true)).toBe('空いているコートに配置→開始をお願いします');
+    expect(buildOperatorAssignedMessage([1, 2], true)).toBe('空いているコートに配置→開始をお願いします');
   });
 });

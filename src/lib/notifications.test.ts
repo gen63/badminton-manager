@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { notifyNextMatchSoon } from './notifications';
+import { notifyOperatorAssigned, closeOperatorAssignedNotification } from './notifications';
 
 /** 内部の showNotificationSafely は非同期 IIFE なのでマイクロタスクをフラッシュする。 */
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-describe('notifyNextMatchSoon', () => {
+describe('notifyOperatorAssigned', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     // navigator.serviceWorker は jsdom にデフォルトで存在しないため、
@@ -28,15 +28,15 @@ describe('notifyNextMatchSoon', () => {
     }
     vi.stubGlobal('Notification', NotificationMock);
 
-    notifyNextMatchSoon('3コート付近で試合終了をお待ちください');
+    notifyOperatorAssigned('①付近で待機し、試合が終わったら終了→配置→開始をお願いします');
     await flushPromises();
 
     expect(getRegistrationMock).toHaveBeenCalled();
     expect(showNotificationMock).toHaveBeenCalledWith(
-      'まもなく出番です',
+      '次の試合配置担当です',
       expect.objectContaining({
-        body: '3コート付近で試合終了をお待ちください',
-        tag: 'next-match-soon',
+        body: '①付近で待機し、試合が終わったら終了→配置→開始をお願いします',
+        tag: 'operator-assigned',
         vibrate: [200, 100, 200],
       })
     );
@@ -53,12 +53,12 @@ describe('notifyNextMatchSoon', () => {
     }
     vi.stubGlobal('Notification', NotificationMock);
 
-    notifyNextMatchSoon('body');
+    notifyOperatorAssigned('body');
     await flushPromises();
 
     expect(ctorSpy).toHaveBeenCalledWith(
-      'まもなく出番です',
-      expect.objectContaining({ body: 'body', tag: 'next-match-soon' })
+      '次の試合配置担当です',
+      expect.objectContaining({ body: 'body', tag: 'operator-assigned' })
     );
   });
 
@@ -71,7 +71,7 @@ describe('notifyNextMatchSoon', () => {
     }
     vi.stubGlobal('Notification', ThrowingNotification);
 
-    expect(() => notifyNextMatchSoon('body')).not.toThrow();
+    expect(() => notifyOperatorAssigned('body')).not.toThrow();
     await flushPromises();
   });
 
@@ -87,9 +87,49 @@ describe('notifyNextMatchSoon', () => {
     }
     vi.stubGlobal('Notification', NotificationMock);
 
-    notifyNextMatchSoon('body');
+    notifyOperatorAssigned('body');
     await flushPromises();
 
     expect(getRegistrationMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('closeOperatorAssignedNotification', () => {
+  afterEach(() => {
+    delete (navigator as { serviceWorker?: unknown }).serviceWorker;
+  });
+
+  it('tag で取得した通知を close する', async () => {
+    const closeA = vi.fn();
+    const closeB = vi.fn();
+    const getNotifications = vi.fn().mockResolvedValue([{ close: closeA }, { close: closeB }]);
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: { getRegistration: vi.fn().mockResolvedValue({ getNotifications }) },
+      configurable: true,
+    });
+
+    closeOperatorAssignedNotification();
+    await flushPromises();
+
+    expect(getNotifications).toHaveBeenCalledWith({ tag: 'operator-assigned' });
+    expect(closeA).toHaveBeenCalled();
+    expect(closeB).toHaveBeenCalled();
+  });
+
+  it('getRegistration が reject しても throw しない', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: { getRegistration: vi.fn().mockRejectedValue(new Error('boom')) },
+      configurable: true,
+    });
+
+    expect(() => closeOperatorAssignedNotification()).not.toThrow();
+    await flushPromises();
+    errorSpy.mockRestore();
+  });
+
+  it('serviceWorker が無い環境では何もしない', async () => {
+    expect(() => closeOperatorAssignedNotification()).not.toThrow();
+    await flushPromises();
   });
 });
