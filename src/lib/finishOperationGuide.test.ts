@@ -10,6 +10,7 @@ import {
   buildFinishConfirmMessage,
   isOperatorExcluded,
   filterOperatorIds,
+  selectOperatorIds,
   type FinishOperationGuide,
 } from './finishOperationGuide';
 import { defaultExcludeFromOperator } from './operatorExclusion';
@@ -467,5 +468,64 @@ describe('defaultExcludeFromOperator', () => {
 
   it('含まなければ undefined（担当）', () => {
     expect(defaultExcludeFromOperator('太郎')).toBeUndefined();
+  });
+});
+
+describe('selectOperatorIds（担当の繰り上げ）', () => {
+  const players = [
+    mkPlayer('a', '太郎'),
+    mkPlayer('b', '次郎'),
+    mkPlayer('c', '三郎'),
+    mkPlayer('ext', '外部はなこ', { excludeFromOperator: true }),
+  ];
+  const pred = (certain: string[], likely: string[], rates: Record<string, number>) => ({
+    certainIds: new Set(certain),
+    likelyIds: new Set(likely),
+    appearanceRate: new Map(Object.entries(rates)),
+  });
+
+  it('担当外を除いた確定者が居れば従来どおり（繰り上げない）', () => {
+    const r = selectOperatorIds(pred(['a', 'ext'], ['b'], { a: 1, ext: 1, b: 0.6 }), players);
+    expect([...r]).toEqual(['a']);
+  });
+
+  it('確定が居なければ最高出現率の人を繰り上げる', () => {
+    const r = selectOperatorIds(pred([], ['a', 'b'], { a: 0.67, b: 0.33 }), players);
+    expect([...r]).toEqual(['a']);
+  });
+
+  it('最高出現率が同率なら全員を繰り上げる', () => {
+    const r = selectOperatorIds(pred([], ['a', 'b', 'c'], { a: 0.5, b: 0.5, c: 0.25 }), players);
+    expect([...r].sort()).toEqual(['a', 'b']);
+  });
+
+  it('確定が全員担当外なら候補から繰り上げる', () => {
+    const r = selectOperatorIds(pred(['ext'], ['b', 'c'], { ext: 1, b: 0.6, c: 0.4 }), players);
+    expect([...r]).toEqual(['b']);
+  });
+
+  it('担当外は繰り上げ対象にならず、次点の人が担当になる', () => {
+    const r = selectOperatorIds(pred([], ['ext', 'c'], { ext: 0.8, c: 0.3 }), players);
+    expect([...r]).toEqual(['c']);
+  });
+
+  it('繰り上げ候補も全員担当外なら空（canFinishGame の全員開放が保険）', () => {
+    const r = selectOperatorIds(pred(['ext'], [], { ext: 1 }), players);
+    expect(r.size).toBe(0);
+    expect(canFinishGame({ isAdmin: false, certainIds: r, myPlayerId: 'a' })).toBe(true);
+  });
+
+  it('予測が空なら空', () => {
+    expect(selectOperatorIds(pred([], [], {}), players).size).toBe(0);
+  });
+
+  it('予測バーに出ない人（確定でも候補でもない）は繰り上げない', () => {
+    const r = selectOperatorIds(pred([], ['a'], { a: 0.3, b: 0.2 }), players);
+    expect([...r]).toEqual(['a']);
+  });
+
+  it('players に居ない ID は担当外判定できないので除外しない', () => {
+    const r = selectOperatorIds(pred([], ['zzz', 'a'], { zzz: 0.9, a: 0.5 }), players);
+    expect([...r]).toEqual(['zzz']);
   });
 });

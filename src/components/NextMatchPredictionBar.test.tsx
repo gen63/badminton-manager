@@ -29,6 +29,22 @@ describe('NextMatchPredictionBar', () => {
     expect(excluded.className).toContain('border-indigo-600');
     expect(screen.getByText('次郎').className).not.toContain('border-indigo-600');
     expect(screen.getByText('ほぼ確定（担当外）')).toBeTruthy();
+    expect(screen.getByText('操作担当')).toBeTruthy();
+  });
+
+  it('certainIds に居ない繰り上げ担当も濃い青で表示し、候補扱いにしない', () => {
+    render(
+      <NextMatchPredictionBar
+        players={players}
+        certainIds={new Set()}
+        operatorIds={new Set(['c'])}
+      />,
+    );
+    expect(screen.getByText('次郎').className).toContain('bg-indigo-600');
+    expect(screen.getByText('太郎').className).not.toContain('bg-indigo-600');
+    // 凡例: 担当（繰り上げ）と候補が並ぶ
+    expect(screen.getByText('操作担当')).toBeTruthy();
+    expect(screen.getByText('候補')).toBeTruthy();
   });
 
   it('operatorIds 省略時は certainIds が全員担当（従来どおり）', () => {

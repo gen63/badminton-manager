@@ -26,3 +26,19 @@
 - `src/components/NextMatchPredictionBar.tsx`: `operatorIds` を追加。確定だが担当外は塗らず青枠のみ、凡例に「ほぼ確定（担当外）」
 - `src/components/PlayerEditModal.tsx` / `src/pages/PlayerSelect.tsx`: 参加者編集モーダルに管理者だけの「終了操作の担当外」トグル（肯定形、全員に同じトグル）
 - テスト: 判定関数・初期値関数・フォールバック・ガイド除外・`computeUpdatePlayer`・予測バー表示
+
+## 担当の繰り上げ（2026-09-30 追記）
+3コート稼働などでは全シナリオ共通（出現率100%）の確定者が出ない、または確定者が全員担当外になり、
+operatorIds が空 → `canFinishGame` の全員開放で「気づいた人が押す」運用に戻っていた。なるべく誰かを担当にしたい。
+
+- `selectOperatorIds(prediction, players)`（`finishOperationGuide.ts`）を追加。`filterOperatorIds(certainIds)` が
+  非空なら従来どおり。空のときだけ **繰り上げ**: 予測バーに出る人（`certainIds` + `likelyIds`）のうち、
+  担当外を除いて出現率が 0 より大きい人の **最高出現率の人（同率は全員）** を担当にする。
+  候補も居なければ空集合で、`canFinishGame` の全員開放は最後の保険として残る。
+- 繰り上げ対象を予測バー表示者に限る理由: `likelyIds` は「閾値 0.5 以上 or 定員補充」の先頭からの連続範囲なので、
+  担当外の人が上位を占めると、担当外を除いた最高出現率の人が表示されない場合があるため。
+  担当なのに画面に出ない人を作らない。
+- MainPage の `operatorIds`（終了権限・案内名・待機ガイド・予測バー）と HistoryPage の「コートに戻す」権限は同じ集合。
+- 予測バー: `certainIds` に居ないが operatorIds にいる人も濃い青。凡例「ほぼ確定＝操作担当」→「操作担当」
+  （見出し「配置予測（操作担当）」と整合）。担当外の太枠は「certainIds 内 & 担当外」のまま。
+- 4:30 呼び出し通知・管理者アナウンスは従来どおり `certainIds`。
