@@ -311,7 +311,7 @@ function MatchCard({
               onTapOrphan={onAssignOrphan && ((id) => onAssignOrphan(id, match, matchNumber))}
             />
           </div>
-          {insight && <div />}
+          {insight && <InsightVerdict insight={insight} />}
           <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight text-muted-foreground">
             <span className="font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
             <TeamNames
@@ -330,7 +330,7 @@ function MatchCard({
               rightOwn={!ownIsLeft}
             />
           )}
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground leading-tight">
+          <div className="flex flex-nowrap items-center gap-1.5 text-[11px] text-muted-foreground leading-tight whitespace-nowrap">
             <span className="flex items-center gap-0.5 whitespace-nowrap">
               <Clock size={11} />
               {formatTime(match.finishedAt)}
@@ -346,7 +346,7 @@ function MatchCard({
               </span>
             )}
           </div>
-          {insight && <InsightVerdict insight={insight} />}
+          {insight && <div />}
         </div>
 
         <div className="flex flex-col gap-0.5 flex-shrink-0">
