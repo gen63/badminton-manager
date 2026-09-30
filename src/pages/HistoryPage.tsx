@@ -20,11 +20,14 @@ import {
   findPerformance,
   reassignDisplayRanks,
   getPlayerMatchInsight,
+  judgeMatchNeutral,
+  NEUTRAL_VERDICT_LABELS,
+  NEUTRAL_VERDICT_CHIP_CLASSES,
   countVerdicts,
   VERDICT_LABELS,
   VERDICT_CHIP_CLASSES,
 } from '../lib/performanceRating';
-import type { PlayerPerformance, PlayerMatchInsight, MatchVerdict } from '../lib/performanceRating';
+import type { PlayerPerformance, PlayerMatchInsight, MatchInsight, MatchVerdict } from '../lib/performanceRating';
 import { useDevMode } from '../hooks/useDevMode';
 import { Copy, Trash2, Edit3, Clock, Upload, History, ChevronDown, ChevronUp, User, AlertTriangle, BarChart3, RotateCcw } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
@@ -156,6 +159,48 @@ function RevertToCourtButton({
   );
 }
 
+/** 分析列の表示用データ。本人視点（絞り込み時）と中立（勝者視点・全員表示時）の両方を表す。 */
+interface MatchInsightView {
+  teamADeviation: number;
+  teamBDeviation: number;
+  /** 強調する側（本人側）。中立表示では null（どちらも強調しない） */
+  highlight: 'A' | 'B' | null;
+  label: string;
+  chipClass: string;
+  textClass: string;
+  /** 3行目に出す予想勝率（0〜1）。本人視点は本人側、中立は勝者側 */
+  probability: number;
+}
+
+function toPlayerInsightView(i: PlayerMatchInsight): MatchInsightView {
+  const cls = VERDICT_CHIP_CLASSES[i.verdict];
+  return {
+    teamADeviation: i.teamADeviation,
+    teamBDeviation: i.teamBDeviation,
+    highlight: i.ownIsA ? 'A' : 'B',
+    label: VERDICT_LABELS[i.verdict],
+    chipClass: cls.chip,
+    textClass: cls.text,
+    probability: i.ownWinProbability,
+  };
+}
+
+function toNeutralInsightView(match: Match, insight: MatchInsight | undefined): MatchInsightView | null {
+  if (!insight || (match.winner !== 'A' && match.winner !== 'B')) return null;
+  const winnerProb = match.winner === 'A' ? insight.winProbabilityA : 1 - insight.winProbabilityA;
+  const verdict = judgeMatchNeutral(winnerProb);
+  const cls = NEUTRAL_VERDICT_CHIP_CLASSES[verdict];
+  return {
+    teamADeviation: insight.teamADeviation,
+    teamBDeviation: insight.teamBDeviation,
+    highlight: null,
+    label: NEUTRAL_VERDICT_LABELS[verdict],
+    chipClass: cls.chip,
+    textClass: cls.text,
+    probability: winnerProb,
+  };
+}
+
 /** 分析列 2 行目: 両チームの平均偏差を「63 vs 53」の形で1行表示。 */
 function InsightVs({
   leftValue,
@@ -190,23 +235,21 @@ function InsightVs({
 }
 
 /** 分析列 1 行目: 判定チップのみ。 */
-function InsightVerdictChip({ insight }: { insight: PlayerMatchInsight }) {
-  const cls = VERDICT_CHIP_CLASSES[insight.verdict];
+function InsightVerdictChip({ insight }: { insight: MatchInsightView }) {
   return (
     <span className="rounded-full text-[10px] px-1.5 font-bold whitespace-nowrap justify-self-end">
-      <span className={cls.chip}>
-        {VERDICT_LABELS[insight.verdict]}
+      <span className={insight.chipClass}>
+        {insight.label}
       </span>
     </span>
   );
 }
 
 /** 分析列 3 行目: 本人側の予想勝率。 */
-function InsightWinProbability({ insight }: { insight: PlayerMatchInsight }) {
-  const cls = VERDICT_CHIP_CLASSES[insight.verdict];
+function InsightWinProbability({ insight }: { insight: MatchInsightView }) {
   return (
-    <span className={`text-xs font-bold ${cls.text} whitespace-nowrap justify-self-end`}>
-      {Math.round(insight.ownWinProbability * 100)}%
+    <span className={`text-xs font-bold ${insight.textClass} whitespace-nowrap justify-self-end`}>
+      {Math.round(insight.probability * 100)}%
     </span>
   );
 }
@@ -241,8 +284,8 @@ function MatchCard({
   /** 終了操作と同じ権限（`canFinishGame`）。無ければ「コートに戻す」は出さない */
   canRevert: boolean;
   onRevertClick: (match: Match) => void;
-  /** 開発モード + メンバー絞り込み中のみ。試合ごとの分析（平均偏差・予想勝率・判定） */
-  insight?: PlayerMatchInsight | null;
+  /** 開発モードのみ（絞り込み時は本人視点、全員表示時は勝者視点）。試合ごとの分析（平均偏差・予想勝率・判定） */
+  insight?: MatchInsightView | null;
 }) {
   const durationMs = match.finishedAt - match.startedAt;
   const duration = Math.round(durationMs / 60000);
@@ -278,7 +321,8 @@ function MatchCard({
   // 勝敗確定済みの試合にしか分析は付かないので isTeamAWinner で決まる。
   const leftDeviation = insight ? (isTeamAWinner ? insight.teamADeviation : insight.teamBDeviation) : 0;
   const rightDeviation = insight ? (isTeamAWinner ? insight.teamBDeviation : insight.teamADeviation) : 0;
-  const ownIsLeft = insight ? insight.ownIsA === isTeamAWinner : false;
+  const ownIsLeft = insight?.highlight != null && (insight.highlight === 'A') === isTeamAWinner;
+  const ownIsRight = insight?.highlight != null && !ownIsLeft;
 
   // 名前が入りきらないときは行ごとにフォントを縮小（1行目 / 2行目は VS ピルぶんも考慮）
   const namesChars = (ids: string[]) => ids.reduce((n, id) => n + nameCharCount(getPlayerName(id)), 0);
@@ -346,7 +390,7 @@ function MatchCard({
               leftValue={leftDeviation}
               leftOwn={ownIsLeft}
               rightValue={rightDeviation}
-              rightOwn={!ownIsLeft}
+              rightOwn={ownIsRight}
             />
           )}
           <div className="flex flex-nowrap items-center gap-1.5 text-[11px] text-muted-foreground leading-tight whitespace-nowrap">
@@ -431,7 +475,7 @@ function MatchList({
   onAssignOrphan?: (orphanId: string, match: Match, matchNumber: number) => void;
   canRevert: boolean;
   onRevertClick: (match: Match) => void;
-  getInsight?: (match: Match) => PlayerMatchInsight | null;
+  getInsight?: (match: Match) => MatchInsightView | null;
 }) {
   return (
     <div className="space-y-2">
@@ -882,8 +926,12 @@ export function HistoryPage() {
   // 試合ごとの分析（開発モード + メンバー絞り込み中のみ）
   const matchInsights = performanceResult?.matchInsights;
   const getInsight = useMemo(() => {
-    if (!matchInsights || !filterActive) return undefined;
-    return (m: Match) => getPlayerMatchInsight(m, filterPlayerName, players, matchInsights);
+    if (!matchInsights) return undefined;
+    if (!filterActive) return (m: Match) => toNeutralInsightView(m, matchInsights.get(m.id));
+    return (m: Match) => {
+      const v = getPlayerMatchInsight(m, filterPlayerName, players, matchInsights);
+      return v ? toPlayerInsightView(v) : null;
+    };
   }, [matchInsights, filterActive, filterPlayerName, players]);
   const verdictCounts = useMemo(
     () =>

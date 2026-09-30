@@ -121,6 +121,21 @@ export function judgeMatch(ownWinProbability: number, won: boolean): MatchVerdic
   return won ? 'even-win' : 'even-loss';
 }
 
+export type NeutralVerdict = 'expected' | 'even' | 'upset';
+
+/** 勝者側の予想勝率から中立（勝者視点）の判定を返す。メンバー全員表示用。 */
+export function judgeMatchNeutral(winnerWinProbability: number): NeutralVerdict {
+  if (winnerWinProbability >= FAVORED_THRESHOLD) return 'expected';
+  if (winnerWinProbability <= UNDERDOG_THRESHOLD) return 'upset';
+  return 'even';
+}
+
+export const NEUTRAL_VERDICT_LABELS: Record<NeutralVerdict, string> = {
+  expected: '順当',
+  even: '互角',
+  upset: '番狂わせ',
+};
+
 export interface PerformanceResult {
   /** レート降順（同レートは勝ち数 → 五十音）。勝敗確定試合がある人のみ。 */
   players: PlayerPerformance[];
@@ -528,6 +543,13 @@ export const VERDICT_CHIP_CLASSES: Record<MatchVerdict, { chip: string; text: st
   'even-loss': { chip: 'bg-gray-200 text-gray-700', text: 'text-gray-700' },
   'missed-win': { chip: 'bg-orange-100 text-orange-700', text: 'text-orange-700' },
   'expected-loss': { chip: 'bg-gray-100 text-gray-500', text: 'text-gray-500' },
+};
+
+/** 中立（勝者視点）判定の配色。本人視点の同系統の判定と同じ色を使う。 */
+export const NEUTRAL_VERDICT_CHIP_CLASSES: Record<NeutralVerdict, { chip: string; text: string }> = {
+  expected: VERDICT_CHIP_CLASSES['expected-win'],
+  even: VERDICT_CHIP_CLASSES['even-win'],
+  upset: VERDICT_CHIP_CLASSES['upset-win'],
 };
 
 /**

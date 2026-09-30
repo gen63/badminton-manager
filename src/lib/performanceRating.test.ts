@@ -5,6 +5,7 @@ import {
   reassignDisplayRanks,
   BASE_RATING,
   judgeMatch,
+  judgeMatchNeutral,
   getPlayerMatchInsight,
   countVerdicts,
 } from './performanceRating';
@@ -582,3 +583,15 @@ describe('getPlayerMatchInsight / countVerdicts', () => {
 function round1(value: number) {
   return Math.round(value * 10) / 10;
 }
+
+describe('judgeMatchNeutral', () => {
+  it('境界と中間を判定する', () => {
+    expect(judgeMatchNeutral(0.65)).toBe('expected');
+    expect(judgeMatchNeutral(0.9)).toBe('expected');
+    expect(judgeMatchNeutral(0.35)).toBe('upset');
+    expect(judgeMatchNeutral(0.1)).toBe('upset');
+    expect(judgeMatchNeutral(0.5)).toBe('even');
+    expect(judgeMatchNeutral(0.6499)).toBe('even');
+    expect(judgeMatchNeutral(0.3501)).toBe('even');
+  });
+});
