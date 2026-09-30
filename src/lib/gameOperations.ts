@@ -27,7 +27,8 @@ export const MATCH_AUTO_END_MS = 15 * 60 * 1000;
 export const MATCH_AUTO_START_MS = 3 * 60 * 1000;
 
 /**
- * 自動開始・自動終了のタイマーが「予定どおりに発火した」とみなす遅れの上限（2分）。
+ * 自動開始のタイマーが「予定どおりに発火した」とみなす遅れの上限（2分）。
+ * （自動終了は 2026-09-30 以降この上限を使わない。遅れても終了し、終了時刻を丸める）
  *
  * 自動開始 / 自動終了は `MainPage` の `setTimeout` で「期限 − now」後に発火するが、
  * 期限を既に過ぎている場合は遅延 0 = 即発火になる。**期限を過ぎているのに未発火**
@@ -58,16 +59,27 @@ export const FINISH_REVERT_WINDOW_MS = 2 * 60 * 1000;
 const AUTO_TIMER_EARLY_TOLERANCE_MS = 1000;
 
 /**
- * 自動終了してよいか（＝15 分の期限が **アプリが動いている間に** 来たか）。
+ * 自動終了してよいか（＝開始から 15 分に達したか）。
  *
- * 期限に達していない、または期限から `AUTO_TIMER_MAX_LATENESS_MS` より遅れている
- * （＝止まっていた間に過ぎた期限）なら false。false のときは自動終了せず、
- * 手動の「終了」に委ねる。
+ * 期限を過ぎてからどれだけ遅れていても true（アプリが止まっていた間に過ぎた
+ * 期限でも、復帰した時点で終了させる）。遅れて終了したときに試合時間が膨らまない
+ * よう、記録する終了時刻は {@link resolveAutoEndFinishedAt} で丸める。
+ * 詳細: docs/plans/2026-09-30-auto-end-always.md
  */
 export function isAutoEndDue(startedAt: number, now: number): boolean {
   if (!startedAt || startedAt <= 0) return false;
-  const lateness = now - (startedAt + MATCH_AUTO_END_MS);
-  return lateness >= -AUTO_TIMER_EARLY_TOLERANCE_MS && lateness <= AUTO_TIMER_MAX_LATENESS_MS;
+  return now - (startedAt + MATCH_AUTO_END_MS) >= -AUTO_TIMER_EARLY_TOLERANCE_MS;
+}
+
+/**
+ * 自動終了した試合の記録上の終了時刻。`開始 + 15 分` を上限にする。
+ *
+ * アプリが止まっていた間に期限を過ぎた場合、復帰時刻をそのまま終了時刻にすると
+ * 実際は数分だった試合が 25 分などとして履歴（→ レーティング側のスプレッドシート）
+ * に残るため、自動終了の試合時間は最長でも 15 分として記録する。
+ */
+export function resolveAutoEndFinishedAt(startedAt: number, now: number): number {
+  return Math.min(now, startedAt + MATCH_AUTO_END_MS);
 }
 
 /**
@@ -271,6 +283,11 @@ export function computeFinishAndContinue(
      * （15 分超過の自動終了用）。`continuousMatchMode` 設定自体は変えない。
      */
     skipContinuous?: boolean;
+    /**
+     * 試合記録の終了時刻。未指定なら now。自動終了で試合時間を 15 分に丸めるときに
+     * 使う（{@link resolveAutoEndFinishedAt}）。
+     */
+    finishedAt?: number;
   }
 ): FinishGameResult {
   const court = state.courts.find(c => c.id === courtId);
@@ -289,7 +306,7 @@ export function computeFinishAndContinue(
     scoreA: 0,
     scoreB: 0,
     startedAt: court.startedAt > 0 ? court.startedAt : now,
-    finishedAt: now,
+    finishedAt: options.finishedAt ?? now,
   };
 
   // 2. プレイヤーの統計を更新 + 試合後の休憩判定

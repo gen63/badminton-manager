@@ -25,6 +25,7 @@ import {
   computeRevertFinish,
   gameModeFromPracticeType,
   isAutoEndDue,
+  resolveAutoEndFinishedAt,
   recomputePlayerMatchStats,
   resolveStartedAtFromAssignedAt,
   type RevertFinishError,
@@ -1715,9 +1716,10 @@ export interface FinishGameOptions {
    */
   skipContinuous?: boolean;
   /**
-   * 15 分超過の**自動**終了か。true のときだけ「期限がアプリの動作中に来たか」を
-   * 検証し（{@link isAutoEndDue}）、遅れて発火したタイマーによる終了を拒否する。
-   * 手動終了（人が押した）は無条件で終了させる。
+   * 15 分超過の**自動**終了か。true のときはリモートの `startedAt` で 15 分に
+   * 達しているかを検証し（{@link isAutoEndDue}）、試合記録の終了時刻を
+   * `開始 + 15 分` までに丸める（アプリが止まっていて遅れて発火しても、
+   * ありえない試合時間を残さない）。手動終了（人が押した）は無条件・丸めなし。
    */
   autoEnd?: boolean;
 }
@@ -1729,12 +1731,11 @@ export interface FinishGameOptions {
  * （isPlaying=false または startedAt が変わっている）の場合は `already_finished`
  * を返し、書き込みは行わない。
  *
- * `options.autoEnd` が true のときは、さらに **15 分の期限がアプリの動作中に来たか**
- * を検証する。アプリが止まっていた間に過ぎた期限で発火したタイマーは
- * `stale_auto_end` を返して書き込まない（全コートがいっせいに終了する / ありえない
- * 試合時間が記録される、を防ぐ）。判定を transaction 内に置くことで、どの端末から
- * 呼ばれても同じ不変条件が効く。
- * 詳細: docs/plans/2026-09-08-auto-end-stale-timer.md
+ * `options.autoEnd` が true のときは、さらに **開始から 15 分に達したか** を検証し、
+ * 達していなければ `not_due` を返して書き込まない。達していれば（どれだけ遅れて
+ * いても）終了し、記録上の終了時刻は `開始 + 15 分` までに丸める。判定を
+ * transaction 内に置くことで、どの端末から呼ばれても同じ不変条件が効く。
+ * 詳細: docs/plans/2026-09-30-auto-end-always.md
  *
  * 既存の `sessionService.finishGameTransaction` の置き換え版。
  * `gameStore.finishGame`（楽観更新版）と区別するため、composite であることを
@@ -1750,7 +1751,7 @@ export async function finishMatchAndContinue(
   matchStartedAt: number,
   options: FinishGameOptions,
 ): Promise<{
-  result: 'success' | 'already_finished' | 'stale_auto_end';
+  result: 'success' | 'already_finished' | 'not_due';
   writtenState?: GameState;
   /** 連続モード配置の結果（成功 / ブロック理由）。GAMEOPS4: 呼び出し側で toast 表示用。 */
   continuousNextApplied?: boolean;
@@ -1782,12 +1783,14 @@ export async function finishMatchAndContinue(
       if (!remoteCourt?.isPlaying || remoteCourt.startedAt !== matchStartedAt) {
         return { result: 'already_finished' as const };
       }
-      // 自動終了は「期限がアプリの動作中に来た」ときだけ。止まっていた間に過ぎた
-      // 期限で発火したタイマーは、実際にいつ試合が終わったのか分からないので
-      // 何も書かずに人の操作へ委ねる。
+      // 自動終了は 15 分に達した試合だけ。アプリが止まっていて遅れて発火した場合も
+      // 終了させるが、試合時間が膨らまないよう終了時刻は「開始 + 15 分」までに丸める。
       if (options.autoEnd && !isAutoEndDue(remoteCourt.startedAt, Date.now())) {
-        return { result: 'stale_auto_end' as const };
+        return { result: 'not_due' as const };
       }
+      const autoEndFinishedAt = options.autoEnd
+        ? resolveAutoEndFinishedAt(remoteCourt.startedAt, Date.now())
+        : undefined;
 
       const remoteSettings = remote.settings;
       const gameMode = gameModeFromPracticeType(remoteSettings?.practiceType);
@@ -1821,7 +1824,9 @@ export async function finishMatchAndContinue(
         genderBalanceMode: remoteSettings?.genderBalanceMode ?? true,
         reservationBlockThreshold: remoteSettings?.reservationBlockThreshold,
         practiceStartTime: remoteConfig?.practiceStartTime,
-        skipContinuous: options.skipContinuous || pastLastCall,
+        // 自動終了したコートには、連続モードでも次の試合を入れない。
+        skipContinuous: options.skipContinuous || options.autoEnd || pastLastCall,
+        finishedAt: autoEndFinishedAt,
       });
       const continuousStoppedForPracticeEnd = pastLastCall && remoteContinuous;
       const nextState = continuousStoppedForPracticeEnd

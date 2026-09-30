@@ -52,7 +52,7 @@ import {
 } from '../lib/nextMatchCall';
 import { updatePaymentBadge } from '../lib/badge';
 import { EMPTY_COURT_STATE } from '../types/court';
-import { ASSIGNED_AT_BASIS_MAX_AGE_MS, getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, isAutoEndDue, MATCH_AUTO_END_MS, MATCH_AUTO_START_MS } from '../lib/gameOperations';
+import { ASSIGNED_AT_BASIS_MAX_AGE_MS, getPlayersPerCourt, getMinWaitingCount, gameModeFromPracticeType, MATCH_AUTO_END_MS, MATCH_AUTO_START_MS } from '../lib/gameOperations';
 import { withInProgressGames } from '../lib/effectiveGames';
 import { resolveFees } from '../lib/accountingCalc';
 import { useDefaultFees } from '../hooks/useDefaultFees';
@@ -329,32 +329,14 @@ export function MainPage() {
     return () => clearTimeout(timeoutId);
   }, [session?.id, session?.config.practiceStartTime, lateBalanceAutoFired, writer]);
 
-  // 自動終了を見送ったコートの案内を 1 度だけ出すためのキー（`courtId:startedAt`）。
-  const staleAutoEndNoticedRef = useRef<Set<string>>(new Set());
-
-  /**
-   * 自動終了を見送ったコートについて、手動終了を促す案内を 1 試合につき 1 度だけ出す。
-   * 促す相手は進行を見ている管理者だけにする（終了操作の権限が無い人に言っても
-   * 動けないうえ、全員の画面に出ると単なるノイズになる）。
-   */
-  const noticeStaleAutoEnd = useCallback((courtId: number, matchStartedAt: number) => {
-    if (!isAdmin()) return;
-    const key = `${courtId}:${matchStartedAt}`;
-    if (staleAutoEndNoticedRef.current.has(key)) return;
-    staleAutoEndNoticedRef.current.add(key);
-    const label = ['①', '②', '③'][courtId - 1] || `コート${courtId}`;
-    toast.info(`${label} の試合が長く続いています。終わっていれば「終了」を押してください`);
-  }, [toast, isAdmin]);
-
   // 15 分を超えた試合を自動終了する。連続モードが ON でも、自動終了したコートには
   // 次の試合を自動配置しない（skipContinuous=true）。終了は startedAt をべき等キーと
   // するため、複数端末が同時に発火しても 1 度だけ成功する（他端末は already_finished）。
   //
-  // ただし「アプリが止まっていた間に 15 分を過ぎた」ケースでは自動終了しない
-  // （`autoEnd: true` で transaction 側が `stale_auto_end` を返す）。復帰した瞬間に
-  // 全コートがいっせいに終了し、ありえない試合時間が履歴に残るのを防ぐため。
-  // 代わりにコートごとに 1 度だけ手動終了を促す。
-  // 詳細: docs/plans/2026-09-08-auto-end-stale-timer.md
+  // アプリが止まっていた間に 15 分を過ぎた場合も、復帰した時点で終了する。その際
+  // 試合時間が膨らまないよう、transaction 側（`autoEnd: true`）が記録上の終了時刻を
+  // 「開始 + 15 分」までに丸める。
+  // 詳細: docs/plans/2026-09-30-auto-end-always.md
   const autoEndMatch = useCallback(async (courtId: number, matchStartedAt: number) => {
     if (!session?.id) return;
     try {
@@ -368,20 +350,16 @@ export function MainPage() {
       if (res.result === 'success') {
         const label = ['①', '②', '③'][courtId - 1] || `コート${courtId}`;
         toast.info(`${label} の試合が 15 分を超えたため自動終了しました`);
-        return;
-      }
-      if (res.result === 'stale_auto_end') {
-        noticeStaleAutoEnd(courtId, matchStartedAt);
       }
     } catch (err) {
       console.error('[AutoEndMatch] Transaction failed:', err);
     }
-  }, [session?.id, useStayDurationPriority, forceBulkAssignment, toast, noticeStaleAutoEnd]);
+  }, [session?.id, useStayDurationPriority, forceBulkAssignment, toast]);
 
   // プレイ中コートごとに「開始 + 15 分」の節目で autoEndMatch を発火させる setTimeout を
   // 仕掛ける。スコア更新などでの不要な再スケジュールを避けるため、依存はプレイ中コートの
-  // (id, startedAt) シグネチャに絞る。既に 15 分を大きく過ぎている（＝アプリが止まって
-  // いた）場合は発火させず、手動終了を促す案内に切り替える。
+  // (id, startedAt) シグネチャに絞る。既に 15 分を過ぎていれば（アプリが止まって
+  // いた・再訪した）即発火する。
   const playingCourtsSignature = useMemo(
     () => courts
       .filter((c) => c.isPlaying && c.startedAt > 0)
@@ -395,26 +373,16 @@ export function MainPage() {
     const playing = courts.filter((c) => c.isPlaying && c.startedAt > 0);
     if (playing.length === 0) return;
 
-    const timers = playing.flatMap((court) => {
-      const now = Date.now();
-      const delay = court.startedAt + MATCH_AUTO_END_MS - now;
-      // 期限を過ぎているのにまだ発火していない＝その間アプリが動いていなかった
-      // （サスペンド・タブ破棄・再訪）。無駄な transaction を投げずに案内だけ出す。
-      // transaction 側（`autoEnd: true`）にも同じガードがあり、そちらが最終判定。
-      if (delay <= 0 && !isAutoEndDue(court.startedAt, now)) {
-        noticeStaleAutoEnd(court.id, court.startedAt);
-        return [];
-      }
-      return [
-        setTimeout(() => {
-          void autoEndMatch(court.id, court.startedAt);
-        }, Math.max(0, delay)),
-      ];
+    const timers = playing.map((court) => {
+      const delay = court.startedAt + MATCH_AUTO_END_MS - Date.now();
+      return setTimeout(() => {
+        void autoEndMatch(court.id, court.startedAt);
+      }, Math.max(0, delay));
     });
     return () => timers.forEach(clearTimeout);
     // playingCourtsSignature がプレイ中コートの (id, startedAt) を表すため courts 自体は依存に含めない
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.id, playingCourtsSignature, autoEndMatch, noticeStaleAutoEnd]);
+  }, [session?.id, playingCourtsSignature, autoEndMatch]);
 
   // 配置したまま「開始」が押されずに 3 分経過したコートを自動的に試合開始にする。
   // 開始時刻は自動開始が走った時刻ではなく配置時刻（assignedAt）を採用する。
