@@ -182,17 +182,24 @@ function InsightVs({
   );
 }
 
-/** 分析列 3 行目: 判定チップ + 本人側の予想勝率。 */
-function InsightVerdict({ insight }: { insight: PlayerMatchInsight }) {
+/** 分析列 1 行目: 判定チップのみ。 */
+function InsightVerdictChip({ insight }: { insight: PlayerMatchInsight }) {
   const cls = VERDICT_CHIP_CLASSES[insight.verdict];
   return (
-    <span className="flex items-center justify-end gap-1 whitespace-nowrap">
-      <span className={`rounded-full text-[10px] px-1.5 font-bold ${cls.chip}`}>
+    <span className="rounded-full text-[10px] px-1.5 font-bold whitespace-nowrap justify-self-end">
+      <span className={cls.chip}>
         {VERDICT_LABELS[insight.verdict]}
       </span>
-      <span className={`text-xs font-bold ${cls.text}`}>
-        {Math.round(insight.ownWinProbability * 100)}%
-      </span>
+    </span>
+  );
+}
+
+/** 分析列 3 行目: 本人側の予想勝率。 */
+function InsightWinProbability({ insight }: { insight: PlayerMatchInsight }) {
+  const cls = VERDICT_CHIP_CLASSES[insight.verdict];
+  return (
+    <span className={`text-xs font-bold ${cls.text} whitespace-nowrap justify-self-end`}>
+      {Math.round(insight.ownWinProbability * 100)}%
     </span>
   );
 }
@@ -311,7 +318,7 @@ function MatchCard({
               onTapOrphan={onAssignOrphan && ((id) => onAssignOrphan(id, match, matchNumber))}
             />
           </div>
-          {insight && <InsightVerdict insight={insight} />}
+          {insight && <InsightVerdictChip insight={insight} />}
           <div className="flex flex-nowrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight text-muted-foreground whitespace-nowrap min-w-0 overflow-hidden">
             <span className="font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
             <TeamNames
@@ -346,7 +353,7 @@ function MatchCard({
               </span>
             )}
           </div>
-          {insight && <div />}
+          {insight && <InsightWinProbability insight={insight} />}
         </div>
 
         <div className="flex flex-col gap-0.5 flex-shrink-0">
