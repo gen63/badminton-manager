@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
   computePerformanceRatings,
   findPerformance,
+  reassignDisplayRanks,
   BASE_RATING,
 } from './performanceRating';
 import type { Match } from '../types/match';
 import type { Player } from '../types/player';
+import type { PlayerPerformance } from './performanceRating';
 
 const makePlayer = (name: string): Player => ({
   id: `id-${name}`,
@@ -376,6 +378,103 @@ describe('genderDeviation（男女別偏差値）', () => {
       expect(findPerformance(b, p.name)!.deviation).toBe(p.deviation);
       expect(findPerformance(b, p.name)!.rating).toBe(p.rating);
     }
+  });
+});
+
+describe('reassignDisplayRanks', () => {
+  /**
+   * プレイヤーのスタブを作成（テスト用に必要な最小限のフィールドを持つ）
+   */
+  const createPerformanceStub = (overrides: Partial<PlayerPerformance> = {}): PlayerPerformance => ({
+    name: 'Test',
+    wins: 0,
+    losses: 0,
+    total: 0,
+    winRate: null,
+    rating: BASE_RATING,
+    deviation: 50,
+    genderDeviation: null,
+    gender: null,
+    displayRank: 0,
+    opponentRating: BASE_RATING,
+    opponentDeviation: 50,
+    partnerRating: null,
+    partnerDeviation: null,
+    expectedWins: 0,
+    expectedWinRate: null,
+    winsAboveExpected: 0,
+    winsAboveExpectedError: 0,
+    isSignificant: false,
+    ...overrides,
+  });
+
+  it('空リストを渡すと空リストを返す', () => {
+    const result = reassignDisplayRanks([]);
+    expect(result).toEqual([]);
+  });
+
+  it('男女混在リストから女だけに絞ると 1 から振り直される', () => {
+    // 全員から女子だけに絞った場合のシミュレーション
+    const women = [
+      createPerformanceStub({ name: 'A', gender: 'F', deviation: 60 }),
+      createPerformanceStub({ name: 'B', gender: 'F', deviation: 55 }),
+      createPerformanceStub({ name: 'C', gender: 'F', deviation: 50 }),
+    ];
+    const result = reassignDisplayRanks(women);
+    expect(result[0].displayRank).toBe(1);
+    expect(result[1].displayRank).toBe(2);
+    expect(result[2].displayRank).toBe(3);
+  });
+
+  it('同じ偏差値は同順位で、次が飛ぶ（1,2,2,4 形式）', () => {
+    const players = [
+      createPerformanceStub({ name: 'A', deviation: 60 }),
+      createPerformanceStub({ name: 'B', deviation: 55 }),
+      createPerformanceStub({ name: 'C', deviation: 55 }),
+      createPerformanceStub({ name: 'D', deviation: 50 }),
+    ];
+    const result = reassignDisplayRanks(players);
+    expect(result.map((p) => p.displayRank)).toEqual([1, 2, 2, 4]);
+  });
+
+  it('すべてが同じ偏差値なら全員 1 位', () => {
+    const players = [
+      createPerformanceStub({ name: 'A', deviation: 50 }),
+      createPerformanceStub({ name: 'B', deviation: 50 }),
+      createPerformanceStub({ name: 'C', deviation: 50 }),
+    ];
+    const result = reassignDisplayRanks(players);
+    expect(result.map((p) => p.displayRank)).toEqual([1, 1, 1]);
+  });
+
+  it('元の配列を破壊しない（イミュータブル）', () => {
+    const original = [
+      createPerformanceStub({ name: 'A', displayRank: 1 }),
+      createPerformanceStub({ name: 'B', displayRank: 2 }),
+    ];
+    const originalCopy = JSON.parse(JSON.stringify(original));
+    reassignDisplayRanks(original);
+    expect(original).toEqual(originalCopy);
+  });
+
+  it('返却値の各要素は新しいオブジェクト（元の参照は保持しない）', () => {
+    const original = [
+      createPerformanceStub({ name: 'A', displayRank: 1 }),
+      createPerformanceStub({ name: 'B', displayRank: 2 }),
+    ];
+    const result = reassignDisplayRanks(original);
+    expect(result[0]).not.toBe(original[0]);
+    expect(result[1]).not.toBe(original[1]);
+  });
+
+  it('相対順序は変わらない（元のソート順を保持）', () => {
+    const players = [
+      createPerformanceStub({ name: 'Z', deviation: 60 }),
+      createPerformanceStub({ name: 'A', deviation: 50 }),
+      createPerformanceStub({ name: 'M', deviation: 55 }),
+    ];
+    const result = reassignDisplayRanks(players);
+    expect(result.map((p) => p.name)).toEqual(['Z', 'A', 'M']);
   });
 });
 

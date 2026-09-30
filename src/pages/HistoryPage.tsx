@@ -14,7 +14,7 @@ import { sendMatchesToSheets } from '../lib/sheetsApi';
 import { updateSession } from '../services/sessionService';
 import { isMatchOfPlayer, computePlayerRecord } from '../lib/matchFilter';
 import type { PlayerRecord } from '../lib/matchFilter';
-import { computePerformanceRatings, findPerformance } from '../lib/performanceRating';
+import { computePerformanceRatings, findPerformance, reassignDisplayRanks } from '../lib/performanceRating';
 import type { PlayerPerformance } from '../lib/performanceRating';
 import { useDevMode } from '../hooks/useDevMode';
 import { Copy, Trash2, Edit3, Clock, Upload, History, ChevronDown, ChevronUp, User, AlertTriangle, BarChart3, RotateCcw } from 'lucide-react';
@@ -825,12 +825,14 @@ export function HistoryPage() {
   const [genderFilter, setGenderFilter] = useState<'all' | 'M' | 'F'>('all');
 
   // 性別フィルターを適用した結果集計プレイヤー
+  // genderFilter !== 'all' の場合は、フィルタ後の集団内で順位を振り直す
   const filteredPerformancePlayers = useMemo(() => {
     if (!performanceResult) return [];
     if (genderFilter === 'all') {
       return performanceResult.players;
     }
-    return performanceResult.players.filter((p) => p.gender === genderFilter);
+    const filtered = performanceResult.players.filter((p) => p.gender === genderFilter);
+    return reassignDisplayRanks(filtered);
   }, [performanceResult, genderFilter]);
 
   if (!session) {
