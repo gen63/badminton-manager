@@ -94,7 +94,12 @@ export interface MatchInsight {
   /** チームAメンバーの偏差値の平均（整数。偏差値は全体偏差値スケール）。 */
   teamADeviation: number;
   teamBDeviation: number;
-  /** チームAの予想勝率（0〜1）。P(A勝) = sigmoid(mean(θ_A) − mean(θ_B))。 */
+  /**
+   * チームAの予想勝率（0〜1）。P(A勝) = sigmoid(mean(θ_A) − mean(θ_B))。
+   * θ は**その試合を除いて**推定し直した値（leave-one-out）。その試合の結果を
+   * 織り込んだ後付けの値にならないようにするため。その試合にしか出ない選手は θ=0。
+   * なお teamADeviation / teamBDeviation は全体推定の値（結果集計の偏差値と揃える）。
+   */
   winProbabilityA: number;
 }
 
@@ -107,12 +112,13 @@ export type MatchVerdict =
   | 'expected-loss';
 
 /**
- * 判定の閾値。1日分（10〜15試合）の推定は誤差が大きく、60%程度の「やや有利」で
- * 負けても不思議ではない。「勝てるはずの試合」「不利な試合」と言い切れるのは
- * 65% 以上 / 35% 以下からとし、その間は互角として扱う。
+ * 判定の閾値。予想勝率は leave-one-out（その試合を除いた推定）で出しており、
+ * 結果を織り込んだ値より 0.5 寄りになる。そのため互角の幅を 65/35 から 60/40 に
+ * 狭め、体感に合わせている。1日分の推定は誤差が大きいので、それでも 60% 以上 /
+ * 40% 以下までを「有利 / 不利」の目安とし、その間は互角として扱う。
  */
-export const FAVORED_THRESHOLD = 0.65; // これ以上＝有利（勝てるはずの試合）
-export const UNDERDOG_THRESHOLD = 0.35; // これ以下＝不利
+export const FAVORED_THRESHOLD = 0.6; // これ以上＝有利（勝てるはずの試合）
+export const UNDERDOG_THRESHOLD = 0.4; // これ以下＝不利
 
 /** 本人側の予想勝率と勝敗から試合の判定を返す。 */
 export function judgeMatch(ownWinProbability: number, won: boolean): MatchVerdict {
@@ -209,47 +215,60 @@ const teamStrength = (team: string[], theta: Map<string, number>): number => {
  */
 function solveStrengths(
   ratedMatches: RatedMatch[],
-  names: string[]
+  names: string[],
+  initialTheta?: ReadonlyMap<string, number>
 ): Map<string, number> {
-  const theta = new Map<string, number>(names.map((n) => [n, 0]));
-  if (names.length === 0) return theta;
+  const result = new Map<string, number>();
+  if (names.length === 0) return result;
+
+  // 名前を添字に引き直して配列演算にする（LOO で n 回呼ぶため高速化が必要）。
+  // initialTheta はウォームスタート用（収束先は同じで、反復回数だけが減る）。
+  const indexOf = new Map<string, number>(names.map((n, i) => [n, i]));
+  const theta = Float64Array.from(names, (n) => initialTheta?.get(n) ?? 0);
+  const teamsA = ratedMatches.map((m) => m.teamA.map((n) => indexOf.get(n)!));
+  const teamsB = ratedMatches.map((m) => m.teamB.map((n) => indexOf.get(n)!));
+  const gradient = new Float64Array(names.length);
+  const curvature = new Float64Array(names.length);
+  const mean = (team: number[]) => {
+    let sum = 0;
+    for (const i of team) sum += theta[i];
+    return sum / team.length;
+  };
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-    const gradient = new Map<string, number>(names.map((n) => [n, 0]));
-    const curvature = new Map<string, number>(names.map((n) => [n, 0]));
+    gradient.fill(0);
+    curvature.fill(0);
 
-    for (const match of ratedMatches) {
-      const predicted = sigmoid(
-        teamStrength(match.teamA, theta) - teamStrength(match.teamB, theta)
-      );
+    ratedMatches.forEach((match, k) => {
+      const a = teamsA[k];
+      const b = teamsB[k];
+      const predicted = sigmoid(mean(a) - mean(b));
       const residual = (match.winnerIsA ? 1 : 0) - predicted;
       const weight = predicted * (1 - predicted);
 
-      const nA = match.teamA.length;
-      for (const name of match.teamA) {
-        gradient.set(name, gradient.get(name)! + residual / nA);
-        curvature.set(name, curvature.get(name)! + weight / (nA * nA));
+      for (const i of a) {
+        gradient[i] += residual / a.length;
+        curvature[i] += weight / (a.length * a.length);
       }
-      const nB = match.teamB.length;
-      for (const name of match.teamB) {
-        gradient.set(name, gradient.get(name)! - residual / nB);
-        curvature.set(name, curvature.get(name)! + weight / (nB * nB));
+      for (const i of b) {
+        gradient[i] -= residual / b.length;
+        curvature[i] += weight / (b.length * b.length);
       }
-    }
+    });
 
     let maxStep = 0;
-    for (const name of names) {
-      const current = theta.get(name)!;
-      const g = gradient.get(name)! - PRIOR_STRENGTH * current;
-      const h = curvature.get(name)! + PRIOR_STRENGTH;
+    for (let i = 0; i < names.length; i++) {
+      const g = gradient[i] - PRIOR_STRENGTH * theta[i];
+      const h = curvature[i] + PRIOR_STRENGTH;
       const step = clamp(g / h, -MAX_STEP, MAX_STEP);
-      theta.set(name, current + step);
+      theta[i] += step;
       maxStep = Math.max(maxStep, Math.abs(step));
     }
     if (maxStep < CONVERGENCE_TOLERANCE) break;
   }
 
-  return theta;
+  names.forEach((n, i) => result.set(n, theta[i]));
+  return result;
 }
 
 /**
@@ -288,16 +307,23 @@ export function computePerformanceRatings(
     Math.round(
       sd > 1e-9 ? 50 + (10 * (teamStrength(team, theta) - mean)) / sd : 50
     );
+  // 予想勝率は LOO（その試合を除いて解き直した θ）、平均偏差は全体推定の θ。
   const matchInsights = new Map<string, MatchInsight>();
-  for (const match of ratedMatches) {
+  ratedMatches.forEach((match, index) => {
+    const rest = ratedMatches.filter((_, i) => i !== index);
+    const restNames = names.filter((n) =>
+      rest.some((m) => m.teamA.includes(n) || m.teamB.includes(n))
+    );
+    // 除外後の推定に現れない選手は theta に無く、teamStrength が 0 として扱う
+    const looTheta = solveStrengths(rest, restNames, theta);
     matchInsights.set(match.matchId, {
       teamADeviation: toTeamDeviation(match.teamA),
       teamBDeviation: toTeamDeviation(match.teamB),
       winProbabilityA: sigmoid(
-        teamStrength(match.teamA, theta) - teamStrength(match.teamB, theta)
+        teamStrength(match.teamA, looTheta) - teamStrength(match.teamB, looTheta)
       ),
     });
-  }
+  });
 
   const genderByName = new Map<string, 'M' | 'F'>();
   for (const p of players) {

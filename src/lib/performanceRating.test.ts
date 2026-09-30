@@ -483,21 +483,21 @@ describe('reassignDisplayRanks', () => {
 });
 
 describe('judgeMatch', () => {
-  it('有利（0.65 以上）: 勝ちは順当勝ち、負けは取りこぼし。境界を含む', () => {
-    expect(judgeMatch(0.65, true)).toBe('expected-win');
-    expect(judgeMatch(0.65, false)).toBe('missed-win');
+  it('有利（0.60 以上）: 勝ちは順当勝ち、負けは取りこぼし。境界を含む', () => {
+    expect(judgeMatch(0.60, true)).toBe('expected-win');
+    expect(judgeMatch(0.60, false)).toBe('missed-win');
     expect(judgeMatch(0.9, true)).toBe('expected-win');
   });
-  it('不利（0.35 以下）: 勝ちは番狂わせ勝ち、負けは順当負け。境界を含む', () => {
-    expect(judgeMatch(0.35, true)).toBe('upset-win');
-    expect(judgeMatch(0.35, false)).toBe('expected-loss');
+  it('不利（0.40 以下）: 勝ちは番狂わせ勝ち、負けは順当負け。境界を含む', () => {
+    expect(judgeMatch(0.40, true)).toBe('upset-win');
+    expect(judgeMatch(0.40, false)).toBe('expected-loss');
     expect(judgeMatch(0.1, false)).toBe('expected-loss');
   });
   it('中間は互角', () => {
     expect(judgeMatch(0.5, true)).toBe('even-win');
     expect(judgeMatch(0.5, false)).toBe('even-loss');
-    expect(judgeMatch(0.6499, false)).toBe('even-loss');
-    expect(judgeMatch(0.3501, true)).toBe('even-win');
+    expect(judgeMatch(0.5999, false)).toBe('even-loss');
+    expect(judgeMatch(0.4001, true)).toBe('even-win');
   });
 });
 
@@ -549,6 +549,75 @@ describe('matchInsights', () => {
   });
 });
 
+describe('matchInsights: leave-one-out', () => {
+  const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
+
+  it('勝者側の LOO 予想勝率は、その試合を含めて解いた値（in-sample）より 0.5 に近い', () => {
+    // シングルス: A が B に 3 勝、B が C に 1 勝。in-sample はテスト内で素朴に解く
+    const games = [
+      ['A', 'B', 'A'], ['A', 'B', 'A'], ['A', 'B', 'A'], ['B', 'C', 'A'],
+    ] as const;
+    const ms = games.map(([a, b, w]) => match([a], [b], w === 'A' ? 'A' : 'B'));
+    const theta: Record<string, number> = { A: 0, B: 0, C: 0 };
+    for (let it = 0; it < 5000; it++) {
+      const g: Record<string, number> = { A: 0, B: 0, C: 0 };
+      for (const [a, b] of games) {
+        const r = 1 - sigmoid(theta[a] - theta[b]);
+        g[a] += r;
+        g[b] -= r;
+      }
+      for (const n of Object.keys(theta)) theta[n] += 0.05 * (g[n] - 0.5 * theta[n]);
+    }
+    const inSample = sigmoid(theta.A - theta.B);
+    const result = computePerformanceRatings(ms, playersOf('A', 'B', 'C'));
+    const loo = result.matchInsights.get(ms[0].id)!.winProbabilityA;
+    expect(loo).toBeGreaterThanOrEqual(0.5);
+    expect(Math.abs(loo - 0.5)).toBeLessThan(Math.abs(inSample - 0.5));
+  });
+
+  it('その試合にしか出ない選手だけのチーム同士は 0.5', () => {
+    const others = [match(['A', 'B'], ['C', 'D'], 'A'), match(['A', 'C'], ['B', 'D'], 'B')];
+    const solo = match(['E', 'F'], ['G', 'H'], 'A');
+    const result = computePerformanceRatings(
+      [...others, solo],
+      playersOf('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H')
+    );
+    expect(result.matchInsights.get(solo.id)!.winProbabilityA).toBeCloseTo(0.5, 10);
+  });
+
+  it('平均偏差は全体推定のまま（LOO の影響を受けない）', () => {
+    const players = playersOf('A', 'B', 'C', 'D');
+    const ms = [
+      match(['A', 'B'], ['C', 'D'], 'A'),
+      match(['A', 'B'], ['C', 'D'], 'A'),
+      match(['A', 'C'], ['B', 'D'], 'A'),
+    ];
+    const result = computePerformanceRatings(ms, players);
+    const dev = (n: string) => findPerformance(result, n)!.deviation;
+    const i = result.matchInsights.get(ms[0].id)!;
+    expect(Math.abs(i.teamADeviation - (dev('A') + dev('B')) / 2)).toBeLessThanOrEqual(1);
+    expect(i.teamADeviation).toBeGreaterThan(50);
+  });
+
+  it('80 試合規模でも実行時間が現実的（緩い上限）', () => {
+    const names = Array.from({ length: 16 }, (_, i) => `P${i}`);
+    const players = playersOf(...names);
+    const ms: Match[] = [];
+    for (let i = 0; i < 80; i++) {
+      const p = (k: number) => names[(i * 3 + k * 5) % 16];
+      const t1 = [p(0), p(1)];
+      const t2 = [p(2), p(3)];
+      if (new Set([...t1, ...t2]).size < 4) continue;
+      ms.push(match(t1, t2, i % 3 === 0 ? 'B' : 'A'));
+    }
+    const start = performance.now();
+    const result = computePerformanceRatings(ms, players);
+    const elapsed = performance.now() - start;
+    expect(result.matchInsights.size).toBe(ms.length);
+    expect(elapsed).toBeLessThan(3000);
+  });
+});
+
 describe('getPlayerMatchInsight / countVerdicts', () => {
   const players = playersOf('A', 'B', 'C', 'D');
   const history = [
@@ -586,12 +655,12 @@ function round1(value: number) {
 
 describe('judgeMatchNeutral', () => {
   it('境界と中間を判定する', () => {
-    expect(judgeMatchNeutral(0.65)).toBe('expected');
+    expect(judgeMatchNeutral(0.60)).toBe('expected');
     expect(judgeMatchNeutral(0.9)).toBe('expected');
-    expect(judgeMatchNeutral(0.35)).toBe('upset');
+    expect(judgeMatchNeutral(0.40)).toBe('upset');
     expect(judgeMatchNeutral(0.1)).toBe('upset');
     expect(judgeMatchNeutral(0.5)).toBe('even');
-    expect(judgeMatchNeutral(0.6499)).toBe('even');
-    expect(judgeMatchNeutral(0.3501)).toBe('even');
+    expect(judgeMatchNeutral(0.5999)).toBe('even');
+    expect(judgeMatchNeutral(0.4001)).toBe('even');
   });
 });
