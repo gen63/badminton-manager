@@ -83,7 +83,7 @@ function TeamNames({
               key={`${id}-${i}`}
               type="button"
               onClick={() => onTapOrphan(id)}
-              className="min-w-0 break-words underline decoration-dotted underline-offset-2 text-amber-700 hover:text-amber-800 active:scale-95 transition-all duration-150"
+              className="min-w-0 truncate whitespace-nowrap underline decoration-dotted underline-offset-2 text-amber-700 hover:text-amber-800 active:scale-95 transition-all duration-150"
               title="誰だったか割り当てて修復する"
             >
               {getPlayerName(id)}
@@ -93,7 +93,7 @@ function TeamNames({
         return (
           <span
             key={`${id}-${i}`}
-            className={`min-w-0 break-words ${isHighlighted ? 'font-bold text-indigo-600' : ''}`}
+            className={`min-w-0 truncate whitespace-nowrap ${isHighlighted ? 'font-bold text-indigo-600' : ''}`}
           >
             {getPlayerName(id)}
           </span>
@@ -302,7 +302,7 @@ function MatchCard({
               : 'flex-1 min-w-0 space-y-0.5'
           }
         >
-          <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight font-bold text-foreground">
+          <div className="flex flex-nowrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight font-bold text-foreground whitespace-nowrap min-w-0 overflow-hidden">
             <TeamNames
               playerIds={leftIds}
               getPlayerName={getPlayerName}
@@ -312,7 +312,7 @@ function MatchCard({
             />
           </div>
           {insight && <InsightVerdict insight={insight} />}
-          <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight text-muted-foreground">
+          <div className="flex flex-nowrap items-baseline gap-x-1.5 gap-y-0.5 text-sm leading-tight text-muted-foreground whitespace-nowrap min-w-0 overflow-hidden">
             <span className="font-bold text-[10px] px-1.5 bg-card rounded-full py-0.5 flex-shrink-0">VS</span>
             <TeamNames
               playerIds={rightIds}
