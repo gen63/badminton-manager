@@ -1271,7 +1271,7 @@ describe('sessionMutations - setPracticeType', () => {
     expect(settings.forceBulkAssignment).toBe(false);
   });
 
-  it('楽 に切り替えると forceBulkAssignment を true 固定で同一 transaction で書き込む', async () => {
+  it('楽 に切り替えても forceBulkAssignment は既存値を維持する', async () => {
     const state = baseState({ settings: { practiceType: '複', forceBulkAssignment: false } });
     mockTransactionGet.mockResolvedValueOnce({
       exists: () => true,
@@ -1287,7 +1287,7 @@ describe('sessionMutations - setPracticeType', () => {
     };
     const settings = payload.gameState.settings as Record<string, unknown>;
     expect(settings.practiceType).toBe('楽');
-    expect(settings.forceBulkAssignment).toBe(true);
+    expect(settings.forceBulkAssignment).toBe(false);
   });
 
   it('複 に切り替えると forceBulkAssignment は既存値を維持する', async () => {

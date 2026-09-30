@@ -677,8 +677,9 @@ function buildSessionData(
         continuousMatchMode: true,
         // 男女比調整OFF / 試合回数優先 / 予約制限+1 を明示し、端末ローカルの値に依存させない。
         ...NEW_SESSION_DEFAULTS,
-        // 単＝OFF固定 / 楽＝ON固定 / 複＝新デフォルトの ON。未設定は受信側で `?? true`
+        // 単＝OFF固定 / 複・楽＝新デフォルトの ON。未設定は受信側で `?? true`
         // になるため、明示しないと単が誤って ON になってしまう（不変条件を明示する）。
+        // 楽の初期化はここまで。以降ユーザーが変更できる（固定ではない）。
         forceBulkAssignment: event.note !== '単',
       },
     },

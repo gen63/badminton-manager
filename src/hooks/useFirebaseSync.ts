@@ -245,7 +245,7 @@ export function useFirebaseSync() {
         }
 
         // 同期対象の設定フィールドのみ反映（端末ローカル設定は触らない）。
-        // setPracticeType は副作用付き（'単'→forceBulkAssignment:false, '楽'→true）なので
+        // setPracticeType は副作用付き（'単'→forceBulkAssignment:false）なので
         // 必ず action 経由で呼ぶ。recordScores / continuousMatchMode は副作用なしだが
         // 一貫性のため同様に action 経由に統一。
         const s = useSettingsStore.getState();

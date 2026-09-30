@@ -154,7 +154,7 @@ describe('useFirebaseSync - onSnapshot direct setState', () => {
 });
 
 describe('useFirebaseSync - settings 反映の副作用', () => {
-  it("practiceType '楽' 受信で forceBulkAssignment=true まで連動する", () => {
+  it("practiceType '楽' 受信でも forceBulkAssignment は既存値を維持する", () => {
     setSharedSession();
     useSettingsStore.setState({ practiceType: '複', forceBulkAssignment: false });
     renderHook(() => useFirebaseSync());
@@ -167,13 +167,13 @@ describe('useFirebaseSync - settings 反映の副作用', () => {
           courts: [],
           matchHistory: [],
           reservations: [],
-          settings: { practiceType: '楽' },
+          settings: { practiceType: '楽', forceBulkAssignment: false },
         },
       });
     });
 
     expect(useSettingsStore.getState().practiceType).toBe('楽');
-    expect(useSettingsStore.getState().forceBulkAssignment).toBe(true);
+    expect(useSettingsStore.getState().forceBulkAssignment).toBe(false);
   });
 
   it('reservationBlockThreshold をリモートからストアにミラーする', () => {

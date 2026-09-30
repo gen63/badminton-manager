@@ -431,10 +431,9 @@ export function SessionCreate() {
           {/* 一括配置強制 */}
           {(() => {
             const isSinglesMode = practiceType === '単';
-            const isRelaxedMode = practiceType === '楽';
-            const isLocked = isSinglesMode || isRelaxedMode;
-            const onActive = isRelaxedMode || (!isSinglesMode && forceBulkAssignment);
-            const offActive = isSinglesMode || (!isRelaxedMode && !forceBulkAssignment);
+            const isLocked = isSinglesMode;
+            const onActive = !isSinglesMode && forceBulkAssignment;
+            const offActive = isSinglesMode || (!isSinglesMode && !forceBulkAssignment);
             return (
               <div>
                 <label className="label">一括配置強制</label>
@@ -463,8 +462,6 @@ export function SessionCreate() {
                 <p className="text-[10px] text-muted-foreground mt-1">
                   {isSinglesMode
                     ? 'シングルスでは一括配置強制は無効です'
-                    : isRelaxedMode
-                    ? '楽では一括配置強制が適用されます'
                     : forceBulkAssignment
                     ? '余りが少ない時は2面空くまで待ってまとめて配置'
                     : '空きが出たら1面ずつ即座に配置'}
