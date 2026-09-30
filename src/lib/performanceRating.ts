@@ -91,14 +91,18 @@ export interface PlayerPerformance {
 
 /** 試合ごとの分析（履歴画面の開発モード表示用）。チーム A/B は Match の teamA/teamB。 */
 export interface MatchInsight {
-  /** チームAメンバーの偏差値の平均（整数。偏差値は全体偏差値スケール）。 */
+  /**
+   * チームAメンバーの平均偏差（整数）。winProbabilityA と同じ LOO の θ（試合前の見込み）
+   * から計算する。物差し（mean / sd）は全体推定の θ のもので、結果集計の偏差値と
+   * 同じスケール。ただし θ が LOO のため、結果集計の個人偏差値とは値が異なり得る。
+   */
   teamADeviation: number;
   teamBDeviation: number;
   /**
    * チームAの予想勝率（0〜1）。P(A勝) = sigmoid(mean(θ_A) − mean(θ_B))。
    * θ は**その試合を除いて**推定し直した値（leave-one-out）。その試合の結果を
    * 織り込んだ後付けの値にならないようにするため。その試合にしか出ない選手は θ=0。
-   * なお teamADeviation / teamBDeviation は全体推定の値（結果集計の偏差値と揃える）。
+   * teamADeviation / teamBDeviation も同じ LOO の θ から出す（大小と判定を食い違わせない）。
    */
   winProbabilityA: number;
 }
@@ -303,11 +307,11 @@ export function computePerformanceRatings(
     thetaValues.reduce((sum, v) => sum + (v - mean) ** 2, 0) / thetaValues.length;
   const sd = Math.sqrt(variance);
 
-  const toTeamDeviation = (team: string[]): number =>
-    Math.round(
-      sd > 1e-9 ? 50 + (10 * (teamStrength(team, theta) - mean)) / sd : 50
-    );
-  // 予想勝率は LOO（その試合を除いて解き直した θ）、平均偏差は全体推定の θ。
+  // 平均偏差の物差し（mean / sd）は全体推定の θ のものを使う（結果集計の偏差値と
+  // 同じ物差しに載せるため。LOO ごとに正規化し直さない）。θ 自体は呼び出し側が渡す。
+  const toTeamDeviation = (team: string[], t: Map<string, number>): number =>
+    Math.round(sd > 1e-9 ? 50 + (10 * (teamStrength(team, t) - mean)) / sd : 50);
+  // 予想勝率も平均偏差も LOO（その試合を除いて解き直した θ）＝試合前の見込み。
   const matchInsights = new Map<string, MatchInsight>();
   ratedMatches.forEach((match, index) => {
     const rest = ratedMatches.filter((_, i) => i !== index);
@@ -317,8 +321,8 @@ export function computePerformanceRatings(
     // 除外後の推定に現れない選手は theta に無く、teamStrength が 0 として扱う
     const looTheta = solveStrengths(rest, restNames, theta);
     matchInsights.set(match.matchId, {
-      teamADeviation: toTeamDeviation(match.teamA),
-      teamBDeviation: toTeamDeviation(match.teamB),
+      teamADeviation: toTeamDeviation(match.teamA, looTheta),
+      teamBDeviation: toTeamDeviation(match.teamB, looTheta),
       winProbabilityA: sigmoid(
         teamStrength(match.teamA, looTheta) - teamStrength(match.teamB, looTheta)
       ),
