@@ -237,10 +237,10 @@ function InsightVs({
 /** 分析列 1 行目: 判定チップのみ。 */
 function InsightVerdictChip({ insight }: { insight: MatchInsightView }) {
   return (
-    <span className="rounded-full text-[10px] px-1.5 font-bold whitespace-nowrap flex justify-end">
-      <span className={insight.chipClass}>
-        {insight.label}
-      </span>
+    <span
+      className={`justify-self-end rounded-full text-[10px] px-1.5 font-bold whitespace-nowrap ${insight.chipClass}`}
+    >
+      {insight.label}
     </span>
   );
 }
