@@ -8,10 +8,13 @@ import {
   STANDBY_CLOSE_START_MS,
   buildFinishBlockedMessage,
   buildFinishConfirmMessage,
+  isOperatorExcluded,
+  filterOperatorIds,
   type FinishOperationGuide,
 } from './finishOperationGuide';
 import { MATCH_CALL_THRESHOLD_MS } from './gameOperations';
 import type { Court } from '../types/court';
+import type { Player } from '../types/player';
 import { EMPTY_COURT_STATE } from '../types/court';
 
 const NOW = 1_700_000_000_000;
@@ -379,5 +382,78 @@ describe('buildFinishConfirmMessage', () => {
     expect(
       buildFinishConfirmMessage({ ...base, teamANames: ['太郎'], teamBNames: ['一郎'] }),
     ).toContain('太郎 vs 一郎');
+  });
+});
+
+const mkPlayer = (id: string, name: string, over: Partial<Player> = {}): Player => ({
+  id,
+  name,
+  isResting: false,
+  gamesPlayed: 0,
+  lastPlayedAt: 0,
+  activatedAt: 0,
+  ...over,
+});
+
+describe('isOperatorExcluded / filterOperatorIds', () => {
+  it('名前に「外部」を含む人は担当外（接頭辞・括弧付きも含む）', () => {
+    expect(isOperatorExcluded(mkPlayer('a', '外部はなこ'))).toBe(true);
+    expect(isOperatorExcluded(mkPlayer('a', '【外部】はなこ'))).toBe(true);
+    expect(isOperatorExcluded(mkPlayer('a', '太郎（外部）'))).toBe(true);
+  });
+
+  it('通常の人は担当外ではない', () => {
+    expect(isOperatorExcluded(mkPlayer('a', '太郎'))).toBe(false);
+    expect(isOperatorExcluded(mkPlayer('a', '太郎', { excludeFromOperator: false }))).toBe(false);
+  });
+
+  it('excludeFromOperator が true なら担当外', () => {
+    expect(isOperatorExcluded(mkPlayer('a', '太郎', { excludeFromOperator: true }))).toBe(true);
+  });
+
+  it('filterOperatorIds は担当外を除く（players に居ない ID は残す）', () => {
+    const players = [
+      mkPlayer('a', '太郎'),
+      mkPlayer('b', '外部はなこ'),
+      mkPlayer('c', '次郎', { excludeFromOperator: true }),
+    ];
+    const result = filterOperatorIds(new Set(['a', 'b', 'c', 'zzz']), players);
+    expect([...result].sort()).toEqual(['a', 'zzz']);
+  });
+});
+
+describe('担当外を除いた担当での判定', () => {
+  const players = [mkPlayer('ext', '外部はなこ'), mkPlayer('me', '自分')];
+
+  it('確定が外部のみなら担当が空になり、canFinishGame は全員に開放される', () => {
+    const operatorIds = filterOperatorIds(new Set(['ext']), players);
+    expect(operatorIds.size).toBe(0);
+    expect(canFinishGame({ isAdmin: false, certainIds: operatorIds, myPlayerId: 'me' })).toBe(true);
+  });
+
+  it('外部と通常メンバーが確定なら、通常メンバーだけが終了できる', () => {
+    const operatorIds = filterOperatorIds(new Set(['ext', 'me']), players);
+    expect(canFinishGame({ isAdmin: false, certainIds: operatorIds, myPlayerId: 'ext' })).toBe(false);
+    expect(canFinishGame({ isAdmin: false, certainIds: operatorIds, myPlayerId: 'me' })).toBe(true);
+  });
+
+  it('buildFinishOperationGuide の待機メンバーに外部が含まれない', () => {
+    const guide = buildFinishOperationGuide({
+      courts: [playingCourt(1, startedAtForElapsed(MATCH_CALL_THRESHOLD_MS))],
+      certainIds: filterOperatorIds(new Set(['ext', 'me']), players),
+      now: NOW,
+      showCourtNumber: true,
+    });
+    expect(guide?.playerIds).toEqual(['me']);
+  });
+
+  it('確定が外部のみならガイドは出ない', () => {
+    const guide = buildFinishOperationGuide({
+      courts: [playingCourt(1, startedAtForElapsed(MATCH_CALL_THRESHOLD_MS))],
+      certainIds: filterOperatorIds(new Set(['ext']), players),
+      now: NOW,
+      showCourtNumber: true,
+    });
+    expect(guide).toBeNull();
   });
 });

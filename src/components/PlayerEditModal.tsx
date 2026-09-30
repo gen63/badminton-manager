@@ -1,18 +1,32 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { parsePlayerInput } from '../lib/utils';
+import { isOperatorExcluded } from '../lib/finishOperationGuide';
 
 interface PlayerEditModalProps {
   playerName: string;
   playerGender?: 'M' | 'F';
+  /** 「終了操作の担当外」の現在値（管理者が設定） */
+  playerExcludeFromOperator?: boolean;
+  /** 管理者のみ担当外トグルを出す */
+  isAdmin?: boolean;
   existingNames: string[];
-  onSave: (name: string, gender?: 'M' | 'F', rating?: number) => void;
+  onSave: (name: string, gender?: 'M' | 'F', rating?: number, excludeFromOperator?: boolean) => void;
   onCancel: () => void;
 }
 
-export function PlayerEditModal({ playerName, playerGender, existingNames, onSave, onCancel }: PlayerEditModalProps) {
+export function PlayerEditModal({
+  playerName,
+  playerGender,
+  playerExcludeFromOperator,
+  isAdmin = false,
+  existingNames,
+  onSave,
+  onCancel,
+}: PlayerEditModalProps) {
   const [name, setName] = useState(playerName);
   const [gender, setGender] = useState<'M' | 'F' | undefined>(playerGender);
+  const [excludeFromOperator, setExcludeFromOperator] = useState(playerExcludeFromOperator === true);
   const [error, setError] = useState('');
 
   const handleSave = () => {
@@ -26,7 +40,7 @@ export function PlayerEditModal({ playerName, playerGender, existingNames, onSav
       setError('同じ名前の参加者が既に存在します');
       return;
     }
-    onSave(parsedName, parsedGender ?? gender, rating);
+    onSave(parsedName, parsedGender ?? gender, rating, excludeFromOperator);
   };
 
   return (
@@ -95,6 +109,37 @@ export function PlayerEditModal({ playerName, playerGender, existingNames, onSav
               </button>
             </div>
           </div>
+
+          {/* 終了操作の担当外（管理者のみ）。名前に「外部」を含む人は常に担当外 */}
+          {isAdmin && (
+            <div>
+              <label className="label">終了操作の担当</label>
+              {isOperatorExcluded({ name: parsePlayerInput(name)?.name ?? name, excludeFromOperator: false }) ? (
+                <p className="text-xs text-muted-foreground">
+                  名前に「外部」を含むため、常に担当外です（設定不要）
+                </p>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={excludeFromOperator}
+                    onClick={() => setExcludeFromOperator((v) => !v)}
+                    className={`w-full py-2 px-3 rounded-lg font-medium transition-colors ${
+                      excludeFromOperator
+                        ? 'bg-gray-500 text-white'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    }`}
+                  >
+                    終了操作の担当外{excludeFromOperator ? '：ON' : '：OFF'}
+                  </button>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    ONにすると、次の試合に入る予測でも終了操作の担当になりません
+                  </p>
+                </>
+              )}
+            </div>
+          )}
 
           {/* エラーメッセージ */}
           <div className="min-h-[20px]">

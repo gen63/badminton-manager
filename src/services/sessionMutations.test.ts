@@ -217,6 +217,14 @@ describe('sessionMutations - players', () => {
     expect(next.players[0]).toMatchObject({ name: 'Alice2', gender: 'F' });
   });
 
+  it('computeUpdatePlayer: excludeFromOperator を設定・解除できる', () => {
+    const state = baseState({ players: [makePlayer('a', { name: 'Alice' })] });
+    const on = computeUpdatePlayer(state, 'a', { excludeFromOperator: true });
+    expect(on.players[0].excludeFromOperator).toBe(true);
+    const off = computeUpdatePlayer(on, 'a', { excludeFromOperator: false });
+    expect(off.players[0].excludeFromOperator).toBe(false);
+  });
+
   describe('computeToggleRest', () => {
     it('isResting:true → false かつ activatedAt が 0 なら now を入れる', () => {
       const state = baseState({

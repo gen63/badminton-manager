@@ -33,6 +33,7 @@ import { buildPracticeEndAnnouncement, formatHHMM, isPastEndOverrideActive, isPa
 import {
   canFinishGame,
   buildFinishBlockedMessage,
+  filterOperatorIds,
   buildFinishConfirmMessage,
   FINISH_CONFIRM_THRESHOLD_MS,
 } from '../lib/finishOperationGuide';
@@ -562,6 +563,13 @@ export function MainPage() {
     [players, currentUser],
   );
 
+  // 終了操作の担当＝ほぼ確定から担当外（名前に「外部」・管理者設定）を除いたもの。
+  // 4:30 の呼び出し通知・管理者アナウンスは「試合に入る人」向けなので certainIds のまま。
+  const operatorIds = useMemo(
+    () => filterOperatorIds(nextMatchPrediction.certainIds, players),
+    [nextMatchPrediction.certainIds, players],
+  );
+
   // 表示対象（ほぼ確定 + 候補）を入りやすい順に並べる
   // （出現率の高い順、同率なら試合数の少ない順）
   // 呼び出し通知の対象メンバー名（certainIds 絞り込み）にも使うため、
@@ -740,7 +748,7 @@ export function MainPage() {
   // 居ないときのフォールバックも含めて判定は `canFinishGame` に持たせている。
   const canFinish = canFinishGame({
     isAdmin: isAdmin(),
-    certainIds: nextMatchPrediction.certainIds,
+    certainIds: operatorIds,
     myPlayerId,
   });
 
@@ -749,7 +757,7 @@ export function MainPage() {
   // 並びは predictedPlayers と同じ「入りやすい順」。
   const handleFinishBlocked = () => {
     const operatorNames = predictedPlayers
-      .filter((p) => nextMatchPrediction.certainIds.has(p.id))
+      .filter((p) => operatorIds.has(p.id))
       .map((p) => p.name);
     toast.warning(buildFinishBlockedMessage(operatorNames));
   };
@@ -1304,7 +1312,7 @@ export function MainPage() {
           <PresenceIndicator presence={remotePresence} currentUser={currentUser} />
           <FinishOperationGuide
             courts={courts}
-            certainIds={nextMatchPrediction.certainIds}
+            certainIds={operatorIds}
             players={predictedPlayers}
             selfPlayerId={myPlayerId}
             showCourtNumber={courts.length > 1}
@@ -1622,6 +1630,7 @@ export function MainPage() {
             <NextMatchPredictionBar
               players={predictedPlayers}
               certainIds={nextMatchPrediction.certainIds}
+              operatorIds={operatorIds}
             />
 
             <div className="grid grid-cols-3 gap-2">

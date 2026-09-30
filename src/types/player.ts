@@ -3,6 +3,7 @@ export interface Player {
   name: string;
   rating?: number;
   gender?: 'M' | 'F';
+  excludeFromOperator?: boolean; // 管理者が設定する「終了操作の担当外」（名前に「外部」を含む人は設定に関わらず担当外）
   isResting: boolean;
   gamesPlayed: number;
   lastPlayedAt: number; // 最後にプレイした時刻（Unix timestamp、未設定時は0）

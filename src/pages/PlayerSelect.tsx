@@ -69,7 +69,7 @@ export function PlayerSelect() {
     await writer.toggleOperationStatus(playerId, 'payment');
   });
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number; isPaid: boolean } | null>(null);
-  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F' } | null>(null);
+  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean } | null>(null);
   // アコーディオンの開閉。null = ユーザー未操作（自動判定に委ねる）。
   // 未操作なら全員完了時に自動で開き、それ以外は既定で閉じる。ユーザーが一度
   // タップしたらその選択（override）を優先し、以降は allComplete の変化で
@@ -116,15 +116,28 @@ export function PlayerSelect() {
     await writer.removePlayer(player.id);
   };
 
-  const handleEdit = (player: { id: string; name: string; gender?: 'M' | 'F' }) => {
-    setEditModalPlayer({ id: player.id, name: player.name, gender: player.gender });
+  const handleEdit = (player: { id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean }) => {
+    setEditModalPlayer({
+      id: player.id,
+      name: player.name,
+      gender: player.gender,
+      excludeFromOperator: player.excludeFromOperator,
+    });
   };
 
-  const handleEditSave = async (name: string, gender?: 'M' | 'F', rating?: number) => {
+  const handleEditSave = async (
+    name: string,
+    gender?: 'M' | 'F',
+    rating?: number,
+    excludeFromOperator?: boolean,
+  ) => {
     if (!editModalPlayer) return;
     const oldName = editModalPlayer.name;
-    const updates: { name: string; gender?: 'M' | 'F'; rating?: number } = { name, gender };
+    const updates: { name: string; gender?: 'M' | 'F'; rating?: number; excludeFromOperator?: boolean } = { name, gender };
     if (rating !== undefined) updates.rating = rating;
+    // 担当外は管理者だけが変えられる（非管理者にはトグルが出ないので値を触らない）。
+    // OFF は false を書く（undefined は sanitize で落ちて更新されないため）
+    if (isAdmin && excludeFromOperator !== undefined) updates.excludeFromOperator = excludeFromOperator;
     const result = await writer.updatePlayer(editModalPlayer.id, updates);
     // 自己 rename の場合は localStorage の currentUser を新名へ追従させる。
     // sessionMutations.updatePlayer は createdBy / admins / participants を新名に
@@ -378,6 +391,8 @@ export function PlayerSelect() {
         <PlayerEditModal
           playerName={editModalPlayer.name}
           playerGender={editModalPlayer.gender}
+          playerExcludeFromOperator={editModalPlayer.excludeFromOperator}
+          isAdmin={isAdmin}
           existingNames={players.filter(p => p.id !== editModalPlayer.id).map(p => p.name)}
           onSave={handleEditSave}
           onCancel={() => setEditModalPlayer(null)}

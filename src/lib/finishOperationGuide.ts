@@ -29,8 +29,33 @@
  */
 
 import type { Court } from '../types/court';
+import type { Player } from '../types/player';
 import { MATCH_CALL_THRESHOLD_MS } from './gameOperations';
 import { maxPlayingCourt, maxPlayingElapsedMs } from './nextMatchCall';
+
+/** 終了操作の担当にしない名前の目印（初参加の外部メンバーには難易度が高いため） */
+const OPERATOR_EXCLUDED_NAME_MARKER = '外部';
+
+/**
+ * 終了操作の担当から外す人か。名前に「外部」を含む（`【外部】はなこ` 等）人は常に
+ * 担当外、それ以外は管理者が付ける `excludeFromOperator` に従う。
+ */
+export function isOperatorExcluded(
+  player: Pick<Player, 'name' | 'excludeFromOperator'>,
+): boolean {
+  return player.name.includes(OPERATOR_EXCLUDED_NAME_MARKER) || player.excludeFromOperator === true;
+}
+
+/**
+ * 配置予測の「ほぼ確定」メンバーから担当外の人を除いた **操作担当** の集合。
+ * 4:30 の呼び出し通知は「試合に入る人への呼び出し」なので `certainIds` のまま使い、
+ * 待機ガイド・終了ボタン権限・案内文言だけこの集合を使う。
+ * `players` に居ない ID は判定できないので担当のまま残す。
+ */
+export function filterOperatorIds(certainIds: Set<string>, players: Player[]): Set<string> {
+  const excluded = new Set(players.filter(isOperatorExcluded).map((p) => p.id));
+  return new Set(Array.from(certainIds).filter((id) => !excluded.has(id)));
+}
 
 /**
  * 「ほぼ同時に始まった」とみなす経過時間の差（60秒）。
@@ -61,13 +86,13 @@ export interface FinishOperationGuide {
    * 1面運用（`showCourtNumber === false`）では空配列。
    */
   courtIds: number[];
-  /** 操作の担当（`certainIds` のうちまだコートに乗っていない人） */
+  /** 操作の担当（`certainIds`（担当外除外済み）のうちまだコートに乗っていない人） */
   playerIds: string[];
 }
 
 export interface FinishOperationGuideArgs {
   courts: Court[];
-  /** 配置予測の「ほぼ確定」メンバー（候補 likelyIds は対象外） */
+  /** 操作担当＝配置予測の「ほぼ確定」から担当外を除いたもの（`filterOperatorIds`。候補 likelyIds は対象外） */
   certainIds: Set<string>;
   now: number;
   /** コート番号を出すか。呼び出し側が `courts.length > 1` で判断する */
@@ -182,7 +207,7 @@ export function getNextFinishGuideDelay(courts: Court[], now: number): number | 
 export interface CanFinishGameArgs {
   /** `useSessionStore.isAdmin()`（作成者 / 管理権限 / 開発モードを含む） */
   isAdmin: boolean;
-  /** 配置予測の「ほぼ確定」メンバー＝操作担当（候補 likelyIds は対象外） */
+  /** 操作担当（`filterOperatorIds` 済み。候補 likelyIds・担当外は対象外） */
   certainIds: Set<string>;
   /** 自分の Player ID。特定できないときは null */
   myPlayerId: string | null;
@@ -198,7 +223,8 @@ export interface CanFinishGameArgs {
  * **担当が 1 人も居ないときは全員に開放する**（フォールバック）。待機者が定員に
  * 満たない練習終盤や、配置が成立せず予測不能（`scenarioCount === 0`）のときは
  * `certainIds` が空になり得るため、そのまま絞ると管理者以外は誰も試合を終われず
- * 運用が止まってしまう。
+ * 運用が止まってしまう。確定が外部メンバーだけのときも、担当外を除いた結果が空に
+ * なるのでこのフォールバックで全員に開放される。
  */
 export function canFinishGame({ isAdmin, certainIds, myPlayerId }: CanFinishGameArgs): boolean {
   if (isAdmin) return true;
