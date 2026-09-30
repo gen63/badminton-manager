@@ -541,57 +541,62 @@ function PerformanceRanking({
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
-                    {p.displayRank}
-                  </span>
-                  <span className="flex-1 min-w-0 truncate text-sm font-bold text-foreground">
-                    {p.name}
-                    {p.name === currentUser && (
-                      <span className="text-[10px] font-normal text-muted-foreground">
-                        （自分）
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
+                        {p.displayRank}
                       </span>
-                    )}
-                    <span className="text-[10px] font-normal text-muted-foreground">
-                      {' '}{p.total}試合
+                      <span className="truncate text-sm font-bold text-foreground">
+                        {p.name}
+                        {p.name === currentUser && (
+                          <span className="text-[10px] font-normal text-muted-foreground">
+                            （自分）
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-[10px] font-normal text-muted-foreground whitespace-nowrap">
+                        {p.total}試合
+                      </span>
+                      <span className="text-[10px] font-normal text-muted-foreground whitespace-nowrap">
+                        {p.wins}勝{p.losses}敗（{p.winRate}%）
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 pl-7 text-[11px] text-muted-foreground">
+                      <span className="whitespace-nowrap">
+                        相手平均 偏差{p.opponentDeviation}
+                      </span>
+                      <span
+                        className={`whitespace-nowrap ${
+                          p.isSignificant
+                            ? p.winsAboveExpected > 0
+                              ? 'font-medium text-emerald-600'
+                              : 'font-medium text-orange-600'
+                            : ''
+                        }`}
+                        title={
+                          p.isSignificant
+                            ? '偶然では説明しにくい差'
+                            : 'この試合数では誤差の範囲'
+                        }
+                      >
+                        期待比 {formatSigned(p.winsAboveExpected)}勝
+                        <span className="opacity-60">
+                          {' '}
+                          ±{p.winsAboveExpectedError.toFixed(1)}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end flex-shrink-0 gap-0.5">
+                    <span className="text-sm font-bold text-foreground">
+                      偏差 {p.deviation}
                     </span>
-                  </span>
-                  <span className="text-sm font-bold text-foreground flex-shrink-0">
-                    偏差 {p.deviation}
                     {p.genderDeviation !== null && (
-                      <span className="text-[11px] font-normal text-muted-foreground">
-                        {' '}
-                        / {p.gender === 'F' ? '女' : '男'} {p.genderDeviation}
+                      <span className="text-[11px] text-muted-foreground">
+                        {p.gender === 'F' ? '女' : '男'} {p.genderDeviation}
                       </span>
                     )}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 pl-7 text-[11px] text-muted-foreground">
-                  <span className="whitespace-nowrap">
-                    {p.wins}勝{p.losses}敗（{p.winRate}%）
-                  </span>
-                  <span className="whitespace-nowrap">
-                    相手平均 偏差{p.opponentDeviation}
-                  </span>
-                  <span
-                    className={`whitespace-nowrap ${
-                      p.isSignificant
-                        ? p.winsAboveExpected > 0
-                          ? 'font-medium text-emerald-600'
-                          : 'font-medium text-orange-600'
-                        : ''
-                    }`}
-                    title={
-                      p.isSignificant
-                        ? '偶然では説明しにくい差'
-                        : 'この試合数では誤差の範囲'
-                    }
-                  >
-                    期待比 {formatSigned(p.winsAboveExpected)}勝
-                    <span className="opacity-60">
-                      {' '}
-                      ±{p.winsAboveExpectedError.toFixed(1)}
-                    </span>
-                  </span>
+                  </div>
                 </div>
               </button>
             );
