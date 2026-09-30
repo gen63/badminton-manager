@@ -14,7 +14,7 @@ import { sendMatchesToSheets } from '../lib/sheetsApi';
 import { updateSession } from '../services/sessionService';
 import { isMatchOfPlayer, computePlayerRecord } from '../lib/matchFilter';
 import type { PlayerRecord } from '../lib/matchFilter';
-import { computePerformanceRatings, findPerformance } from '../lib/performanceRating';
+import { computePerformanceRatings, findPerformance, reassignDisplayRanks } from '../lib/performanceRating';
 import type { PlayerPerformance } from '../lib/performanceRating';
 import { useDevMode } from '../hooks/useDevMode';
 import { Copy, Trash2, Edit3, Clock, Upload, History, ChevronDown, ChevronUp, User, AlertTriangle, BarChart3, RotateCcw } from 'lucide-react';
@@ -821,6 +821,20 @@ export function HistoryPage() {
     });
   };
 
+  // 結果集計の性別フィルター（全員 / 男 / 女）。開発モード限定。永続化しない。
+  const [genderFilter, setGenderFilter] = useState<'all' | 'M' | 'F'>('all');
+
+  // 性別フィルターを適用した結果集計プレイヤー
+  // genderFilter !== 'all' の場合は、フィルタ後の集団内で順位を振り直す
+  const filteredPerformancePlayers = useMemo(() => {
+    if (!performanceResult) return [];
+    if (genderFilter === 'all') {
+      return performanceResult.players;
+    }
+    const filtered = performanceResult.players.filter((p) => p.gender === genderFilter);
+    return reassignDisplayRanks(filtered);
+  }, [performanceResult, genderFilter]);
+
   if (!session) {
     return <Navigate to="/" replace />;
   }
@@ -1093,20 +1107,56 @@ export function HistoryPage() {
 
               {/* 結果集計（開発モード限定） */}
               {performanceResult && performanceResult.players.length > 0 && (
-                <PerformanceRanking
-                  players={performanceResult.players}
-                  ratedMatchCount={performanceResult.ratedMatchCount}
-                  currentUser={currentUser}
-                  selectedName={filterPlayerName}
-                  onSelect={(name) => {
-                    setFilterPlayerName(name === filterPlayerName ? null : name);
-                    setRankingCollapsed(true);
-                    setSkipScoredAutoCollapse(true);
-                    setScoredCollapsed(false);
-                  }}
-                  collapsed={rankingCollapsed}
-                  onToggle={handleToggleRanking}
-                />
+                <>
+                  {/* 結果集計の性別フィルター（全員 / 男 / 女） */}
+                  <div
+                    role="group"
+                    aria-label="結果集計の性別フィルター"
+                    className="flex gap-1.5"
+                  >
+                    {(['all', 'M', 'F'] as const).map((gender) => {
+                      const label = gender === 'all' ? '全員' : gender === 'M' ? '男' : '女';
+                      const isSelected = genderFilter === gender;
+                      return (
+                        <button
+                          key={gender}
+                          type="button"
+                          onClick={() => setGenderFilter(gender)}
+                          aria-pressed={isSelected}
+                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors active:scale-[0.98] ${
+                            isSelected
+                              ? 'bg-indigo-100 text-indigo-700 font-bold'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* 結果集計の本体 */}
+                  {filteredPerformancePlayers.length > 0 ? (
+                    <PerformanceRanking
+                      players={filteredPerformancePlayers}
+                      ratedMatchCount={performanceResult.ratedMatchCount}
+                      currentUser={currentUser}
+                      selectedName={filterPlayerName}
+                      onSelect={(name) => {
+                        setFilterPlayerName(name === filterPlayerName ? null : name);
+                        setRankingCollapsed(true);
+                        setSkipScoredAutoCollapse(true);
+                        setScoredCollapsed(false);
+                      }}
+                      collapsed={rankingCollapsed}
+                      onToggle={handleToggleRanking}
+                    />
+                  ) : (
+                    <div className="rounded-lg px-4 py-8 text-center text-muted-foreground space-y-1">
+                      <div className="text-sm font-medium">該当するメンバーがいません</div>
+                    </div>
+                  )}
+                </>
               )}
 
               {filterActive && unscoredMatches.length === 0 && scoredMatches.length === 0 ? (

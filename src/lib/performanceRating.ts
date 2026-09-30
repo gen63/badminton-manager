@@ -374,14 +374,9 @@ export function computePerformanceRatings(
   });
 
   // 同じ偏差値は同順位。次の順位は人数分飛ばす（1, 2, 2, 4 形式）
-  result.forEach((p, index) => {
-    p.displayRank =
-      index > 0 && result[index - 1].deviation === p.deviation
-        ? result[index - 1].displayRank
-        : index + 1;
-  });
+  const ranked = reassignDisplayRanks(result);
 
-  return { players: result, ratedMatchCount: ratedMatches.length };
+  return { players: ranked, ratedMatchCount: ratedMatches.length };
 }
 
 /** 指定した名前のパフォーマンスを取り出す。該当が無ければ null。 */
@@ -391,4 +386,31 @@ export function findPerformance(
 ): PlayerPerformance | null {
   if (!name) return null;
   return result.players.find((p) => p.name === name) ?? null;
+}
+
+/**
+ * プレイヤーのリストに対して displayRank を再計算する純粋関数。
+ *
+ * 性別フィルタで絞り込んだ場合、フィルタ後の集団の中で順位を振り直すために使う。
+ * 元の配列は変更しない（イミュータブル）。
+ *
+ * @param players - displayRank を再計算する対象プレイヤー（元の相対順序は保持）
+ * @returns displayRank が更新された新しい配列
+ */
+export function reassignDisplayRanks(players: PlayerPerformance[]): PlayerPerformance[] {
+  if (players.length === 0) return [];
+
+  // プレイヤーは既に sorted 状態（deviation 降順など）なので、相対順序は保持したまま
+  // displayRank だけを再計算する。前の要素の deviation と同じなら同順位、
+  // 異なれば index + 1 を新しい順位とする。
+  const result: PlayerPerformance[] = [];
+  players.forEach((p, index) => {
+    const displayRank =
+      index > 0 && result[index - 1].deviation === p.deviation
+        ? result[index - 1].displayRank
+        : index + 1;
+    result.push({ ...p, displayRank });
+  });
+
+  return result;
 }
