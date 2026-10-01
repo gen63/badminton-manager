@@ -1205,10 +1205,10 @@ describe('assignRoundByObjective: strong（ペア希望・強度「必ず」の�
   });
 });
 
-describe('assignRoundByObjective: recency（連続出場を少し嫌う）', () => {
+describe('assignRoundByObjective: recency（連続出場を嫌う）', () => {
   // 5人・1コート（4人必要）。全員 gamesPlayed が同じなので優先度は完全に同点で、
   // タイブレーク（実力順位 → ID）により既定では p0〜p3 が選ばれる。
-  // p3 だけが「連続出場が続いている」状態を作り、recency がこの同点を
+  // p3 だけが「たった今終わったコートに居た（連続候補）」状態を作り、recency がこの同点を
   // 崩して p4 を選ぶかどうかを見る。
   const candidates = Array.from({ length: 5 }, (_, i) => makePlayer(`p${i}`));
   const rankById = rankByIdFrom(candidates.map(p => p.id));
@@ -1246,12 +1246,9 @@ describe('assignRoundByObjective: recency（連続出場を少し嫌う）', () 
     expect(picked.has('p3')).toBe(false);
   });
 
-  it('1回の再出場でも弱く効く（allowance=0 は3連続を待たず1回目から予防的に働く）', () => {
-    // streak=1（直前の再出場1回目）でも 0.5 のペナルティが乗るため、
-    // 重みが十分なら休んでいる p4 に道を譲る。旧既定（allowance=2）だと
-    // ここは「2連続までは許容」で配置が変わらなかったが、後追いになり
-    // bench で効果が出なかったため allowance=0 に変えた
-    // （docs/plans/2026-09-08-recency-penalty.md）。
+  it('2連続目（streak=1）でも、他が同条件なら休んでいる人に道を譲る（軽いコスト）', () => {
+    // 2連続目のコストは 1 × 重み / 4。重みが十分なら同点の p4 が選ばれる
+    // （既定の重みで他の項と競るときは負ける＝「軽い」。bench は plan 参照）
     const picked = pickedIds(
       assignRoundByObjective({
         ...baseParams,
@@ -1263,11 +1260,63 @@ describe('assignRoundByObjective: recency（連続出場を少し嫌う）', () 
     expect(picked.has('p3')).toBe(false);
   });
 
-  it('重み0を明示すれば streak を渡しても配置は変わらない（既定は 1.2 だが明示指定で無効化できる）', () => {
+  it('2連続目のコストは軽い: 既定の重みでは、ほかに差が付く項があればそちらが勝つ', () => {
+    // p4 を優先度の最下位（＝試合数が多い）にすると、公平性の項は p3 を出す側に働く。
+    // 2連続目のコストはそれを覆さない（連続回避は強さ・公平より優先しない）
+    const picked = pickedIds(
+      assignRoundByObjective({
+        ...baseParams,
+        priorityScoreOf: (p: Player) => (p.id === 'p4' ? 5 : 0),
+        streakById: new Map([['p3', 1]]),
+      })
+    );
+    expect(picked.has('p3')).toBe(true);
+    expect(picked.has('p4')).toBe(false);
+  });
+
+  it('3連続目以上は重み0でも違反として避ける（ハード側）', () => {
+    const picked = pickedIds(
+      assignRoundByObjective({
+        ...baseParams,
+        streakById: new Map([['p3', 2]]), // 今回3連続目
+        weights: { recency: 0 },
+      })
+    );
+    expect(picked.has('p4')).toBe(true);
+    expect(picked.has('p3')).toBe(false);
+  });
+
+  it('段階的: 2連続目の人と3連続目の人のどちらかを控えにするなら、3連続目の人を控える', () => {
+    const picked = pickedIds(
+      assignRoundByObjective({
+        ...baseParams,
+        streakById: new Map([
+          ['p2', 2], // 3連続目になる
+          ['p3', 1], // 2連続目になる
+        ]),
+      })
+    );
+    expect(picked.has('p3')).toBe(true);
+    expect(picked.has('p2')).toBe(false);
+  });
+
+  it('避けられないとき（控えが居ない）は配置を諦めず、連続の人も出す', () => {
+    const four = candidates.slice(0, 4);
+    const result = assignRoundByObjective({
+      ...baseParams,
+      candidates: four,
+      rosterSize: 4,
+      streakById: new Map([['p0', 3], ['p1', 3], ['p2', 3], ['p3', 3]]),
+    });
+    expect(pickedIds(result).size).toBe(4);
+  });
+
+  it('重み0を明示すれば、2連続目までのコスト（ソフト側）は無効化できる', () => {
+    // 3連続目以上のハード側（違反）は重みと無関係に効くので、ここでは streak=1 で確認する
     const baseline = assignRoundByObjective(baseParams);
     const withZeroWeight = assignRoundByObjective({
       ...baseParams,
-      streakById: new Map([['p3', 4]]),
+      streakById: new Map([['p3', 1]]),
       weights: { recency: 0 },
     });
     expect(withZeroWeight).toEqual(baseline);

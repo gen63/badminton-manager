@@ -3,6 +3,9 @@ import { calculatePlayerStats, getStreaks, buildInitialOrder, buildRanksWithTies
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
+import type { Court } from '../types/court';
+import { withInProgressGames } from './effectiveGames';
+import { courtStartTimes } from './pairing/streak';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -3089,5 +3092,173 @@ describe('buildRanksWithTies', () => {
     const ranks = buildRanksWithTies(['a', 'b', 'c', 'd'], players);
     expect(ranks.get('b')).toBe(1);
     expect(ranks.get('d')).toBe(3);
+  });
+});
+
+describe('assignCourts - 連続モードで連続出場を避ける（目的8 recency）', () => {
+  // 試合が終わったコートへ即次を配置する「連続モード」を、時刻つきで決定的に再現する。
+  // 「たった今終わったコートに居た人」だけが連続候補になる定義（pairing/streak.ts）の
+  // 統合テスト。docs/plans/2026-10-01-recency-just-finished-streak.md
+  const T0 = 1_700_000_000_000;
+  const MIN = 60_000;
+  const DURATION = 9 * MIN;
+
+  /** 乱数シード固定の LCG（再現性のため） */
+  const rng = (seed: number) => {
+    let s = seed;
+    return () => {
+      s = (s * 1664525 + 1013904223) % 4294967296;
+      return s / 4294967296;
+    };
+  };
+
+  interface Run {
+    matches: Match[];
+    gamesSpread: number;
+  }
+
+  const simulate = (n: number, courtCount: number, seed: number, placements: number): Run => {
+    const rand = rng(seed);
+    const players: Player[] = Array.from({ length: n }, (_, i) => ({
+      ...createPlayer(`p${i}`, `p${i}`, 1000 + Math.floor(rand() * 500)),
+      gender: i % 3 === 0 ? ('F' as const) : ('M' as const),
+    }));
+    const step = DURATION / courtCount;
+    const courts: Court[] = Array.from({ length: courtCount }, (_, i) => ({
+      id: i + 1,
+      teamA: ['', ''],
+      teamB: ['', ''],
+      scoreA: 0,
+      scoreB: 0,
+      isPlaying: false,
+      startedAt: 0,
+      finishedAt: 0,
+    }));
+    const history: Match[] = [];
+
+    const place = (court: Court, startedAt: number, count: number) => {
+      const inCourts = new Set(courts.flatMap(c => [...c.teamA, ...c.teamB]).filter(Boolean));
+      const effective = withInProgressGames(players, courts);
+      const waiting = effective.filter(p => !p.isResting && !inCourts.has(p.id));
+      const assigned = assignCourts(waiting, count, history, {
+        totalCourtCount: courtCount,
+        targetCourtIds: count === courtCount ? courts.map(c => c.id) : [court.id],
+        practiceStartTime: T0 - 60 * MIN,
+        allPlayers: effective.filter(p => !p.isResting),
+        useStayDurationPriority: false,
+        inProgressStartedAt: courtStartTimes(courts),
+      });
+      for (const a of assigned) {
+        const target = courts.find(c => c.id === a.courtId)!;
+        target.teamA = a.teamA;
+        target.teamB = a.teamB;
+        target.isPlaying = true;
+        target.startedAt = startedAt;
+      }
+    };
+
+    // 最初は全コートを同時に配置（開始時刻だけずらして終了順を作る）
+    place(courts[0], T0, courtCount);
+    courts.forEach((c, i) => { c.startedAt = T0 + i * step; });
+
+    for (let r = 0; r < placements; r++) {
+      const court = courts[r % courtCount];
+      const finishedAt = T0 + DURATION + r * step;
+      const ids = [...court.teamA, ...court.teamB];
+      history.push({
+        id: `m${r}`,
+        courtId: court.id,
+        teamA: court.teamA,
+        teamB: court.teamB,
+        scoreA: 0,
+        scoreB: 0,
+        startedAt: court.startedAt,
+        finishedAt,
+      });
+      for (const p of players) {
+        if (ids.includes(p.id)) {
+          p.gamesPlayed += 1;
+          p.lastPlayedAt = finishedAt;
+        }
+      }
+      court.teamA = ['', ''];
+      court.teamB = ['', ''];
+      court.isPlaying = false;
+      place(court, finishedAt, 1);
+    }
+
+    const games = players.map(p => p.gamesPlayed);
+    return { matches: history, gamesSpread: Math.max(...games) - Math.min(...games) };
+  };
+
+  /**
+   * 履歴の各出場が「何連続目か」を数える（本番の buildStreakById とは別の実装。
+   * 前の出場の終了〜今回の開始の間に他の試合の開始があれば連続は途切れる）。
+   * 戻り値は連続目 → 出場数。
+   */
+  const runLengthHistogram = (matches: Match[]): Map<number, number> => {
+    const hist = new Map<number, number>();
+    const ids = new Set(matches.flatMap(m => [...m.teamA, ...m.teamB]));
+    for (const id of ids) {
+      const mine = matches
+        .filter(m => [...m.teamA, ...m.teamB].includes(id))
+        .sort((a, b) => a.startedAt - b.startedAt);
+      let run = 0;
+      mine.forEach((m, i) => {
+        const interrupted =
+          i === 0 ||
+          matches.some(o => o.startedAt >= mine[i - 1].finishedAt && o.startedAt < m.startedAt);
+        run = interrupted ? 1 : run + 1;
+        hist.set(run, (hist.get(run) ?? 0) + 1);
+      });
+    }
+    return hist;
+  };
+
+  const longRuns = (h: Map<number, number>) =>
+    [...h.entries()].filter(([run]) => run >= 3).reduce((s, [, c]) => s + c, 0);
+  const total = (h: Map<number, number>) => [...h.values()].reduce((s, c) => s + c, 0);
+
+  it('19人3コート: 3連続以上が出ない・2連続は2割未満・試合数の偏りは広がらない', () => {
+    let twice = 0;
+    let all = 0;
+    for (const seed of [1, 2, 3]) {
+      const run = simulate(19, 3, seed, 45);
+      const h = runLengthHistogram(run.matches);
+      expect(longRuns(h)).toBe(0);
+      expect(run.gamesSpread).toBeLessThanOrEqual(2);
+      twice += h.get(2) ?? 0;
+      all += total(h);
+    }
+    // 変更前は 2連続が全出場の 21% 前後（bench 連続モード）。再選出はゼロにはできない
+    // （公平性の窓・順位差などのハード制約）ので、半分程度に抑える程度で見る
+    expect(twice / all).toBeLessThan(0.2);
+  });
+
+  it.each([
+    [8, 1],
+    [12, 2],
+    [18, 3],
+  ])('%i人%iコートでも 3連続以上が出ない', (n, courts) => {
+    for (const seed of [1, 2]) {
+      const run = simulate(n, courts, seed, 40);
+      expect(longRuns(runLengthHistogram(run.matches))).toBe(0);
+    }
+  });
+
+  it('進行中コートの開始時刻を渡さなくても落ちない（履歴だけで判定）', () => {
+    const players = Array.from({ length: 12 }, (_, i) => createPlayer(`p${i}`, `p${i}`, 1500 - i));
+    const assigned = assignCourts(players, 1, [], { totalCourtCount: 2, targetCourtIds: [1] });
+    expect(assigned).toHaveLength(1);
+  });
+
+  it('旧データ（startedAt / finishedAt が 0）の履歴でも連続扱いにならず配置できる', () => {
+    const players = Array.from({ length: 12 }, (_, i) => createPlayer(`p${i}`, `p${i}`, 1500 - i));
+    const old: Match[] = [
+      { ...createMatch(['p0', 'p1'], ['p2', 'p3'], 0, 0), startedAt: 0, finishedAt: 0 },
+      { ...createMatch(['p4', 'p5'], ['p6', 'p7'], 0, 0), startedAt: 0, finishedAt: 0 },
+    ];
+    const assigned = assignCourts(players.slice(0, 8), 1, old, { totalCourtCount: 2, targetCourtIds: [1] });
+    expect(assigned).toHaveLength(1);
   });
 });

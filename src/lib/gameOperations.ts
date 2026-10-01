@@ -12,6 +12,7 @@ import type { Reservation } from '../types/reservation';
 import type { PairPreference } from '../types/pairPreference';
 import type { SyncSettings } from '../services/sessionService';
 import { assignCourts, getCallableReservationRestingIds } from './algorithm';
+import { courtStartTimes } from './pairing/streak';
 import { withInProgressGames } from './effectiveGames';
 import { getAssignmentGate } from './utils';
 
@@ -449,6 +450,9 @@ export function computeFinishAndContinue(
           restingPlayers: effectivePlayers.filter((p) => p.isResting && !playersInCourts.has(p.id)),
           // ペア希望は reservations と同じく state（リモートの GameState）から渡す
           pairPreferences: state.pairPreferences,
+          // 目的8 recency: 進行中コートの開始も「他の試合の開始」として連続判定に使う
+          // （対象コートは上でクリア済みなので含まれない）
+          inProgressStartedAt: courtStartTimes(updatedCourts),
         });
       } catch {
         assignments = [];

@@ -25,6 +25,7 @@ import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import type { PairPreference } from '../types/pairPreference';
 import { assignCourts } from './algorithm';
+import { courtStartTimes } from './pairing/streak';
 import { getPlayersPerCourt, hasUnresolvedOps } from './gameOperations';
 import { withInProgressGames } from './effectiveGames';
 
@@ -128,6 +129,8 @@ function runScenario(
       reservationBlockThreshold: options.reservationBlockThreshold,
       restingPlayers,
       pairPreferences: options.pairPreferences,
+      // 目的8 recency: 実配置と同じく進行中コートの開始を連続判定に渡す
+      inProgressStartedAt: courtStartTimes(courts),
     });
     if (assignments.length === 0) return null;
     return assignments

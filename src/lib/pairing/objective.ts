@@ -5,7 +5,9 @@
  * 1目的1指標で対応する（目的1〜6）。すべて 0〜1 に正規化し、重み付き合計する
  * 純関数群。目的7 `affinity`（ペア希望）は
  * `docs/plans/2026-08-31-pair-preference.md` で追加。目的8 `recency`
- * （連続出場を少し嫌う）は `docs/plans/2026-09-08-recency-penalty.md` で追加。
+ * （連続出場を嫌う）は `docs/plans/2026-09-08-recency-penalty.md` で追加し、
+ * `docs/plans/2026-10-01-recency-just-finished-streak.md` で作り直した
+ * （他の項と違い 0〜1 に収まらない）。
  *
  * **副作用なし・外部依存なし**。`algorithm.ts` を import しないこと（循環参照防止）。
  */
@@ -35,9 +37,12 @@ export interface ObjectiveWeights {
   /** 目的7: ペア希望（`affinity`）— 特定2人が組む頻度を上げる。0〜1・小さいほど良い */
   affinity: number;
   /**
-   * 目的8: 連続出場を少し嫌う（`recency`）。**連続出場が長い人ほど減点する**
-   * （1回の再出場から効き始め、2連続で最大）。0〜1・小さいほど良い。
-   * `docs/plans/2026-09-08-recency-penalty.md`
+   * 目的8: 連続出場を嫌う（`recency`）。「たった今終わったコートに居た人」を
+   * 今回も出すと何連続目になるかで、**飽和せず**段階的に減点する（2連続目は軽く、
+   * 3連続目は強く、4連続目以上はほぼ起きない）。小さいほど良い。
+   * **他の項と違い 0〜1 に収まらない**（`computeRecency` 参照）。
+   * `docs/plans/2026-10-01-recency-just-finished-streak.md`
+   * （初版: `docs/plans/2026-09-08-recency-penalty.md`）
    */
   recency: number;
 }
@@ -171,53 +176,33 @@ const SKILL_GAP_WEIGHT = 1.5;
 const AFFINITY_WEIGHT = 1.0;
 
 /**
- * `recency` の重み。**1.2 ＝ 採用**。計測の全文は
- * `docs/plans/2026-09-08-recency-penalty.md` の「計測結果」節。
+ * `recency` の重み。**2.0**。計測の全文は
+ * `docs/plans/2026-10-01-recency-just-finished-streak.md`（初版の経緯は
+ * `docs/plans/2026-09-08-recency-penalty.md`）。
  *
- * ## ここに至るまで（3段階で測り直している）
+ * 2連続目のコストは `RECENCY_STREAK_SHAPE.base × RECENCY_WEIGHT / 4`（1人あたり）。
+ * 3連続目以上は `hardFrom` により違反（ハード）なので、この重みは主に
+ * **2連続目をどこまで避けるか**を決める。
  *
- * 1. **gap ベース**（直前の出場からの経過で連続的に減点）で最初に計測したところ、
- *    主指標に置いた「連投率（空き1試合以下の割合）が相対30%以上下がる」に
- *    重みの制約（`fairness`=1.5 未満）の中では届かなかった。ただし bench が
- *    配置直後に履歴を積んでいて進行中の試合が履歴末尾を占めており、直前組の
- *    `gapOf` が正しく0にならない不備が見つかった（本番は `computeFinishAndContinue`
- *    が**終了時**に `matchHistory` へ append する＝履歴は終了順。bench はこれを
- *    直すまでこの項をほぼ無効化した状態で測っていた）
- * 2. bench の履歴タイミングを本番に合わせて測り直したが、依然として届かず、
- *    かつ「連投率」という指標自体が末尾の裾とプール人数に支配され、実際に
- *    問題だった「連続の長さ」を測れていないことが分かった。ユーザー提案で
- *    「2連続までは自由、3連続目から嫌う」**streak ベース**（`allowance=2`）に
- *    作り替え、主指標を「3連続%」に変更したが、この形は**後追い**（3連続に
- *    なってから減点しても連続が伸びるのは止められない）かつ配置12人平均に
- *    **薄まる**ため、重みを振っても全条件で現状と有意差が出ず一旦見送った
- * 3. `allowance` を **0**（1回の再出場から効き始め、2連続で満点）に下げると、
- *    予防的に効くため 3連続% が明確に下がった。これが今回の採用値
+ * 19人3コート連続モード（`CONTINUOUS=1 NOISE=4 SEEDS=200`）で重みを振った値:
  *
- * ## 値（`ENGINE=objective NOISE=4`、allowance=0 / ramp=2）
- *
- * 21人3コート（SEEDS=100）:
- *
- * | 重み | 3連続% | 待ちσ | 待ち | 試合数幅 | 占有率% | 共演 | 3-1% |
+ * | 重み | 2連続% | 3連続% | 3-1% | 幅広% | 実力幅 | 試合数幅 | 待ち |
  * |---|---|---|---|---|---|---|---|
- * | 0（旧既定） | 1.4 | 1.85 | 9.53 | 1.43 | 39.8 | 13.64 | 3.4 |
- * | **1.2（採用）** | **1.1** | 1.73 | 9.16 | 1.28 | 40.7 | 13.46 | 3.6 |
+ * | 0 | 22.3 | 0.2 | 5.1 | 11.5 | 8.54 | 1.37 | 8.65 |
+ * | 1.2 | 17.5 | 0.0 | 5.5 | 11.1 | 8.48 | 1.35 | 8.31 |
+ * | **2（採用）** | **15.7** | 0.0 | 5.8 | 11.2 | 8.51 | 1.37 | 8.20 |
+ * | 3 | 13.5 | 0.0 | 6.5 | 11.6 | 8.56 | 1.36 | 8.03 |
  *
- * 全条件（SEEDS=100〜300、13〜25人・2〜3コート）で 3連続% は一様に低下
- * （例: 18人3C 6.3→5.0 / 16人2C 1.9→1.5 / 14人2C 5.7→4.2、SEEDS=300 で再確認
- * 済み）。待ちσ・待ち・試合数幅は悪化した条件が無く、占有率%・共演の悪化は
- * どの条件も 5% 以内、3-1% も ±1pt 程度に収まる（14人2C が SEEDS=100 では
- * +1.3pt に見えたが SEEDS=300 で +0.8pt ＝ノイズだった）。
- * `LATE_JOIN=3`（遅参加のキャッチアップ計測）でも倍率 1.19→1.18 で無傷
- * （`allowance=0` は2連続まで到達で満点になるため、`allowance=2` のときより
- * 早く効き始めるが、それでもキャッチアップは壊れない）。
+ * 重みを上げるほど 2連続は減るが、**男女構成（3-1%）が先に崩れる**（3 で +1.4pt）。
+ * 「2連続の回避は強さバランスより優先しない」ため、3-1% の悪化が +0.7pt 以内に
+ * 収まる 2 を採った。重み 100 まで上げても 2連続は 12% 残る（公平性の窓・順位差・
+ * 直近重複などのハード制約で避けられない分。plan の「2連続の下限」参照）。
  *
- * ## 前提: bench の履歴タイミングを本番に合わせてある
- *
- * `scripts/bench-court-assignment.ts` は「試合を**終了時に** `finishedAt` 昇順で
- * 履歴へ積む」よう直してある（上記1.の不備）。**この項を再計測するときは、
- * bench 側のこの性質が保たれているか先に確かめること。**
+ * **前提: bench の連続モード（`CONTINUOUS=1`）と、履歴タイミングが本番と同じこと**
+ * （終了順に履歴へ積み、進行中コートの開始時刻を `inProgressStartedAt` で渡す）。
+ * この項を再計測するときは先に確かめること。
  */
-const RECENCY_WEIGHT = 1.2;
+const RECENCY_WEIGHT = 2.0;
 
 /**
  * 優先順位（質 > 多様性 > 公平性）を反映した既定値。
@@ -260,7 +245,7 @@ export const DEFAULT_WEIGHTS: ObjectiveWeights = {
   fairness: 1.5,
   waiting: 1.5, // 公平性
   affinity: AFFINITY_WEIGHT, // ペア希望（bench 実測。根拠は AFFINITY_WEIGHT のコメント参照）
-  recency: RECENCY_WEIGHT, // 連続出場を少し嫌う（bench 実測の結果 0 ＝無効。根拠は RECENCY_WEIGHT のコメント参照）
+  recency: RECENCY_WEIGHT, // 連続出場を嫌う（2連続目はソフト、3連続目以上は assignRound のハード違反。根拠は RECENCY_WEIGHT のコメント参照）
 };
 
 /**
@@ -328,19 +313,16 @@ export interface ObjectiveInput {
   /**
    * 目的8 `recency` の入力。値は **`streakOf`**（＝直近の**連続出場数**）。
    *
-   * - 最新の出場からの経過が `RECENCY_SPAN`（＝コート数）以上なら 0
-   *   （もう連続していない）
-   * - そこから履歴を遡り、隣り合う出場どうしの間隔が `RECENCY_SPAN` 未満である
-   *   限り数え上げる（3コートなら「2試合以内で戻ってきた」が連続の条件）
-   * - 未出場は 0（Map に入れない）
+   * - **「たった今終わったコートに居た人」だけ**が 1 以上になる。具体的には
+   *   最後の試合の `finishedAt` 以降に他の試合が1つも開始していない人
+   * - 過去へ遡り、連続する2出場の間（終了〜次の開始）に他の試合の開始が無い限り
+   *   数え上げる。直前の1試合だけなら 1
+   * - 連続していない人・未出場は 0（Map に入れない）
    *
-   * 組み立ては呼び出し側（`algorithm.ts`）が `matchHistory` の1回走査で行う。
-   * `RECENCY_SPAN` はそこで消費されるので、この Map にはもう含まれない。
-   * **空 Map ならこの項は常に 0** になるので、渡さない呼び出し側は自動的に無効。
-   *
-   * 時刻（`lastPlayedAt`）ではなく**試合履歴ベース**にしているのは、`Date.now()`
-   * に依存すると bench が非決定的になり、実運用でも端末の時計差に影響されるため。
-   * `docs/plans/2026-09-08-recency-penalty.md`
+   * 組み立ては `pairing/streak.ts` の `buildStreakById`（履歴内の時刻どうしの
+   * 比較のみ。`Date.now()` に依存しない）。**空 Map ならこの項は常に 0** になるので、
+   * 渡さない呼び出し側は自動的に無効。
+   * `docs/plans/2026-10-01-recency-just-finished-streak.md`
    */
   streakById: Map<string, number>;
 }
@@ -613,6 +595,9 @@ export const AFFINITY_ENEMY_COST_SPLIT = { value: 1.2 };
  * 環境変数で個別に上書きして計測できる。
  */
 export const AFFINITY_ENEMY_COST_SPLIT_SAFE = { value: 1.0 };
+
+/** 1コートの人数（`computeRecency` の正規化単位） */
+const PLAYERS_PER_COURT = 4;
 
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 
@@ -898,71 +883,95 @@ export function computeAffinity(
 }
 
 /**
- * `recency` の効き方（連続出場の長さ → ペナルティ）。
+ * `recency` の効き方（今回入れると何連続目になるか → ペナルティ）。
  *
  * ```
- * recency(id) = clamp01((streakOf(id) − allowance) / ramp)
+ * n = streakOf(id) + 1                     … 今回出ると何連続目か（連続候補でなければ 1）
+ * cost(n) = 0                              （n = 1。連続していない）
+ * cost(n) = base × growth^(n − 2)          （n >= 2）
  * ```
  *
- * `allowance = 2` / `ramp = 2` なら、2連続までは 0（減点なし）、3連続で 0.5、
- * 4連続以上で 1.0。**bench（`scripts/bench-court-assignment.ts`）が環境変数
- * `STREAK_ALLOWANCE` / `STREAK_RAMP` でこのオブジェクトを書き換えて感度を測る**
- * ため、`const` の即値ではなく書き換え可能なオブジェクトにしてある
- * （`DEFAULT_WEIGHTS` と同じ扱い）。本番はこの既定値のまま。
+ * 既定（`base=1` / `growth=4`）なら 2連続目 1 / 3連続目 4 / 4連続目 16 / 5連続目 64。
+ * **飽和させず、連続回数が増えるほど急に増える**ので、2連続目は「他が同条件なら
+ * 避ける程度」、3連続目は「かなり減らす」、4連続目以上は「人数的に不可避なとき
+ * 以外ほぼ起きない（実質ハードに近い）」になる。ハード制約にはしない（性別・
+ * ペア希望・実力差など他の要請で不可避なときに配置を詰ませないため）。
+ *
+ * **bench（`scripts/bench-court-assignment.ts`）が環境変数 `STREAK_BASE` /
+ * `STREAK_GROWTH` でこのオブジェクトを書き換えて感度を測る**ため、`const` の即値
+ * ではなく書き換え可能なオブジェクトにしてある（`DEFAULT_WEIGHTS` と同じ扱い）。
+ * 本番はこの既定値のまま。
  */
 export const RECENCY_STREAK_SHAPE = {
+  /** 2連続目のコスト（単位。重み `RECENCY_WEIGHT` との積で効く） */
+  base: 1,
+  /** 連続目が1つ増えるごとのコストの倍率。1 より大きいほど長い連続を強く避ける */
+  growth: 4,
   /**
-   * これ以下の連続出場は減点しない。**採用値は 0**（1回の再出場から効き始める）。
-   * 「2連続までは自由、3連続目から嫌う」（allowance=2）も試したが、3連続に
-   * なってから減点しても連続が伸びるのを止められず（後追い）、配置12人平均に
-   * 薄まって bench 上で有意差が出なかった。0 まで下げて初めて予防的に効く
-   * （`RECENCY_WEIGHT` のコメント参照）。
+   * これ以上の連続目になる配置を**違反**として数える（0 なら数えない）。
+   * 順位差・公平性の窓・直近重複と同じ辞書式の違反で、違反の少ない配置が必ず勝つ。
+   * 3 なら「3連続目以上」。ソフトのコスト（上）だけでは、他のハード制約に押されて
+   * 3連続が 0.7% 残った（19人3コート連続モード）が、これで 0 になった。
+   * 他のハード制約と同数の違反どうしなら、コストの大きい（連続の長い）側が負ける。
    */
-  allowance: 0,
-  /** allowance を超えてから 1.0 に達するまでの連続数。allowance=0 なので 2連続で満点 */
-  ramp: 2,
+  hardFrom: 3,
 };
 
+/** 今回出ると `streak + 1` 連続目になる人が、ハードの違反に当たるか */
+export function isRecencyViolation(
+  streak: number | undefined,
+  shape: { hardFrom: number } = RECENCY_STREAK_SHAPE
+): boolean {
+  return shape.hardFrom > 0 && streak !== undefined && streak + 1 >= shape.hardFrom;
+}
+
+/** 今回出ると `streak + 1` 連続目になる人のコスト（`RECENCY_STREAK_SHAPE` 参照） */
+export function recencyCost(
+  streak: number,
+  shape: { base: number; growth: number } = RECENCY_STREAK_SHAPE
+): number {
+  if (!Number.isFinite(streak) || streak < 1) return 0; // 連続候補ではない
+  // streak=1 → 2連続目 → base。以降 growth 倍ずつ
+  return shape.base * Math.pow(Math.max(1, shape.growth), streak - 1);
+}
+
 /**
- * 目的8: recency — 「連続出場を少し嫌う」。配置された全員について
+ * 目的8: recency — 連続出場を嫌う。配置された全員について
  *
  * ```
- * recency(id) = clamp01((streakOf(id) − STREAK_ALLOWANCE) / STREAK_RAMP)
- * term        = 配置された全員の recency の平均（0〜1・小さいほど良い）
+ * term = Σ recencyCost(streakOf(id)) / 4        （4 = 1コートの人数）
  * ```
  *
- * `streakOf` は直近の連続出場数（`ObjectiveInput.streakById` のコメント参照）。
- * 既定（allowance 0 / ramp 2）では **1回の再出場から効き始め、2連続で満点**。
+ * `streakOf` は「たった今終了したコートに居た人」だけが 1 以上になる連続出場数
+ * （`ObjectiveInput.streakById` / `pairing/streak.ts` 参照）。
  *
- * **「連続が長くなっている人」を予防的に嫌う。** 潰したいのは元々
- * 1回の連投ではなく**連続の長さ**だった（実データ: 空き `2,2,1,2,2,2` で7巡
- * 出ずっぱりの人がいる一方、2連続で終わる人は害が無い）が、「3連続目から」
- * （後追い）では連続の伸びを止められず bench 上で効果が出なかったため、
- * 1回目の再出場から弱く効かせて先回りする形にしている。それでも重みは
- * `fairness` 未満・遅参加のキャッチアップは無傷（`RECENCY_WEIGHT` のコメント
- * 参照）。
+ * **1コートあたりの人数（4）で割る。配置人数では割らない。** 他の項は配置全員の
+ * 平均（0〜1）だが、recency を同じ平均にすると、複数コートを一括配置するときに
+ * 1人あたりの効きが 1/コート数 に薄まり、連続モード（1コートずつ配置）と効きが
+ * 食い違う。「ある人が n 連続目になる」ことの重さはコート数に依らないはずなので、
+ * 1人あたりの寄与を一定にしている。そのため**この項は 0〜1 に収まらない**
+ * （飽和させない仕様）。
  *
- * **優先度順位（＝試合数の順位）は動かさない**ので、試合数の均等（目的1）を
- * 壊さない（重みを `fairness` 未満に保つ前提）。未出場・連続していない人は 0。
- * 練習開始直後は履歴が空で全員 0 になり、この項は何もしない。
+ * **優先度順位（＝試合数の順位）は動かさない**ので、試合数の均等（目的1）は
+ * 壊さない。連続していない人・未出場は 0。練習開始直後は履歴が空で全員 0 になり、
+ * この項は何もしない。
  *
- * `docs/plans/2026-09-08-recency-penalty.md`
+ * `docs/plans/2026-10-01-recency-just-finished-streak.md`
  */
 export function computeRecency(
   courts: CourtPlacement[],
   streakById: Map<string, number>,
-  shape: { allowance: number; ramp: number } = RECENCY_STREAK_SHAPE
+  shape: { base: number; growth: number } = RECENCY_STREAK_SHAPE
 ): number {
-  if (courts.length === 0) return 0;
-  const selected = courts.flatMap(courtMembers);
-  if (selected.length === 0) return 0;
-  const ramp = Math.max(1, shape.ramp);
-  const sum = selected.reduce((s, id) => {
-    const streak = streakById.get(id);
-    if (streak === undefined || !Number.isFinite(streak)) return s; // 未出場・連続なしは 0
-    return s + clamp01((streak - shape.allowance) / ramp);
-  }, 0);
-  return clamp01(sum / selected.length);
+  if (courts.length === 0 || streakById.size === 0) return 0;
+  let sum = 0;
+  for (const court of courts) {
+    for (const id of courtMembers(court)) {
+      const streak = streakById.get(id);
+      if (streak !== undefined) sum += recencyCost(streak, shape);
+    }
+  }
+  return sum / PLAYERS_PER_COURT;
 }
 
 /** 8目的すべてを計算した結果（各 0〜1） */

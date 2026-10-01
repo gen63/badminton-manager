@@ -14,6 +14,7 @@ import {
   DEFAULT_WEIGHTS,
   computeObjectiveTerms,
   weightedObjective,
+  isRecencyViolation,
   AFFINITY_ENEMY_COST_SPLIT,
   AFFINITY_ENEMY_COST_SPLIT_SAFE,
   type ObjectiveWeights,
@@ -105,14 +106,13 @@ export interface AssignRoundParams {
    */
   strongPairs?: StrongPair[];
   /**
-   * 目的8 `recency`（連続出場を少し嫌う）の入力。値は **`streakOf`**
-   * （＝直近の連続出場数。2連続までは減点されない。詳細は `objective.ts` の
-   * `ObjectiveInput.streakById` のコメント）。
+   * 目的8 `recency`（連続出場を嫌う）の入力。値は **`streakOf`**
+   * （＝直近の連続出場数。「たった今終わったコートに居た人」だけが 1 以上。
+   * 詳細は `objective.ts` の `ObjectiveInput.streakById` のコメント）。
    *
    * **省略時は空 Map ＝ この項は常に 0**（＝無効）。呼び出し側（`algorithm.ts`）が
-   * `matchHistory` の1回走査で組み立てる（`RECENCY_SPAN` ＝ コート数はそこで
-   * 消費されるので、このモジュールは受け取らない）。
-   * `docs/plans/2026-09-08-recency-penalty.md`
+   * `pairing/streak.ts` の `buildStreakById` で組み立てる。
+   * `docs/plans/2026-10-01-recency-just-finished-streak.md`
    */
   streakById?: Map<string, number>;
 }
@@ -651,6 +651,15 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       for (const court of s.courts) {
         for (const id of courtMembers(court)) {
           if ((priorityRankById.get(id) ?? 0) >= windowLimit) violations++;
+        }
+      }
+    }
+    // 目的8 recency のハード側: 3連続目以上（`RECENCY_STREAK_SHAPE.hardFrom`）は違反。
+    // ソフトのコストだけでは他のハード制約に押されて残るため。連続候補がいなければ素通り
+    if (streakById.size > 0) {
+      for (const court of s.courts) {
+        for (const id of courtMembers(court)) {
+          if (isRecencyViolation(streakById.get(id))) violations++;
         }
       }
     }
