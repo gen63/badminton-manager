@@ -196,6 +196,38 @@ function compareEval(a: Evaluation, b: Evaluation): number {
   return a.objective - b.objective;
 }
 
+/**
+ * コート内の順位差（最大の |r_i - r_j|）。順位差のハード制約の判定に使う。
+ *
+ * 強度「必ず」のペア（`strongPairs`）の **2人どうしの差だけ**は数えない。上位と
+ * 下位を「必ず」にしたペアは、同じコートに置いた時点で順位差が閾値を超える。
+ * これを違反として数えると、違反数は辞書式で最優先なので「別々に出す（＝片方だけ
+ * 出場）」より「同じコートに置く」ほうが違反が多くなり、「必ず」が破られる
+ * （20人・閾値10・[p0,p19] で together=10 / 片方だけ=29）。「必ず」はユーザーが
+ * 明示した希望なので、ペア内の差は容認する。ペアの一方と他の2人、他の2人どうしの
+ * 差は従来どおり判定する（4人なので全6組を見ても安い）。strongPairs が空なら
+ * 従来の max - min と完全に同じ。
+ * `docs/plans/2026-10-01-strong-pair-rank-span.md`
+ * 順位が取れない ID は 0 扱い（呼び出し側が事前に弾く場合はそちらで判定する）。
+ */
+function maxRankGap(
+  ids: readonly string[],
+  rankMap: Map<string, number>,
+  strongPairs: readonly StrongPair[]
+): number {
+  let gap = 0;
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      if (strongPairs.some(({ a, b }) => (ids[i] === a && ids[j] === b) || (ids[i] === b && ids[j] === a))) {
+        continue;
+      }
+      const d = Math.abs((rankMap.get(ids[i]) ?? 0) - (rankMap.get(ids[j]) ?? 0));
+      if (d > gap) gap = d;
+    }
+  }
+  return gap;
+}
+
 export function assignRoundByObjective(params: AssignRoundParams): CourtAssignment[] {
   const {
     candidates,
@@ -291,12 +323,11 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     const pool = [...sortedCandidates]; // 優先度順。消費した人を都度取り除く。
     initialCourts = usedCourtIds.map(courtId => {
       const chosenIndices: number[] = [0];
-      const courtRanks: number[] = [formRankById.get(pool[0].id) ?? 0];
       // 登録序列側の幅も同時に見る。局所探索の近傍は「出場者⇔控えの1人スワップ」
       // しか無いため、4人中2人を同時に入れ替えないと解消しない違反は初期解から
       // 抜け出せない（例: ハシゴ式序列では隣同士だが登録序列では両端、という4人。
       // 1人ずつ入れ替えても幅が閾値未満にならず、最急降下がその場に留まる）。
-      const courtBaseRanks: number[] = [rankById.get(pool[0].id) ?? 0];
+      // 幅は `maxRankGap`（「必ず」ペア内の差は除外）で測る。
 
       // 制約を満たす範囲で優先度順に3人追加。
       //
@@ -304,20 +335,14 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       // 「出場者⇔控えの1人スワップ」しか無いため、4人中2人を同時に入れ替えないと
       // 直らない重複は初期解から抜け出せない。順位差と同じく初期解の段階で避ける。
       for (let i = 1; i < pool.length && chosenIndices.length < 4; i++) {
-        const rank = formRankById.get(pool[i].id) ?? 0;
-        const gap = Math.max(...courtRanks, rank) - Math.min(...courtRanks, rank);
-        if (gap >= threshold) continue;
-        const baseRank = rankById.get(pool[i].id) ?? 0;
-        const baseGap =
-          Math.max(...courtBaseRanks, baseRank) - Math.min(...courtBaseRanks, baseRank);
-        if (baseGap >= threshold) continue;
+        const trialIds = [...chosenIndices.map(k => pool[k].id), pool[i].id];
+        if (maxRankGap(trialIds, formRankById, strongPairs) >= threshold) continue;
+        if (maxRankGap(trialIds, rankById, strongPairs) >= threshold) continue;
         if (chosenIndices.length === 3) {
           const members = [...chosenIndices.map(k => pool[k].id), pool[i].id];
           if (isRecentDuplicate(members)) continue;
         }
         chosenIndices.push(i);
-        courtRanks.push(rank);
-        courtBaseRanks.push(baseRank);
       }
 
       // 制約を満たす人が足りない場合、優先度順に残りを埋める。
@@ -357,8 +382,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
         if (isRecentDuplicate([...trial])) return false;
         if (wideSpanThreshold === null) return true;
         for (const rankMap of [formRankById, rankById]) {
-          const ranks = trial.map(id => rankMap.get(id) ?? 0);
-          if (Math.max(...ranks) - Math.min(...ranks) >= wideSpanThreshold) return false;
+          if (maxRankGap(trial, rankMap, strongPairs) >= wideSpanThreshold) return false;
         }
         return true;
       };
@@ -562,8 +586,8 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
             .map(id => rankMap.get(id))
             .filter((r): r is number => r !== undefined);
           if (ranks.length === members.length) {
-            const gap = Math.max(...ranks) - Math.min(...ranks);
-            if (gap >= wideSpanThreshold) violations++;
+            // 「必ず」ペア2人の間の差は除外（`maxRankGap` 参照）
+            if (maxRankGap(members, rankMap, strongPairs) >= wideSpanThreshold) violations++;
           }
         }
       }

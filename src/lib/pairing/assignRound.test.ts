@@ -1282,3 +1282,86 @@ describe('assignRoundByObjective: recency（連続出場を少し嫌う）', () 
     expect(withoutStreak).toEqual(baseline);
   });
 });
+
+describe('assignRoundByObjective: strong ペアの順位差は順位差ハード制約から除外する', () => {
+  // 回帰: 上位と下位を「必ず」にすると、同コートに置くと順位差違反（formRank と
+  // rankById の2件）、別々に出すと strong 違反（1件）で、辞書式の violations 比較
+  // では別々に出す方が勝ち、strong が破られていた。
+  // `docs/plans/2026-10-01-strong-pair-rank-span.md`
+  const ids = Array.from({ length: 20 }, (_, i) => `p${i}`);
+  const candidates = ids.map(id => makePlayer(id));
+  const rankById = rankByIdFrom(ids);
+
+  /** 出場回数の少ない順に回す決定的なラウンド進行（乱数なし） */
+  const simulate = (threshold: number, strongPairs: { a: string; b: string }[], rounds: number) => {
+    const plays = new Map(ids.map(id => [id, 0]));
+    let together = 0;
+    let onlyOne = 0;
+    let allTeammates = true;
+    let othersWithinSpan = true;
+    for (let r = 0; r < rounds; r++) {
+      const result = assignRoundByObjective({
+        candidates,
+        courtIds: [1, 2, 3],
+        rankById,
+        rosterSize: 20,
+        priorityScoreOf: p => plays.get(p.id)! * 100 + Number(p.id.slice(1)),
+        pairCounts: emptyPairCounts(),
+        pairKeyOf: pairKey,
+        isRecentDuplicate: () => false,
+        wideSpanThreshold: threshold,
+        preferGenderMix: false,
+        strongPairs,
+      });
+      for (const c of result) {
+        for (const id of [...c.teamA, ...c.teamB]) plays.set(id, plays.get(id)! + 1);
+      }
+      for (const { a, b } of strongPairs) {
+        const courtA = result.find(c => [...c.teamA, ...c.teamB].includes(a));
+        const courtB = result.find(c => [...c.teamA, ...c.teamB].includes(b));
+        if (!courtA !== !courtB) onlyOne++;
+        if (courtA && courtB) {
+          together++;
+          const mate =
+            (courtA.teamA.includes(a) && courtA.teamA.includes(b)) ||
+            (courtA.teamB.includes(a) && courtA.teamB.includes(b));
+          if (courtA !== courtB || !mate) allTeammates = false;
+          // ペア以外の2人は、ペアの両方との差が閾値未満でなければならない
+          for (const id of [...courtA.teamA, ...courtA.teamB]) {
+            if (id === a || id === b) continue;
+            const rk = rankById.get(id)!;
+            if (
+              Math.abs(rk - rankById.get(a)!) >= threshold ||
+              Math.abs(rk - rankById.get(b)!) >= threshold
+            ) {
+              othersWithinSpan = false;
+            }
+          }
+        }
+      }
+    }
+    return { together, onlyOne, allTeammates, othersWithinSpan };
+  };
+
+  // 閾値10 では、ペア2人の差が 10 以上でも「ペア以外の2人が両方と閾値未満」に
+  // なれる組（p0×p10: p1〜p9 が該当）を使う。p0×p19 のように構造上その2人が
+  // 取れない組は、案A でも順位差違反が残るため対象外（plan 参照）。
+  const cases = [
+    { threshold: 10, pair: { a: 'p0', b: 'p10' } },
+    { threshold: Math.ceil(20 * (2 / 3)), pair: { a: 'p0', b: 'p19' } },
+  ];
+  for (const { threshold, pair } of cases) {
+    it(`strong=[${pair.a},${pair.b}] は閾値${threshold}でも片方だけ出場せず、出場時は必ず味方`, () => {
+      const r = simulate(threshold, [pair], 40);
+      expect(r.onlyOne).toBe(0);
+      expect(r.together).toBeGreaterThan(0); // 空回り防止: 実際に出場している
+      expect(r.allTeammates).toBe(true);
+    });
+
+    it(`閾値${threshold}: 除外されるのはペア2人の間の差だけで、ペアと他メンバーの差は違反のまま`, () => {
+      const r = simulate(threshold, [pair], 40);
+      expect(r.together).toBeGreaterThan(0);
+      expect(r.othersWithinSpan).toBe(true);
+    });
+  }
+});
