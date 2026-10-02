@@ -14,7 +14,7 @@
  *   ペア希望（同コートで敵）
  * - ラウンド全体: 試合数の公平性 / ペア希望（別コート・ベンチ）
  *
- * ハード制約（公平性の窓・「必ず」ペア・極端な実力差）は点数ではなく `assignRound.ts` が
+ * ハード制約（公平性の窓・「必ず」ペア）は点数ではなく `assignRound.ts` が
  * 違反数として数え、違反が少ない解を必ず点数より先に選ぶ。
  *
  * **副作用なし・外部依存なし**。`algorithm.ts` を import しないこと（循環参照防止）。
@@ -83,12 +83,34 @@ export const SCORE_TABLE = {
   fairnessPerGame: 15,
   /** 逆転の大きさは 3 試合分までしか数えない（滞在時間が短い人の優先度が極端に大きく出ても、他の項を押し流さない） */
   fairnessCapGames: 3,
-  /** 後半均等化モードでは公平性の点数を 4 倍にする */
-  lateFairnessMultiplier: 4,
+  /**
+   * 余り人数（候補 − 必要人数）が少ないほど公平性を強くする倍率: `1 + gain × exp(−(余り ÷ scale)²)`。
+   * 余りが少ないと窓の外へ出せる人も控えも少なく、「待っている同じ数人」を外し続けやすい
+   * （3人以上一致の点が公平性を上回って試合数が偏る）。人数で段差ができないよう連続関数にしてある。
+   */
+  fairnessSurplusGain: 30,
+  fairnessSurplusScale: 3,
+  /** 後半均等化モードでは公平性の点数をさらにこの倍率で掛ける */
+  lateFairnessMultiplier: 2,
 
-  // ── ハード制約の閾値 ──
-  /** コート内の偏差の最大−最小がこの値以上なら違反（極端な実力差。人数に関係なく適用） */
+  // ── 極端な実力差 ──
+  /**
+   * コート内の偏差の最大−最小が `extremeSpan` 以上なら、`extremePenalty` 点 + 超えた分1点につき
+   * `extremePerPoint` 点を足す。ハード（違反数）ではなく**とても重い点数**にしてあるのは、
+   * ハードだと少人数の日（余りが少ない）で試合数の公平性より常に先に効いてしまい、
+   * 余り人数に応じて公平性を強める連続的な調整（`fairnessSurplus*`）が効かないため。
+   * 余りが多い日は他の項より桁違いに重いので、実質ハードと同じ働きをする。
+   */
   extremeSpan: 30,
+  extremePenalty: 400,
+  extremePerPoint: 40,
+  /**
+   * 余り人数に応じた極端な実力差の効き具合（0〜1 の倍率）。余りが `extremeRampStart` 以下なら 0、
+   * `extremeRampEnd` 以上なら 1、間は直線でつなぐ（段差なし）。余りの少ない日は
+   * 「待たされている人を出す」ことのほうを優先するため。
+   */
+  extremeRampStart: 4,
+  extremeRampEnd: 6,
 };
 
 /** 採点に必要な入力一式（ラウンド内で不変） */
@@ -236,6 +258,19 @@ export const courtPoints = (
   ctx: ScoreContext
 ): number => courtBreakdown(teamA, teamB, ctx).total;
 
+/** 余り人数に応じた極端な実力差の効き具合（0〜1。余りが多いほど 1 に近い単調増加・連続） */
+export function extremeSurplusFactor(surplus: number): number {
+  const { extremeRampStart: a, extremeRampEnd: b } = SCORE_TABLE;
+  if (!(b > a)) return surplus >= b ? 1 : 0;
+  return Math.min(1, Math.max(0, (surplus - a) / (b - a)));
+}
+
+/** 余り人数（候補 − 必要人数）に応じた公平性の倍率。余りが多いほど 1 に近づく（単調減少・連続） */
+export function fairnessSurplusFactor(surplus: number): number {
+  const s = Math.max(0, surplus);
+  return 1 + SCORE_TABLE.fairnessSurplusGain * Math.exp(-((s / SCORE_TABLE.fairnessSurplusScale) ** 2));
+}
+
 /**
  * 試合数の公平性。出場者 s と控え b の組すべてについて、s のほうが試合数換算で多い
  * （＝本来は b が先に出るべきだった「逆転」）ぶんを足し、`fairnessPerGame` を掛ける。
@@ -247,7 +282,8 @@ export function fairnessPoints(
   selectedIds: readonly string[],
   benchIds: readonly string[],
   needById: Map<string, number>,
-  lateBalance = false
+  lateBalance = false,
+  surplus = Infinity
 ): number {
   let inversions = 0;
   for (const s of selectedIds) {
@@ -257,7 +293,12 @@ export function fairnessPoints(
       if (d > 0) inversions += Math.min(d, SCORE_TABLE.fairnessCapGames) ** 2;
     }
   }
-  return SCORE_TABLE.fairnessPerGame * (lateBalance ? SCORE_TABLE.lateFairnessMultiplier : 1) * inversions;
+  return (
+    SCORE_TABLE.fairnessPerGame *
+    fairnessSurplusFactor(surplus) *
+    (lateBalance ? SCORE_TABLE.lateFairnessMultiplier : 1) *
+    inversions
+  );
 }
 
 /**

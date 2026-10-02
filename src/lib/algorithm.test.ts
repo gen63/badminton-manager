@@ -883,8 +883,9 @@ describe('assignCourts - 2コート逐次配置（1コートずつ）の実力�
     // 2026-10-02 の単純化で、判定は順位差（14人以上・人数の2/3）から
     // 「当日ロースター内の偏差（平均50・SD10）の最大−最小が 30 以上」へ置き換わった。
     //
-    // このラウンドの待機は p0,p1,p2,p7,p12 の5人だけ（他11人は別コートでプレイ中）。
-    // 5人から4人を選ぶ組は5通りで、p12 を含むものは必ず偏差差が30以上になり弾かれる。
+    // このラウンドの待機は 10 人（余り 6。他6人は別コートでプレイ中）。余りが 4 以下の日は
+    // 試合数の公平性を優先して極端な実力差の効きを弱める設計なので、効く人数で検証する。
+    // p3〜p6, p8 は偏差が p0〜p2 に近い中位。p12 を含む組は必ず偏差差が30以上になり避けられる。
     // p12 だけレートが極端に低い（偏差 20）。p0〜p2 は 56〜57、p7 は 52.6 なので
     //   {p0,p1,p2,p7}=差4.9 / p12 を含む4通りはいずれも差 ≥ 32（p0〜p2 とは 36 以上、p7 とも 32.6）
     // p12 だけ gamesPlayed=0（最優先）にしてあるので、制約が無ければ必ず選ばれる。
@@ -892,7 +893,7 @@ describe('assignCourts - 2コート逐次配置（1コートずつ）の実力�
     const allPlayers: Player[] = Array.from({ length: 16 }, (_, i) =>
       createRatedPlayer(`p${i}`, `P${i}`, ratingOf(i), i === 12 ? 0 : 5)
     );
-    const waitingIds = ['p0', 'p1', 'p2', 'p7', 'p12'];
+    const waitingIds = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p12'];
     const waiting = allPlayers.filter(p => waitingIds.includes(p.id));
 
     const assignments = assignCourts(waiting, 1, [], {
@@ -902,8 +903,7 @@ describe('assignCourts - 2コート逐次配置（1コートずつ）の実力�
 
     expect(assignments).toHaveLength(1);
     const ids = [...assignments[0].teamA, ...assignments[0].teamB].sort();
-    expect(ids, `極端な実力差の制約を無視して p12 が選ばれた [${ids.join(', ')}]`)
-      .toEqual(['p0', 'p1', 'p2', 'p7']);
+    expect(ids, `極端な実力差を無視して p12 が選ばれた [${ids.join(', ')}]`).not.toContain('p12');
   });
 
   it('（旧エンジン）11人（MIN_ROSTER_FOR_SKILL_GAP 未満）ではハード制約が効かず、上位と下位が同じコートに入り得る', () => {

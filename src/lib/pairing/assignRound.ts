@@ -7,10 +7,10 @@
  * ## ハード制約（違反数が少ない解を、点数より先に選ぶ）
  *
  * 1. 公平性の窓: 優先度順で「必要人数 + 余り × 比率」番目より後ろの人を出さない
- *    （後半均等化モードは比率を狭める）
+ *    （後半均等化モードは比率を狭める）。窓の内側の公平性は点数側で、余りが少ないほど強い
  * 2. ペア希望「必ず」（strong）: 出るなら必ず味方 / 2人とも出るか2人とも控える
- * 3. 極端な実力差: コート内の偏差の最大−最小が `SCORE_TABLE.extremeSpan` 以上
- *    （人数に関係なく適用。「必ず」ペア2人の間は除く）
+ * （旧ハード3「極端な実力差」は、余り人数に応じて効きが変わる重い点数 `extremePenalty` に変更。
+ *  余りが `extremeRampEnd` 以上なら実質ハード、`extremeRampStart` 以下なら効かない）
  *
  * ## 選び方
  *
@@ -28,6 +28,7 @@ import {
   splitPoints,
   courtSpan,
   fairnessPoints,
+  extremeSurplusFactor,
   looseAffinityPoints,
   type AffinityPair,
   type ScoreContext,
@@ -71,7 +72,7 @@ const MAX_ITERATIONS = 200;
 
 /** 公平性の窓の比率: 余った人数のこの割合まで、優先度順の後ろの人を出してよい */
 const FAIRNESS_WINDOW_RATIO = 0.7;
-const LATE_BALANCE_WINDOW_RATIO = 0.3;
+const LATE_BALANCE_WINDOW_RATIO = 0.5;
 
 const EPS = 1e-9;
 
@@ -104,7 +105,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   const strongPairs = params.strongPairs ?? [];
   const dev = (id: string): number => deviationById.get(id) ?? 50;
 
-  // 1. 優先度順にソート。同点は偏差の高い順（旧エンジンが入力＝序列順の安定ソートだったのに揃える）
+  // 1. 優先度順にソート。同点は偏差の高い順（当日序列は使わない。決定性のため最後は id 順）
   const sortedCandidates = [...candidates].sort((a, b) => {
     const diff = priorityScoreOf(a) - priorityScoreOf(b);
     if (diff !== 0) return diff;
@@ -179,8 +180,13 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       if (!best || better(cand, best) < -EPS) best = cand;
     }
     const result = best!;
-    // 極端な実力差（ハード3）。分割に依らないので最後に足す
-    if (courtSpan(ids, deviationById, strongPairs) >= SCORE_TABLE.extremeSpan) result.violations++;
+    // 極端な実力差。分割に依らないので最後に足す（「必ず」ペア2人の間は除く）
+    const rawSpan = courtSpan(ids, deviationById, strongPairs);
+    if (rawSpan >= SCORE_TABLE.extremeSpan) {
+      result.points +=
+        extremeSurplusFactor(surplus) *
+        (SCORE_TABLE.extremePenalty + SCORE_TABLE.extremePerPoint * (rawSpan - SCORE_TABLE.extremeSpan));
+    }
     courtCache.set(key, result);
     return result;
   };
@@ -221,7 +227,8 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       selected,
       sortedCandidates.filter(p => !selectedSet.has(p.id)).map(p => p.id),
       needById,
-      lateBalanceMode
+      lateBalanceMode,
+      surplus
     );
     if (affinityPairs.length > 0) {
       // 同コートで味方でも敵でもない（別コート・ベンチ）。同コートの敵は分割の点数に入っている

@@ -1967,7 +1967,7 @@ export function getCallableReservationRestingIds(
  * `assignRoundByObjective`（`src/lib/pairing/`）に委譲する
  * （`useObjectiveEngine` の既定が true。docs/plans/2026-08-05-pairing-goals-and-rewrite.md）。
  * 新エンジンは、実力を当日ロースター内の偏差で測り、すべてのソフト項を「偏差何点分の悪さか」の
- * 1枚の点数表（`SCORE_TABLE`）で採点する。ハード制約は3つ（公平性の窓 / ペア希望「必ず」/ 極端な実力差）。
+ * 1枚の点数表（`SCORE_TABLE`）で採点する。ハード制約は2つ（公平性の窓 / ペア希望「必ず」。極端な実力差は余り人数で効きが変わる重い点数）。
  * 1コートは全列挙、複数コートは決定的な局所探索で最小点を選び、**コート ID ごとの実力帯の割り当ては持たない**
  * （docs/plans/2026-10-02-simplify-scoring.md）。
  *
@@ -2312,16 +2312,8 @@ export function assignCourts(
   // グループ分けは全アクティブプレイヤー（他コートでプレイ中含む）で行う
   const groupingPlayers = options?.allPlayers ?? activePlayers;
 
-  // 性別構成の偏りを許容するか判定（セッション全体で判定、ハード制約用）
-  const allowUnbalanced = shouldAllowUnbalancedGender(groupingPlayers, normalCourtCount);
-  // 少数派性別が1人で2-2構成が物理的に作れないか（ソフトペナルティ無効化用）
-  const genderPairImpossible = isGenderPairImpossible(groupingPlayers);
   // 少数派性別が少なく、MIX（2-2）を同性（4-0）と同格に優遇すべきか
   const preferGenderMix = isMinorityGenderScarce(groupingPlayers);
-  // preferGenderMix のときに「少数派側」がどちらの性別かを特定しておく
-  // （3コート以上の動的グループ選択で、コートの候補が少数派1人だけになっていないか判定するため）
-  const scarceMinorityGender = preferGenderMix ? getScarceMinorityGender(groupingPlayers) : null;
-
   // 新エンジン（目的関数ベースの同時配置）。**既定 true = 本番はここを通る**。
   // docs/plans/2026-08-05-pairing-goals-and-rewrite.md の新設計を別モジュールとして
   // 実装したもので、既存の selectBestFour / applyStreakSwaps / groupPlayers3Court /
@@ -2367,6 +2359,14 @@ export function assignCourts(
     });
     return [...reservationAssignments, ...assigned];
   }
+
+  // 性別構成の偏りを許容するか判定（セッション全体で判定、ハード制約用）
+  const allowUnbalanced = shouldAllowUnbalancedGender(groupingPlayers, normalCourtCount);
+  // 少数派性別が1人で2-2構成が物理的に作れないか（ソフトペナルティ無効化用）
+  const genderPairImpossible = isGenderPairImpossible(groupingPlayers);
+  // preferGenderMix のときに「少数派側」がどちらの性別かを特定しておく
+  // （3コート以上の動的グループ選択で、コートの候補が少数派1人だけになっていないか判定するため）
+  const scarceMinorityGender = preferGenderMix ? getScarceMinorityGender(groupingPlayers) : null;
 
   // 2コート同時配置の場合はホリスティック・アプローチを使用
   if (totalCourtCount === 2 && normalCourtCount === 2) {

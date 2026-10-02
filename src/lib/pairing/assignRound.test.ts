@@ -100,11 +100,13 @@ describe('assignRoundByObjective', () => {
     }
   });
 
-  it('小人数（8人）でも極端な実力差は同居させない', () => {
+  it('余りが十分ある（12人から1コート）なら極端な実力差は同居させない', () => {
     // p0=80 と p7=20 は 60 離れて極端。優先度は p0 と p7 を先頭にして同居を誘う
-    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+    // （余りが 4 以下の日は極端な実力差の効きが弱まる。下の「余りが少ない日」を参照）
+    const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
     const deviationById = new Map([
       ['p0', 80], ['p1', 55], ['p2', 54], ['p3', 53], ['p4', 52], ['p5', 51], ['p6', 50], ['p7', 20],
+      ['p8', 52], ['p9', 51], ['p10', 50], ['p11', 49],
     ]);
     const result = run({
       candidates,
@@ -117,7 +119,7 @@ describe('assignRoundByObjective', () => {
   });
 
   it('同じ顔ぶれの繰り返し（3人以上一致）はソフト: 他に同程度の解があれば入れ替わるが、強制はしない', () => {
-    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+    const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`)); // 余り 8（公平性が強すぎない人数）
     const deviationById = devByOrder(candidates.map(p => p.id));
     // p0〜p3 の同じ4人が直前に出た（4つの3人組すべてが新しい）
     const tripleWeights = new Map(['p0,p1,p2', 'p0,p1,p3', 'p0,p2,p3', 'p1,p2,p3'].map(k => [k, 1] as const));
@@ -130,6 +132,35 @@ describe('assignRoundByObjective', () => {
     // 4人しか居なければ強制はせず同じ4人が出る（解が返る）
     const four = run({ ...base, candidates: candidates.slice(0, 4), tripleWeights });
     expect(idsOf(four).size).toBe(4);
+  });
+
+  it('余りが少ない日（8人から1コート）は、3人以上一致より試合数の公平性を優先する', () => {
+    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+    const deviationById = devByOrder(candidates.map(p => p.id));
+    // p0〜p3 が直前に出たことになっているが、先に出るべき（試合数が少ない）のは p0〜p3 のまま
+    const tripleWeights = new Map(['p0,p1,p2', 'p0,p1,p3', 'p0,p2,p3', 'p1,p2,p3'].map(k => [k, 1] as const));
+    const picked = idsOf(run({
+      candidates, courtIds: [1], deviationById, tripleWeights,
+      priorityScoreOf: p => (Number(p.id.slice(1)) < 4 ? 0 : 1),
+    }));
+    expect([...picked].sort()).toEqual(['p0', 'p1', 'p2', 'p3']);
+  });
+
+  it('余りが少ない日は極端な実力差より待たされている人を出し、余りが十分ある日は極端な実力差を避ける', () => {
+    const build = (n: number) => {
+      const candidates = Array.from({ length: n }, (_, i) => makePlayer(`p${i}`));
+      const deviationById = new Map<string, number>(candidates.map(p => [p.id, 50] as const));
+      deviationById.set('p0', 80);
+      deviationById.set('p1', 20); // p0 と p1 は偏差差 60
+      return {
+        candidates, courtIds: [1], deviationById,
+        priorityScoreOf: (p: Player) => (p.id === 'p0' || p.id === 'p1' ? 0 : 1),
+      };
+    };
+    const small = idsOf(run(build(8))); // 余り 4
+    expect(small.has('p0') && small.has('p1')).toBe(true);
+    const large = idsOf(run(build(12))); // 余り 8
+    expect(large.has('p0') && large.has('p1')).toBe(false);
   });
 
   it('解が存在しないとき例外を投げず、違反最小の解を返す', () => {
@@ -161,7 +192,7 @@ describe('assignRoundByObjective', () => {
       };
       const total = (four: string[], teams: [[string, string], [string, string]]) => {
         const bench = candidates.map(p => p.id).filter(id => !four.includes(id));
-        return courtBreakdown(teams[0], teams[1], ctx).total + fairnessPoints(four, bench, need);
+        return courtBreakdown(teams[0], teams[1], ctx).total + fairnessPoints(four, bench, need, false, 4);
       };
       const result = run({
         candidates, courtIds: [1], deviationById,
@@ -203,7 +234,7 @@ describe('assignRoundByObjective', () => {
 describe('試合数の公平性（優先度の高い人を外さない・低い人を出さない）', () => {
   it('偏差が同じなら、試合数の少ない人から出る', () => {
     const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
-    const deviationById = new Map(candidates.map(p => [p.id, 50] as const));
+    const deviationById = new Map<string, number>(candidates.map(p => [p.id, 50] as const));
     const picked = idsOf(run({ candidates, courtIds: [1], deviationById, priorityScoreOf: p => (p.id < 'p4' ? 1 : 0) }));
     expect([...picked].sort()).toEqual(['p4', 'p5', 'p6', 'p7']);
   });
@@ -667,12 +698,15 @@ describe('連続出場（2/3/4連続目の点）', () => {
   });
 
   it('4連続目以上は、試合数が1試合分多い人を出す逆転があっても強く避ける', () => {
+    // 10人（余り 6）: p0〜p3 が先に出るべき（p4 以降は1試合分多い）。p3 が4連続目になる
+    const ten = Array.from({ length: 10 }, (_, i) => makePlayer(`p${i}`));
     const picked = idsOf(run({
-      ...base,
-      priorityScoreOf: (p: Player) => (p.id === 'p4' ? 1 : 0),
+      candidates: ten,
+      courtIds: [1],
+      deviationById: new Map(ten.map(p => [p.id, 70] as const)),
+      priorityScoreOf: (p: Player) => (Number(p.id.slice(1)) >= 4 ? 1 : 0),
       streakById: new Map([['p3', 3]]), // 今回4連続目
     }));
-    expect(picked.has('p4')).toBe(true);
     expect(picked.has('p3')).toBe(false);
   });
 

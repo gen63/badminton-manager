@@ -7,7 +7,9 @@ import {
   SCORE_TABLE,
   courtBreakdown,
   courtSpan,
+  extremeSurplusFactor,
   fairnessPoints,
+  fairnessSurplusFactor,
   genderPoints,
   looseAffinityPoints,
   streakPoints,
@@ -222,5 +224,59 @@ describe('looseAffinityPoints（別コート・ベンチで味方になれない
 
   it('プールに居ないペアは対象外', () => {
     expect(looseAffinityPoints(new Map(), pool, [{ a: 'x', b: 'y' }])).toBe(0);
+  });
+});
+
+describe('余り人数に応じた公平性・極端な実力差の効き（連続関数）', () => {
+  const grid = Array.from({ length: 161 }, (_, i) => i * 0.1); // 余り 0〜16 を 0.1 刻み
+
+  it('公平性の倍率は余りが増えるほど単調に下がり、余りが多ければ 1 に近づく', () => {
+    for (let i = 1; i < grid.length; i++) {
+      expect(fairnessSurplusFactor(grid[i])).toBeLessThanOrEqual(fairnessSurplusFactor(grid[i - 1]) + 1e-12);
+    }
+    expect(fairnessSurplusFactor(0)).toBeCloseTo(1 + SCORE_TABLE.fairnessSurplusGain, 9);
+    expect(fairnessSurplusFactor(16)).toBeLessThan(1.001);
+    // 実メンバー規模（余り 7 前後）はほぼ 1 倍、少人数（余り 1〜2）は桁違いに強い
+    expect(fairnessSurplusFactor(7)).toBeLessThan(1.2);
+    expect(fairnessSurplusFactor(2)).toBeGreaterThan(10);
+  });
+
+  it('隣り合う人数（余り n と n+1）の境界で段差がない: 0.1 刻みの変化は小さく、整数の前後で飛ばない', () => {
+    for (let i = 1; i < grid.length; i++) {
+      const jump = fairnessSurplusFactor(grid[i - 1]) - fairnessSurplusFactor(grid[i]);
+      expect(jump).toBeGreaterThanOrEqual(-1e-12);
+      expect(jump).toBeLessThan(1); // 0.1 刻みで 1 倍分も動かない（急変しない）
+    }
+    for (let n = 0; n <= 15; n++) {
+      // 整数の前後 ±1e-6 で値が連続（境界で飛ばない）
+      expect(Math.abs(fairnessSurplusFactor(n - 1e-6) - fairnessSurplusFactor(n + 1e-6))).toBeLessThan(1e-3);
+      expect(Math.abs(extremeSurplusFactor(n - 1e-6) - extremeSurplusFactor(n + 1e-6))).toBeLessThan(1e-3);
+    }
+  });
+
+  it('余りが負でも壊れない（0 と同じ）', () => {
+    expect(fairnessSurplusFactor(-3)).toBe(fairnessSurplusFactor(0));
+  });
+
+  it('公平性の点数は、同じ逆転でも余りが少ないほど大きい（余り省略時は倍率 1）', () => {
+    const need = new Map([['a', 1], ['b', 0]]);
+    const at = (surplus?: number) => fairnessPoints(['a'], ['b'], need, false, surplus);
+    expect(at()).toBeCloseTo(SCORE_TABLE.fairnessPerGame, 9);
+    let prev = Infinity;
+    for (const s of [0, 1, 2, 3, 4, 5, 6, 7, 8, 10]) {
+      const v = at(s);
+      expect(v).toBeLessThan(prev + 1e-12);
+      expect(v).toBeGreaterThanOrEqual(SCORE_TABLE.fairnessPerGame - 1e-9);
+      prev = v;
+    }
+  });
+
+  it('極端な実力差の効きは余りが増えるほど単調に増え、0〜1 に収まる', () => {
+    for (let i = 1; i < grid.length; i++) {
+      expect(extremeSurplusFactor(grid[i])).toBeGreaterThanOrEqual(extremeSurplusFactor(grid[i - 1]) - 1e-12);
+    }
+    expect(extremeSurplusFactor(0)).toBe(0);
+    expect(extremeSurplusFactor(SCORE_TABLE.extremeRampEnd)).toBe(1);
+    expect(extremeSurplusFactor(100)).toBe(1);
   });
 });
