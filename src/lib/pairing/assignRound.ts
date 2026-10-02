@@ -654,8 +654,10 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
         }
       }
     }
-    // 目的8 recency のハード側: 3連続目以上（`RECENCY_STREAK_SHAPE.hardFrom`）は違反。
-    // ソフトのコストだけでは他のハード制約に押されて残るため。連続候補がいなければ素通り
+    // 目的8 recency のハード側（`RECENCY_STREAK_SHAPE.hardFrom`）。既定は 0＝無効で、
+    // 連続はソフトのコストだけで避ける（強さ系のハード制約と同列にしないため。
+    // 2026-10-02 の再調整）。bench が hardFrom を上げて比較するために残してある。
+    // 連続候補がいなければ素通り
     if (streakById.size > 0) {
       for (const court of s.courts) {
         for (const id of courtMembers(court)) {
