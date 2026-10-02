@@ -6,6 +6,7 @@ import { SessionError } from './errorHandler';
 import { assignRoundByObjective } from './pairing/assignRound';
 import { buildStreakById } from './pairing/streak';
 import { GENDER_BALANCE_OFF_WEIGHTS } from './pairing/objective';
+import { buildRepeatWeights } from './pairing/repeatDecay';
 import { median } from './median';
 import type { PairPreference } from '../types/pairPreference';
 import { computeAffinityPairs, computeStrongPairs } from './pairPreference';
@@ -135,22 +136,6 @@ const MAX_GAMES_ABOVE_AVERAGE = 3;
 const RECENT_MATCH_LOOKBACK = 3;
 /** 直近試合と何人重複したら「似た試合」と見なすか */
 const RECENT_MATCH_OVERLAP_LIMIT = 3;
-/**
- * 目的関数エンジンで、候補プールが小さいときに直近試合の重複判定を緩める（4人全員一致のみ禁止）。
- * 「控えの余剰人数（候補 − 配置人数）が 8 以下（＝控えが2コート分以下）」で、かつ
- * 連続候補（`pairing/streak.ts`）が居るとき。
- *
- * 3人重複を禁じると、余剰が小さい（待機が「今終わった4人 + 数人」しかいない）条件では
- * 組める4人が「直前メンバーを混ぜる」形に強制され、連続出場（目的8 recency）を
- * 避けられない。例: 8人1コートは完全ローテーション（残り4人をそのまま入れる）が
- * 直近の試合との4人重複に当たって禁じられ、毎回2人が連続になる。
- * bench（連続モード）では緩めると 16人2コート・19人3コートでも連続・実力差・3-1・試合数幅が
- * 改善する一方、占有率（目的6 多様性）は悪化する。質 > 多様性 > 公平性の優先順位で
- * 前者を採った。余剰が大きい条件（21人3コート以上など）は影響が小さいので従来どおり。
- * 計測: docs/plans/2026-10-01-recency-just-finished-streak.md
- */
-const SMALL_POOL_MAX_SURPLUS = 8;
-const RECENT_MATCH_OVERLAP_LIMIT_SMALL_POOL = 4;
 /**
  * 3コート以上で、自グループの残り人数が4人に満たないコートが他グループから
  * 補充する際、不足数ちょうどではなく selectBestFour に多少の選択の余地を
@@ -2371,14 +2356,6 @@ export function assignCourts(
     // 進行中コートの開始も「他の試合の開始」に数えるので options.inProgressStartedAt で受ける。
     // 定義の詳細: src/lib/pairing/streak.ts / docs/plans/2026-10-01-recency-just-finished-streak.md
     const objectiveStreakById = buildStreakById(matchHistory, options?.inProgressStartedAt);
-    // 候補プールが小さく、避けたい連続候補が居るときだけ直近試合の重複判定を緩める
-    // （SMALL_POOL_MAX_SURPLUS 参照）。連続候補が居ない（履歴が空・時刻が無い旧データ）
-    // なら緩める理由が無いので従来どおり
-    const objectiveOverlapLimit =
-      objectiveStreakById.size > 0 &&
-      normalCandidates.length - 4 * normalCourtIds.length <= SMALL_POOL_MAX_SURPLUS
-        ? RECENT_MATCH_OVERLAP_LIMIT_SMALL_POOL
-        : RECENT_MATCH_OVERLAP_LIMIT;
     const assigned = assignRoundByObjective({
       candidates: normalCandidates,
       courtIds: normalCourtIds,
@@ -2388,8 +2365,10 @@ export function assignCourts(
       priorityScoreOf: (p) =>
         calculatePriorityScore(p, practiceStartTime, useStayDuration, lateBalance),
       pairCounts: historyCounts.pair,
+      // 目的6 variety の減衰付き共演重み（直近重複のハード制約は撤去済み。
+      // docs/plans/2026-10-02-variety-decay.md）
+      repeatWeights: buildRepeatWeights(matchHistory, pairKey, comboKey),
       pairKeyOf: pairKey,
-      isRecentDuplicate: (ids) => hasSimilarRecentMatch(ids, matchHistory, objectiveOverlapLimit),
       wideSpanThreshold: objectiveWideSpanThreshold,
       preferGenderMix,
       lateBalanceMode: options?.lateBalanceMode ?? false,

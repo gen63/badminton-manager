@@ -12,6 +12,9 @@
  * **副作用なし・外部依存なし**。`algorithm.ts` を import しないこと（循環参照防止）。
  */
 
+import type { RepeatWeights } from './repeatDecay';
+import { VARIETY_SHAPE } from './repeatDecay';
+
 /** 1コート分の配置（4人 = teamA 2人 + teamB 2人） */
 export interface CourtPlacement {
   courtId: number;
@@ -327,6 +330,11 @@ export interface ObjectiveInput {
    * `docs/plans/2026-10-01-recency-just-finished-streak.md`
    */
   streakById: Map<string, number>;
+  /**
+   * 目的6 `variety` の減衰付き共演重み（`pairing/repeatDecay.ts`）。省略または
+   * `VARIETY_SHAPE.mode === 'off'` なら従来の累計回数（`pairCounts`）で計算する。
+   */
+  repeatWeights?: RepeatWeights;
 }
 
 /**
@@ -753,9 +761,13 @@ export function computeVariety(
   courts: CourtPlacement[],
   pairCounts: PairCounts,
   pairKeyOf: (a: string, b: string) => string,
-  reachableCountById: Map<string, number>
+  reachableCountById: Map<string, number>,
+  repeatWeights?: RepeatWeights
 ): number {
   if (courts.length === 0) return 0;
+  if (repeatWeights && VARIETY_SHAPE.mode !== 'off') {
+    return computeVarietyDecayed(courts, pairCounts, pairKeyOf, reachableCountById, repeatWeights);
+  }
   const together = (a: string, b: string): number => {
     const key = pairKeyOf(a, b);
     return (pairCounts.partner.get(key) ?? 0) + (pairCounts.opponent.get(key) ?? 0);
@@ -794,6 +806,56 @@ export function computeVariety(
     return s + term;
   }, 0);
   return clamp01(sum / courts.length);
+}
+
+/**
+ * 目的6（減衰版）。コートごとに
+ * `x = Σ_{6ペア} (w_ij / scale_ij)^power`、
+ * コートの項 = `min(1, x / scale)`（0〜1）+ `quadWeight × min(2, 同じ4人の重み和)`（別枠で加算。0〜1 を超えうる）、全コート平均。
+ * `w_ij` = 共演の減衰重み和 + `rawFloor` × その日の累計回数。
+ * 凸関数（`power` 乗）なので、1回目の繰り返しは軽く、重なるほど急に強く効く。
+ */
+function computeVarietyDecayed(
+  courts: CourtPlacement[],
+  pairCounts: PairCounts,
+  pairKeyOf: (a: string, b: string) => string,
+  reachableCountById: Map<string, number>,
+  rw: RepeatWeights
+): number {
+  const { power, scale, quadWeight, rawFloor } = VARIETY_SHAPE;
+  const reachable = [...reachableCountById.values()].filter(v => v > 0);
+  const avgReachable = reachable.length
+    ? reachable.reduce((a, b) => a + b, 0) / reachable.length
+    : 0;
+  const scaleOf = (a: string, b: string): number => {
+    if (avgReachable <= 0) return 1;
+    const min = Math.min(
+      reachableCountById.get(a) ?? avgReachable,
+      reachableCountById.get(b) ?? avgReachable
+    );
+    return min <= 0 ? 1 : Math.max(1, avgReachable / min);
+  };
+  const sum = courts.reduce((s, court) => {
+    const members = courtMembers(court);
+    let x = 0;
+    for (let i = 0; i < members.length; i++) {
+      for (let j = i + 1; j < members.length; j++) {
+        const key = pairKeyOf(members[i], members[j]);
+        let w = rw.pair.get(key) ?? 0;
+        if (rawFloor > 0) {
+          w += rawFloor * ((pairCounts.partner.get(key) ?? 0) + (pairCounts.opponent.get(key) ?? 0));
+        }
+        if (w > 0) x += Math.pow(w / scaleOf(members[i], members[j]), power);
+      }
+    }
+    let term = Math.min(1, x / scale);
+    if (quadWeight > 0 && rw.quad.size > 0) {
+      const q = rw.quad.get([...members].sort().join(','));
+      if (q) term += quadWeight * Math.min(q, 2);
+    }
+    return s + term;
+  }, 0);
+  return sum / courts.length;
 }
 
 /**
@@ -997,7 +1059,8 @@ export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
       input.courts,
       input.pairCounts,
       input.pairKeyOf,
-      input.reachableCountById
+      input.reachableCountById,
+      input.repeatWeights
     ),
     affinity: computeAffinity(input.courts, input.benchIds, input.affinityPairs),
     recency: computeRecency(input.courts, input.streakById),
