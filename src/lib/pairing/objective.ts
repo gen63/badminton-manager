@@ -1,20 +1,26 @@
 /**
- * 目的関数（8目的の正規化・重み付き合計）。
+ * 配置の「点数表」と、コート単位の採点。
  *
- * `docs/plans/2026-08-05-pairing-goals-and-rewrite.md` の「やりたいこと（6個）」に
- * 1目的1指標で対応する（目的1〜6）。すべて 0〜1 に正規化し、重み付き合計する
- * 純関数群。目的7 `affinity`（ペア希望）は
- * `docs/plans/2026-08-31-pair-preference.md` で追加。目的8 `recency`
- * （連続出場を嫌う）は `docs/plans/2026-09-08-recency-penalty.md` で追加し、
- * `docs/plans/2026-10-01-recency-just-finished-streak.md` で作り直した
- * （他の項と違い 0〜1 に収まらない）。
+ * ## 共通通貨: 偏差何点分の悪さか
+ *
+ * すべてのソフト項を「偏差（登録レートをその日のロースターで偏差値化: 平均50・SD10。
+ * `deviation.ts`）何点分の悪さか」に換算したコストにする。コストは**小さいほど良い**
+ * 単なる足し算で、重みの掛け合わせや 0〜1 の正規化はない。点数表は `SCORE_TABLE` の1枚だけ。
+ * 設計: docs/plans/2026-10-02-simplify-scoring.md
+ *
+ * ## 採点の対象（1ラウンド = 全コートの合計）
+ *
+ * - コートごと: コート内の最大−最小 / チーム平均の差 / 3人以上一致 / 連続 / 男女バランス /
+ *   ペア希望（同コートで敵）
+ * - ラウンド全体: 試合数の公平性 / ペア希望（別コート・ベンチ）
+ *
+ * ハード制約（公平性の窓・「必ず」ペア）は点数ではなく `assignRound.ts` が
+ * 違反数として数え、違反が少ない解を必ず点数より先に選ぶ。
  *
  * **副作用なし・外部依存なし**。`algorithm.ts` を import しないこと（循環参照防止）。
  */
 
-import type { RepeatWeights } from './repeatDecay';
-import { VARIETY_SHAPE } from './repeatDecay';
-import { STRENGTH_SHAPE } from './strength';
+import { comboKey } from './repeatDecay';
 
 /** 1コート分の配置（4人 = teamA 2人 + teamB 2人） */
 export interface CourtPlacement {
@@ -23,1169 +29,294 @@ export interface CourtPlacement {
   teamB: [string, string];
 }
 
-export interface ObjectiveWeights {
-  /** 目的1: 出場機会が均等 */
-  fairness: number;
-  /** 目的2: 待ち時間が偏らない */
-  waiting: number;
-  /** 目的3: 実力差（ハード制約を超えない範囲のソフト分） */
-  skillGap: number;
-  /** 目的4: 競る試合になる */
-  competitive: number;
-  /** 目的5: 性別構成が偏らない */
-  gender: number;
-  /** 目的5b: 2-2 のコートを男男 vs 女女（男女戦）に分けない */
-  mixSplit: number;
-  /** 目的6: 顔ぶれが繰り返されない */
-  variety: number;
-  /** 目的7: ペア希望（`affinity`）— 特定2人が組む頻度を上げる。0〜1・小さいほど良い */
-  affinity: number;
-  /**
-   * 目的8: 連続出場を嫌う（`recency`）。「たった今終わったコートに居た人」を
-   * 今回も出すと何連続目になるかで、**飽和せず**段階的に減点する（2連続目は軽く、
-   * 3連続目は強く、4連続目以上はほぼ起きない）。小さいほど良い。
-   * **他の項と違い 0〜1 に収まらない**（`computeRecency` 参照）。
-   * `docs/plans/2026-10-01-recency-just-finished-streak.md`
-   * （初版: `docs/plans/2026-09-08-recency-penalty.md`）
-   */
-  recency: number;
-}
-
-/**
- * `mixSplit` の重み。2-2 のコートは MIX×MIX に分ける（旧エンジンの
- * `splitIntoTeams` はこれをハード制約にしていた）。
- *
- * **形式はソフト制約だが、1.0 では実質ハード制約**。コート4人を実力順に
- * r1<r2<r3<r4、`a = r2−r1`、`b = r4−r3` と置くと、`competitive` が
- * `mixSplit` に打ち勝って男女戦が選ばれる条件は
- *
- * ```
- * 2 * min(a, b) > ロースター人数 − 1
- * ```
- *
- * だが `2*min(a,b) <= a+b <= コート内の実力幅 <= ロースター人数 − 1` が常に
- * 成り立つため、この不等式は決して満たされない（8〜30人で総当たり検算済み。
- * 最悪ケースでもマージン −0.034）。閾値は 0.5〜0.6 の間にあり、0.4 まで
- * 下げると最も釣り合わない構成に限って 0.3〜1.1% で男女戦が出る。
- *
- * バランス上どうしても MIX が組めない場面の逃げ道は、この項ではなく
- * **コート構成のレイヤー**にある。2-2 にせず 4-0 / 3-1 にすればこの項は
- * 適用対象外（`computeMixSplit` は 2-2 のみ判定）で、その判断は `gender` が担う。
- *
- * 値は bench で決定（`docs/plans/2026-08-05-pairing-goals-and-rewrite.md`）。
- */
-const MIX_SPLIT_WEIGHT = 1.0;
-
-/**
- * `skillGap` の重み。1.0 → **1.5**。
- *
- * ## 何を直したか
- *
- * `gender` は 3-1 のコートに一律 1.0（重み 1.6）を課すのに対し、それが防いでいる
- * 実力面の損は `skillGap` = 順位幅 ÷（人数−1）で実際には 0.3〜0.6 程度しかなく、
- * **gender が 3〜5 倍強い**。そのため少数派（男女比の少ない側）が2人だけで序列の
- * 両端にいると、2-2 を作るためだけに序列全体をまたぐコートを組んでしまう。
- * 13人3コート（男11 + 女2、女性が序列2位と12位）で:
- *
- * ```
- * 1.0  幅7 / 幅3 / 幅11   ← 強い方の女性が最下位の男性と組んで最上位と当たる
- * 1.5  幅3 / 幅3 / 幅4
- * ```
- *
- * 1.2 で既に直り、1.5 まで同じ結果。14人以上では順位差のハード制約
- * （`WIDE_RANK_SPAN_MIN_ROSTER`）が既に止めるので、症状は 12〜13人でのみ出る。
- * 12人3コートは 2.5 まで上げないと直らないが、そこは払わない（後述）。
- *
- * ## なぜ `gender` を下げるのではなく `skillGap` を上げるのか
- *
- * **3-1 も男女戦も避けるのが原則**であり、それは変わっていない。`gender` を下げる
- * のは「3-1 への嫌悪を弱める」方向で原則に反し、実測でも実力と無関係な場面まで
- * 3-1 が増える（2-2 のコートだけ順位幅を縛る案では、12人3コートで 3-1 が +8.0pt
- * 増えるのに幅広% は 45.0 → 45.2 とまったく改善しなかった）。`skillGap` を上げる
- * のは「**序列をまたぐことへの嫌悪を強める**」方向で原則を緩めず、3-1 は
- * 「帯を崩さずに 2-2 が作れなかった残余」としてだけ現れる。
- *
- * ## 値（SEEDS=60 NOISE=0、幅広% / 3-1%）
- *
- * | 条件 | 1.0 | **1.5** | 2.0 | 2.5 |
- * |---|---|---|---|---|
- * | 13人3C | 42.9 / 14.6 | 39.8 / 14.6 | 38.2 / 15.9 | 37.8 / 15.4 |
- * | 16人2C | 35.6 / 2.1  | 33.6 / 2.4  | 32.8 / 2.8  | 29.9 / 3.1 |
- * | 18人3C | 31.2 / 3.1  | 29.8 / 3.3  | 27.7 / 3.7  | 27.4 / 4.3 |
- * | 21人3C | 26.6 / 1.7  | 25.3 / 1.9  | 24.7 / 2.3  | 22.8 / 2.8 |
- *
- * **1.5 は幅広% が全条件で 1.3〜2.0pt 改善し、3-1% の増加は +0.0〜0.3pt に留まる。**
- * 2.0 以上は 3-1% と多様性・公平性の代償が急に増える（2.0 でユニットテストが
- * 3件、2.5 でさらに落ちる）ので採らない。
- *
- * ## 前提: 同点レートの扱い
- *
- * この引き上げは `buildRanksWithTies`（同点レートを同順位にする）とセット。
- * 同点に別々の順位が振られたままだと架空の順位差にペナルティがかかり、
- * `skillGap` を上げるほどそれが増幅される（全員 1500 のセッションで
- * `preferGenderMix` が壊れた）。順番を逆にしてはいけない。
- *
- * この重みは男女比調整の ON/OFF に関係なく効く（`GENDER_BALANCE_OFF_WEIGHTS` は
- * `skillGap` を上書きしない）。帯を崩さないことは性別の設定とは独立の原則のため。
- */
-const SKILL_GAP_WEIGHT = 1.5;
-
-/**
- * skillGap のソフト側の形（bench が上書きして比較できるよう書き換え可能）。
- * `docs/plans/2026-10-02-rank-gap-soft.md`
- *
- * 1コートあたりの項 = g + slope × max(0, g − knee)²
- * （g = 順位幅 ÷（ロースター人数−1）。regMix > 0 なら formRank の幅と登録順位の幅を
- * (1−regMix):regMix で混ぜる）。幅が knee を超えると二乗で急に重くなる凸形。
- * ハード制約が掛からない14人未満でも「大きく離れた組」を強く嫌えるようにするのが目的。
- * slope > 0 のとき項は 1 を超えうる（クランプしない）。
- */
-// 2026-10-02: knee 0.3 → 0.35 / slope 7 → 10（数値ベースの幅は端で順位幅より大きく出るので、膝を少し上げて傾きで補う。docs/plans/2026-10-02-rating-based-strength.md）
-export const RANK_GAP_SOFT_SHAPE = { knee: 0.35, slope: 10, regMix: 0.5 };
-
-/**
- * `affinity` の重み。2.0 → **1.0**（飽和廃止にあわせて再計測。
- * `docs/plans/2026-08-31-pair-preference.md` 6d.）。
- *
- * ## なぜ測り直したか
- *
- * 2.0 は「実績比率が目標に届いたら押すのをやめる」**飽和つき**の `normal` を
- * 前提に決めた値だった。2026-09-01 に飽和を廃止して常に最大強度で押し続ける
- * 仕様へ変えたため、同じ重みでも実効的な効き目が強くなり、測り直しが要る。
- *
- * ## 値（22人3C / 16人2C、ペア6通りの平均・各60ラウンド）
- *
- * 成立率 = 2人が味方だった試合 ÷ min(2人の試合数)。
- * 相方 = その人が組んだことのある相手の人数（多様性の代理指標）。
- *
- * | 重み | 22人3C 成立率 / 相方 | 16人2C 成立率 / 相方 |
- * |---|---|---|
- * | （希望なし） | 11% / 13.0人 | 11% / 10.2人 |
- * | 0.5 | 49% / 11.0人 | 35% / 9.2人 |
- * | 0.7 | 57% / 10.0人 | 33% / 9.7人 |
- * | **1.0** | **64% / 8.2人** | **39% / 8.5人** |
- * | 2.0 | 82% / 5.7人 | 61% / 7.5人 |
- *
- * **1.0 を採る。** 2.0 は成立率こそ高いが、通常最大の22人3コートで相方が
- * 13.0人 → 5.7人（−56%）まで痩せ、「ほぼ毎回このペア」になって他のメンバーと
- * 組む機会を奪う。1.0 なら成立率 64%（希望なしの約6倍）を確保しつつ相方は
- * 8.2人残る。運用意図は「必ず一緒」ではなく「組みやすくする」であり、
- * それは `必ず`（`strong`）のハード制約が別に担っている。
- *
- * ## 試合数リークも 1.0 の方が良い
- *
- * 希望ペア当事者の試合数 − 全体中央値（plan の合格条件は +0.5 未満）:
- *
- * | 重み | 22人3C | 16人2C |
- * |---|---|---|
- * | 1.0 | +0.08 | +0.42 |
- * | 2.0 | +0.00 | **+0.58** |
- *
- * **2.0 は16人2コートで +0.58 と合格条件を超えていた**（飽和を外した副作用。
- * 飽和ありで測った当時は ±0.35 に収まっていた）。1.0 で +0.42 に収まる。
- *
- * ## 下げすぎない理由
- *
- * 0.5 は相方をほぼ完全に保つ（11.0人）が、16人2コートで成立率が 35% まで落ちる。
- * 2コート運用は候補プールが小さく `variety` の抵抗が相対的に強いので、ここが
- * 効き目の下限を決める。0.4 では 27% とほぼ「希望なし」に近づく。
- */
-const AFFINITY_WEIGHT = 3.6; // 2026-10-02: 2.0 → 3.6（実力差の数値ベース化と3人一致の項（係数0.1）で下がる希望ペア成立率を master 水準へ戻す。docs/plans/2026-10-02-rating-based-strength.md）
-// 2026-10-02: 1.0 → 2.0。variety を 2.6 → 6.0 に上げたため normal の成立率が落ちた
-// （19人3C 希望1組で 24.9% → 15.9%）。2.0 で master 以上に戻り、同コート敵になる率もほぼ 0 になる。
-// 試合数リークは最大 +0.4 程度で合格条件（+0.5 未満）内。docs/plans/2026-10-02-rank-gap-soft.md
-
-/**
- * `recency` の重み。**5.0**（2026-10-02: 2.0 → 5.0。skillGap の凸化・variety 強化で
- * 3連続が増えるのを抑えるため。`docs/plans/2026-10-02-rank-gap-soft.md`）。
- * 以下は 2.0 の時点の計測（経緯として残す）。計測の全文は
- * `docs/plans/2026-10-01-recency-just-finished-streak.md`（初版の経緯は
- * `docs/plans/2026-09-08-recency-penalty.md`）。
- *
- * 連続回数ごとのコストの形は `RECENCY_STREAK_SHAPE`（1人あたりの実効コストは
- * `cost(n) × RECENCY_WEIGHT / 4`）。形を変えても重みは **2.0 のまま**で、形の側
- * （base / growth）で 2連続目・3連続目の強さを決める（2026-10-02 の再調整。
- * 以下の表は旧形状 base=1 / growth=4 / 3連続目ハードでの重み振りで、重みが 2 付近で
- * よいことの根拠として残す）。
- *
- * 19人3コート連続モード（`CONTINUOUS=1 NOISE=4 SEEDS=200`）で重みを振った値:
- *
- * | 重み | 2連続% | 3連続% | 3-1% | 幅広% | 実力幅 | 試合数幅 | 待ち |
- * |---|---|---|---|---|---|---|---|
- * | 0 | 22.3 | 0.2 | 5.1 | 11.5 | 8.54 | 1.37 | 8.65 |
- * | 1.2 | 17.5 | 0.0 | 5.5 | 11.1 | 8.48 | 1.35 | 8.31 |
- * | **2（採用）** | **15.7** | 0.0 | 5.8 | 11.2 | 8.51 | 1.37 | 8.20 |
- * | 3 | 13.5 | 0.0 | 6.5 | 11.6 | 8.56 | 1.36 | 8.03 |
- *
- * 重みを上げるほど 2連続は減るが、**男女構成（3-1%）が先に崩れる**（3 で +1.4pt）。
- * 「2連続の回避は強さバランスより優先しない」ため、3-1% の悪化が +0.7pt 以内に
- * 収まる 2 を採った。重み 100 まで上げても 2連続は 12% 残る（公平性の窓・順位差・
- * 直近重複などのハード制約で避けられない分。plan の「2連続の下限」参照）。
- *
- * **前提: bench の連続モード（`CONTINUOUS=1`）と、履歴タイミングが本番と同じこと**
- * （終了順に履歴へ積み、進行中コートの開始時刻を `inProgressStartedAt` で渡す）。
- * この項を再計測するときは先に確かめること。
- */
-const RECENCY_WEIGHT = 9.0; // 2026-10-02: 5.0 → 9.0（fairness/waiting を上げたぶん増える連続を抑える。docs/plans/2026-10-02-rating-based-strength.md）
-
-/**
- * 優先順位（質 > 多様性 > 公平性）を反映した既定値。
- *
- * **重みの大小は優先順位そのものではない。** 各項の正規化スケールが違うため、
- * 「どの重みなら各目的がどこまで達成されるか」を bench で測って決めている。
- * また**効くのは比だけ**なので、ある目的が負けたらその目的の重みを上げる、という
- * 手順で1つずつ詰めた。計測: docs/plans/2026-08-05-pairing-goals-and-rewrite.md
- *
- * これらの値は**同一プレイヤー重複バグの修正後に取り直したもの**。修正前は破損した
- * 試合が混ざって指標が歪んでいたため、それ以前の調整値は無効。
- *
- * 決めた順序と根拠（21人3コート NOISE=0。既存エンジンは 幅広4.2 / 競り27.1 /
- * 3-1 6.0 / 占有45.7 / 共演13.37 / 試合数幅1.41）:
- *
- * 1. `fairness` = `waiting` **1.5**: 0.9 では試合数幅 2.51。1.5 で 1.53 まで戻る。
- *    2.2 まで上げると 1.19 と既存を追い越すが、3-1 が 4.1% → 6.5% と既存並みに
- *    戻ってしまう（質を落として公平性を買う形）ので採らない
- * 2. `gender` **1.6**: `fairness` を上げた副作用で 3-1 が悪化した（15人3コートで
- *    15.2% と既存 12.1% に負けた）。0.8 → 1.6 で全条件が既存を明確に下回る
- *    （21人3C 1.6% / 15人3C 10.1% / 16人2C 1.7%）。2.6 まで上げても伸びは小さい
- * 3. `variety` **2.6**: 1.2 では「6回組んだペアを再選出しない」という目的6 の
- *    基本的なケース（`algorithm.test.ts` の集中度テスト）を落とす。集計上の
- *    占有率は良くても、偏りそのものを外すのは筋が悪いので上げた
- * 4. `mixSplit` **1.0**: 後から追加（→ `MIX_SPLIT_WEIGHT`）。0.4 では男女戦が
- *    0.3〜1.1% 残り、0.5 で 0.0〜0.1%、0.6 以上で全条件 0.0%。1.0 を採ったのは
- *    閾値（0.5〜0.6）から余裕を取るため。0.4 → 1.0 で他の指標は変わらない
- *    （競り度・占有率・試合数幅とも誤差範囲）
- * 5. `skillGap` **1.5**: 後から 1.0 → 1.5 に引き上げ（→ `SKILL_GAP_WEIGHT`）
- *
- * 結果、**質・多様性の全指標で既存エンジンを上回り**、劣るのは試合数幅のみ
- * （21人3コートで 2.16 vs 1.41）。
- */
-export const DEFAULT_WEIGHTS: ObjectiveWeights = {
-  skillGap: SKILL_GAP_WEIGHT,
-  competitive: 1.0,
-  gender: 3.7,
-  mixSplit: MIX_SPLIT_WEIGHT, // 質
-  variety: 6.0, // 多様性（2026-10-02: 2.6 → 6.0。skillGap 凸化と同時に再調整。docs/plans/2026-10-02-rank-gap-soft.md）
-  fairness: 5.5,
-  waiting: 14.0, // 公平性（2026-10-02: 4.0 → 14.0。数値ベースのレベル差を強めたぶん広がる試合数幅を抑える。docs/plans/2026-10-02-rating-based-strength.md）
-  affinity: AFFINITY_WEIGHT, // ペア希望（bench 実測。根拠は AFFINITY_WEIGHT のコメント参照）
-  recency: RECENCY_WEIGHT, // 連続出場を嫌う（2連続目は僅かに、3連続目はまあまあ強く、4連続目以上は強く。すべてソフト。形は RECENCY_STREAK_SHAPE）
-};
-
-/**
- * 「男女比調整」をオフにしたときの重み上書き。
- *
- * オフでも**完全には無効化しない**。`gender` を下げると 3-1 のコートが増え、
- * `mixSplit` を下げると男女戦（男男 vs 女女）が出るようになるが、どちらも
- * 0 にすると「実力差に関係なく常時そうなる」ため、小さい値を残して
- * **実力の釣り合いが明確に良くなるときだけ**そうなるようにしている。
- *
- * bench（SEEDS=60 NOISE=0、21人3コート）でのオン → オフ:
- *   3-1%      1.7% → 8.9%
- *   男女戦%   0.0% → 2.3%（30試合に1回程度）
- *   競り度    27.7 → 27.2
- *
- * **試合の拮抗度はほとんど変わらない。** `skillGap` と順位差のハード制約が既に
- * 帯を作っており、性別の調整はその帯の中で行われているだけなので、性別の重みを
- * 下げても選べる相手は増えない（`gender` を 1.6 → 0.2 の 8 分の 1 にしても
- * 競り度は 27.7 → 26.6 しか動かなかった）。オフで変わるのは男女比だけ。
- *
- * `mixSplit` の 0.2 は「上位2人と下位2人の実力差が両方 2 順位以上」で発動する値。
- * 0.4 だと 0.1〜0.2% しか出ず設定を切った意味が体感できず、0 にすると 2 割を
- * 超えて常時許容になる。
- */
-export const GENDER_BALANCE_OFF_WEIGHTS: Partial<ObjectiveWeights> = {
-  gender: 0.6,
-  mixSplit: 0.2,
-};
-
-/** パートナー/対戦相手の回数集計（呼び出し側の HistoryCounts.pair と同じ形） */
-export interface PairCounts {
-  partner: Map<string, number>;
-  opponent: Map<string, number>;
-}
-
-/** 目的関数の評価に必要な入力一式 */
-export interface ObjectiveInput {
-  /** このラウンドで配置するコート */
-  courts: CourtPlacement[];
-  /** 選ばれなかった候補（控え） */
-  benchIds: string[];
-  /** 優先度順位（0始まり、小さいほど優先＝待っている）。候補プール全員分 */
-  priorityRankById: Map<string, number>;
-  /** 優先度順位を計算した候補プールの人数（fairness/waiting の分母） */
-  candidateCount: number;
-  /** 登録レートそのままの順位（ハシゴ式適用**前**。0始まり）。
-   *  登録レートは `formRankById` の初期値を決めるためだけに存在するので、
-   *  目的関数はこれを参照しない（互換のため型には残している）。 */
-  rankById: Map<string, number>;
-  /** ハシゴ式（`applyStreakSwaps`）適用**後**の順位＝**実働の序列**。
-   *  登録レートはこの序列の初期値でしかなく、以後は当日の勝敗で上下する。
-   *  帯の形成（skillGap）・チームの釣り合い（competitive）はこちらを使う。 */
-  formRankById: Map<string, number>;
-  /** 登録レートを標準化した強さ（`pairing/strength.ts`）。省略時は数値ベース無効（順位のみ） */
-  strengthById?: Map<string, number>;
-  /** 当日の勝敗補正つきの強さ。省略時は `strengthById` と同じ */
-  formStrengthById?: Map<string, number>;
-  /** ロースター人数（skillGap/competitive の分母 = ロースター人数 − 1） */
-  rosterSize: number;
-  /** 性別（未設定は undefined） */
-  genderById: Map<string, 'M' | 'F' | undefined>;
-  preferGenderMix: boolean;
-  pairCounts: PairCounts;
-  pairKeyOf: (a: string, b: string) => string;
-  /** 各候補が「同じコートに入れる相手」の人数。variety の閾値スケールに使う */
-  reachableCountById: Map<string, number>;
-  /** 希望ペアの一覧（実運用は1〜3組程度） */
-  affinityPairs: AffinityPair[];
-  /**
-   * 目的8 `recency` の入力。値は **`streakOf`**（＝直近の**連続出場数**）。
-   *
-   * - **「たった今終わったコートに居た人」だけ**が 1 以上になる。具体的には
-   *   最後の試合の `finishedAt` 以降に他の試合が1つも開始していない人
-   * - 過去へ遡り、連続する2出場の間（終了〜次の開始）に他の試合の開始が無い限り
-   *   数え上げる。直前の1試合だけなら 1
-   * - 連続していない人・未出場は 0（Map に入れない）
-   *
-   * 組み立ては `pairing/streak.ts` の `buildStreakById`（履歴内の時刻どうしの
-   * 比較のみ。`Date.now()` に依存しない）。**空 Map ならこの項は常に 0** になるので、
-   * 渡さない呼び出し側は自動的に無効。
-   * `docs/plans/2026-10-01-recency-just-finished-streak.md`
-   */
-  streakById: Map<string, number>;
-  /**
-   * 目的6 `variety` の減衰付き共演重み（`pairing/repeatDecay.ts`）。省略または
-   * `VARIETY_SHAPE.mode === 'off'` なら従来の累計回数（`pairCounts`）で計算する。
-   */
-  repeatWeights?: RepeatWeights;
-}
-
-/**
- * ペア希望1組ぶんの評価入力。
- *
- * **`deficit` フィールドは持たない（2026-09-01 に廃止）。** 旧版は
- * 「実績比率が目標に届くと 0 になって押すのをやめる」飽和つき不足度だったが、
- * 常に最大強度で押し続ける仕様に変更したため、常に 1.0 として扱うのと
- * 同じ値を持ち回す意味が無くなった。呼び出し側（`pairPreference.ts`）で
- * 「対象にするかどうか」（候補プールにいるか・公平性ガード）だけを判定し、
- * 対象になったペアはそのまま `{ a, b }` として渡す。
- *
- * `pairKey` の Map ではなく配列にしているのは性能上の理由。`pairKey` は
- * `[a, b].sort().join(',')` のような不可逆な文字列で、キーから2人の ID を
- * 復元できない。Map 形式だと `computeAffinity` は「候補プールの全ペア
- * （n人なら n(n-1)/2 組）を毎回列挙してキーを引く」しかできず、局所探索が
- * `evaluate()` を数万回呼ぶ構造と組み合わさって実測 4〜8倍の性能回帰になった
- * （22〜25人3コートで計測）。希望ペアは実運用で1〜3組しかないため、配列に
- * すれば「希望ペアだけを回して、その2人がどこにいるか調べる」向きになり、
- * 候補人数に依存しない O(希望組数) で済む。
- */
+/** ペア希望（normal）1組。2人が味方になれば0点、そうでなければ `pairPref` 点 */
 export interface AffinityPair {
   a: string;
   b: string;
 }
 
-/**
- * `computeAffinity`（このファイル・`evaluate()` からの呼び出し＝**大局**の評価）
- * が使う「同コートで敵」の寄与（0〜1）。0.5 → **1.0**
- * （`docs/plans/2026-08-31-pair-preference.md` 追記「同コート敵バグ」で変更）。
- *
- * **2026-09-19 追記: 「直っていない範囲」節は運用者判断で前提が変わった。**
- * 以下の記述は「男女戦を増やさない」が絶対条件だった当時のもの。今は
- * 「ペア希望が登録されているコートに限り男女戦を許容する」方針になり、
- * `AFFINITY_ENEMY_COST_SPLIT`（下記）を引き上げたことで、この節が
- * 「解消しない」としていた最悪ケースも解消している。この値
- * （`AFFINITY_ENEMY_COST`）自体は変更していない。詳細は
- * `AFFINITY_ENEMY_COST_SPLIT` のコメントを参照。
- *
- * ## 何を直したか（実運用バグ、2026-09-17 時点）
- *
- * `strength: 'normal'` の同性希望ペアが「同じコートに入ったのに敵にされる」
- * バグが報告された。原因は `assignRound.ts` の `splitCost`（4人を2チームに
- * 分ける**局所**判断）が `mixSplit`（重み1.0・2-2 のコートを男女ミックスに保つ）
- * を優先し、`affinity` の「敵」寄与（旧 0.5・重み1.0 で最大 0.5）がそれに
- * 勝てなかったこと。同性ペアが2-2コートの両端実力に来ると、敵に分けて
- * mixSplit を守るほうが必ず安くなる（`assignRound.test.ts` の
- * 「実運用バグの再現」で再現・数値確認済み）。
- *
- * ## なぜ `computeAffinity` 側だけを上げたか
- *
- * `assignRound.ts` の `splitCost`（チーム分けの決定）は**別の定数
- * `AFFINITY_ENEMY_COST_SPLIT`（0.5 のまま・変更なし）を使う**。この2つは
- * 役割が異なる:
- * - `splitCost`（局所）: 固定された4人をどう2チームに分けるか。ここを上げると
- *   `mixSplit` との綱引きに直接勝つようになり、**男女戦を増やす**
- *   （実測: 0.5→0.6 で早くも 男女戦% が 0.0→0.1 に、1.0 で 0.5〜2.8 まで
- *   悪化。詳細は `AFFINITY_ENEMY_COST_SPLIT` のコメント）。これは
- *   「affinity の重みを上げて mixSplit を力ずくで押し切る」のと実質同じで、
- *   3-1・男女戦を避ける原則（`MIX_SPLIT_WEIGHT` 参照）に反するため採らない
- * - `computeAffinity`（大局）: その結果を、コート間の入れ替え（＝**どの4人を
- *   同じコートに集めるか**というコート構成そのもの）の探索にどれだけ強く
- *   反映するか。ここを上げても `splitCost` の判断（＝男女戦の発生条件）には
- *   一切触れない。実測で **男女戦% は一切増えなかった**（全条件で 0.0% を維持）
- *
- * ## 効果（実測。SEEDS=60・NOISE=0・ENGINE=objective、`AFFINITY_ENEMY_COST_SPLIT`
- * は 0.5 のまま。希望ペアは同性のみで固定して測定＝症状が出る側だけを見る）
- *
- * 「同居敵%」= 実際に同じコートに入った回数のうち敵にされた回数の割合
- * （今回の主症状の指標）。0.5→1.0 で N=1（最悪ケース）:
- *
- * | 条件 | 0.5（旧既定） | **1.0（新既定）** | 成立率% 0.5→1.0 | 男女戦% 0.5→1.0 |
- * |---|---|---|---|---|
- * | 14人2C | 53.1 | **34.7** | 20.2→24.5 | 0.0→0.0 |
- * | 16人2C | 42.5 | **25.0** | 21.2→23.5 | 0.0→0.0 |
- * | 22人3C | 39.9 | **11.5** | 26.4→30.8 | 0.0→0.0 |
- * | 25人3C | 32.1 | **10.6** | 34.0→38.0 | 0.0→0.0 |
- *
- * N=3（薄まった状態。同性ペアのみ）でも同傾向（22人3C: 48.7→31.7、
- * 男女戦% は 0.0→0.0 のまま）。異性ペア（もともと mixSplit と衝突しない）は
- * さらに低い水準からもう一段改善する（22人3C・N=1: 1.3→0.5）。
- * 幅広% / 3-1% / 試合数幅 / 占有率% / 共演は希望なし基準からの誤差範囲内
- * （最大で 3-1% +1.1pt・14人2C。他は ±0.5 未満）で、既存指標の悪化は無い。
- *
- * ## 直っていない範囲（トレードオフとして残る）
- *
- * **希望ペアが実力の両端（このコートで最強×最弱）にいて、他に代替できる
- * コート構成が無い最悪ケースは、この変更だけでは解消しない**
- * （`assignRound.test.ts` の再現テストがこの残存ケースをそのまま担保する）。
- * 理由: 3-1 への回避（`gender` 重み1.6）は 2-2 の mixSplit 違反（重み1.0）より
- * 常に重いので、`computeAffinity` をいくら強めても「3-1に組み替えて mixSplit
- * を回避する」という逃げ道自体を大局探索は選ばない。効果が出るのは、
- * ロースターの人数・コート数が増えて**たまたま**他の目的（fairness/skillGap
- * など）の都合で mixSplit と衝突しないコート構成が選べる場合であり、
- * 8人ちょうど・ベンチ0のような余地が無い構成では従来どおり敵に分けられる。
- * これは「3-1・男女戦を避ける」原則を守った上での必然の限界として受け入れる。
- *
- * 書き換え可能にしてあるのは `RECENCY_STREAK_SHAPE` と同じ理由で、
- * `scripts/bench-court-assignment.ts` が `AFFINITY_ENEMY_COST` 環境変数で
- * この値をプロセス内だけ上書きして計測できるようにするため。
- */
-export const AFFINITY_ENEMY_COST = { value: 1.0 };
-
-/**
- * `assignRound.ts` の `splitCost`（チーム分けの**局所**決定）が、**味方にすると
- * 男女戦になる**（このコートが2-2構成 かつ 希望ペアが同性）場合に使う
- * 「同コートで敵」の寄与（0〜1）。値は 0.5 → **1.2**
- * （2026-09-19 運用者判断による仕様変更。詳細な経緯は
- * `docs/plans/2026-08-31-pair-preference.md` 追記「運用者判断による仕様変更
- * （2026-09-19）」を参照）。
- *
- * ## 2026-09-17 時点の判断（0.5・変更なし）だった理由 — 参考として残す
- *
- * 当初は「男女戦を増やさない」を絶対条件とし、`AFFINITY_ENEMY_COST`
- * （`computeAffinity`・大局評価）と同じ 1.0 に揃える案（この条件分けをせず
- * 一律に上げる案）を実測で却下していた。一律に上げると、同性希望ペアが
- * 2-2コートの両端実力にいる場面で「敵に分けて mixSplit を守る」より
- * 「味方にして男女戦にする」ほうが安くなり、**男女戦を実際に増やす**。
- *
- * 実測（SEEDS=60・NOISE=0・同性希望ペア N=1・最悪ケース。一律に上げた場合の男女戦%）:
- *
- * | 値 | 14人2C | 16人2C | 22人3C | 25人3C |
- * |---|---|---|---|---|
- * | 0.5（当時の採用値） | 0.0 | 0.0 | 0.0 | 0.0 |
- * | 0.6 | 0.1 | 0.1 | 0.0 | 0.0 |
- * | 0.7 | 0.6 | 0.1 | 0.1 | 0.2 |
- * | 0.8 | 0.7 | 0.5 | 0.3 | 0.1 |
- * | 1.0 | 2.8 | 1.9 | 1.5 | 1.1 |
- *
- * 0.6 の時点で既に非0（`MIX_SPLIT_WEIGHT` のコメントにある「競り度が
- * mixSplit を上回る閾値 0.5〜0.6」に affinity 分が上乗せされて閾値を越え
- * 始めるため）。**当時の「男女戦はほぼ0%」という絶対条件のもとでは、量に
- * 関わらず後退だったため 0.5 のまま据え置いていた。**
- *
- * ## 2026-09-19: 運用者判断による仕様変更（今回の採用: 1.2）
- *
- * 「男女戦を増やさない」は**絶対条件ではなくなった**。運用者が「ペア希望が
- * 登録されているコートに限り、男女戦（男男 vs 女女）を許容する」と判断した
- * ため、この値を **`mixSplit`（重み1.0）に確実に勝つ**水準まで引き上げる。
- *
- * `splitCost` の3択（4人を実力順 a<b<c<d、希望ペアが両端 (a, d) で同性、
- * b, c が逆の性別だとする）:
- *
- * ```
- * [a,d]|[b,c]（味方）: competitive + mixSplit(1.0) + 0
- * [a,c]|[b,d]（敵）  : competitive' + 0 + X
- * [a,b]|[c,d]（敵）  : competitive'' + 0 + X
- * ```
- *
- * `competitive` 系の項は常に [0, 1) に収まる（`MIX_SPLIT_WEIGHT` のコメントの
- * 証明を参照。ロースター人数が大きいほど 0 に近づく）ので、**X（この定数）が
- * 1.0 なら「味方」が理論上ほぼ確実に「敵」に勝つ**（`competitive` の敵側が
- * 正の値である限り、1.0 は厳密に十分）。ただし discrete な順位差では
- * 1.0 ちょうどでは僅差で負けるケースが残るため、実測で確認して詰めた。
- *
- * 実測（SEEDS=150・NOISE=0・同性希望ペア N=1。「同居敵%」＝希望ペアが同じ
- * コートに入ったのに敵にされた率。今回の主目的の指標。カッコ内は
- * `試合数幅`（既存指標）の 0.5 からの差分。合格基準は SEEDS=150 で +0.1 未満）:
- *
- * | 値 | 14人2C | 16人2C | 22人3C | 25人3C | 試合数幅差分（最大） |
- * |---|---|---|---|---|---|
- * | 0.5（旧既定） | 30.3 | 21.5 | 10.7 | 7.1 | — |
- * | 1.0 | 15.1 | 11.2 | 4.9 | 2.7 | +0.05 |
- * | **1.2（採用）** | **7.3** | **6.9** | **1.4** | **0.6** | **+0.09** |
- * | 1.3（1.2と同値。この帯では discrete に頭打ち） | 7.3 | 6.9 | 1.4 | 0.6 | +0.09 |
- * | 1.4 | 3.9 | — | — | — | **+0.10（境界）** |
- * | 1.5〜2.0（頭打ち。残差は次段落の SAFE 側由来） | 0.7〜1.6 | 0.0〜4.5 | 0.0〜2.6 | 0.0〜2.3 | +0.12〜+0.14（**基準超過**） |
- *
- * **1.4 以上は 試合数幅 の合格基準（+0.1未満）に触れる／超える**ため見送り、
- * **1.2 を採用**した（同居敵%をほぼ天井近くまで改善しつつ 試合数幅 は
- * +0.09 に収まる）。N=3（登録3組・分母を割らなくした効果の確認）でも
- * 同じ 1.2 で 試合数幅 の悪化は最大 +0.04（全条件で改善または軽微な増加。
- * 詳細は plan の追記を参照）。
- *
- * 残る非0（1.2 で 22人3C 1.4%・25人3C 0.6% 等）は、次の2種類のいずれか:
- * (a) 男女戦にしても mixSplit が絡まない `AFFINITY_ENEMY_COST_SPLIT_SAFE`
- *     側のケース（本定数とは無関係。理論上さらに縮む余地はあるが対象外）、
- * (b) ロースターが大きいほど `competitive` が 0 に近づき、この定数の
- *     理論限界（1.0強）に極めて近い僅差でまだ負ける稀なケース。
- * いずれも「男女戦を増やしてでも味方にする」効果を弱めずに追加で詰める
- * 意味が薄いため、1.2 を最終値とした。
- *
- * ## `affinityTargetCount` で割らなくなったことの影響
- *
- * 2026-09-19 に、この値を使う `splitCost` 側の affinity 項から
- * `affinityTargetCount`（登録組数）による除算を廃止した（詳細は
- * `assignRound.ts` の `splitCost` 内コメント参照）。従来は N 組登録すると
- * このコートの判断も 1/N に薄まっていたが、除算をやめたことで **N=1 と
- * N=3 で「このコートの局所判断」が完全に一致する**ようになった
- * （`assignRound.test.ts` の N-invariance 確認、上表の N=3 実測とも整合）。
- * `computeAffinity`（大局評価・下記）は「予算制」の性質上、引き続き割る。
- *
- * **「味方にしても男女戦にならない」場合は、別の定数
- * `AFFINITY_ENEMY_COST_SPLIT_SAFE` を使う**（条件分岐は `splitCost` 内、
- * `docs/plans/2026-08-31-pair-preference.md` 追記「案C」参照）。判定
- * （`wouldCauseMixSplit`）はコートの4人の性別構成だけで決まり、どの分け方
- * （3択のどれ）を評価しているかには依存しないので、`splitCost` 内で
- * 一度だけ計算すればよい。この定数（`AFFINITY_ENEMY_COST_SPLIT`）は
- * **「味方にすると男女戦になる」場合専用**なので、この値を上げても
- * SAFE 側のケースには一切影響しない。
- *
- * `scripts/bench-court-assignment.ts` の `AFFINITY_ENEMY_COST_SPLIT` 環境変数で
- * 個別に上書きして計測できる。
- */
-export const AFFINITY_ENEMY_COST_SPLIT = { value: 1.2 };
-
-/**
- * `assignRound.ts` の `splitCost` が、**味方にしても男女戦にならない**場合
- * （コートが 4-0/3-1、または希望ペアが異性、または性別未設定を含む）に使う
- * 「同コートで敵」の寄与。0.5 → **1.0**。`AFFINITY_ENEMY_COST_SPLIT`
- * （0.5・男女戦リスクあり側）より強い値にして、`competitive`
- * （順位差 / (rosterSize-1)）に確実に勝たせることを狙う（コーディネーター指摘の
- * 「案C」。`docs/plans/2026-08-31-pair-preference.md` 追記参照）。**この条件分岐が
- * ある限り、男女戦を増やす経路は存在しない**（男女戦になり得るケースでは常に
- * `AFFINITY_ENEMY_COST_SPLIT`＝0.5 が使われ、この定数は一切関与しない）。
- *
- * ## 効果（実測）— 前提として「同コートで敵」を内訳2種に分解した
- *
- * 修正前（`AFFINITY_ENEMY_COST` のみ 1.0 化した状態）で残る「同コートで敵」を、
- * (a) mixSplit由来（味方にすると必ず男女戦になる。回避不能）と
- * (b) その他（4-0/3-1、または異性ペアが2-2に来た場合。competitive 等が
- * 理論上は回避可能）に分けて集計した（SEEDS=60・NOISE=0・件数は
- * mixSplit由来/その他）:
- *
- * | 条件 | 同性N=1 | 同性N=3 | 異性N=1 | 異性N=3 |
- * |---|---|---|---|---|
- * | 14人2C | 89.2%(58/7) | 80.0%(188/47) | 0.0%(0/3) | 0.0%(0/55) |
- * | 16人2C | 87.9%(29/4) | 75.0%(114/38) | --(0/0) | 0.0%(0/29) |
- * | 22人3C | 100.0%(21/0) | 90.9%(90/9) | 0.0%(0/1) | 0.0%(0/8) |
- * | 25人3C | 93.8%(15/1) | 84.8%(56/10) | 0.0%(0/1) | 0.0%(0/7) |
- *
- * **異性ペアの残存「同コートで敵」は100%が(b)＝案Cで理論上解消できる。**
- * **同性ペアは大半（75〜100%）が(a)＝mixSplit由来で、案Cでは解消できない**
- * （案Cは意図的に(a)に手を出さない設計のため）。同性ペアで案Cが効くのは
- * 残り10〜25%の(b)部分に限られる。
- *
- * ## 値ごとの効果（SEEDS=60・NOISE=0、同居敵%。案C適用＝
- * `AFFINITY_ENEMY_COST_SPLIT` は 0.5 のまま・この定数だけ振る）
- *
- * | 条件 | 0.5(旧) | 1.0 | 1.5 | 2.0 |
- * |---|---|---|---|---|
- * | 同性N=1・14人2C | 34.7 | 31.6 | 31.1 | 31.1 |
- * | 同性N=1・22人3C | 11.5 | 11.1 | 11.1 | 11.1 |
- * | 同性N=3・14人2C | 51.5 | 45.5 | 45.0 | 43.3 |
- * | 同性N=3・22人3C | 31.7 | 27.2 | 25.9 | 19.2* |
- * | 異性N=1・全条件 | 0.0〜1.3 | **0.0** | 0.0 | 0.0 |
- * | 異性N=3・全条件 | 1.4〜10.1 | 0.1〜4.1 | 0.0〜2.5 | 0.0〜1.3 |
- *
- * （*22人3C同性N=3 の2.0はブレあり・参考値）。**N=1 は 1.0 で内訳の
- * 「その他」がほぼ0件（＝天井）に達し、1.5・2.0 に上げても追加の改善は
- * ほぼ無い（頭打ち）。** N=3 は分母（希望組数）で割られて1組あたりの
- * 実効値が下がるため、1.0 では「その他」を残す（22人3C: 90→8件）が、
- * 1.5・2.0でさらに減る。男女戦%は 0.5〜2.0 の全条件・全値で **0.0% を維持**
- * （SEEDS=60・150 とも）。理論どおり、この定数を上げても男女戦は一切増えない。
- *
- * ## 採用: 1.0（1.5・2.0 は不採用）
- *
- * SEEDS=150 で試合数幅（既存指標）を再検証したところ、**1.5・2.0 では同性
- * N=3・14人2C で試合数幅が 2.63→2.75（+0.12）と、既存の合格基準
- * （+0.1未満）をわずかに超える**ことを確認した（ノイズではなく再現する）。
- * 1.0 では同条件で 2.63→2.68（+0.05）に収まり、他の条件（16人2C: +0.02、
- * 22人3C: −0.02、25人3C: +0.06）も含めて全て許容範囲内。**1.0 は N=1 の
- * 「その他」内訳をほぼ天井まで解消しつつ、既存指標を壊さない最大値**として
- * これを採る。N=3 で残る「その他」の未解消分（1.5・2.0でしか取れない分）は、
- * 試合数幅の悪化と引き換えにする価値が無いと判断した。
- *
- * `scripts/bench-court-assignment.ts` の `AFFINITY_ENEMY_COST_SPLIT_SAFE`
- * 環境変数で個別に上書きして計測できる。
- */
-export const AFFINITY_ENEMY_COST_SPLIT_SAFE = { value: 1.0 };
-
-/** 1コートの人数（`computeRecency` の正規化単位） */
-const PLAYERS_PER_COURT = 4;
-
-const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
-
-function courtMembers(court: CourtPlacement): string[] {
-  return [court.teamA[0], court.teamA[1], court.teamB[0], court.teamB[1]];
+/** 男女バランスの点数（コート1つ分） */
+export interface GenderPoints {
+  /** 男女3対1（男3女1 / 男1女3） */
+  threeOne: number;
+  /** 2-2 を 男男 vs 女女（男女戦）に分けた */
+  split: number;
+  /** 4-0（同性だけ）。少数派が少ないセッション（`preferGenderMix`）のときだけ課す */
+  fourZero: number;
 }
 
 /**
- * 目的1: fairness — 選ばれた人の「優先度順位 ÷ 候補数」の平均。
- * 待っている人ほど優先度順位が小さいので、低いほど公平（優先度どおりに選ばれている）。
+ * 点数表。**各値は「偏差何点分の悪さか」**。bench / テストが書き換えられるよう mutable。
+ * 調整の経緯と根拠（実メンバー試算・bench）は docs/plans/2026-10-02-simplify-scoring.md。
  */
-export function computeFairness(
-  courts: CourtPlacement[],
-  priorityRankById: Map<string, number>,
-  candidateCount: number
-): number {
-  if (candidateCount <= 0) return 0;
-  const selected = courts.flatMap(courtMembers);
-  if (selected.length === 0) return 0;
-  const sum = selected.reduce((s, id) => {
-    const rank = priorityRankById.get(id);
-    return s + (rank === undefined ? 0 : rank / candidateCount);
-  }, 0);
-  return clamp01(sum / selected.length);
-}
+export const SCORE_TABLE = {
+  // ── レベル差（最優先） ──
+  /** コート内の最大−最小。偏差が1点開くごとに 2.5 点 */
+  courtSpan: 2.5,
+  /** コート内の最大−最小が偏差20を超えた分は、1点につきさらに 5 点上乗せ（大差ほど強く嫌う凸形） */
+  courtSpanKnee: 20,
+  courtSpanExcess: 5,
+  /** チーム平均の差。平均偏差が1点開くごとに 3 点（= 2チームの偏差合計の差 × 1.5） */
+  teamDiff: 3,
 
-/**
- * 目的2: waiting — 選ばれなかった人のうち最も待っている人の
- * 「1 − 優先度順位 ÷ 候補数」。最優先の人を外すほど 1 に近づく。
- */
-export function computeWaiting(
-  benchIds: string[],
-  priorityRankById: Map<string, number>,
-  candidateCount: number
-): number {
-  if (candidateCount <= 0 || benchIds.length === 0) return 0;
-  let worst = 0;
-  for (const id of benchIds) {
-    const rank = priorityRankById.get(id);
-    if (rank === undefined) continue;
-    const value = 1 - rank / candidateCount;
-    if (value > worst) worst = value;
-  }
-  return clamp01(worst);
-}
+  // ── 顔ぶれ・連続 ──
+  /** 3人以上一致。同じ3人組が前に一緒だった鮮度（0〜1）× 28 点を、コートの4つの3人組ぶん足す（4人一致は最大 112 点） */
+  tripleRepeat: 28,
+  /** 連続出場。2連続目 5 点 / 3連続目 25 点 / 4連続目以上 100 点 */
+  streak: [5, 25, 100] as readonly number[],
 
-/**
- * 目的3: skillGap — 各コートの「順位の最大 − 最小」÷（ロースター人数 − 1）の平均。
- *
- * 順位は**ハシゴ式適用後**（`formRankById`）を使う。新エンジンにはグループ分けの
- * 独立した工程が無く、この項と順位差のハード制約が帯の形成を兼ねているため、
- * ここで登録レートを見ると帯がハシゴ式に一切追随しなくなる（旧エンジンは
- * `groupPlayers3Court` がハシゴ式適用後の序列で帯を作っていた）。
- */
-export function computeSkillGap(
-  courts: CourtPlacement[],
-  rankById: Map<string, number>,
-  rosterSize: number,
-  shape: { knee: number; slope: number; regMix: number } = RANK_GAP_SOFT_SHAPE,
-  regRankById?: Map<string, number>,
-  numeric?: { strengthById: Map<string, number>; formStrengthById: Map<string, number>; gapMix: number }
-): number {
-  if (courts.length === 0) return 0;
-  const denom = Math.max(1, rosterSize - 1);
-  const spanOfStrength = (ids: string[], map: Map<string, number>): number | undefined => {
-    const v = ids.map(id => map.get(id)).filter((x): x is number => x !== undefined);
-    if (v.length === 0) return undefined;
-    return Math.max(...v) - Math.min(...v);
-  };
-  const span = (ids: string[], map: Map<string, number>): number | undefined => {
-    const ranks = ids.map(id => map.get(id)).filter((r): r is number => r !== undefined);
-    if (ranks.length === 0) return undefined;
-    return (Math.max(...ranks) - Math.min(...ranks)) / denom;
-  };
-  const sum = courts.reduce((s, court) => {
-    const ids = courtMembers(court);
-    const gForm = span(ids, rankById);
-    if (gForm === undefined) return s;
-    let g = gForm;
-    if (shape.regMix > 0 && regRankById) {
-      const gReg = span(ids, regRankById);
-      if (gReg !== undefined) g = (1 - shape.regMix) * gForm + shape.regMix * gReg;
-    }
-    if (numeric && numeric.gapMix > 0) {
-      // 登録レートの数値ベース（外れ値の離れ具合を順位より正しく見る）。形は順位版と同じ混合
-      const nForm = spanOfStrength(ids, numeric.formStrengthById);
-      if (nForm !== undefined) {
-        let gNum = nForm;
-        if (shape.regMix > 0) {
-          const nReg = spanOfStrength(ids, numeric.strengthById);
-          if (nReg !== undefined) gNum = (1 - shape.regMix) * nForm + shape.regMix * nReg;
-        }
-        g = (1 - numeric.gapMix) * g + numeric.gapMix * gNum;
-      }
-    }
-    const over = Math.max(0, g - shape.knee);
-    return s + g + shape.slope * over * over;
-  }, 0);
-  const mean = sum / courts.length;
-  return shape.slope > 0 ? Math.max(0, mean) : clamp01(mean);
-}
+  // ── 男女バランス（コート1つにつき） ──
+  /** 男女比調整 ON: 男女3対1 = 40 点 / 男男 vs 女女 = 30 点 / 4-0（少数派が少ないセッションのみ）= 20 点 */
+  genderOn: { threeOne: 40, split: 30, fourZero: 20 } as GenderPoints,
+  /** 男女比調整 OFF: 小さい値を残す（実力の釣り合いが明確に良くなる時だけ許す）。12 / 14 / 6 点 */
+  genderOff: { threeOne: 12, split: 14, fourZero: 6 } as GenderPoints,
 
-/** チーム強さ合計の差（数値ベース。目盛りは `STRENGTH_SHAPE` で順位版 ÷（人数−1）にそろえてある） */
-export function numericTeamDiff(
-  teamA: readonly string[],
-  teamB: readonly string[],
-  strengthById: Map<string, number>
-): number {
-  const sum = (ids: readonly string[]) => ids.reduce((x, id) => x + (strengthById.get(id) ?? 0), 0);
-  return Math.abs(sum(teamA) - sum(teamB));
-}
+  // ── ペア希望 ──
+  /** 希望ペア（normal）の2人が味方にならない（別コート・ベンチ・同コートで敵）1組あたり 50 点 */
+  pairPref: 50,
 
-/**
- * 目的4: competitive — 各コートの
- * 「|チームAの順位合計 − チームBの順位合計| ÷（ロースター人数 − 1）」の平均。
- * 0 に近いほど競る試合（実力が拮抗している）。
- *
- * 順位は**ハシゴ式適用後**（`formRankById`）を使う。当日勝っている人を強めに、
- * 負けている人を弱めに見積もることで、調子を反映した拮抗した組み合わせになる。
- */
-export function computeCompetitive(
-  courts: CourtPlacement[],
-  rankById: Map<string, number>,
-  rosterSize: number,
-  numeric?: { formStrengthById: Map<string, number>; compMix: number }
-): number {
-  if (courts.length === 0) return 0;
-  const denom = Math.max(1, rosterSize - 1);
-  const rankOf = (id: string): number => rankById.get(id) ?? 0;
-  const mix = numeric?.compMix ?? 0;
-  const sum = courts.reduce((s, court) => {
-    const sumA = rankOf(court.teamA[0]) + rankOf(court.teamA[1]);
-    const sumB = rankOf(court.teamB[0]) + rankOf(court.teamB[1]);
-    let d = Math.abs(sumA - sumB) / denom;
-    if (numeric && mix > 0) d = (1 - mix) * d + mix * numericTeamDiff(court.teamA, court.teamB, numeric.formStrengthById);
-    return s + d;
-  }, 0);
-  return clamp01(sum / courts.length);
-}
-
-/**
- * 目的5: gender — 各コートで 3-1 なら 1.0、4-0 なら `preferGenderMix ? 0.5 : 0`、
- * 2-2 なら 0 の平均。性別未設定のメンバーがいるコートは判定しない（0扱い）。
- */
-export function computeGender(
-  courts: CourtPlacement[],
-  genderById: Map<string, 'M' | 'F' | undefined>,
-  preferGenderMix: boolean
-): number {
-  if (courts.length === 0) return 0;
-  const sum = courts.reduce((s, court) => {
-    const genders = courtMembers(court).map(id => genderById.get(id));
-    if (genders.some(g => g !== 'M' && g !== 'F')) return s; // 未設定がいれば判定しない
-    const maleCount = genders.filter(g => g === 'M').length;
-    if (maleCount === 1 || maleCount === 3) return s + 1.0;
-    if (maleCount === 0 || maleCount === 4) return s + (preferGenderMix ? 0.5 : 0);
-    return s; // 2-2
-  }, 0);
-  return clamp01(sum / courts.length);
-}
-
-/**
- * 目的5b: mixSplit — 2-2 のコートが「男男 vs 女女」に分かれていたら 1.0、
- * MIX×MIX なら 0 の平均。2-2 以外（4-0 / 3-1 / 性別未設定を含む）は判定しない。
- *
- * `gender` はコート4人の男女**構成**しか見ないため、2-2 に整えたあとの
- * チーム分けは `competitive` / `variety` だけで決まってしまう。この項がないと
- * 男女戦が全試合の 15〜17% で発生する（旧エンジンは 0%）。
- */
-export function computeMixSplit(
-  courts: CourtPlacement[],
-  genderById: Map<string, 'M' | 'F' | undefined>
-): number {
-  if (courts.length === 0) return 0;
-  const sum = courts.reduce((s, court) => {
-    const genders = courtMembers(court).map(id => genderById.get(id));
-    if (genders.some(g => g !== 'M' && g !== 'F')) return s; // 未設定がいれば判定しない
-    if (genders.filter(g => g === 'M').length !== 2) return s; // 2-2 のみ対象
-    const maleInA =
-      (genderById.get(court.teamA[0]) === 'M' ? 1 : 0) +
-      (genderById.get(court.teamA[1]) === 'M' ? 1 : 0);
-    return s + (maleInA === 1 ? 0 : 1);
-  }, 0);
-  return clamp01(sum / courts.length);
-}
-
-/**
- * 目的6: variety — 各コートで
- * `0.6 * min(1, 最多ペアの共演回数 / 4) + 0.4 * min(1, 6ペアの共演回数合計 / 12)` の平均。
- * 「共演回数」はパートナー回数 + 対戦相手回数。
- *
- * 共演回数は**その2人が組める相手数**で割ってから閾値に当てる（`scaleOf`）。
- */
-export function computeVariety(
-  courts: CourtPlacement[],
-  pairCounts: PairCounts,
-  pairKeyOf: (a: string, b: string) => string,
-  reachableCountById: Map<string, number>,
-  repeatWeights?: RepeatWeights
-): number {
-  if (courts.length === 0) return 0;
-  if (repeatWeights && VARIETY_SHAPE.mode !== 'off') {
-    return computeVarietyDecayed(courts, pairCounts, pairKeyOf, reachableCountById, repeatWeights);
-  }
-  const together = (a: string, b: string): number => {
-    const key = pairKeyOf(a, b);
-    return (pairCounts.partner.get(key) ?? 0) + (pairCounts.opponent.get(key) ?? 0);
-  };
-
-  // 閾値のスケール。序列の端の人は同居できる相手が片側にしかおらず、組める相手数が
-  // 中央の半分程度しかない。同じ回数を回しても共演回数が早く飽和するため、絶対値の
-  // 閾値のままだと「避けようのない繰り返し」を罰することになり、端の人ほど
-  // ベンチに残されてしまう（実測: 端は中央より 0.7〜0.9 試合少なかった）。
-  const reachable = [...reachableCountById.values()].filter(v => v > 0);
-  const avgReachable = reachable.length
-    ? reachable.reduce((a, b) => a + b, 0) / reachable.length
-    : 0;
-  const scaleOf = (a: string, b: string): number => {
-    if (avgReachable <= 0) return 1;
-    const ra = reachableCountById.get(a) ?? avgReachable;
-    const rb = reachableCountById.get(b) ?? avgReachable;
-    const min = Math.min(ra, rb);
-    if (min <= 0) return 1;
-    return Math.max(1, avgReachable / min);
-  };
-
-  const sum = courts.reduce((s, court) => {
-    const members = courtMembers(court);
-    let maxRatio = 0;
-    let totalRatio = 0;
-    for (let i = 0; i < members.length; i++) {
-      for (let j = i + 1; j < members.length; j++) {
-        const scale = scaleOf(members[i], members[j]);
-        const ratio = together(members[i], members[j]) / scale;
-        if (ratio > maxRatio) maxRatio = ratio;
-        totalRatio += ratio;
-      }
-    }
-    const term = 0.6 * Math.min(1, maxRatio / 4) + 0.4 * Math.min(1, totalRatio / 12);
-    return s + term;
-  }, 0);
-  return clamp01(sum / courts.length);
-}
-
-/**
- * 目的6（減衰版）。コートごとに
- * `x = Σ_{6ペア} (w_ij / scale_ij)^power`、
- * コートの項 = `min(1, x / scale)`（0〜1）+ `quadWeight × min(2, 同じ4人の重み和)` + `tripleWeight × min(tripleCap, (Σ_{3人組4通り} 重み^triplePower)^tripleSumPower)`（3人以上一致。S字の鮮度。別枠で加算。0〜1 を超えうる）、全コート平均。
- * `w_ij` = 共演の減衰重み和 + `rawFloor` × その日の累計回数。
- * 凸関数（`power` 乗）なので、1回目の繰り返しは軽く、重なるほど急に強く効く。
- */
-function computeVarietyDecayed(
-  courts: CourtPlacement[],
-  pairCounts: PairCounts,
-  pairKeyOf: (a: string, b: string) => string,
-  reachableCountById: Map<string, number>,
-  rw: RepeatWeights
-): number {
-  const { power, scale, quadWeight, rawFloor, tripleWeight, triplePower, tripleSumPower, tripleCap } = VARIETY_SHAPE;
-  const reachable = [...reachableCountById.values()].filter(v => v > 0);
-  const avgReachable = reachable.length
-    ? reachable.reduce((a, b) => a + b, 0) / reachable.length
-    : 0;
-  const scaleOf = (a: string, b: string): number => {
-    if (avgReachable <= 0) return 1;
-    const min = Math.min(
-      reachableCountById.get(a) ?? avgReachable,
-      reachableCountById.get(b) ?? avgReachable
-    );
-    return min <= 0 ? 1 : Math.max(1, avgReachable / min);
-  };
-  const sum = courts.reduce((s, court) => {
-    const members = courtMembers(court);
-    let x = 0;
-    for (let i = 0; i < members.length; i++) {
-      for (let j = i + 1; j < members.length; j++) {
-        const key = pairKeyOf(members[i], members[j]);
-        let w = rw.pair.get(key) ?? 0;
-        if (rawFloor > 0) {
-          w += rawFloor * ((pairCounts.partner.get(key) ?? 0) + (pairCounts.opponent.get(key) ?? 0));
-        }
-        if (w > 0) x += Math.pow(w / scaleOf(members[i], members[j]), power);
-      }
-    }
-    let term = Math.min(1, x / scale);
-    if (quadWeight > 0 && rw.quad.size > 0) {
-      const q = rw.quad.get([...members].sort().join(','));
-      if (q) term += quadWeight * Math.min(q, 2);
-    }
-    if (tripleWeight > 0 && rw.triple.size > 0) {
-      // 3人以上一致: 候補4人の3人組（4通り）が過去の試合の3人組と重なる度合い。凸 + 上限
-      const sorted = [...members].sort();
-      let t = 0;
-      for (let skip = 0; skip < 4; skip++) {
-        const w = rw.triple.get(sorted.filter((_, k) => k !== skip).join(','));
-        if (w) t += Math.pow(w, triplePower);
-      }
-      term += tripleWeight * Math.min(Math.pow(t, tripleSumPower), tripleCap);
-    }
-    return s + term;
-  }, 0);
-  return sum / courts.length;
-}
-
-/**
- * 目的7: affinity — ペア希望（`docs/plans/2026-08-31-pair-preference.md`）。
- * 「特定の2人の組む確率を上げたい」を、`variety` に対抗するソフトなペナルティ項
- * として表現する。0〜1・小さいほど良い（他項と同じ）。
- *
- * ```
- * 評価対象 = affinityPairs のうち、両者がこのラウンドの候補対象
- *            （courts ∪ benchIds）に現れるものだけ
- * ペアごとの寄与:
- *   味方（同コートで partner）  → 0
- *   同コートで敵                → AFFINITY_ENEMY_COST.value（既定 1.0）
- *   別コート / 片方以上がベンチ → 1.0
- * affinity = Σ(寄与) ÷ 評価対象ペア数（対象0件なら 0）
- * ```
- *
- * **2026-09-01 に飽和（実績比率ベースの `deficit`）を廃止した。** 旧版は
- * 「実績比率が目標に届くと 0 になって押すのをやめる」不足度でスケールしていたが、
- * 今は対象ペアには常に最大強度（寄与をそのまま足す）で押し続ける。`普通`
- * （`strong` のハード制約を伴わない側）と `必ず` の違いは、目的関数のこの項
- * だけを見ると無くなり、**`必ず` はこれに加えて `evaluate()` 側のハード制約
- * （`StrongPair`）を持つかどうかだけ**になった。公平性ガード（`gamesPlayed`
- * が中央値+閾値以上のメンバーを含むペアを対象から外す）は呼び出し側
- * （`pairPreference.ts` の `computeAffinityPairs`）が引き続き担う。
- *
- * **なぜ評価対象ペア数で割るのか。** 全項が 0〜1 に正規化されている前提を
- * 崩さないため。固定ペナルティのまま足すと、希望を1組登録しただけで他の6目的
- * との重み比が意図せず変わってしまう（10組登録しても総影響量は変わらない
- * ようにしたい）。平均を取ることで「予算制」になり、組数が増えるほど
- * 1組あたりの効き目は薄まる一方、配置全体への総影響量は一定に保たれる。
- *
- * **1組しか登録されていないとき、その1組は分母1で最大強度になる。** 複数組
- * 登録されていれば互いに薄め合うが、1組だけならこの項の値がそのまま寄与に
- * なる。意味としては「1組しか希望していないなら全力で尊重する」で妥当だが、
- * 重み（`AFFINITY_WEIGHT`）を決めるときはこの「1組だけ」のケースを最悪ケース
- * として基準にしないと、`skillGap` を押し切って実力差の大きいペアを無理に
- * 成立させてしまう（bench で確認する）。
- *
- * 「両者ともこのラウンドの配置対象に現れないペア」は分母から外れる。この関数は
- * `courts`（出場）と `benchIds`（控え）の**和集合**を「このラウンドの配置対象」
- * とみなし、`affinityPairs` の各要素についてその判定をするだけなので、
- * 一方でも現れないペアは自然に除外される（呼び出し側で追加のフィルタは要らない）。
- *
- * **走査の向き（性能）。** コート所属・パートナーの Map は出場者数ぶん
- * （courts ∪ benchIds、実運用で最大25人程度）1回だけ構築するが、それを使って
- * 「候補プールの全ペア」を回すのではなく**`affinityPairs`（実運用1〜3組）だけ**
- * を回す。候補プールの全ペアを回う実装は局所探索が `evaluate()` を数万回呼ぶ
- * 構造と組み合わさって実測 4〜8倍の性能回帰になったため、`AffinityPair` を
- * 配列にしてこの向きにしている（`AffinityPair` のコメント参照）。
- */
-export function computeAffinity(
-  courts: CourtPlacement[],
-  benchIds: string[],
-  affinityPairs: AffinityPair[]
-): number {
-  if (affinityPairs.length === 0) return 0;
-
-  const courtIndexById = new Map<string, number>();
-  const partnerOfId = new Map<string, string>();
-  courts.forEach((court, courtIndex) => {
-    for (const id of courtMembers(court)) courtIndexById.set(id, courtIndex);
-    partnerOfId.set(court.teamA[0], court.teamA[1]);
-    partnerOfId.set(court.teamA[1], court.teamA[0]);
-    partnerOfId.set(court.teamB[0], court.teamB[1]);
-    partnerOfId.set(court.teamB[1], court.teamB[0]);
-  });
-  const benchSet = new Set(benchIds);
-  const inPool = (id: string): boolean => courtIndexById.has(id) || benchSet.has(id);
-
-  let sum = 0;
-  let targetCount = 0;
-  for (const { a, b } of affinityPairs) {
-    if (!inPool(a) || !inPool(b)) continue; // 両者ともこのラウンドの配置対象に現れないペアは対象外
-
-    targetCount++;
-    const courtA = courtIndexById.get(a);
-    const courtB = courtIndexById.get(b);
-    if (courtA === undefined || courtB === undefined || courtA !== courtB) {
-      sum += 1.0; // 別コート、または片方以上がベンチ
-    } else if (partnerOfId.get(a) === b) {
-      sum += 0; // 味方
-    } else {
-      sum += AFFINITY_ENEMY_COST.value; // 同コートで敵
-    }
-  }
-
-  return targetCount === 0 ? 0 : clamp01(sum / targetCount);
-}
-
-/**
- * `recency` の効き方（今回入れると何連続目になるか → ペナルティ）。
- *
- * ```
- * n = streakOf(id) + 1                     … 今回出ると何連続目か（連続候補でなければ 1）
- * cost(n) = 0                              （n = 1。連続していない）
- * cost(n) = base × growth^(n − 2)          （n >= 2）
- * ```
- *
- * 既定（`base=0.4` / `growth=8`）なら 2連続目 0.4 / 3連続目 3.2 / 4連続目 25.6 / 5連続目 205。
- * `RECENCY_WEIGHT`(2.0) と 1コートの人数 4 で割った**1人あたりの実効コストは
- * 0.2 / 1.6 / 12.8 / 102**。**飽和させず、連続回数が増えるほど急に増える**。
- *
- * ユーザー決定（2026-10-02）:「2連続まではかなり許容（若干嫌う程度）、3連続もあり得るが
- * まあまあ強く嫌う、4連続以上は強く避ける」。優先順位は **レベル差の抑制 > 連続回避 >
- * 男女バランス**。そのため
- *
- * - 2連続目は他が同条件のときの僅かなタイブレーク（0.2）
- * - 3連続目は 3-1 のコート（`gender` 1.0 × 1.6）より重い（1.6）が、**ハードにはしない**。
- *   順位差のハード制約・強さ指標を犠牲にしてまでは避けない
- * - 4連続目以上は実質ハードに近い（12.8〜）が、**人数的に不可避なときは配置を詰ませない**
- *
- * **bench（`scripts/bench-court-assignment.ts`）が環境変数 `STREAK_BASE` /
- * `STREAK_GROWTH` でこのオブジェクトを書き換えて感度を測る**ため、`const` の即値
- * ではなく書き換え可能なオブジェクトにしてある（`DEFAULT_WEIGHTS` と同じ扱い）。
- * 本番はこの既定値のまま。計測は plan「連続回避の再調整」参照。
- */
-export const RECENCY_STREAK_SHAPE = {
-  /** 2連続目のコスト（単位。重み `RECENCY_WEIGHT` との積で効く） */
-  base: 0.4,
-  /** 連続目が1つ増えるごとのコストの倍率。1 より大きいほど長い連続を強く避ける */
-  growth: 8,
+  // ── 試合数の公平性 ──
   /**
-   * これ以上の連続目になる配置を**違反**として数える（0 なら数えない）。
-   * 順位差・公平性の窓・直近重複と同じ辞書式の違反で、違反の少ない配置が必ず勝つので、
-   * 強さ系のハード制約と同列に扱われてしまう。**既定は 0（無効）**で、連続はソフトのコスト
-   * だけで避ける。bench が `STREAK_HARD_FROM` で上書きして比較に使う。
+   * 控えの人より試合数換算で1試合分多い人を出す（＝逆転）。出場者×控えの組ごとに 15 点。
+   * 2試合分の逆転は 4 倍、3試合分は 9 倍（二乗）。
    */
-  hardFrom: 0,
+  fairnessPerGame: 15,
+  /** 逆転の大きさは 3 試合分までしか数えない（滞在時間が短い人の優先度が極端に大きく出ても、他の項を押し流さない） */
+  fairnessCapGames: 3,
+  /**
+   * 余り人数（候補 − 必要人数）が少ないほど公平性を強くする倍率: `1 + gain × exp(−(余り ÷ scale)²)`。
+   * 余りが少ないと窓の外へ出せる人も控えも少なく、「待っている同じ数人」を外し続けやすい
+   * （3人以上一致の点が公平性を上回って試合数が偏る）。人数で段差ができないよう連続関数にしてある。
+   */
+  fairnessSurplusGain: 30,
+  fairnessSurplusScale: 3,
+  /** 後半均等化モードでは公平性の点数をさらにこの倍率で掛ける */
+  lateFairnessMultiplier: 2,
+
+  // ── 極端な実力差 ──
+  /**
+   * コート内の偏差の最大−最小が `extremeSpan` 以上なら、`extremePenalty` 点 + 超えた分1点につき
+   * `extremePerPoint` 点を足す。ハード（違反数）ではなく**とても重い点数**にしてあるのは、
+   * ハードだと少人数の日（余りが少ない）で試合数の公平性より常に先に効いてしまい、
+   * 余り人数に応じて公平性を強める連続的な調整（`fairnessSurplus*`）が効かないため。
+   * 余りが多い日は他の項より桁違いに重いので、実質ハードと同じ働きをする。
+   */
+  extremeSpan: 30,
+  extremePenalty: 400,
+  extremePerPoint: 40,
+  /**
+   * 余り人数に応じた極端な実力差の効き具合（0〜1 の倍率）。余りが `extremeRampStart` 以下なら 0、
+   * `extremeRampEnd` 以上なら 1、間は直線でつなぐ（段差なし）。余りの少ない日は
+   * 「待たされている人を出す」ことのほうを優先するため。
+   */
+  extremeRampStart: 4,
+  extremeRampEnd: 6,
 };
 
-/** 今回出ると `streak + 1` 連続目になる人が、ハードの違反に当たるか */
-export function isRecencyViolation(
-  streak: number | undefined,
-  shape: { hardFrom: number } = RECENCY_STREAK_SHAPE
-): boolean {
-  return shape.hardFrom > 0 && streak !== undefined && streak + 1 >= shape.hardFrom;
+/** 採点に必要な入力一式（ラウンド内で不変） */
+export interface ScoreContext {
+  /** 偏差（平均50・SD10）。未登録の人は 50 扱い */
+  deviationById: Map<string, number>;
+  genderById: Map<string, 'M' | 'F' | undefined>;
+  /** 男女比調整 ON か */
+  genderBalanceOn: boolean;
+  /** 少数派性別が少ないセッションか（4-0 を軽く嫌う） */
+  preferGenderMix: boolean;
+  /** 3人組キー → 鮮度つき重み（`repeatDecay.ts`） */
+  tripleWeights: Map<string, number>;
+  /** 連続出場数（`streak.ts`）。連続していない人は入れない */
+  streakById: Map<string, number>;
+  affinityPairs: AffinityPair[];
+  /**
+   * 候補ごとの「試合数換算の優先度」。**小さいほど先に出すべき人**。
+   * 優先度スコアを「1試合分の差」で割った値（`assignRound.ts` が作る）。
+   */
+  needById: Map<string, number>;
 }
 
-/** 今回出ると `streak + 1` 連続目になる人のコスト（`RECENCY_STREAK_SHAPE` 参照） */
-export function recencyCost(
-  streak: number,
-  shape: { base: number; growth: number } = RECENCY_STREAK_SHAPE
-): number {
-  if (!Number.isFinite(streak) || streak < 1) return 0; // 連続候補ではない
-  // streak=1 → 2連続目 → base。以降 growth 倍ずつ
-  return shape.base * Math.pow(Math.max(1, shape.growth), streak - 1);
-}
+const dev = (ctx: ScoreContext, id: string): number => ctx.deviationById.get(id) ?? 50;
 
-/**
- * 目的8: recency — 連続出場を嫌う。配置された全員について
- *
- * ```
- * term = Σ recencyCost(streakOf(id)) / 4        （4 = 1コートの人数）
- * ```
- *
- * `streakOf` は「たった今終了したコートに居た人」だけが 1 以上になる連続出場数
- * （`ObjectiveInput.streakById` / `pairing/streak.ts` 参照）。
- *
- * **1コートあたりの人数（4）で割る。配置人数では割らない。** 他の項は配置全員の
- * 平均（0〜1）だが、recency を同じ平均にすると、複数コートを一括配置するときに
- * 1人あたりの効きが 1/コート数 に薄まり、連続モード（1コートずつ配置）と効きが
- * 食い違う。「ある人が n 連続目になる」ことの重さはコート数に依らないはずなので、
- * 1人あたりの寄与を一定にしている。そのため**この項は 0〜1 に収まらない**
- * （飽和させない仕様）。
- *
- * **優先度順位（＝試合数の順位）は動かさない**ので、試合数の均等（目的1）は
- * 壊さない。連続していない人・未出場は 0。練習開始直後は履歴が空で全員 0 になり、
- * この項は何もしない。
- *
- * `docs/plans/2026-10-01-recency-just-finished-streak.md`
- */
-export function computeRecency(
-  courts: CourtPlacement[],
-  streakById: Map<string, number>,
-  shape: { base: number; growth: number } = RECENCY_STREAK_SHAPE
+/** コート内の偏差の最大−最小。`ignorePair` の2人の間だけは比べない（ペア「必ず」の2人） */
+export function courtSpan(
+  ids: readonly string[],
+  deviationById: Map<string, number>,
+  ignorePairs: readonly { a: string; b: string }[] = []
 ): number {
-  if (courts.length === 0 || streakById.size === 0) return 0;
-  let sum = 0;
-  for (const court of courts) {
-    for (const id of courtMembers(court)) {
-      const streak = streakById.get(id);
-      if (streak !== undefined) sum += recencyCost(streak, shape);
+  let span = 0;
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      if (ignorePairs.some(({ a, b }) => (ids[i] === a && ids[j] === b) || (ids[i] === b && ids[j] === a))) {
+        continue;
+      }
+      const d = Math.abs((deviationById.get(ids[i]) ?? 50) - (deviationById.get(ids[j]) ?? 50));
+      if (d > span) span = d;
     }
   }
-  return sum / PLAYERS_PER_COURT;
+  return span;
 }
 
-/** 8目的すべてを計算した結果（各 0〜1） */
-export type ObjectiveTerms = ObjectiveWeights;
+/** n連続目（streak = 直近の連続出場数。1 なら今回が2連続目）の点数 */
+export function streakPoints(streak: number | undefined): number {
+  if (streak === undefined || !Number.isFinite(streak) || streak < 1) return 0;
+  const t = SCORE_TABLE.streak;
+  return t[Math.min(streak, t.length) - 1] ?? 0;
+}
 
-export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
+/** 男女バランスの点数（コート1つ分。チーム分けに依存するのは 男男 vs 女女 だけ） */
+export function genderPoints(
+  teamA: readonly string[],
+  teamB: readonly string[],
+  ctx: Pick<ScoreContext, 'genderById' | 'genderBalanceOn' | 'preferGenderMix'>
+): number {
+  const gs = [...teamA, ...teamB].map(id => ctx.genderById.get(id));
+  if (gs.some(g => g !== 'M' && g !== 'F')) return 0; // 未設定がいれば判定しない
+  const t = ctx.genderBalanceOn ? SCORE_TABLE.genderOn : SCORE_TABLE.genderOff;
+  const males = gs.filter(g => g === 'M').length;
+  if (males === 1 || males === 3) return t.threeOne;
+  if (males === 0 || males === 4) return ctx.preferGenderMix ? t.fourZero : 0;
+  const maleInA = teamA.filter(id => ctx.genderById.get(id) === 'M').length;
+  return maleInA === 1 ? 0 : t.split;
+}
+
+/** 同コートで敵になっているペア希望の点数（味方なら0） */
+function enemyPairPoints(teamA: readonly string[], teamB: readonly string[], pairs: AffinityPair[]): number {
+  let n = 0;
+  for (const { a, b } of pairs) {
+    const aA = teamA.includes(a);
+    const aB = teamB.includes(a);
+    const bA = teamA.includes(b);
+    const bB = teamB.includes(b);
+    if ((aA && bB) || (aB && bA)) n++;
+  }
+  return n * SCORE_TABLE.pairPref;
+}
+
+/** コート1つ分の点数の内訳 */
+export interface CourtBreakdown {
+  span: number;
+  teamDiff: number;
+  triple: number;
+  streak: number;
+  gender: number;
+  pairEnemy: number;
+  total: number;
+}
+
+/** チーム分けに依らない部分: コート内の最大−最小・3人以上一致・連続 */
+export function courtFixedPoints(ids: readonly string[], ctx: ScoreContext): { span: number; triple: number; streak: number } {
+  const rawSpan = courtSpan(ids, ctx.deviationById);
+  const span =
+    SCORE_TABLE.courtSpan * rawSpan +
+    SCORE_TABLE.courtSpanExcess * Math.max(0, rawSpan - SCORE_TABLE.courtSpanKnee);
+
+  let triple = 0;
+  if (ctx.tripleWeights.size > 0) {
+    const sorted = [...ids].sort();
+    for (let skip = 0; skip < 4; skip++) {
+      triple += ctx.tripleWeights.get(comboKey(sorted.filter((_, k) => k !== skip))) ?? 0;
+    }
+    triple *= SCORE_TABLE.tripleRepeat;
+  }
+
+  let streak = 0;
+  if (ctx.streakById.size > 0) for (const id of ids) streak += streakPoints(ctx.streakById.get(id));
+  return { span, triple, streak };
+}
+
+/** チーム分けに依る部分: チーム平均の差・男女バランス・ペア希望（同コートで敵） */
+export function splitPoints(
+  teamA: readonly [string, string],
+  teamB: readonly [string, string],
+  ctx: ScoreContext
+): { teamDiff: number; gender: number; pairEnemy: number } {
+  const sumA = dev(ctx, teamA[0]) + dev(ctx, teamA[1]);
+  const sumB = dev(ctx, teamB[0]) + dev(ctx, teamB[1]);
   return {
-    fairness: computeFairness(input.courts, input.priorityRankById, input.candidateCount),
-    waiting: computeWaiting(input.benchIds, input.priorityRankById, input.candidateCount),
-    skillGap: computeSkillGap(
-      input.courts,
-      input.formRankById,
-      input.rosterSize,
-      RANK_GAP_SOFT_SHAPE,
-      input.rankById,
-      input.strengthById
-        ? {
-            strengthById: input.strengthById,
-            formStrengthById: input.formStrengthById ?? input.strengthById,
-            gapMix: STRENGTH_SHAPE.gapMix,
-          }
-        : undefined
-    ),
-    competitive: computeCompetitive(
-      input.courts,
-      input.formRankById,
-      input.rosterSize,
-      input.strengthById
-        ? { formStrengthById: input.formStrengthById ?? input.strengthById, compMix: STRENGTH_SHAPE.compMix }
-        : undefined
-    ),
-    gender: computeGender(input.courts, input.genderById, input.preferGenderMix),
-    mixSplit: computeMixSplit(input.courts, input.genderById),
-    variety: computeVariety(
-      input.courts,
-      input.pairCounts,
-      input.pairKeyOf,
-      input.reachableCountById,
-      input.repeatWeights
-    ),
-    affinity: computeAffinity(input.courts, input.benchIds, input.affinityPairs),
-    recency: computeRecency(input.courts, input.streakById),
+    teamDiff: SCORE_TABLE.teamDiff * (Math.abs(sumA - sumB) / 2),
+    gender: genderPoints(teamA, teamB, ctx),
+    pairEnemy: enemyPairPoints(teamA, teamB, ctx.affinityPairs),
   };
 }
 
-/** 8項目を重み付き合計する（合計 = 目的関数値。小さいほど良い） */
-export function weightedObjective(
-  terms: ObjectiveTerms,
-  weights: ObjectiveWeights
+export function courtBreakdown(
+  teamA: readonly [string, string],
+  teamB: readonly [string, string],
+  ctx: ScoreContext
+): CourtBreakdown {
+  const fixed = courtFixedPoints([...teamA, ...teamB], ctx);
+  const split = splitPoints(teamA, teamB, ctx);
+  return {
+    ...fixed,
+    ...split,
+    total: fixed.span + fixed.triple + fixed.streak + split.teamDiff + split.gender + split.pairEnemy,
+  };
+}
+
+export const courtPoints = (
+  teamA: readonly [string, string],
+  teamB: readonly [string, string],
+  ctx: ScoreContext
+): number => courtBreakdown(teamA, teamB, ctx).total;
+
+/** 余り人数に応じた極端な実力差の効き具合（0〜1。余りが多いほど 1 に近い単調増加・連続） */
+export function extremeSurplusFactor(surplus: number): number {
+  const { extremeRampStart: a, extremeRampEnd: b } = SCORE_TABLE;
+  if (!(b > a)) return surplus >= b ? 1 : 0;
+  return Math.min(1, Math.max(0, (surplus - a) / (b - a)));
+}
+
+/** 余り人数（候補 − 必要人数）に応じた公平性の倍率。余りが多いほど 1 に近づく（単調減少・連続） */
+export function fairnessSurplusFactor(surplus: number): number {
+  const s = Math.max(0, surplus);
+  return 1 + SCORE_TABLE.fairnessSurplusGain * Math.exp(-((s / SCORE_TABLE.fairnessSurplusScale) ** 2));
+}
+
+/**
+ * 試合数の公平性。出場者 s と控え b の組すべてについて、s のほうが試合数換算で多い
+ * （＝本来は b が先に出るべきだった「逆転」）ぶんを足し、`fairnessPerGame` を掛ける。
+ * 優先度の高い人を外す／低い人を出す、の両方がこの1項で表される。
+ * 逆転が1試合分なら 1 組につき `fairnessPerGame` 点、2試合分なら 4 倍、3試合分なら 9 倍（二乗。
+ * 2試合以上遅れる人を作らないための強さ。`fairnessCapGames` 試合分で頭打ち）。
+ */
+export function fairnessPoints(
+  selectedIds: readonly string[],
+  benchIds: readonly string[],
+  needById: Map<string, number>,
+  lateBalance = false,
+  surplus = Infinity
 ): number {
+  let inversions = 0;
+  for (const s of selectedIds) {
+    const ns = needById.get(s) ?? 0;
+    for (const b of benchIds) {
+      const d = ns - (needById.get(b) ?? 0);
+      if (d > 0) inversions += Math.min(d, SCORE_TABLE.fairnessCapGames) ** 2;
+    }
+  }
   return (
-    terms.fairness * weights.fairness +
-    terms.waiting * weights.waiting +
-    terms.skillGap * weights.skillGap +
-    terms.competitive * weights.competitive +
-    terms.gender * weights.gender +
-    terms.mixSplit * weights.mixSplit +
-    terms.variety * weights.variety +
-    terms.affinity * weights.affinity +
-    terms.recency * weights.recency
+    SCORE_TABLE.fairnessPerGame *
+    fairnessSurplusFactor(surplus) *
+    (lateBalance ? SCORE_TABLE.lateFairnessMultiplier : 1) *
+    inversions
   );
 }
 
-/** 入力から目的関数値（重み付き合計）を直接計算する */
-export function evaluateObjective(
-  input: ObjectiveInput,
-  weights: ObjectiveWeights
+/**
+ * ペア希望のうち、同コートで味方・敵のどちらでもない（別コート・ベンチ）ぶんの点数。
+ * 同コートの敵は `courtBreakdown.pairEnemy` 側で数えるのでここでは数えない。
+ * `poolIds` = このラウンドの候補全員。プールに居ないペアは対象外。
+ */
+export function looseAffinityPoints(
+  courtIdOf: Map<string, number>,
+  poolIds: ReadonlySet<string>,
+  pairs: AffinityPair[]
 ): number {
-  return weightedObjective(computeObjectiveTerms(input), weights);
+  let n = 0;
+  for (const { a, b } of pairs) {
+    if (!poolIds.has(a) || !poolIds.has(b)) continue;
+    const ca = courtIdOf.get(a);
+    const cb = courtIdOf.get(b);
+    if (ca === undefined || cb === undefined || ca !== cb) n++;
+  }
+  return n * SCORE_TABLE.pairPref;
 }

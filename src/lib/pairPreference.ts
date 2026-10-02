@@ -2,13 +2,13 @@
  * ペア希望（`PairPreference`）から配置エンジンへ渡す入力を算出する純粋関数群。
  *
  * `docs/plans/2026-08-31-pair-preference.md` の「2. 「確率を上げる」の表現方法」
- * 「3b. 試合機会への影響」に対応する接続層。`src/lib/pairing/` の目的関数
+ * 「3b. 試合機会への影響」に対応する接続層。`src/lib/pairing/` の配置
  * エンジンには一切依存を持ち込まず（`AffinityPair` / `StrongPair` の型だけ使う）、
  * `algorithm.ts` から呼ばれる。
  *
  * **2026-09-01 に飽和（実績比率ベースの `deficit`）を廃止した。** 旧版は
  * 「実績 / 機会」の達成度から不足度を出し、目標に達すると 0 になって
- * `variety` に譲る設計だったが、常に最大強度で押し続ける仕様に変更した。
+ * 顔ぶれの項に譲る設計だったが、常に最大強度で押し続ける仕様に変更した。
  * `computeAffinityPairs` はもう実績（`partnerCounts`）を見ない — 「対象に
  * するかどうか」（候補プールにいるか・公平性ガード）だけを判定する。
  */
@@ -18,12 +18,12 @@ import type { AffinityPair } from './pairing/objective';
 import type { StrongPair } from './pairing/assignRound';
 
 /**
- * 希望ペアのうち「対象にするもの」だけを、目的関数（第7目的 `affinity`）に
+ * 希望ペアのうち「対象にするもの」だけを、点数表のペア希望（`SCORE_TABLE.pairPref`）に
  * そのまま渡せる `AffinityPair[]` として組み立てる。対象ペアは常に最大強度
  * （旧 `deficit = 1.0` 相当）で扱う — 実績比率による飽和は無い。
  *
  * - **両者が候補プール（`players`）にいる希望ペアだけ**を返す。片方でも
- *   `players` にいないペアは対象外（plan「3. 目的関数への追加」の評価対象）
+ *   `players` にいないペアは対象外（plan「3. 目的関数への追加」の評価対象。点数表への移行は 2026-10-02-simplify-scoring.md）
  * - **公平性ガード（plan 3b）**: どちらかの `gamesPlayed − medianGames >=
  *   blockThreshold` なら、そのペアは対象外にする。これが無いと「ペア希望を
  *   登録すると試合数が増える」不公平が生じる。**飽和を廃止した今、これが

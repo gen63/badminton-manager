@@ -6,6 +6,7 @@ import {
   BASE_RATING,
   judgeMatch,
   judgeMatchNeutral,
+  estimateStrengthsById,
   getPlayerMatchInsight,
   countVerdicts,
 } from './performanceRating';
@@ -682,5 +683,25 @@ describe('judgeMatchNeutral', () => {
     expect(judgeMatchNeutral(0.5)).toBe('even');
     expect(judgeMatchNeutral(0.5999)).toBe('even');
     expect(judgeMatchNeutral(0.4001)).toBe('even');
+  });
+});
+
+describe('estimateStrengthsById', () => {
+  const mk = (id: string, a: [string, string], b: [string, string], winner?: 'A' | 'B'): Match => ({
+    id, courtId: 1, teamA: a, teamB: b, scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, ...(winner ? { winner } : {}),
+  });
+
+  it('勝敗が無い履歴・空のチームは数えず、空の Map を返す', () => {
+    expect(estimateStrengthsById([]).size).toBe(0);
+    expect(estimateStrengthsById([mk('m1', ['a', 'b'], ['c', 'd'])]).size).toBe(0);
+    expect(estimateStrengthsById([mk('m2', ['', ''], ['c', 'd'], 'A')]).size).toBe(0);
+  });
+
+  it('勝ち続けた側の θ が高く、試合数を数える。同じ入力なら同じ結果', () => {
+    const ms = [mk('m1', ['a', 'b'], ['c', 'd'], 'A'), mk('m2', ['a', 'c'], ['b', 'd'], 'A'), mk('m3', ['a', 'd'], ['b', 'c'], 'A')];
+    const r = estimateStrengthsById(ms);
+    expect(r.get('a')!.games).toBe(3);
+    expect(r.get('a')!.theta).toBeGreaterThan(r.get('d')!.theta);
+    expect(estimateStrengthsById(ms)).toEqual(r);
   });
 });

@@ -5,9 +5,8 @@ import type { Reservation } from '../types/reservation';
 import { SessionError } from './errorHandler';
 import { assignRoundByObjective } from './pairing/assignRound';
 import { buildStreakById } from './pairing/streak';
-import { GENDER_BALANCE_OFF_WEIGHTS } from './pairing/objective';
-import { buildRepeatWeights } from './pairing/repeatDecay';
-import { buildStrengthById, buildFormStrengthById } from './pairing/strength';
+import { buildTripleWeights } from './pairing/repeatDecay';
+import { buildBlendedDeviationById } from './pairing/deviation';
 import { median } from './median';
 import type { PairPreference } from '../types/pairPreference';
 import { computeAffinityPairs, computeStrongPairs } from './pairPreference';
@@ -810,9 +809,8 @@ const WIDE_RANK_SPAN_RATIO = 2 / 3;
  * 成立しにくい（`MIN_ROSTER_FOR_SKILL_GAP` と同じ考え方）。
  * 計測: docs/plans/2026-08-05-pairing-goals-and-rewrite.md
  *
- * 2026-10-02: 14人未満でも「大きく離れた組」を強く嫌えるよう、ソフト側の skillGap を凸形にした
- * （`RANK_GAP_SOFT_SHAPE`）。ハードを小人数へ広げる案は 3-1・試合数幅・待ちが悪化して不採用。
- * docs/plans/2026-10-02-rank-gap-soft.md
+ * 旧エンジン（`useObjectiveEngine: false`）専用。新エンジンは偏差による「極端な実力差」の
+ * ハード制約（人数に関係なく適用）に置き換わった（docs/plans/2026-10-02-simplify-scoring.md）。
  */
 const WIDE_RANK_SPAN_MIN_ROSTER = 14;
 
@@ -1968,9 +1966,10 @@ export function getCallableReservationRestingIds(
  * 「誰を出して、どう4人に分けるか」の本体は **既定で目的関数ベースの新エンジン**
  * `assignRoundByObjective`（`src/lib/pairing/`）に委譲する
  * （`useObjectiveEngine` の既定が true。docs/plans/2026-08-05-pairing-goals-and-rewrite.md）。
- * 新エンジンはハード制約（順位差の閾値 / 直近試合との重複）→ 6目的の重み付き合計 →
- * 決定的な局所探索、という構成で、**コート ID ごとの実力帯の割り当ては持たない**
- * （ラウンド全体をまとめて最適化する）。
+ * 新エンジンは、実力を当日ロースター内の偏差で測り、すべてのソフト項を「偏差何点分の悪さか」の
+ * 1枚の点数表（`SCORE_TABLE`）で採点する。ハード制約は2つ（公平性の窓 / ペア希望「必ず」。極端な実力差は余り人数で効きが変わる重い点数）。
+ * 1コートは全列挙、複数コートは決定的な局所探索で最小点を選び、**コート ID ごとの実力帯の割り当ては持たない**
+ * （docs/plans/2026-10-02-simplify-scoring.md）。
  *
  * 以降の記述は `useObjectiveEngine: false` を明示したときだけ通る**旧エンジン**の仕様:
  * - レーティングベースのグルーピング（3等分/2等分）
@@ -2313,50 +2312,17 @@ export function assignCourts(
   // グループ分けは全アクティブプレイヤー（他コートでプレイ中含む）で行う
   const groupingPlayers = options?.allPlayers ?? activePlayers;
 
-  // 性別構成の偏りを許容するか判定（セッション全体で判定、ハード制約用）
-  const allowUnbalanced = shouldAllowUnbalancedGender(groupingPlayers, normalCourtCount);
-  // 少数派性別が1人で2-2構成が物理的に作れないか（ソフトペナルティ無効化用）
-  const genderPairImpossible = isGenderPairImpossible(groupingPlayers);
   // 少数派性別が少なく、MIX（2-2）を同性（4-0）と同格に優遇すべきか
   const preferGenderMix = isMinorityGenderScarce(groupingPlayers);
-  // preferGenderMix のときに「少数派側」がどちらの性別かを特定しておく
-  // （3コート以上の動的グループ選択で、コートの候補が少数派1人だけになっていないか判定するため）
-  const scarceMinorityGender = preferGenderMix ? getScarceMinorityGender(groupingPlayers) : null;
-
   // 新エンジン（目的関数ベースの同時配置）。**既定 true = 本番はここを通る**。
   // docs/plans/2026-08-05-pairing-goals-and-rewrite.md の新設計を別モジュールとして
   // 実装したもので、既存の selectBestFour / applyStreakSwaps / groupPlayers3Court /
   // 修復パス群には一切触れない。以降の旧エンジンは useObjectiveEngine: false を
   // 明示したとき（主にテスト・bench の比較用）だけ通る。
   if (options?.useObjectiveEngine ?? true) {
-    const objectiveInitialOrder = buildInitialOrder(groupingPlayers);
-    const objectiveBaseRankById = buildRanksWithTies(
-      objectiveInitialOrder,
-      groupingPlayers
-    );
-    // ハシゴ式（当日の連勝連敗で ±1グループ分まで序列が動く）。旧エンジンから
-    // 移植し忘れていた仕組みで、「勝てば上の帯へ、負ければ下の帯へ」という
-    // 昇降格を担う。実力差の判定には使わず（撹拌後の序列では上位×下位の同居を
-    // 検出できない）、コートのグループ分けとチームの釣り合いにだけ使う。
-    const objectiveFormRankById = buildRanksWithTies(
-      applyStreakSwaps(
-        objectiveInitialOrder,
-        matchHistory,
-        totalCourtCount >= 3 ? 3 : 2
-      ),
-      groupingPlayers
-    );
-    const objectiveStrengthById = buildStrengthById(groupingPlayers);
-    const objectiveFormStrengthById = buildFormStrengthById(
-      objectiveStrengthById,
-      objectiveBaseRankById,
-      objectiveFormRankById
-    );
-    const objectiveRosterSize = objectiveBaseRankById.size;
-    const objectiveWideSpanThreshold =
-      objectiveRosterSize < WIDE_RANK_SPAN_MIN_ROSTER
-        ? null
-        : Math.ceil(objectiveRosterSize * WIDE_RANK_SPAN_RATIO);
+    // レベル差は登録レートの偏差（その日のロースター内で平均50・SD10）で測る。
+    // 順位・ハシゴ式は使わない（docs/plans/2026-10-02-simplify-scoring.md）
+    const objectiveDeviationById = buildBlendedDeviationById(groupingPlayers, matchHistory);
     // ペア希望 → 第7目的 affinity（常に最大強度） + strong のハード制約。
     // 中央値・reservationBlockThreshold は予約保留判定（上の isReservationBlocked）と
     // 共通のものを使い回す（新しい設定項目は増やさない。plan 3b）。
@@ -2370,23 +2336,18 @@ export function assignCourts(
     const assigned = assignRoundByObjective({
       candidates: normalCandidates,
       courtIds: normalCourtIds,
-      rankById: objectiveBaseRankById,
-      formRankById: objectiveFormRankById,
-      strengthById: objectiveStrengthById,
-      formStrengthById: objectiveFormStrengthById,
-      rosterSize: objectiveRosterSize,
+      deviationById: objectiveDeviationById,
       priorityScoreOf: (p) =>
         calculatePriorityScore(p, practiceStartTime, useStayDuration, lateBalance),
-      pairCounts: historyCounts.pair,
-      // 目的6 variety の減衰付き共演重み（直近重複のハード制約は撤去済み。
-      // docs/plans/2026-10-02-variety-decay.md）
-      repeatWeights: buildRepeatWeights(matchHistory, pairKey, comboKey),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: objectiveWideSpanThreshold,
+      // 優先度スコアの「1試合分」。滞在時間ベースは computeOneGameDelta、試合数ベースは素点の刻み
+      oneGameDelta: useStayDuration
+        ? computeOneGameDelta(practiceStartTime, useStayDuration)
+        : GAMES_PLAYED_SCORE_UNIT,
+      // 3人以上一致（鮮度つき）。直近重複のハード制約は撤去済み
+      tripleWeights: buildTripleWeights(matchHistory),
       preferGenderMix,
+      genderBalanceMode: options?.genderBalanceMode ?? true,
       lateBalanceMode: options?.lateBalanceMode ?? false,
-      weights:
-        (options?.genderBalanceMode ?? true) ? undefined : GENDER_BALANCE_OFF_WEIGHTS,
       affinityPairs: computeAffinityPairs(
         pairPreferences,
         normalCandidates,
@@ -2398,6 +2359,14 @@ export function assignCourts(
     });
     return [...reservationAssignments, ...assigned];
   }
+
+  // 性別構成の偏りを許容するか判定（セッション全体で判定、ハード制約用）
+  const allowUnbalanced = shouldAllowUnbalancedGender(groupingPlayers, normalCourtCount);
+  // 少数派性別が1人で2-2構成が物理的に作れないか（ソフトペナルティ無効化用）
+  const genderPairImpossible = isGenderPairImpossible(groupingPlayers);
+  // preferGenderMix のときに「少数派側」がどちらの性別かを特定しておく
+  // （3コート以上の動的グループ選択で、コートの候補が少数派1人だけになっていないか判定するため）
+  const scarceMinorityGender = preferGenderMix ? getScarceMinorityGender(groupingPlayers) : null;
 
   // 2コート同時配置の場合はホリスティック・アプローチを使用
   if (totalCourtCount === 2 && normalCourtCount === 2) {

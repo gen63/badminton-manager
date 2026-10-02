@@ -276,6 +276,35 @@ function solveStrengths(
 }
 
 /**
+ * 履歴から、ID ごとの強さ θ（`solveStrengths` と同じ正則化付き Bradley-Terry）と勝敗確定試合数を返す。
+ * 自動配置が「当日の試合結果による偏差の補正」に使う（`pairing/deviation.ts`）。
+ *
+ * 履歴の値だけから決まる（`Date.now()` 非依存・決定的）。`winner` の無い試合・空のチームは
+ * 数えない。シングルスの空文字枠は除く。勝敗確定試合が無ければ空の Map。
+ */
+export function estimateStrengthsById(
+  matches: readonly Match[]
+): Map<string, { theta: number; games: number }> {
+  const rated: RatedMatch[] = [];
+  const ids: string[] = [];
+  const games = new Map<string, number>();
+  for (const match of matches) {
+    if (!match.winner) continue;
+    const resolve = (team: readonly string[]) => [...new Set(team.filter(Boolean))];
+    const teamA = resolve(match.teamA);
+    const teamB = resolve(match.teamB);
+    if (teamA.length === 0 || teamB.length === 0) continue;
+    rated.push({ matchId: match.id, teamA, teamB, winnerIsA: match.winner === 'A' });
+    for (const id of [...teamA, ...teamB]) {
+      if (!games.has(id)) ids.push(id);
+      games.set(id, (games.get(id) ?? 0) + 1);
+    }
+  }
+  const theta = solveStrengths(rated, ids);
+  return new Map(ids.map((id) => [id, { theta: theta.get(id) ?? 0, games: games.get(id) ?? 0 }]));
+}
+
+/**
  * セッション内のパフォーマンス指標を算出する。
  * 勝敗が確定した試合が 1 つも無い場合は空の結果を返す。
  */
