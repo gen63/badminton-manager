@@ -1286,6 +1286,32 @@ describe('assignRoundByObjective: recency（連続出場を嫌う）', () => {
     expect(picked.has('p3')).toBe(false);
   });
 
+  it('recencyRelaxed のときは3連続目でもハード違反にならない（重み0なら p3 が選ばれる）', () => {
+    const picked = pickedIds(
+      assignRoundByObjective({
+        ...baseParams,
+        streakById: new Map([['p3', 2]]),
+        weights: { recency: 0 },
+        recencyRelaxed: true,
+      })
+    );
+    expect(picked.has('p3')).toBe(true);
+    expect(picked.has('p4')).toBe(false);
+  });
+
+  it('recencyRelaxed でもソフトのコストは残る（重みが十分なら 3連続目を避ける）', () => {
+    const picked = pickedIds(
+      assignRoundByObjective({
+        ...baseParams,
+        streakById: new Map([['p3', 2]]),
+        weights: { recency: 100 },
+        recencyRelaxed: true,
+      })
+    );
+    expect(picked.has('p4')).toBe(true);
+    expect(picked.has('p3')).toBe(false);
+  });
+
   it('段階的: 2連続目の人と3連続目の人のどちらかを控えにするなら、3連続目の人を控える', () => {
     const picked = pickedIds(
       assignRoundByObjective({

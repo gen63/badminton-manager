@@ -15,6 +15,7 @@ import {
   computeObjectiveTerms,
   weightedObjective,
   isRecencyViolation,
+  RECENCY_RELAX,
   AFFINITY_ENEMY_COST_SPLIT,
   AFFINITY_ENEMY_COST_SPLIT_SAFE,
   type ObjectiveWeights,
@@ -115,6 +116,12 @@ export interface AssignRoundParams {
    * `docs/plans/2026-10-01-recency-just-finished-streak.md`
    */
   streakById?: Map<string, number>;
+  /**
+   * true なら連続回避を緩める（`RECENCY_RELAX`: 3連続目以上のハード違反を外し、
+   * 必要なら `recency` の重みを下げる）。非連続候補が配置人数に満たないとき
+   * `algorithm.ts` が立てる。省略時 false。
+   */
+  recencyRelaxed?: boolean;
 }
 
 /** 局所探索の反復上限 */
@@ -250,6 +257,8 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   const streakById = params.streakById ?? new Map<string, number>();
 
   const weights: ObjectiveWeights = { ...DEFAULT_WEIGHTS, ...params.weights };
+  const recencyRelaxed = params.recencyRelaxed ?? false;
+  if (recencyRelaxed) weights.recency *= RECENCY_RELAX.weightScale;
 
   const genderById = new Map<string, 'M' | 'F' | undefined>(
     candidates.map(p => [p.id, p.gender] as const)
@@ -656,7 +665,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     }
     // 目的8 recency のハード側: 3連続目以上（`RECENCY_STREAK_SHAPE.hardFrom`）は違反。
     // ソフトのコストだけでは他のハード制約に押されて残るため。連続候補がいなければ素通り
-    if (streakById.size > 0) {
+    if (streakById.size > 0 && !(recencyRelaxed && RECENCY_RELAX.dropHard)) {
       for (const court of s.courts) {
         for (const id of courtMembers(court)) {
           if (isRecencyViolation(streakById.get(id))) violations++;

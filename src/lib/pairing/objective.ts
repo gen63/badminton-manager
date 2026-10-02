@@ -917,6 +917,20 @@ export const RECENCY_STREAK_SHAPE = {
   hardFrom: 3,
 };
 
+/**
+ * 非連続候補（streak なし）が配置人数に満たないとき（＝待機が少なく連続が構造的に
+ * 避けにくいとき）の `recency` の緩め方。`algorithm.ts` が判定し、`assignRound` の
+ * `recencyRelaxed` で有効になる。bench が環境変数で書き換えて感度を測るため
+ * 書き換え可能なオブジェクト（`RECENCY_STREAK_SHAPE` と同じ扱い）。
+ * 根拠: docs/plans/2026-10-01-recency-just-finished-streak.md 「待機が足りないときの緩和」
+ */
+export const RECENCY_RELAX = {
+  /** true なら 3連続目以上のハード違反を外す（ソフトのコストだけにする） */
+  dropHard: true,
+  /** ソフトの `recency` 重みに掛ける倍率（1 なら下げない） */
+  weightScale: 0.5,
+};
+
 /** 今回出ると `streak + 1` 連続目になる人が、ハードの違反に当たるか */
 export function isRecencyViolation(
   streak: number | undefined,

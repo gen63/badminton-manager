@@ -59,6 +59,7 @@ import { assignCourts } from '../src/lib/algorithm';
 import {
   DEFAULT_WEIGHTS,
   RECENCY_STREAK_SHAPE,
+  RECENCY_RELAX,
   AFFINITY_ENEMY_COST,
   AFFINITY_ENEMY_COST_SPLIT,
   AFFINITY_ENEMY_COST_SPLIT_SAFE,
@@ -869,6 +870,13 @@ if (process.env.STREAK_GROWTH !== undefined) {
 // 何連続目以上を違反（ハード）にするか。0 で無効（ソフトのコストだけで測るとき）
 if (process.env.STREAK_HARD_FROM !== undefined) {
   RECENCY_STREAK_SHAPE.hardFrom = Number(process.env.STREAK_HARD_FROM);
+}
+// 待機が足りないときの緩和（RECENCY_RELAX）。RELAX_DROP_HARD=0 RELAX_SCALE=1 で緩和なし（変更前）
+if (process.env.RELAX_DROP_HARD !== undefined) {
+  RECENCY_RELAX.dropHard = process.env.RELAX_DROP_HARD !== '0';
+}
+if (process.env.RELAX_SCALE !== undefined) {
+  RECENCY_RELAX.weightScale = Number(process.env.RELAX_SCALE);
 }
 const DEFAULT_CONDITIONS = '13x2,14x2,16x2,15x3,18x3,21x3,22x3,25x3';
 const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)

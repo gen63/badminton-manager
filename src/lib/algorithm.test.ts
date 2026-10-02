@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { calculatePlayerStats, getStreaks, buildInitialOrder, buildRanksWithTies, applyStreakSwaps, assignCourts, formTeams, sortWaitingPlayers, getCallableReservationRestingIds } from './algorithm';
+import { calculatePlayerStats, getStreaks, buildInitialOrder, buildRanksWithTies, applyStreakSwaps, assignCourts, formTeams, sortWaitingPlayers, getCallableReservationRestingIds, shouldRelaxRecency } from './algorithm';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
@@ -3260,5 +3260,28 @@ describe('assignCourts - 連続モードで連続出場を避ける（目的8 re
     ];
     const assigned = assignCourts(players.slice(0, 8), 1, old, { totalCourtCount: 2, targetCourtIds: [1] });
     expect(assigned).toHaveLength(1);
+  });
+});
+
+describe('shouldRelaxRecency（待機が足りないとき連続回避を緩める条件）', () => {
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `p${i}` }));
+  // p0〜p3 が「たった今終わった」連続候補
+  const streak = new Map([['p0', 1], ['p1', 1], ['p2', 1], ['p3', 1]]);
+
+  it('非連続候補が必要数ちょうど（8人1コート）なら緩めない', () => {
+    expect(shouldRelaxRecency(ids(8), 1, streak)).toBe(false);
+  });
+
+  it('非連続候補が必要数に1人足りない（7人1コート）なら緩める', () => {
+    expect(shouldRelaxRecency(ids(7), 1, streak)).toBe(true);
+  });
+
+  it('複数コート: 非連続が4×コート数ちょうど（12人2コート）なら緩めず、1人足りなければ緩める', () => {
+    expect(shouldRelaxRecency(ids(12), 2, streak)).toBe(false);
+    expect(shouldRelaxRecency(ids(11), 2, streak)).toBe(true);
+  });
+
+  it('連続候補が居なければ緩めない（履歴が空・旧データ）', () => {
+    expect(shouldRelaxRecency(ids(5), 1, new Map())).toBe(false);
   });
 });
