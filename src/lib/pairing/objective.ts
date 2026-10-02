@@ -14,6 +14,7 @@
 
 import type { RepeatWeights } from './repeatDecay';
 import { VARIETY_SHAPE } from './repeatDecay';
+import { STRENGTH_SHAPE } from './strength';
 
 /** 1コート分の配置（4人 = teamA 2人 + teamB 2人） */
 export interface CourtPlacement {
@@ -139,7 +140,8 @@ const SKILL_GAP_WEIGHT = 1.5;
  * ハード制約が掛からない14人未満でも「大きく離れた組」を強く嫌えるようにするのが目的。
  * slope > 0 のとき項は 1 を超えうる（クランプしない）。
  */
-export const RANK_GAP_SOFT_SHAPE = { knee: 0.3, slope: 7, regMix: 0.5 };
+// 2026-10-02: knee 0.3 → 0.35 / slope 7 → 10（数値ベースの幅は端で順位幅より大きく出るので、膝を少し上げて傾きで補う。docs/plans/2026-10-02-rating-based-strength.md）
+export const RANK_GAP_SOFT_SHAPE = { knee: 0.35, slope: 10, regMix: 0.5 };
 
 /**
  * `affinity` の重み。2.0 → **1.0**（飽和廃止にあわせて再計測。
@@ -188,7 +190,7 @@ export const RANK_GAP_SOFT_SHAPE = { knee: 0.3, slope: 7, regMix: 0.5 };
  * 2コート運用は候補プールが小さく `variety` の抵抗が相対的に強いので、ここが
  * 効き目の下限を決める。0.4 では 27% とほぼ「希望なし」に近づく。
  */
-const AFFINITY_WEIGHT = 2.0;
+const AFFINITY_WEIGHT = 3.0; // 2026-10-02: 2.0 → 3.0（実力差の数値ベース化で下がる希望ペア成立率を master 水準へ戻す。docs/plans/2026-10-02-rating-based-strength.md）
 // 2026-10-02: 1.0 → 2.0。variety を 2.6 → 6.0 に上げたため normal の成立率が落ちた
 // （19人3C 希望1組で 24.9% → 15.9%）。2.0 で master 以上に戻り、同コート敵になる率もほぼ 0 になる。
 // 試合数リークは最大 +0.4 程度で合格条件（+0.5 未満）内。docs/plans/2026-10-02-rank-gap-soft.md
@@ -224,7 +226,7 @@ const AFFINITY_WEIGHT = 2.0;
  * （終了順に履歴へ積み、進行中コートの開始時刻を `inProgressStartedAt` で渡す）。
  * この項を再計測するときは先に確かめること。
  */
-const RECENCY_WEIGHT = 5.0;
+const RECENCY_WEIGHT = 9.0; // 2026-10-02: 5.0 → 9.0（fairness/waiting を上げたぶん増える連続を抑える。docs/plans/2026-10-02-rating-based-strength.md）
 
 /**
  * 優先順位（質 > 多様性 > 公平性）を反映した既定値。
@@ -265,7 +267,7 @@ export const DEFAULT_WEIGHTS: ObjectiveWeights = {
   mixSplit: MIX_SPLIT_WEIGHT, // 質
   variety: 6.0, // 多様性（2026-10-02: 2.6 → 6.0。skillGap 凸化と同時に再調整。docs/plans/2026-10-02-rank-gap-soft.md）
   fairness: 5.5,
-  waiting: 4.0, // 公平性（同上: 1.5 → 5.0 / 4.0。skillGap 凸化で出る試合数の偏りを抑える）
+  waiting: 14.0, // 公平性（2026-10-02: 4.0 → 14.0。数値ベースのレベル差を強めたぶん広がる試合数幅を抑える。docs/plans/2026-10-02-rating-based-strength.md）
   affinity: AFFINITY_WEIGHT, // ペア希望（bench 実測。根拠は AFFINITY_WEIGHT のコメント参照）
   recency: RECENCY_WEIGHT, // 連続出場を嫌う（2連続目は僅かに、3連続目はまあまあ強く、4連続目以上は強く。すべてソフト。形は RECENCY_STREAK_SHAPE）
 };
@@ -321,6 +323,10 @@ export interface ObjectiveInput {
    *  登録レートはこの序列の初期値でしかなく、以後は当日の勝敗で上下する。
    *  帯の形成（skillGap）・チームの釣り合い（competitive）はこちらを使う。 */
   formRankById: Map<string, number>;
+  /** 登録レートを標準化した強さ（`pairing/strength.ts`）。省略時は数値ベース無効（順位のみ） */
+  strengthById?: Map<string, number>;
+  /** 当日の勝敗補正つきの強さ。省略時は `strengthById` と同じ */
+  formStrengthById?: Map<string, number>;
   /** ロースター人数（skillGap/competitive の分母 = ロースター人数 − 1） */
   rosterSize: number;
   /** 性別（未設定は undefined） */
@@ -684,10 +690,16 @@ export function computeSkillGap(
   rankById: Map<string, number>,
   rosterSize: number,
   shape: { knee: number; slope: number; regMix: number } = RANK_GAP_SOFT_SHAPE,
-  regRankById?: Map<string, number>
+  regRankById?: Map<string, number>,
+  numeric?: { strengthById: Map<string, number>; formStrengthById: Map<string, number>; gapMix: number }
 ): number {
   if (courts.length === 0) return 0;
   const denom = Math.max(1, rosterSize - 1);
+  const spanOfStrength = (ids: string[], map: Map<string, number>): number | undefined => {
+    const v = ids.map(id => map.get(id)).filter((x): x is number => x !== undefined);
+    if (v.length === 0) return undefined;
+    return Math.max(...v) - Math.min(...v);
+  };
   const span = (ids: string[], map: Map<string, number>): number | undefined => {
     const ranks = ids.map(id => map.get(id)).filter((r): r is number => r !== undefined);
     if (ranks.length === 0) return undefined;
@@ -702,11 +714,33 @@ export function computeSkillGap(
       const gReg = span(ids, regRankById);
       if (gReg !== undefined) g = (1 - shape.regMix) * gForm + shape.regMix * gReg;
     }
+    if (numeric && numeric.gapMix > 0) {
+      // 登録レートの数値ベース（外れ値の離れ具合を順位より正しく見る）。形は順位版と同じ混合
+      const nForm = spanOfStrength(ids, numeric.formStrengthById);
+      if (nForm !== undefined) {
+        let gNum = nForm;
+        if (shape.regMix > 0) {
+          const nReg = spanOfStrength(ids, numeric.strengthById);
+          if (nReg !== undefined) gNum = (1 - shape.regMix) * nForm + shape.regMix * nReg;
+        }
+        g = (1 - numeric.gapMix) * g + numeric.gapMix * gNum;
+      }
+    }
     const over = Math.max(0, g - shape.knee);
     return s + g + shape.slope * over * over;
   }, 0);
   const mean = sum / courts.length;
   return shape.slope > 0 ? Math.max(0, mean) : clamp01(mean);
+}
+
+/** チーム強さ合計の差（数値ベース。目盛りは `STRENGTH_SHAPE` で順位版 ÷（人数−1）にそろえてある） */
+export function numericTeamDiff(
+  teamA: readonly string[],
+  teamB: readonly string[],
+  strengthById: Map<string, number>
+): number {
+  const sum = (ids: readonly string[]) => ids.reduce((x, id) => x + (strengthById.get(id) ?? 0), 0);
+  return Math.abs(sum(teamA) - sum(teamB));
 }
 
 /**
@@ -720,15 +754,19 @@ export function computeSkillGap(
 export function computeCompetitive(
   courts: CourtPlacement[],
   rankById: Map<string, number>,
-  rosterSize: number
+  rosterSize: number,
+  numeric?: { formStrengthById: Map<string, number>; compMix: number }
 ): number {
   if (courts.length === 0) return 0;
   const denom = Math.max(1, rosterSize - 1);
   const rankOf = (id: string): number => rankById.get(id) ?? 0;
+  const mix = numeric?.compMix ?? 0;
   const sum = courts.reduce((s, court) => {
     const sumA = rankOf(court.teamA[0]) + rankOf(court.teamA[1]);
     const sumB = rankOf(court.teamB[0]) + rankOf(court.teamB[1]);
-    return s + Math.abs(sumA - sumB) / denom;
+    let d = Math.abs(sumA - sumB) / denom;
+    if (numeric && mix > 0) d = (1 - mix) * d + mix * numericTeamDiff(court.teamA, court.teamB, numeric.formStrengthById);
+    return s + d;
   }, 0);
   return clamp01(sum / courts.length);
 }
@@ -1085,9 +1123,23 @@ export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
       input.formRankById,
       input.rosterSize,
       RANK_GAP_SOFT_SHAPE,
-      input.rankById
+      input.rankById,
+      input.strengthById
+        ? {
+            strengthById: input.strengthById,
+            formStrengthById: input.formStrengthById ?? input.strengthById,
+            gapMix: STRENGTH_SHAPE.gapMix,
+          }
+        : undefined
     ),
-    competitive: computeCompetitive(input.courts, input.formRankById, input.rosterSize),
+    competitive: computeCompetitive(
+      input.courts,
+      input.formRankById,
+      input.rosterSize,
+      input.strengthById
+        ? { formStrengthById: input.formStrengthById ?? input.strengthById, compMix: STRENGTH_SHAPE.compMix }
+        : undefined
+    ),
     gender: computeGender(input.courts, input.genderById, input.preferGenderMix),
     mixSplit: computeMixSplit(input.courts, input.genderById),
     variety: computeVariety(

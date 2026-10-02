@@ -7,6 +7,7 @@ import { assignRoundByObjective } from './pairing/assignRound';
 import { buildStreakById } from './pairing/streak';
 import { GENDER_BALANCE_OFF_WEIGHTS } from './pairing/objective';
 import { buildRepeatWeights } from './pairing/repeatDecay';
+import { buildStrengthById, buildFormStrengthById } from './pairing/strength';
 import { median } from './median';
 import type { PairPreference } from '../types/pairPreference';
 import { computeAffinityPairs, computeStrongPairs } from './pairPreference';
@@ -2345,6 +2346,12 @@ export function assignCourts(
       ),
       groupingPlayers
     );
+    const objectiveStrengthById = buildStrengthById(groupingPlayers);
+    const objectiveFormStrengthById = buildFormStrengthById(
+      objectiveStrengthById,
+      objectiveBaseRankById,
+      objectiveFormRankById
+    );
     const objectiveRosterSize = objectiveBaseRankById.size;
     const objectiveWideSpanThreshold =
       objectiveRosterSize < WIDE_RANK_SPAN_MIN_ROSTER
@@ -2365,6 +2372,8 @@ export function assignCourts(
       courtIds: normalCourtIds,
       rankById: objectiveBaseRankById,
       formRankById: objectiveFormRankById,
+      strengthById: objectiveStrengthById,
+      formStrengthById: objectiveFormStrengthById,
       rosterSize: objectiveRosterSize,
       priorityScoreOf: (p) =>
         calculatePriorityScore(p, practiceStartTime, useStayDuration, lateBalance),

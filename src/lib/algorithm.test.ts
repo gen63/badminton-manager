@@ -6,6 +6,7 @@ import type { Reservation } from '../types/reservation';
 import type { Court } from '../types/court';
 import { withInProgressGames } from './effectiveGames';
 import { courtStartTimes } from './pairing/streak';
+import { DEFAULT_WEIGHTS } from './pairing/objective';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -1470,13 +1471,24 @@ describe('assignCourts - 性別ペナルティ', () => {
     );
     const allPlayers = [...players, ...fillers];
 
-    const assignments = assignCourts(players, 1, [], {
-      totalCourtCount: 1,
-      targetCourtIds: [1],
-      practiceStartTime: now - 60 * 60 * 1000,
-      useStayDurationPriority: false,
-      allPlayers,
-    });
+    // 「同優先度」は優先度スコアが同点という意味で、公平性の項は同点でも実力順の並びで
+    // 末尾の人を控えにしたがる。`waiting` を 14（2026-10-02）に上げると性別より強く効いて
+    // しまうので、このテストは性別と優先度の相対関係を見るため改定前の 4.0 に固定する
+    // （docs/plans/2026-10-02-rating-based-strength.md）。
+    const savedWaiting = DEFAULT_WEIGHTS.waiting;
+    DEFAULT_WEIGHTS.waiting = 4.0;
+    let assignments: ReturnType<typeof assignCourts>;
+    try {
+      assignments = assignCourts(players, 1, [], {
+        totalCourtCount: 1,
+        targetCourtIds: [1],
+        practiceStartTime: now - 60 * 60 * 1000,
+        useStayDurationPriority: false,
+        allPlayers,
+      });
+    } finally {
+      DEFAULT_WEIGHTS.waiting = savedWaiting;
+    }
 
     const assigned = [...assignments[0].teamA, ...assignments[0].teamB];
     const maleCount = assigned.filter(id => id.startsWith('m')).length;
