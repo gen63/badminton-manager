@@ -8,6 +8,7 @@ import {
   GENDER_BALANCE_OFF_WEIGHTS,
   AFFINITY_ENEMY_COST,
   RECENCY_STREAK_SHAPE,
+  RANK_GAP_SOFT_SHAPE,
   type CourtPlacement,
   type PairCounts,
 } from './objective';
@@ -55,7 +56,6 @@ describe('assignRoundByObjective', () => {
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
     });
@@ -85,7 +85,6 @@ describe('assignRoundByObjective', () => {
         priorityScoreOf,
         pairCounts,
         pairKeyOf: pairKey,
-        isRecentDuplicate: (ids) => ids.includes('p5') && ids.includes('p6'),
         wideSpanThreshold: Math.ceil(16 * (2 / 3)),
         preferGenderMix: false,
       });
@@ -110,7 +109,6 @@ describe('assignRoundByObjective', () => {
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold,
       preferGenderMix: false,
     });
@@ -123,31 +121,36 @@ describe('assignRoundByObjective', () => {
     }
   });
 
-  it('ハード制約（直近重複）を満たす解があるとき、それが選ばれる', () => {
+  it('直近に同じ4人が出ていても強制はせず、他に同程度の解があればそちらが選ばれる（ソフト）', () => {
     const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
     const rankById = rankByIdFrom(candidates.map(p => p.id));
-    // p0,p1,p2,p3 の組み合わせだけを直近重複として禁止する
-    const forbidden = new Set(['p0', 'p1', 'p2', 'p3']);
-    const isRecentDuplicate = (ids: string[]): boolean =>
-      ids.every(id => forbidden.has(id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 8,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      isRecentDuplicate,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-    });
-
-    for (const court of result) {
-      const ids = [...court.teamA, ...court.teamB];
-      expect(isRecentDuplicate(ids)).toBe(false);
+    // p0..p3 の同じ4人が直前に出た（減衰重みは新しいので大きい）
+    const repeatWeights = {
+      pair: new Map<string, number>(),
+      quad: new Map([['p0,p1,p2,p3', 0.9]]),
+    };
+    for (let i = 0; i < 4; i++) {
+      for (let j = i + 1; j < 4; j++) repeatWeights.pair.set(pairKey(`p${i}`, `p${j}`), 0.9);
     }
+    const run = (withRepeat: boolean) =>
+      assignRoundByObjective({
+        candidates,
+        courtIds: [1],
+        rankById,
+        rosterSize: 8,
+        priorityScoreOf,
+        pairCounts: emptyPairCounts(),
+        repeatWeights: withRepeat ? repeatWeights : undefined,
+        pairKeyOf: pairKey,
+        wideSpanThreshold: null,
+        preferGenderMix: false,
+      });
+    const ids = (r: ReturnType<typeof run>) => new Set([...r[0].teamA, ...r[0].teamB]);
+    // 履歴なしなら優先度順の先頭 p0..p3 が出る
+    expect([...ids(run(false))].sort()).toEqual(['p0', 'p1', 'p2', 'p3']);
+    // 同じ4人の重みがあると、1人以上入れ替わる（ハードではないので強制はしない）
+    const withRepeat = ids(run(true));
+    expect(['p0', 'p1', 'p2', 'p3'].filter(id => withRepeat.has(id)).length).toBeLessThan(4);
   });
 
   it('解が存在しないとき例外を投げず、違反最小の解を返す', () => {
@@ -165,7 +168,6 @@ describe('assignRoundByObjective', () => {
         priorityScoreOf,
         pairCounts: emptyPairCounts(),
         pairKeyOf: pairKey,
-        isRecentDuplicate: () => false,
         wideSpanThreshold: 1, // 順位差1以上で違反 → 4人いる限り必ず違反する
         preferGenderMix: false,
       })
@@ -179,7 +181,6 @@ describe('assignRoundByObjective', () => {
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: 1,
       preferGenderMix: false,
     });
@@ -189,29 +190,6 @@ describe('assignRoundByObjective', () => {
     expect(new Set(ids).size).toBe(4);
   });
 
-  it('全員が直近重複として禁止されていても例外を投げず配置する', () => {
-    const candidates = Array.from({ length: 4 }, (_, i) => makePlayer(`p${i}`));
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1],
-      rankById,
-      rosterSize: 4,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      isRecentDuplicate: () => true, // どの組も必ず違反
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-    });
-
-    expect(result).toHaveLength(1);
-    expect(new Set([...result[0].teamA, ...result[0].teamB]).size).toBe(4);
-  });
-});
-
-describe('computeObjectiveTerms（0〜1に収まること）', () => {
   it('通常の入力ですべての項が0〜1に収まる', () => {
     const ids = Array.from({ length: 12 }, (_, i) => `p${i}`);
     const rankById = rankByIdFrom(ids);
@@ -346,7 +324,6 @@ describe('assignRoundByObjective の性別チーム分け', () => {
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
     });
@@ -375,7 +352,6 @@ describe('assignRoundByObjective の性別チーム分け', () => {
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
       weights: GENDER_BALANCE_OFF_WEIGHTS,
@@ -412,7 +388,6 @@ describe('公平性の窓（優先度順から離れすぎない）', () => {
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
     });
@@ -434,7 +409,6 @@ describe('公平性の窓（優先度順から離れすぎない）', () => {
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
     });
@@ -495,7 +469,6 @@ describe('後半均等化モード（公平性の窓を狭める）', () => {
       priorityScoreOf: p => p.gamesPlayed,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
       lateBalanceMode,
@@ -547,7 +520,6 @@ describe('順位差のハード制約: 登録序列とハシゴ式序列の両�
       priorityScoreOf: priority,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: Math.ceil(16 * (2 / 3)), // 11
       preferGenderMix: false,
     });
@@ -649,7 +621,6 @@ describe('assignRoundByObjective: affinity（ペア希望・normal）', () => {
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
     };
@@ -677,7 +648,6 @@ describe('assignRoundByObjective: affinity（ペア希望・normal）', () => {
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
     });
@@ -698,7 +668,6 @@ describe('assignRoundByObjective: affinity（ペア希望・normal）', () => {
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
       affinityPairs: [{ a: 'p0', b: 'p7' }],
@@ -786,7 +755,6 @@ describe('assignRoundByObjective: 実運用バグ — 同性の希望ペアが2-
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
       affinityPairs: [{ a: 'p0', b: 'p3' }], // strength: 'normal' 相当
@@ -844,7 +812,6 @@ describe('assignRoundByObjective: 実運用バグ — 同性の希望ペアが2-
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
       // affinityPairs 省略 = 希望ペアなし
@@ -899,7 +866,6 @@ describe('assignRoundByObjective: 実運用バグ — 同性の希望ペアが2-
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
       affinityPairs: [{ a: 'p0', b: 'p3' }], // q グループは希望ペア非対象
@@ -948,7 +914,6 @@ describe('assignRoundByObjective: 実運用バグ — 同性の希望ペアが2-
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
       affinityPairs: [{ a: 'p0', b: 'p1' }],
@@ -990,7 +955,6 @@ describe('assignRoundByObjective: 実運用バグ — 同性の希望ペアが2-
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
       affinityPairs: [{ a: 'p0', b: 'p1' }], // 実力隣接の下位2人
@@ -1038,7 +1002,6 @@ describe('assignRoundByObjective: strong（ペア希望・強度「必ず」の�
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
       affinityPairs: [{ a: 'p0', b: 'p3' }],
@@ -1070,7 +1033,6 @@ describe('assignRoundByObjective: strong（ペア希望・強度「必ず」の�
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
       strongPairs: [{ a: 'p0', b: 'p7' }],
@@ -1112,7 +1074,6 @@ describe('assignRoundByObjective: strong（ペア希望・強度「必ず」の�
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
       strongPairs: [{ a: 'p0', b: 'p9' }],
@@ -1150,7 +1111,6 @@ describe('assignRoundByObjective: strong（ペア希望・強度「必ず」の�
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: null,
       preferGenderMix: false,
       strongPairs: [{ a: 'p0', b: 'p11' }],
@@ -1180,7 +1140,6 @@ describe('assignRoundByObjective: strong（ペア希望・強度「必ず」の�
       priorityScoreOf,
       pairCounts: emptyPairCounts(),
       pairKeyOf: pairKey,
-      isRecentDuplicate: () => false,
       wideSpanThreshold: 5,
       preferGenderMix: false,
       strongPairs: [{ a: 'p0', b: 'p8' }],
@@ -1221,7 +1180,6 @@ describe('assignRoundByObjective: recency（連続出場を嫌う）', () => {
     priorityScoreOf: () => 0, // 全員同点（＝試合数が同じ）
     pairCounts: emptyPairCounts(),
     pairKeyOf: pairKey,
-    isRecentDuplicate: () => false,
     wideSpanThreshold: null,
     preferGenderMix: false,
   };
@@ -1254,7 +1212,8 @@ describe('assignRoundByObjective: recency（連続出場を嫌う）', () => {
       assignRoundByObjective({
         ...baseParams,
         streakById: new Map([['p3', 1]]),
-        weights: { recency: 20 },
+        // 5人ロースターでは skillGap の凸項（幅 p0〜p4 は1.0）が大きいので、それを押し切る重み
+        weights: { recency: 60 },
       })
     );
     expect(picked.has('p4')).toBe(true);
@@ -1280,6 +1239,7 @@ describe('assignRoundByObjective: recency（連続出場を嫌う）', () => {
       assignRoundByObjective({
         ...baseParams,
         streakById: new Map([['p3', 2]]), // 今回3連続目
+        weights: { skillGap: 0 }, // 5人ロースターでは凸の skillGap 項が大きく、連続の効きだけを見るため外す
       })
     );
     expect(picked.has('p4')).toBe(true);
@@ -1338,6 +1298,7 @@ describe('assignRoundByObjective: recency（連続出場を嫌う）', () => {
           ['p2', 2], // 3連続目になる
           ['p3', 1], // 2連続目になる
         ]),
+        weights: { recency: 20 }, // 5人ロースターの skillGap 凸項を押し切る重み（段階の大小だけを見る）
       })
     );
     expect(picked.has('p3')).toBe(true);
@@ -1400,7 +1361,6 @@ describe('assignRoundByObjective: strong ペアの順位差は順位差ハード
         priorityScoreOf: p => plays.get(p.id)! * 100 + Number(p.id.slice(1)),
         pairCounts: emptyPairCounts(),
         pairKeyOf: pairKey,
-        isRecentDuplicate: () => false,
         wideSpanThreshold: threshold,
         preferGenderMix: false,
         strongPairs,
@@ -1456,4 +1416,42 @@ describe('assignRoundByObjective: strong ペアの順位差は順位差ハード
       expect(r.othersWithinSpan).toBe(true);
     });
   }
+});
+
+describe('assignRoundByObjective: 小人数（ハード制約なし）でも順位が大きく離れた組を避ける（skillGap の凸ペナルティ）', () => {
+  // 12人・1コート。優先度は p0 と p11（両端）が最優先、p5・p6 が次点。
+  // 線形の skillGap（slope=0）では両端 p0×p11 が同じコートに入るが、
+  // 既定の凸形は幅が knee を超えるぶんを重くして、p0×p11 の同居を避ける。
+  // docs/plans/2026-10-02-rank-gap-soft.md
+  const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
+  const rankById = rankByIdFrom(candidates.map(p => p.id));
+  const run = () =>
+    assignRoundByObjective({
+      candidates,
+      courtIds: [1],
+      rankById,
+      rosterSize: 12,
+      priorityScoreOf: (p: Player) => (p.id === 'p0' || p.id === 'p11' ? 0 : p.id === 'p5' || p.id === 'p6' ? 0.5 : 1),
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+    });
+  const idsOf = (r: ReturnType<typeof assignRoundByObjective>) => new Set(r.flatMap(c => [...c.teamA, ...c.teamB]));
+
+  it('線形（slope=0）では両端が同居する（凸形の効果を確かめる対照）', () => {
+    const original = { ...RANK_GAP_SOFT_SHAPE };
+    Object.assign(RANK_GAP_SOFT_SHAPE, { knee: 0, slope: 0, regMix: 0 });
+    try {
+      const ids = idsOf(run());
+      expect(ids.has('p0') && ids.has('p11')).toBe(true);
+    } finally {
+      Object.assign(RANK_GAP_SOFT_SHAPE, original);
+    }
+  });
+
+  it('既定の凸形では、13人未満でも両端（順位差11）の同居を避ける', () => {
+    const ids = idsOf(run());
+    expect(ids.has('p0') && ids.has('p11')).toBe(false);
+  });
 });

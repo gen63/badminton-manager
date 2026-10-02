@@ -1321,7 +1321,7 @@ describe('assignCourts - パートナー/対戦相手重複ペナルティ（sel
     id, name: id, rating, gamesPlayed: 1, isResting: false, lastPlayedAt: 0, activatedAt: 0,
   });
 
-  it('優先度が同点でも、直近試合と3人以上かぶらず、未共演の人が優先される', () => {
+  it('優先度が同点でも、直近試合と同じ4人にはならず、未共演の人が使われる（ソフト。直近重複のハード制約は撤去済み）', () => {
     // (A) 目的6（顔ぶれが繰り返されない）を検証する。
     //
     // 旧実装は「{p0,p2,p4,p5} がちょうど選ばれる」と完全一致で固定していたが、
@@ -1349,14 +1349,14 @@ describe('assignCourts - パートナー/対戦相手重複ペナルティ（sel
     expect(ids).toHaveLength(4);
     expect(new Set(ids).size).toBe(4);
 
-    // 直近試合の4人と3人以上かぶらない（＝同じ顔ぶれの再演にならない）
+    // 直近試合と同じ4人の再演にならない（3人かぶりまでは、実力差など他の項との
+    // 兼ね合いで許容する。強制するハード制約は撤去し、variety の減衰項で避ける）
     const overlap = ids.filter(id => ['p0', 'p1', 'p2', 'p3'].includes(id)).length;
     expect(overlap, `直近試合と ${overlap} 人かぶっている [${ids.join(', ')}]`)
-      .toBeLessThanOrEqual(2);
+      .toBeLessThanOrEqual(3);
 
-    // 誰とも共演していない p4 / p5 が使われる
-    expect(ids).toContain('p4');
-    expect(ids).toContain('p5');
+    // 誰とも共演していない p4 / p5 のどちらかは使われる
+    expect(ids.includes('p4') || ids.includes('p5')).toBe(true);
   });
 });
 
@@ -1562,13 +1562,15 @@ describe('assignCourts - 少数派性別1人のときの3-1ペナルティ無効
     // options.allPlayers（セッション全体、他コートでプレイ中の p6(F) を含む）では
     // 女性が2人いる = 2-2が作れる可能性がある「バランスが取れる構成」。
     // このときは genderPairImpossible が false のまま維持され、
-    // 従来どおり 3-1 ペナルティが有効 → 単独では待っていても p5 は選ばれない。
+    // 従来どおり 3-1 ペナルティが有効 → 試合数が同じなら p5 は選ばれない。
+    // （2026-10-02: 公平性の重みを 1.5 → 5.0 に上げたため、p5 が試合数で遅れていれば
+    //  3-1 でも出場させる。docs/plans/2026-10-02-rank-gap-soft.md）
     const players: Player[] = [
       createGenderedPlayer('p1', 'P1', 1500, 'M', 10),
       createGenderedPlayer('p2', 'P2', 1500, 'M', 10),
       createGenderedPlayer('p3', 'P3', 1500, 'M', 10),
       createGenderedPlayer('p4', 'P4', 1500, 'M', 10),
-      createGenderedPlayer('p5', 'P5', 1500, 'F', 8),
+      createGenderedPlayer('p5', 'P5', 1500, 'F', 10),
     ];
     const allPlayers: Player[] = [
       ...players,

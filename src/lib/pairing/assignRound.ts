@@ -9,6 +9,7 @@
  * 動く別モジュール。既存コードは import しない（`objective.ts` も同様）。
  */
 import type { Player } from '../../types/player';
+import type { RepeatWeights } from './repeatDecay';
 import type { CourtAssignment } from '../../types/court';
 import {
   DEFAULT_WEIGHTS,
@@ -73,10 +74,10 @@ export interface AssignRoundParams {
   /** 低いほど優先。algorithm.ts の calculatePriorityScore を呼び出し側が渡す */
   priorityScoreOf: (p: Player) => number;
   pairCounts: PairCounts;
+  /** 減衰付き共演重み（variety）。省略時は累計回数のみ */
+  repeatWeights?: RepeatWeights;
   /** ペアのキー生成規則（呼び出し側と統一すること） */
   pairKeyOf: (a: string, b: string) => string;
-  /** 直近試合との重複（ハード制約）。true なら不可 */
-  isRecentDuplicate: (ids: string[]) => boolean;
   /** 順位差のハード制約。null なら制約なし（14人未満） */
   wideSpanThreshold: number | null;
   preferGenderMix: boolean;
@@ -236,8 +237,8 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     rosterSize,
     priorityScoreOf,
     pairCounts,
+    repeatWeights,
     pairKeyOf,
-    isRecentDuplicate,
     wideSpanThreshold,
     preferGenderMix,
     lateBalanceMode = false,
@@ -330,18 +331,10 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       // 幅は `maxRankGap`（「必ず」ペア内の差は除外）で測る。
 
       // 制約を満たす範囲で優先度順に3人追加。
-      //
-      // 4人目は直近試合の重複（`isRecentDuplicate`）も避ける。局所探索の近傍は
-      // 「出場者⇔控えの1人スワップ」しか無いため、4人中2人を同時に入れ替えないと
-      // 直らない重複は初期解から抜け出せない。順位差と同じく初期解の段階で避ける。
       for (let i = 1; i < pool.length && chosenIndices.length < 4; i++) {
         const trialIds = [...chosenIndices.map(k => pool[k].id), pool[i].id];
         if (maxRankGap(trialIds, formRankById, strongPairs) >= threshold) continue;
         if (maxRankGap(trialIds, rankById, strongPairs) >= threshold) continue;
-        if (chosenIndices.length === 3) {
-          const members = [...chosenIndices.map(k => pool[k].id), pool[i].id];
-          if (isRecentDuplicate(members)) continue;
-        }
         chosenIndices.push(i);
       }
 
@@ -363,64 +356,6 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
         slots: [four[0].id, four[1].id, four[2].id, four[3].id] as CourtState['slots'],
       };
     });
-  }
-
-  // 初期解の直近試合重複を、未配置の候補との1人入れ替えで解消する。
-  //
-  // 局所探索の近傍は「出場者⇔控えの1人スワップ」だけなので、4人中2人を同時に
-  // 入れ替えないと直らない重複は初期解から抜け出せない（辞書式評価は違反を
-  // 増やさないが、減らせない手しか無ければその場に留まる）。順位差の制約と同じく
-  // 初期解の段階で潰しておく。順位差の制約を新たに破る入れ替えは採らない。
-  {
-    const placed = new Set<string>();
-    for (const court of initialCourts) for (const id of court.slots) placed.add(id);
-    const spare = sortedCandidates.filter(p => !placed.has(p.id));
-
-    for (const court of initialCourts) {
-      if (!isRecentDuplicate(courtMembers(court))) continue;
-      const acceptable = (trial: CourtState['slots']): boolean => {
-        if (isRecentDuplicate([...trial])) return false;
-        if (wideSpanThreshold === null) return true;
-        for (const rankMap of [formRankById, rankById]) {
-          if (maxRankGap(trial, rankMap, strongPairs) >= wideSpanThreshold) return false;
-        }
-        return true;
-      };
-      const apply = (trial: CourtState['slots'], slots: number[], picks: number[]): void => {
-        const removed = slots.map(slot => sortedCandidates.find(p => p.id === court.slots[slot])!);
-        court.slots = trial;
-        // 外した人は次のコートの入れ替え候補として控えに戻す
-        picks.forEach((s, k) => { spare[s] = removed[k]; });
-      };
-
-      let fixed = false;
-      // まず1人入れ替え。優先度の低い出場者から試す（公平性への影響を小さくするため）
-      for (let slot = 3; slot >= 0 && !fixed; slot--) {
-        for (let s = 0; s < spare.length && !fixed; s++) {
-          const trial = [...court.slots] as CourtState['slots'];
-          trial[slot] = spare[s].id;
-          if (!acceptable(trial)) continue;
-          apply(trial, [slot], [s]);
-          fixed = true;
-        }
-      }
-      // 1人では直らない場合に2人同時。直近試合と完全に一致する4人は、1人だけ
-      // 外しても残り3人が一致して overlap>=3 のままなので、2人同時でしか解けない。
-      for (let a = 0; a < 4 && !fixed; a++) {
-        for (let b = a + 1; b < 4 && !fixed; b++) {
-          for (let s = 0; s < spare.length && !fixed; s++) {
-            for (let t = s + 1; t < spare.length && !fixed; t++) {
-              const trial = [...court.slots] as CourtState['slots'];
-              trial[a] = spare[s].id;
-              trial[b] = spare[t].id;
-              if (!acceptable(trial)) continue;
-              apply(trial, [a, b], [s, t]);
-              fixed = true;
-            }
-          }
-        }
-      }
-    }
   }
 
   // 控えは「実際にコートへ配置されなかった人」から求める。
@@ -591,7 +526,6 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
           }
         }
       }
-      if (isRecentDuplicate(members)) violations++;
     }
     // 強度「必ず」の希望ペア: (a)「2人が同じラウンドで出場するなら必ず味方」
     // に加えて (b)「2人一緒に出るか、2人とも控えるか」も必須にする
@@ -675,6 +609,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       genderById,
       preferGenderMix,
       pairCounts,
+      repeatWeights,
       pairKeyOf,
       reachableCountById,
       formRankById,

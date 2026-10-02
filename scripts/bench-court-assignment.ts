@@ -56,9 +56,11 @@
  * 0 に近いほど「ペア希望で試合が増えていない」）が追加される。
  */
 import { assignCourts } from '../src/lib/algorithm';
+import { VARIETY_SHAPE } from '../src/lib/pairing/repeatDecay';
 import {
   DEFAULT_WEIGHTS,
   RECENCY_STREAK_SHAPE,
+  RANK_GAP_SOFT_SHAPE,
   AFFINITY_ENEMY_COST,
   AFFINITY_ENEMY_COST_SPLIT,
   AFFINITY_ENEMY_COST_SPLIT_SAFE,
@@ -176,10 +178,30 @@ function pickPairPreferences(
     prefs.push({
       id: `pref${prefs.length}`,
       playerIds: [a.id, b.id],
-      strength: 'normal',
+      strength: PREF_STRENGTH,
       createdAt: 0,
     });
   };
+
+  if (genderMode === 'any' && PREF_DIST !== 'any') {
+    // 実力の近さを指定して組む（close: 真の順位差2以内 / far: n/3 以上 / mix: 近・中・遠を巡回）
+    const pool = shuffled(players, rng);
+    const used = new Set<string>();
+    const n = players.length;
+    const ok = (mode: string, d: number) =>
+      mode === 'close' ? d <= 2 : mode === 'far' ? d >= Math.ceil(n / 3) : d > 2 && d < Math.ceil(n / 3);
+    for (let k = 0; k < count; k++) {
+      const mode = PREF_DIST === 'mix' ? (['close', 'mid', 'far'] as const)[k % 3] : PREF_DIST;
+      const a = pool.find(p => !used.has(p.id));
+      if (!a) break;
+      const b = pool.find(p => p.id !== a.id && !used.has(p.id) && ok(mode, Math.abs(p.trueRank - a.trueRank)));
+      if (!b) continue;
+      used.add(a.id);
+      used.add(b.id);
+      push(a, b);
+    }
+    return prefs;
+  }
 
   if (genderMode === 'any') {
     const pool = shuffled(players, rng);
@@ -269,6 +291,13 @@ interface RunResult {
   lateRatio: number;       // 遅参加者の「在席比例に対する倍率」（1.0 が理想）
   earlyRatio: number;      // 最初から居る人の同上
   // 目的6: 顔ぶれが繰り返されない
+  // 繰り返しを直接見る指標（docs/plans/2026-10-02-variety-decay.md）
+  quadRate: number;        // その4人と同じ顔ぶれ（チーム分け不問）が既に出ていた試合の割合
+  recent3Rate: number;     // 4人中3人以上が、メンバー誰かの直近3試合と一致した試合の割合（旧 B3 該当）
+  pair3Rate: number;       // 同コートの2人組のうち、その日3回目以上の共演を含む試合の割合
+  pair4Rate: number;       // 同上、4回目以上
+  again3Rate: number;      // 1試合あたり、直前の共演から2人とも3試合以内（間に自分が出た試合が2以下）で再び同コートになった2人組の数（6組中）
+  again5Rate: number;      // 同上、5試合以内
   maxMateShare: number;    // 最多相手が自分の試合に占める割合の平均（低いほど良い）
   distinctMates: number;   // 1人あたりの異なる共演相手数の平均（高いほど良い）
   // 目的7: ペア希望（affinity）。docs/plans/2026-08-31-pair-preference.md 6.
@@ -414,7 +443,7 @@ function runOnce(
         // 進行中コートの開始時刻（本番は courtStartTimes(courts)）。目的8 recency の連続判定用
         inProgressStartedAt: pending.map(m => m.startedAt),
       });
-    } catch {
+    } catch (e) { if (process.env.DEBUG_ERR) console.error(e);
       // insufficient-players など。計測不能な条件として捨てる
       return null;
     }
@@ -688,6 +717,53 @@ function runOnce(
   const streak3Rate = appearanceCount ? streak3 / appearanceCount : 0;
   const streak4Rate = appearanceCount ? streak4 / appearanceCount : 0;
 
+  // 繰り返し指標
+  let quadRepeat = 0, recent3 = 0, pair3 = 0, pair4 = 0, again3 = 0, again5 = 0;
+  {
+    const quadSeen = new Set<string>();
+    const pairSeen = new Map<string, number>();
+    const memberHist = new Map<string, string[][]>(players.map(p => [p.id, []]));
+    const lastTogether = new Map<string, { a: number; b: number }>(); // 共演時点の各人の出場数
+    const played = new Map<string, number>();
+    for (const m of history) {
+      const ids = [...m.teamA, ...m.teamB];
+      const qk = [...ids].sort().join(',');
+      if (quadSeen.has(qk)) quadRepeat++;
+      quadSeen.add(qk);
+      let r3 = false;
+      for (const id of ids) {
+        for (const prev of memberHist.get(id)!.slice(-3)) {
+          if (ids.filter(x => prev.includes(x)).length >= 3) r3 = true;
+        }
+      }
+      if (r3) recent3++;
+      let maxPair = 0;
+      let a3c = 0, a5c = 0;
+      for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) {
+        const k = pairKeyBench(ids[i], ids[j]);
+        const lt = lastTogether.get(k);
+        if (lt) {
+          const gi = (played.get(ids[i]) ?? 0) - lt.a;
+          const gj = (played.get(ids[j]) ?? 0) - lt.b;
+          if (Math.max(gi, gj) <= 2) a3c++;
+          if (Math.max(gi, gj) <= 4) a5c++;
+        }
+        const c = (pairSeen.get(k) ?? 0) + 1;
+        pairSeen.set(k, c);
+        if (c > maxPair) maxPair = c;
+      }
+      again3 += a3c;
+      again5 += a5c;
+      for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) {
+        lastTogether.set(pairKeyBench(ids[i], ids[j]), { a: (played.get(ids[i]) ?? 0) + 1, b: (played.get(ids[j]) ?? 0) + 1 });
+      }
+      for (const id of ids) played.set(id, (played.get(id) ?? 0) + 1);
+      if (maxPair >= 3) pair3++;
+      if (maxPair >= 4) pair4++;
+      for (const id of ids) memberHist.get(id)!.push(ids);
+    }
+  }
+
   // 目的6: 試合をした人だけを対象に「最多相手 / 自分の試合数」を平均する
   const shares = players
     .filter(p => p.gamesPlayed > 0)
@@ -791,6 +867,12 @@ function runOnce(
     gamesByTrueRank,
     lateRatio: meanOf(lateRatios),
     earlyRatio: meanOf(earlyRatios),
+    quadRate: history.length ? quadRepeat / history.length : 0,
+    recent3Rate: history.length ? recent3 / history.length : 0,
+    pair3Rate: history.length ? pair3 / history.length : 0,
+    pair4Rate: history.length ? pair4 / history.length : 0,
+    again3Rate: history.length ? again3 / history.length : 0,
+    again5Rate: history.length ? again5 / history.length : 0,
     maxMateShare: shares.length ? mean(shares) : 0,
     distinctMates: mean(players.map(p => matesSeen.get(p.id)!.size)),
     rotation: mean(players.map(p => courtsSeen.get(p.id)!.size)),
@@ -819,6 +901,10 @@ const NOISES = (process.env.NOISE ?? '0,4,8').split(',').map(Number);
  * 既定 0（＝希望なし。既存の全指標に影響しない）。N = 1 / 3 / 6 を測る想定。
  */
 const PREF_PAIRS = Number(process.env.PREF_PAIRS ?? 0);
+/** 希望ペアの強度（normal / strong） */
+const PREF_STRENGTH = (process.env.PREF_STRENGTH ?? 'normal') as 'normal' | 'strong';
+/** 希望ペアの実力の近さ（any / close / far / mix） */
+const PREF_DIST = (process.env.PREF_DIST ?? 'any') as 'any' | 'close' | 'far' | 'mix';
 /**
  * 登録する希望ペアの性別構成を固定する（既定 'any' = 無作為）。
  * `docs/plans/2026-08-31-pair-preference.md` 追記「同コート敵バグ」の調査用。
@@ -880,6 +966,23 @@ if (process.env.STREAK_HARD_FROM !== undefined) {
   RECENCY_STREAK_SHAPE.hardFrom = Number(process.env.STREAK_HARD_FROM);
 }
 const DEFAULT_CONDITIONS = '13x2,14x2,16x2,15x3,18x3,21x3,22x3,25x3';
+if (process.env.SKNEE !== undefined) RANK_GAP_SOFT_SHAPE.knee = Number(process.env.SKNEE);
+if (process.env.SSLOPE !== undefined) RANK_GAP_SOFT_SHAPE.slope = Number(process.env.SSLOPE);
+if (process.env.SREG !== undefined) RANK_GAP_SOFT_SHAPE.regMix = Number(process.env.SREG);
+if (process.env.VMODE !== undefined) VARIETY_SHAPE.mode = process.env.VMODE as 'off' | 'games';
+if (process.env.VDECAY !== undefined) VARIETY_SHAPE.decay = Number(process.env.VDECAY);
+if (process.env.VPOWER !== undefined) VARIETY_SHAPE.power = Number(process.env.VPOWER);
+if (process.env.VSCALE !== undefined) VARIETY_SHAPE.scale = Number(process.env.VSCALE);
+if (process.env.VQUAD !== undefined) VARIETY_SHAPE.quadWeight = Number(process.env.VQUAD);
+if (process.env.VFLOOR !== undefined) VARIETY_SHAPE.rawFloor = Number(process.env.VFLOOR);
+if (process.env.VWEIGHT !== undefined) DEFAULT_WEIGHTS.variety = Number(process.env.VWEIGHT);
+if (process.env.VGEN !== undefined) DEFAULT_WEIGHTS.gender = Number(process.env.VGEN);
+if (process.env.VREC !== undefined) DEFAULT_WEIGHTS.recency = Number(process.env.VREC);
+if (process.env.VFAIR !== undefined) DEFAULT_WEIGHTS.fairness = Number(process.env.VFAIR);
+if (process.env.VWAIT !== undefined) DEFAULT_WEIGHTS.waiting = Number(process.env.VWAIT);
+if (process.env.VMIX !== undefined) DEFAULT_WEIGHTS.mixSplit = Number(process.env.VMIX);
+if (process.env.VSKILL !== undefined) DEFAULT_WEIGHTS.skillGap = Number(process.env.VSKILL);
+if (process.env.VCOMP !== undefined) DEFAULT_WEIGHTS.competitive = Number(process.env.VCOMP);
 const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
   .split(',')
   .map(s => {
@@ -897,7 +1000,8 @@ console.log(`SEEDS=${SEEDS} ROUNDS=${ROUNDS} NOISE=${NOISES.join(',')} ENGINE=${
   (process.env.STREAK_BASE !== undefined || process.env.STREAK_GROWTH !== undefined || process.env.STREAK_HARD_FROM !== undefined
     ? ` STREAK_BASE=${RECENCY_STREAK_SHAPE.base} STREAK_GROWTH=${RECENCY_STREAK_SHAPE.growth} STREAK_HARD_FROM=${RECENCY_STREAK_SHAPE.hardFrom}`
     : '') +
-  (process.env.CONTINUOUS === '1' ? ' CONTINUOUS=1' : ''));
+  (process.env.CONTINUOUS === '1' ? ' CONTINUOUS=1' : '') +
+  ` V=${JSON.stringify(VARIETY_SHAPE)} Vw=${DEFAULT_WEIGHTS.variety}`);
 console.log('  指標は docs/plans/2026-08-05-pairing-goals-and-rewrite.md の目的1〜6に対応');
 console.log('  幅広%=目的3 競り度=目的4(チーム間の実力差) 実力幅=コート内4人の trueRank 最大−最小の平均 3-1%=目的5 男女戦%=目的5b 占有率%/共演=目的6 試合数幅=目的1 待ち=目的2');
 console.log('  待ち途中=末尾の裾を除いた空きの最大 連投%=空き1試合以下の割合 2/3/4連続%=その出場がちょうど2/3/4連続目（4は4以上）だった割合（時刻ベース） 待ちσ=空きの標準偏差（目的2の補助）');
@@ -925,7 +1029,7 @@ if (PREF_PAIRS > 0) {
 console.log('  （共演のみ高いほど良い。他はすべて低いほど良い）');
 console.log('');
 console.log(
-  '  条件      NOISE  幅広%  登録上下%  背負い%  過大勝率%  競り度  実力幅  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち  待ち途中  連投%  2連続%  3連続%  4連続+%  待ちσ  勝率SD%  極端%  最大幅' +
+  '  条件      NOISE  幅広%  登録上下%  背負い%  過大勝率%  競り度  実力幅  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち  待ち途中  連投%  2連続%  3連続%  4連続+%  待ちσ  勝率SD%  極端%  最大幅  同4人%  直近3人%  同2人3+%  同2人4+%  再会3%  再会5%' +
     (LATE_JOIN > 0 ? '  遅参加' : '') +
     (PREF_PAIRS > 0 ? '  成立率%  リーク  同居敵%  内訳mixSplit%(件数)  希望コート男女戦%  希望外コート男女戦%' : '')
 );
@@ -980,6 +1084,7 @@ for (const { n, courtCount } of CONDITIONS) {
         `${avg(r => r.idleSd).toFixed(2).padStart(5)}` +
         `  ${(avg(r => r.winRateSd) * 100).toFixed(1)}` +
         `  ${(avg(r => r.extremeGapRate) * 100).toFixed(2)}  ${avg(r => r.maxTrueGap).toFixed(1)}` +
+        `  ${(avg(r => r.quadRate) * 100).toFixed(1)}  ${(avg(r => r.recent3Rate) * 100).toFixed(1)}  ${(avg(r => r.pair3Rate) * 100).toFixed(1)}  ${(avg(r => r.pair4Rate) * 100).toFixed(1)}  ${avg(r => r.again3Rate).toFixed(2)}  ${avg(r => r.again5Rate).toFixed(2)}` +
         (LATE_JOIN > 0 ? `   ${avg(r => r.lateRatio).toFixed(2)}倍` : '') +
         (PREF_PAIRS > 0
           ? `   ${(() => {

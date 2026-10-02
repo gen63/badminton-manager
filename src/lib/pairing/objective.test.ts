@@ -9,6 +9,8 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_WEIGHTS,
   computeRecency,
+  computeSkillGap,
+  RANK_GAP_SOFT_SHAPE,
   recencyCost,
   isRecencyViolation,
   RECENCY_STREAK_SHAPE,
@@ -31,11 +33,11 @@ describe('recencyCost（今回何連続目になるか → コスト。飽和し
   });
 
   it('既定の形: 2連続目は僅か・3連続目はまあまあ強く・4連続目以上は強く（1人あたりの実効コスト）', () => {
-    // 実効コスト = recencyCost × 重み(2.0) / 4。3連続目は 3-1 のコート（1.0 × 1.6）より重い
+    // 実効コスト = recencyCost × 重み(5.0) / 4。3連続目は 3-1 のコート（1.0 × 3.0）より重い
     const effective = (streak: number) => (recencyCost(streak) * DEFAULT_WEIGHTS.recency) / 4;
-    expect(effective(1)).toBeCloseTo(0.2, 10); // 2連続目
-    expect(effective(2)).toBeCloseTo(1.6, 10); // 3連続目
-    expect(effective(3)).toBeCloseTo(12.8, 10); // 4連続目
+    expect(effective(1)).toBeCloseTo(0.5, 10); // 2連続目
+    expect(effective(2)).toBeCloseTo(4, 10); // 3連続目
+    expect(effective(3)).toBeCloseTo(32, 10); // 4連続目
     expect(effective(2)).toBeGreaterThanOrEqual(1.0 * DEFAULT_WEIGHTS.gender);
   });
 
@@ -122,5 +124,42 @@ describe('computeRecency（配置された全員のコストを1コート=4人�
 
   it('コートが無ければ 0（練習開始直後・0除算しない）', () => {
     expect(computeRecency([], new Map([['p0', 9]]), shape)).toBe(0);
+  });
+});
+
+describe('computeSkillGap（順位幅の凸ペナルティ。docs/plans/2026-10-02-rank-gap-soft.md）', () => {
+  // 13人ロースター（ハード制約が掛からない人数）。順位 0〜12、分母 12
+  const rank = new Map(Array.from({ length: 13 }, (_, i) => [`p${i}`, i] as const));
+  const flat = { knee: 0, slope: 0, regMix: 0 };
+
+  it('slope=0 は従来どおり順位幅の線形（幅 ÷ (人数-1)）', () => {
+    const narrow = [court(1, ['p0', 'p3'], ['p1', 'p2'])]; // 幅3
+    expect(computeSkillGap(narrow, rank, 13, flat)).toBeCloseTo(3 / 12, 10);
+  });
+
+  it('既定の形は knee を超えた幅を二乗で急に重くする（幅が2倍なら2倍より重い）', () => {
+    const half = [court(1, ['p0', 'p6'], ['p1', 'p2'])]; // 幅6 → g=0.5
+    const full = [court(1, ['p0', 'p12'], ['p1', 'p2'])]; // 幅12 → g=1.0
+    const a = computeSkillGap(half, rank, 13);
+    const b = computeSkillGap(full, rank, 13);
+    expect(b).toBeGreaterThan(2 * a);
+    // 幅が knee 以下なら線形のまま
+    const small = [court(1, ['p0', 'p3'], ['p1', 'p2'])]; // g=0.25 < 0.3
+    expect(computeSkillGap(small, rank, 13)).toBeCloseTo(0.25, 10);
+  });
+
+  it('knee を超えると項は 1 を超えうる（クランプしない）', () => {
+    const full = [court(1, ['p0', 'p12'], ['p1', 'p2'])];
+    expect(computeSkillGap(full, rank, 13)).toBeCloseTo(
+      1 + RANK_GAP_SOFT_SHAPE.slope * (1 - RANK_GAP_SOFT_SHAPE.knee) ** 2,
+      10
+    );
+  });
+
+  it('regMix > 0 なら登録順位の幅も混ぜる（formRank だけ狭くても登録上下の同居を嫌う）', () => {
+    const form = new Map(Array.from({ length: 13 }, (_, i) => [`p${i}`, 5] as const)); // 全員同順位
+    const c = [court(1, ['p0', 'p12'], ['p1', 'p2'])];
+    expect(computeSkillGap(c, form, 13, flat, rank)).toBe(0);
+    expect(computeSkillGap(c, form, 13, { knee: 0, slope: 0, regMix: 0.5 }, rank)).toBeCloseTo(0.5, 10);
   });
 });
