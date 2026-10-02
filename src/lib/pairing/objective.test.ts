@@ -8,6 +8,7 @@ import {
   courtBreakdown,
   courtSpan,
   extremeSurplusFactor,
+  tripleRepeatPointsFor,
   fairnessPoints,
   fairnessSurplusFactor,
   genderPoints,
@@ -278,5 +279,31 @@ describe('余り人数に応じた公平性・極端な実力差の効き（連�
     expect(extremeSurplusFactor(0)).toBe(0);
     expect(extremeSurplusFactor(SCORE_TABLE.extremeRampEnd)).toBe(1);
     expect(extremeSurplusFactor(100)).toBe(1);
+  });
+});
+
+describe('tripleRepeatPointsFor（余り→3人以上一致の点数）', () => {
+  const grid = Array.from({ length: 161 }, (_, i) => i * 0.05); // 余り 0〜8
+  it('余りが少ない日は tripleRepeat、余裕がある日は tripleRepeatMax', () => {
+    expect(tripleRepeatPointsFor(0)).toBe(SCORE_TABLE.tripleRepeat);
+    expect(tripleRepeatPointsFor(SCORE_TABLE.tripleRampStart)).toBe(SCORE_TABLE.tripleRepeat);
+    expect(tripleRepeatPointsFor(SCORE_TABLE.tripleRampEnd)).toBe(SCORE_TABLE.tripleRepeatMax);
+    expect(tripleRepeatPointsFor(100)).toBe(SCORE_TABLE.tripleRepeatMax);
+  });
+  it('余りが増えるほど単調に増える（減らない）', () => {
+    for (let i = 1; i < grid.length; i++) {
+      expect(tripleRepeatPointsFor(grid[i])).toBeGreaterThanOrEqual(tripleRepeatPointsFor(grid[i - 1]) - 1e-12);
+    }
+  });
+  it('連続（段差なし）: 隣り合う点の差が小さい', () => {
+    const range = SCORE_TABLE.tripleRepeatMax - SCORE_TABLE.tripleRepeat;
+    const width = SCORE_TABLE.tripleRampEnd - SCORE_TABLE.tripleRampStart;
+    for (let i = 1; i < grid.length; i++) {
+      const d = Math.abs(tripleRepeatPointsFor(grid[i]) - tripleRepeatPointsFor(grid[i - 1]));
+      expect(d).toBeLessThan((range / width) * 0.05 * 1.6);
+    }
+    for (let n = 0; n <= 8; n++) {
+      expect(Math.abs(tripleRepeatPointsFor(n - 1e-6) - tripleRepeatPointsFor(n + 1e-6))).toBeLessThan(1e-3);
+    }
   });
 });
