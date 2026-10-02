@@ -28,14 +28,10 @@
  * PREF_PAIRS=1 npx tsx scripts/bench-court-assignment.ts    # 希望ペアを1組登録
  * PREF_PAIRS=3 AFFINITY_WEIGHT=1.6 npx tsx scripts/bench-court-assignment.ts
  *
- * # 目的8 recency（連続出場を嫌う）の重み振り。
- * # docs/plans/2026-09-08-recency-penalty.md / 2026-10-01-recency-just-finished-streak.md 参照
- * ENGINE=objective SEEDS=30 NOISE=4 CONDITIONS=21x3 ROUNDS=13 \
- *   RECENCY_WEIGHT=0.4 npx tsx scripts/bench-court-assignment.ts
- * # 連続モード（終わったコートへ1面ずつ即配置。本番の主な運用）での計測。
- * # STREAK_BASE / STREAK_GROWTH / STREAK_HARD_FROM で連続回数ごとのコストの形を上書き
+ * # 点数表（SCORE_TABLE）の上書き。連続モード（終わったコートへ1面ずつ即配置。本番の主な運用）
+ * # 男女比 OFF は GENDER_OFF=1。docs/plans/2026-10-02-simplify-scoring.md 参照
  * ENGINE=objective CONTINUOUS=1 SEEDS=100 NOISE=4 ROUNDS=20 CONDITIONS=19x3 \
- *   RECENCY_WEIGHT=2 STREAK_HARD_FROM=3 npx tsx scripts/bench-court-assignment.ts
+ *   SCORE='{"streak":[4,20,80]}' npx tsx scripts/bench-court-assignment.ts
  * ```
  *
  * 連続回数の指標（2連続% / 3連続% / 4連続+%）は「その出場が n 連続目だった出場の
@@ -49,23 +45,14 @@
  *
  * `PREF_PAIRS=N`（既定0）で、ロースターからランダムに N 組（シード固定・決定的）
  * `strength: 'normal'` の希望ペアを登録した状態を計測する。`AFFINITY_WEIGHT=x` で
- * `src/lib/pairing/objective.ts` の `DEFAULT_WEIGHTS.affinity` をこのプロセス内だけ
+ * `src/lib/pairing/objective.ts` の `SCORE_TABLE.pairPref` をこのプロセス内だけ
  * 上書きする（bench 専用。本番の既定値は変わらない）。`PREF_PAIRS>0` のときのみ
  * 出力末尾に**成立率%**（希望ペアの実績/機会の平均。100% が `targetRatio=1.0` 相当、
  * 50% が `normal` の目標）と**リーク**（希望ペア当事者の試合数−全体中央値の平均。
  * 0 に近いほど「ペア希望で試合が増えていない」）が追加される。
  */
 import { assignCourts } from '../src/lib/algorithm';
-import { VARIETY_SHAPE } from '../src/lib/pairing/repeatDecay';
-import { STRENGTH_SHAPE } from '../src/lib/pairing/strength';
-import {
-  DEFAULT_WEIGHTS,
-  RECENCY_STREAK_SHAPE,
-  RANK_GAP_SOFT_SHAPE,
-  AFFINITY_ENEMY_COST,
-  AFFINITY_ENEMY_COST_SPLIT,
-  AFFINITY_ENEMY_COST_SPLIT_SAFE,
-} from '../src/lib/pairing/objective';
+import { SCORE_TABLE } from '../src/lib/pairing/objective';
 import { median } from '../src/lib/median';
 import type { Player } from '../src/types/player';
 import type { Match } from '../src/types/match';
@@ -941,87 +928,13 @@ const PREF_DIST = (process.env.PREF_DIST ?? 'any') as 'any' | 'close' | 'far' | 
  */
 const PREF_GENDER = (process.env.PREF_GENDER ?? 'any') as 'any' | 'same' | 'diff';
 /**
- * `AFFINITY_WEIGHT` の重みをこのプロセス内だけ上書きする（bench 専用。本番の
- * `DEFAULT_WEIGHTS.affinity` の既定値は変えない）。未指定ならリポジトリの既定値のまま。
+ * 点数表（`src/lib/pairing/objective.ts` の `SCORE_TABLE`）をこのプロセス内だけ上書きする
+ * （bench 専用。本番の既定値は変えない）。例: SCORE='{"courtSpan":3,"pairPref":8}'
+ * `AFFINITY_WEIGHT` は `pairPref`（希望ペアが味方にならない1組あたりの点数）の別名。
  */
-if (process.env.AFFINITY_WEIGHT !== undefined) {
-  DEFAULT_WEIGHTS.affinity = Number(process.env.AFFINITY_WEIGHT);
-}
-/**
- * `AFFINITY_ENEMY_COST.value` / `AFFINITY_ENEMY_COST_SPLIT.value`
- * （`src/lib/pairing/objective.ts`）をこのプロセス内だけ上書きする（bench 専用。
- * 本番の既定値 0.5 は変えない）。`AFFINITY_ENEMY_COST` は `computeAffinity`
- * （evaluate 側の大局評価）、`AFFINITY_ENEMY_COST_SPLIT` は `splitCost`
- * （チーム分けの局所決定）に対応する別々の値で、片方だけを振って
- * 「大局の評価だけ強めても男女戦は増えないか」を検証できる。
- * `docs/plans/2026-08-31-pair-preference.md` 追記「同コート敵バグ」の調査用。
- */
-if (process.env.AFFINITY_ENEMY_COST !== undefined) {
-  AFFINITY_ENEMY_COST.value = Number(process.env.AFFINITY_ENEMY_COST);
-}
-if (process.env.AFFINITY_ENEMY_COST_SPLIT !== undefined) {
-  AFFINITY_ENEMY_COST_SPLIT.value = Number(process.env.AFFINITY_ENEMY_COST_SPLIT);
-}
-/**
- * `AFFINITY_ENEMY_COST_SPLIT_SAFE.value`（`src/lib/pairing/objective.ts`）を
- * このプロセス内だけ上書きする（bench 専用）。「味方にしても男女戦にならない」
- * 場合に `splitCost` が使う値（案C）。`docs/plans/2026-08-31-pair-preference.md`
- * 追記「案C」の調査用。
- */
-if (process.env.AFFINITY_ENEMY_COST_SPLIT_SAFE !== undefined) {
-  AFFINITY_ENEMY_COST_SPLIT_SAFE.value = Number(process.env.AFFINITY_ENEMY_COST_SPLIT_SAFE);
-}
-/**
- * `recency`（目的8: 連続出場を少し嫌う）の重みをこのプロセス内だけ上書きする
- * （bench 専用。本番の `DEFAULT_WEIGHTS.recency` の既定値は変えない）。
- * 未指定ならリポジトリの既定値のまま。
- * `docs/plans/2026-09-08-recency-penalty.md` の「決め方（bench）」で使う。
- */
-if (process.env.RECENCY_WEIGHT !== undefined) {
-  DEFAULT_WEIGHTS.recency = Number(process.env.RECENCY_WEIGHT);
-}
-/**
- * `recency` の効き方（今回何連続目になるか → コスト）を、このプロセス内だけ上書きする。
- * 既定は base=1 / growth=4 ＝ 2連続目 1 / 3連続目 4 / 4連続目 16 …（`objective.ts`）。
- */
-if (process.env.STREAK_BASE !== undefined) {
-  RECENCY_STREAK_SHAPE.base = Number(process.env.STREAK_BASE);
-}
-if (process.env.STREAK_GROWTH !== undefined) {
-  RECENCY_STREAK_SHAPE.growth = Number(process.env.STREAK_GROWTH);
-}
-// 何連続目以上を違反（ハード）にするか。0 で無効（ソフトのコストだけで測るとき）
-if (process.env.STREAK_HARD_FROM !== undefined) {
-  RECENCY_STREAK_SHAPE.hardFrom = Number(process.env.STREAK_HARD_FROM);
-}
+if (process.env.SCORE !== undefined) Object.assign(SCORE_TABLE, JSON.parse(process.env.SCORE));
+if (process.env.AFFINITY_WEIGHT !== undefined) SCORE_TABLE.pairPref = Number(process.env.AFFINITY_WEIGHT);
 const DEFAULT_CONDITIONS = '13x2,14x2,16x2,15x3,18x3,21x3,22x3,25x3';
-if (process.env.SKNEE !== undefined) RANK_GAP_SOFT_SHAPE.knee = Number(process.env.SKNEE);
-if (process.env.SSLOPE !== undefined) RANK_GAP_SOFT_SHAPE.slope = Number(process.env.SSLOPE);
-if (process.env.SREG !== undefined) RANK_GAP_SOFT_SHAPE.regMix = Number(process.env.SREG);
-// 実力差の数値ベース化（docs/plans/2026-10-02-rating-based-strength.md）。0 で従来どおり（順位のみ）
-if (process.env.SGAPMIX !== undefined) STRENGTH_SHAPE.gapMix = Number(process.env.SGAPMIX);
-if (process.env.SCOMPMIX !== undefined) STRENGTH_SHAPE.compMix = Number(process.env.SCOMPMIX);
-if (process.env.SLADDER !== undefined) STRENGTH_SHAPE.ladder = Number(process.env.SLADDER);
-if (process.env.VMODE !== undefined) VARIETY_SHAPE.mode = process.env.VMODE as 'off' | 'games';
-if (process.env.VMID !== undefined) VARIETY_SHAPE.freshMid = Number(process.env.VMID);
-if (process.env.VWIDTH !== undefined) VARIETY_SHAPE.freshWidth = Number(process.env.VWIDTH);
-if (process.env.VDECAY !== undefined) VARIETY_SHAPE.decay = Number(process.env.VDECAY);
-if (process.env.VPOWER !== undefined) VARIETY_SHAPE.power = Number(process.env.VPOWER);
-if (process.env.VSCALE !== undefined) VARIETY_SHAPE.scale = Number(process.env.VSCALE);
-if (process.env.VQUAD !== undefined) VARIETY_SHAPE.quadWeight = Number(process.env.VQUAD);
-if (process.env.VTSUM !== undefined) VARIETY_SHAPE.tripleSumPower = Number(process.env.VTSUM);
-if (process.env.VTRIPLE !== undefined) VARIETY_SHAPE.tripleWeight = Number(process.env.VTRIPLE);
-if (process.env.VTPOWER !== undefined) VARIETY_SHAPE.triplePower = Number(process.env.VTPOWER);
-if (process.env.VTCAP !== undefined) VARIETY_SHAPE.tripleCap = Number(process.env.VTCAP);
-if (process.env.VFLOOR !== undefined) VARIETY_SHAPE.rawFloor = Number(process.env.VFLOOR);
-if (process.env.VWEIGHT !== undefined) DEFAULT_WEIGHTS.variety = Number(process.env.VWEIGHT);
-if (process.env.VGEN !== undefined) DEFAULT_WEIGHTS.gender = Number(process.env.VGEN);
-if (process.env.VREC !== undefined) DEFAULT_WEIGHTS.recency = Number(process.env.VREC);
-if (process.env.VFAIR !== undefined) DEFAULT_WEIGHTS.fairness = Number(process.env.VFAIR);
-if (process.env.VWAIT !== undefined) DEFAULT_WEIGHTS.waiting = Number(process.env.VWAIT);
-if (process.env.VMIX !== undefined) DEFAULT_WEIGHTS.mixSplit = Number(process.env.VMIX);
-if (process.env.VSKILL !== undefined) DEFAULT_WEIGHTS.skillGap = Number(process.env.VSKILL);
-if (process.env.VCOMP !== undefined) DEFAULT_WEIGHTS.competitive = Number(process.env.VCOMP);
 const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
   .split(',')
   .map(s => {
@@ -1030,17 +943,9 @@ const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
   });
 
 console.log(`SEEDS=${SEEDS} ROUNDS=${ROUNDS} NOISE=${NOISES.join(',')} ENGINE=${USE_OBJECTIVE_ENGINE ? 'objective' : 'legacy'}` +
-  (PREF_PAIRS > 0
-    ? ` PREF_PAIRS=${PREF_PAIRS} PREF_GENDER=${PREF_GENDER} AFFINITY_WEIGHT=${DEFAULT_WEIGHTS.affinity}` +
-      ` AFFINITY_ENEMY_COST=${AFFINITY_ENEMY_COST.value} AFFINITY_ENEMY_COST_SPLIT=${AFFINITY_ENEMY_COST_SPLIT.value}` +
-      ` AFFINITY_ENEMY_COST_SPLIT_SAFE=${AFFINITY_ENEMY_COST_SPLIT_SAFE.value}`
-    : '') +
-  (process.env.RECENCY_WEIGHT !== undefined ? ` RECENCY_WEIGHT=${DEFAULT_WEIGHTS.recency}` : '') +
-  (process.env.STREAK_BASE !== undefined || process.env.STREAK_GROWTH !== undefined || process.env.STREAK_HARD_FROM !== undefined
-    ? ` STREAK_BASE=${RECENCY_STREAK_SHAPE.base} STREAK_GROWTH=${RECENCY_STREAK_SHAPE.growth} STREAK_HARD_FROM=${RECENCY_STREAK_SHAPE.hardFrom}`
-    : '') +
+  (PREF_PAIRS > 0 ? ` PREF_PAIRS=${PREF_PAIRS} PREF_GENDER=${PREF_GENDER}` : '') +
   (process.env.CONTINUOUS === '1' ? ' CONTINUOUS=1' : '') +
-  ` V=${JSON.stringify(VARIETY_SHAPE)} Vw=${DEFAULT_WEIGHTS.variety}`);
+  ` SCORE=${JSON.stringify(SCORE_TABLE)}`);
 console.log('  指標は docs/plans/2026-08-05-pairing-goals-and-rewrite.md の目的1〜6に対応');
 console.log('  幅広%=目的3 競り度=目的4(チーム間の実力差) 実力幅=コート内4人の trueRank 最大−最小の平均 3-1%=目的5 男女戦%=目的5b 占有率%/共演=目的6 試合数幅=目的1 待ち=目的2');
 console.log('  待ち途中=末尾の裾を除いた空きの最大 連投%=空き1試合以下の割合 2/3/4連続%=その出場がちょうど2/3/4連続目（4は4以上）だった割合（時刻ベース） 待ちσ=空きの標準偏差（目的2の補助）');
