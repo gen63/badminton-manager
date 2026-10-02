@@ -6,7 +6,7 @@ import { SessionError } from './errorHandler';
 import { assignRoundByObjective } from './pairing/assignRound';
 import { buildStreakById } from './pairing/streak';
 import { buildTripleWeights } from './pairing/repeatDecay';
-import { buildDeviationById } from './pairing/deviation';
+import { buildBlendedDeviationById } from './pairing/deviation';
 import { median } from './median';
 import type { PairPreference } from '../types/pairPreference';
 import { computeAffinityPairs, computeStrongPairs } from './pairPreference';
@@ -2322,7 +2322,7 @@ export function assignCourts(
   if (options?.useObjectiveEngine ?? true) {
     // レベル差は登録レートの偏差（その日のロースター内で平均50・SD10）で測る。
     // 順位・ハシゴ式は使わない（docs/plans/2026-10-02-simplify-scoring.md）
-    const objectiveDeviationById = buildDeviationById(groupingPlayers);
+    const objectiveDeviationById = buildBlendedDeviationById(groupingPlayers, matchHistory);
     // ペア希望 → 第7目的 affinity（常に最大強度） + strong のハード制約。
     // 中央値・reservationBlockThreshold は予約保留判定（上の isReservationBlocked）と
     // 共通のものを使い回す（新しい設定項目は増やさない。plan 3b）。
