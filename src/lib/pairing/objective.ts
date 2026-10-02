@@ -139,7 +139,7 @@ const SKILL_GAP_WEIGHT = 1.5;
  * ハード制約が掛からない14人未満でも「大きく離れた組」を強く嫌えるようにするのが目的。
  * slope > 0 のとき項は 1 を超えうる（クランプしない）。
  */
-export const RANK_GAP_SOFT_SHAPE = { knee: 0.3, slope: 6, regMix: 0.5 };
+export const RANK_GAP_SOFT_SHAPE = { knee: 0.3, slope: 7, regMix: 0.5 };
 
 /**
  * `affinity` の重み。2.0 → **1.0**（飽和廃止にあわせて再計測。
@@ -188,7 +188,10 @@ export const RANK_GAP_SOFT_SHAPE = { knee: 0.3, slope: 6, regMix: 0.5 };
  * 2コート運用は候補プールが小さく `variety` の抵抗が相対的に強いので、ここが
  * 効き目の下限を決める。0.4 では 27% とほぼ「希望なし」に近づく。
  */
-const AFFINITY_WEIGHT = 1.0;
+const AFFINITY_WEIGHT = 2.0;
+// 2026-10-02: 1.0 → 2.0。variety を 2.6 → 6.0 に上げたため normal の成立率が落ちた
+// （19人3C 希望1組で 24.9% → 15.9%）。2.0 で master 以上に戻り、同コート敵になる率もほぼ 0 になる。
+// 試合数リークは最大 +0.4 程度で合格条件（+0.5 未満）内。docs/plans/2026-10-02-rank-gap-soft.md
 
 /**
  * `recency` の重み。**5.0**（2026-10-02: 2.0 → 5.0。skillGap の凸化・variety 強化で
@@ -258,10 +261,10 @@ const RECENCY_WEIGHT = 5.0;
 export const DEFAULT_WEIGHTS: ObjectiveWeights = {
   skillGap: SKILL_GAP_WEIGHT,
   competitive: 1.0,
-  gender: 3.0,
+  gender: 3.7,
   mixSplit: MIX_SPLIT_WEIGHT, // 質
   variety: 6.0, // 多様性（2026-10-02: 2.6 → 6.0。skillGap 凸化と同時に再調整。docs/plans/2026-10-02-rank-gap-soft.md）
-  fairness: 5.0,
+  fairness: 5.5,
   waiting: 4.0, // 公平性（同上: 1.5 → 5.0 / 4.0。skillGap 凸化で出る試合数の偏りを抑える）
   affinity: AFFINITY_WEIGHT, // ペア希望（bench 実測。根拠は AFFINITY_WEIGHT のコメント参照）
   recency: RECENCY_WEIGHT, // 連続出場を嫌う（2連続目は僅かに、3連続目はまあまあ強く、4連続目以上は強く。すべてソフト。形は RECENCY_STREAK_SHAPE）

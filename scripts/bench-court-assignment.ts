@@ -178,10 +178,30 @@ function pickPairPreferences(
     prefs.push({
       id: `pref${prefs.length}`,
       playerIds: [a.id, b.id],
-      strength: 'normal',
+      strength: PREF_STRENGTH,
       createdAt: 0,
     });
   };
+
+  if (genderMode === 'any' && PREF_DIST !== 'any') {
+    // 実力の近さを指定して組む（close: 真の順位差2以内 / far: n/3 以上 / mix: 近・中・遠を巡回）
+    const pool = shuffled(players, rng);
+    const used = new Set<string>();
+    const n = players.length;
+    const ok = (mode: string, d: number) =>
+      mode === 'close' ? d <= 2 : mode === 'far' ? d >= Math.ceil(n / 3) : d > 2 && d < Math.ceil(n / 3);
+    for (let k = 0; k < count; k++) {
+      const mode = PREF_DIST === 'mix' ? (['close', 'mid', 'far'] as const)[k % 3] : PREF_DIST;
+      const a = pool.find(p => !used.has(p.id));
+      if (!a) break;
+      const b = pool.find(p => p.id !== a.id && !used.has(p.id) && ok(mode, Math.abs(p.trueRank - a.trueRank)));
+      if (!b) continue;
+      used.add(a.id);
+      used.add(b.id);
+      push(a, b);
+    }
+    return prefs;
+  }
 
   if (genderMode === 'any') {
     const pool = shuffled(players, rng);
@@ -881,6 +901,10 @@ const NOISES = (process.env.NOISE ?? '0,4,8').split(',').map(Number);
  * 既定 0（＝希望なし。既存の全指標に影響しない）。N = 1 / 3 / 6 を測る想定。
  */
 const PREF_PAIRS = Number(process.env.PREF_PAIRS ?? 0);
+/** 希望ペアの強度（normal / strong） */
+const PREF_STRENGTH = (process.env.PREF_STRENGTH ?? 'normal') as 'normal' | 'strong';
+/** 希望ペアの実力の近さ（any / close / far / mix） */
+const PREF_DIST = (process.env.PREF_DIST ?? 'any') as 'any' | 'close' | 'far' | 'mix';
 /**
  * 登録する希望ペアの性別構成を固定する（既定 'any' = 無作為）。
  * `docs/plans/2026-08-31-pair-preference.md` 追記「同コート敵バグ」の調査用。
