@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Player } from '../../types/player';
 import type { Match } from '../../types/match';
-import { buildDeviationById, buildBlendedDeviationById, DAY_ESTIMATE, DEVIATION_Z_CLAMP } from './deviation';
+import { buildDeviationById, buildBlendedDeviationById, computeOutlierZ, DAY_ESTIMATE, DEVIATION_Z_CLAMP } from './deviation';
 
 const p = (id: string, rating: number | undefined): Pick<Player, 'id' | 'rating'> => ({ id, rating: rating as number });
 
@@ -75,7 +75,7 @@ describe('buildBlendedDeviationById（当日の試合結果による補正）', 
 
   it('レート未設定の人だけが補正される。レートありの人は登録レート由来のまま', () => {
     const base = buildDeviationById(players);
-    const d = withDay({ kUnrated: 2, kRated: Infinity }, () => buildBlendedDeviationById(players, history(6)));
+    const d = withDay({ kUnrated: 2, kRated: Infinity, outlierZ: Infinity }, () => buildBlendedDeviationById(players, history(6)));
     for (const id of ['r1', 'r2', 'x', 'y']) expect(d.get(id)).toBe(base.get(id));
     expect(base.get('u')).toBe(50);
     expect(d.get('u')).not.toBe(50);
@@ -126,5 +126,113 @@ describe('buildBlendedDeviationById（当日の試合結果による補正）', 
     const rated = [p('a', 40), p('b', 50), p('c', 60), p('d', 55)];
     const ms = [match(['a', 'b'], ['c', 'd']), match(['a', 'c'], ['b', 'd'], 'B')];
     expect(buildBlendedDeviationById(rated, ms)).toEqual(buildDeviationById(rated));
+  });
+});
+
+describe('レートありの外れ値補正（成績が偶然の範囲を大きく超えたときだけ）', () => {
+  let seq = 0;
+  const match = (a: [string, string], b: [string, string], winner: 'A' | 'B'): Match => ({
+    id: `o${seq++}`, courtId: 1, teamA: a, teamB: b, scoreA: 21, scoreB: 15, startedAt: 0, finishedAt: 0, winner,
+  });
+  // 偏差 40 / 45 / 50 / 55 / 60 の5人 + 未設定1人。m（50）が主役
+  const players = [p('lo', 40), p('lo2', 45), p('m', 50), p('hi2', 55), p('hi', 60), p('u', 0)];
+  /** 登録の見込みどおり: 強い側が勝つ（m は期待どおり） */
+  const asExpected: Match[] = [
+    match(['hi', 'hi2'], ['lo', 'lo2'], 'A'), match(['hi', 'm'], ['lo', 'lo2'], 'A'),
+    match(['m', 'hi2'], ['lo', 'lo2'], 'A'), match(['hi', 'lo'], ['hi2', 'lo2'], 'A'),
+    match(['m', 'lo'], ['hi', 'lo2'], 'B'), match(['m', 'lo2'], ['hi', 'hi2'], 'B'),
+    match(['m', 'lo'], ['hi2', 'lo2'], 'A'), match(['hi', 'm'], ['hi2', 'lo2'], 'A'),
+  ];
+  /** m が自分より強い人たちに勝ち続ける（登録からの期待を大きく超える） */
+  const mHot: Match[] = [
+    ...Array.from({ length: 10 }, () => match(['m', 'lo'], ['hi', 'hi2'], 'A')),
+    match(['hi', 'lo2'], ['hi2', 'lo'], 'A'), match(['hi', 'hi2'], ['lo', 'lo2'], 'A'),
+  ];
+  /** m が自分より弱い人たちに負け続ける */
+  const mCold: Match[] = [
+    ...Array.from({ length: 10 }, () => match(['m', 'hi'], ['lo', 'lo2'], 'B')),
+    match(['hi', 'lo2'], ['hi2', 'lo'], 'A'), match(['hi', 'hi2'], ['lo', 'lo2'], 'A'),
+  ];
+  const withDay = <T,>(patch: Partial<typeof DAY_ESTIMATE>, fn: () => T): T => {
+    const saved = { ...DAY_ESTIMATE };
+    Object.assign(DAY_ESTIMATE, patch);
+    try { return fn(); } finally { Object.assign(DAY_ESTIMATE, saved); }
+  };
+  const settings = { kUnrated: 4, kRated: Infinity, outlierZ: 2, outlierK: 1, outlierCap: 15, outlierMinGames: 5 };
+
+  it('computeOutlierZ: 見込みどおりの人は |z| が小さく、期待を大きく超えた人は大きい', () => {
+    const prior = buildDeviationById(players);
+    const asExp = computeOutlierZ(prior, asExpected);
+    expect(Math.abs(asExp.get('m')!.z)).toBeLessThan(2);
+    expect(computeOutlierZ(prior, mHot).get('m')!.z).toBeGreaterThan(2);
+    expect(computeOutlierZ(prior, mCold).get('m')!.z).toBeLessThan(-2);
+  });
+
+  it('普段どおりの成績なら、レートありの人は補正されない', () => {
+    const base = buildDeviationById(players);
+    const d = withDay(settings, () => buildBlendedDeviationById(players, asExpected));
+    for (const id of ['lo', 'lo2', 'm', 'hi2', 'hi']) expect(d.get(id)).toBe(base.get(id));
+  });
+
+  it('2σ を超えて好調な人は上方向に、不調な人は下方向に補正される', () => {
+    const base = buildDeviationById(players);
+    const hot = withDay(settings, () => buildBlendedDeviationById(players, mHot));
+    const cold = withDay(settings, () => buildBlendedDeviationById(players, mCold));
+    expect(hot.get('m')!).toBeGreaterThan(base.get('m')!);
+    expect(cold.get('m')!).toBeLessThan(base.get('m')!);
+  });
+
+  it('しきい値を高くするほど補正されにくい（Infinity で無効）', () => {
+    const base = buildDeviationById(players);
+    const off = withDay({ ...settings, outlierZ: Infinity }, () => buildBlendedDeviationById(players, mHot));
+    expect(off.get('m')).toBe(base.get('m'));
+    const zStrict = computeOutlierZ(base, mHot).get('m')!.z + 0.1;
+    const strict = withDay({ ...settings, outlierZ: zStrict }, () => buildBlendedDeviationById(players, mHot));
+    expect(strict.get('m')).toBe(base.get('m'));
+  });
+
+  it('超過が大きいほど補正も大きい（ソフトしきい値）', () => {
+    const base = buildDeviationById(players);
+    const shift = (z: number) => withDay({ ...settings, outlierZ: z }, () => buildBlendedDeviationById(players, mHot)).get('m')! - base.get('m')!;
+    const zm = computeOutlierZ(base, mHot).get('m')!.z;
+    expect(shift(zm - 0.3)).toBeGreaterThan(0);
+    expect(shift(zm - 1.5)).toBeGreaterThan(shift(zm - 0.3));
+  });
+
+  it('補正は登録偏差から outlierCap までに抑える', () => {
+    const base = buildDeviationById(players);
+    const free = withDay({ ...settings, outlierK: 0, outlierCap: 100 }, () => buildBlendedDeviationById(players, mHot));
+    const gap = free.get('m')! - base.get('m')!;
+    expect(gap).toBeGreaterThan(2);
+    const capped = withDay({ ...settings, outlierK: 0, outlierCap: 2 }, () => buildBlendedDeviationById(players, mHot));
+    expect(capped.get('m')! - base.get('m')!).toBeCloseTo(2, 10);
+    const coldCapped = withDay({ ...settings, outlierK: 0, outlierCap: 2 }, () => buildBlendedDeviationById(players, mCold));
+    expect(base.get('m')! - coldCapped.get('m')!).toBeCloseTo(2, 10);
+  });
+
+  it('試合数が outlierMinGames 未満なら補正しない', () => {
+    const base = buildDeviationById(players);
+    const few = mHot.slice(0, 3);
+    const d = withDay({ ...settings, outlierZ: 0 }, () => buildBlendedDeviationById(players, few));
+    expect(d.get('m')).toBe(base.get('m'));
+  });
+
+  it('レート未設定の人の扱いは外れ値補正の有無で変わらない（kUnrated=4 のまま）', () => {
+    const history: Match[] = [...mHot, ...Array.from({ length: 6 }, () => match(['u', 'hi'], ['lo', 'lo2'], 'A'))];
+    const off = withDay({ ...settings, outlierZ: Infinity }, () => buildBlendedDeviationById(players, history));
+    const on = withDay(settings, () => buildBlendedDeviationById(players, history));
+    expect(on.get('u')).toBe(off.get('u'));
+    expect(on.get('u')!).toBeGreaterThan(50);
+  });
+
+  it('決定的: 同じ入力なら同じ結果（Date.now に依存しない）', () => {
+    const a = withDay(settings, () => buildBlendedDeviationById(players, mHot));
+    const realNow = Date.now;
+    Date.now = () => 987654321;
+    try {
+      expect(withDay(settings, () => buildBlendedDeviationById(players, mHot))).toEqual(a);
+    } finally {
+      Date.now = realNow;
+    }
   });
 });
