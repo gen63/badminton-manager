@@ -1003,10 +1003,16 @@ if (process.env.SGAPMIX !== undefined) STRENGTH_SHAPE.gapMix = Number(process.en
 if (process.env.SCOMPMIX !== undefined) STRENGTH_SHAPE.compMix = Number(process.env.SCOMPMIX);
 if (process.env.SLADDER !== undefined) STRENGTH_SHAPE.ladder = Number(process.env.SLADDER);
 if (process.env.VMODE !== undefined) VARIETY_SHAPE.mode = process.env.VMODE as 'off' | 'games';
+if (process.env.VMID !== undefined) VARIETY_SHAPE.freshMid = Number(process.env.VMID);
+if (process.env.VWIDTH !== undefined) VARIETY_SHAPE.freshWidth = Number(process.env.VWIDTH);
 if (process.env.VDECAY !== undefined) VARIETY_SHAPE.decay = Number(process.env.VDECAY);
 if (process.env.VPOWER !== undefined) VARIETY_SHAPE.power = Number(process.env.VPOWER);
 if (process.env.VSCALE !== undefined) VARIETY_SHAPE.scale = Number(process.env.VSCALE);
 if (process.env.VQUAD !== undefined) VARIETY_SHAPE.quadWeight = Number(process.env.VQUAD);
+if (process.env.VTSUM !== undefined) VARIETY_SHAPE.tripleSumPower = Number(process.env.VTSUM);
+if (process.env.VTRIPLE !== undefined) VARIETY_SHAPE.tripleWeight = Number(process.env.VTRIPLE);
+if (process.env.VTPOWER !== undefined) VARIETY_SHAPE.triplePower = Number(process.env.VTPOWER);
+if (process.env.VTCAP !== undefined) VARIETY_SHAPE.tripleCap = Number(process.env.VTCAP);
 if (process.env.VFLOOR !== undefined) VARIETY_SHAPE.rawFloor = Number(process.env.VFLOOR);
 if (process.env.VWEIGHT !== undefined) DEFAULT_WEIGHTS.variety = Number(process.env.VWEIGHT);
 if (process.env.VGEN !== undefined) DEFAULT_WEIGHTS.gender = Number(process.env.VGEN);

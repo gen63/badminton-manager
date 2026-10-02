@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { Match } from '../../types/match';
-import { buildRepeatWeights, VARIETY_SHAPE } from './repeatDecay';
+import { buildRepeatWeights, freshnessWeight, VARIETY_SHAPE } from './repeatDecay';
 import { computeVariety, type CourtPlacement } from './objective';
 
 const pairKey = (a: string, b: string) => [a, b].sort().join(',');
@@ -130,5 +130,72 @@ describe('computeVariety（減衰版）', () => {
     } finally {
       VARIETY_SHAPE.mode = saved;
     }
+  });
+});
+
+describe('3人一致項（過去の1試合と3人以上一致）', () => {
+  const c = court(['a', 'b'], ['c', 'd']);
+  const reach = new Map(['a', 'b', 'c', 'd', 'q', 'p'].map(id => [id, 5]));
+  const cost = (h: Match[]) =>
+    computeVariety([c], emptyCounts, pairKey, reach, buildRepeatWeights(h, pairKey, comboKey));
+
+  it('単調: 4人一致 > 直近と3人一致 > 2人以下', () => {
+    const four = [match(1, ['a', 'c'], ['b', 'd'])];
+    const three = [match(1, ['a', 'b'], ['c', 'q'])];
+    const two = [match(1, ['a', 'b'], ['p', 'q'])];
+    expect(cost(four)).toBeGreaterThan(cost(three));
+    expect(cost(three)).toBeGreaterThan(cost(two));
+  });
+
+  it('3人組は1試合から4通り作られ、別々の試合に散らばった共演は3人組にならない', () => {
+    const w = buildRepeatWeights([match(1, ['a', 'b'], ['c', 'q'])], pairKey, comboKey);
+    expect(w.triple.size).toBe(4);
+    expect(w.triple.get('a,b,c')).toBeCloseTo(1, 10);
+    const scattered = buildRepeatWeights(
+      [match(1, ['a', 'b'], ['p', 'q']), match(2, ['b', 'c'], ['r', 's']), match(3, ['a', 'c'], ['t', 'u'])],
+      pairKey, comboKey
+    );
+    expect(scattered.triple.get('a,b,c') ?? 0).toBe(0);
+  });
+
+  it('同じ4人の再演は、3人一致の項と同4人の項の両方に当たる', () => {
+    const w = buildRepeatWeights([match(1, ['a', 'c'], ['b', 'd'])], pairKey, comboKey);
+    expect(w.quad.get('a,b,c,d')).toBeGreaterThan(0);
+    expect([...w.triple.values()].filter(v => v > 0)).toHaveLength(4);
+  });
+
+  it('鮮度: 3人がその後に試合を重ねるほど3人一致は軽くなる（0 には張り付かず単調）', () => {
+    const v = (n: number) => {
+      const h: Match[] = [match(1, ['a', 'b'], ['c', 'q'])];
+      for (let i = 0; i < n; i++) {
+        h.push(match(10 + i, ['a', `x${i}`], [`y${i}`, `z${i}`]));
+        h.push(match(100 + i, ['b', `s${i}`], [`t${i}`, `u${i}`]));
+        h.push(match(200 + i, ['c', `v${i}`], [`w${i}`, `r${i}`]));
+      }
+      return cost(h);
+    };
+    expect(v(0)).toBeGreaterThan(v(3));
+    expect(v(3)).toBeGreaterThan(v(8));
+    expect(v(8)).toBeGreaterThan(v(15) - 1e-9);
+  });
+});
+
+describe('freshnessWeight（3人組の鮮度のS字）', () => {
+  it('0試合後は満額で単調非増加（0〜1）', () => {
+    expect(freshnessWeight(0)).toBeCloseTo(1, 10);
+    let prev = 1;
+    for (let s = 0; s <= 30; s += 0.5) {
+      const w = freshnessWeight(s);
+      expect(w).toBeGreaterThanOrEqual(0);
+      expect(w).toBeLessThanOrEqual(prev + 1e-12);
+      prev = w;
+    }
+  });
+
+  it('2試合後 0.89 前後、5試合後 0.53 前後、10試合後 0.06 前後、15試合後ほぼ0', () => {
+    expect(freshnessWeight(2)).toBeCloseTo(0.89, 1);
+    expect(freshnessWeight(5)).toBeCloseTo(0.53, 1);
+    expect(freshnessWeight(10)).toBeCloseTo(0.06, 1);
+    expect(freshnessWeight(15)).toBeLessThan(0.01);
   });
 });

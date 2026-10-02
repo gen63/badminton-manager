@@ -128,6 +128,7 @@ describe('assignRoundByObjective', () => {
     const repeatWeights = {
       pair: new Map<string, number>(),
       quad: new Map([['p0,p1,p2,p3', 0.9]]),
+      triple: new Map<string, number>(),
     };
     for (let i = 0; i < 4; i++) {
       for (let j = i + 1; j < 4; j++) repeatWeights.pair.set(pairKey(`p${i}`, `p${j}`), 0.9);

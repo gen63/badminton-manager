@@ -190,7 +190,7 @@ export const RANK_GAP_SOFT_SHAPE = { knee: 0.35, slope: 10, regMix: 0.5 };
  * 2コート運用は候補プールが小さく `variety` の抵抗が相対的に強いので、ここが
  * 効き目の下限を決める。0.4 では 27% とほぼ「希望なし」に近づく。
  */
-const AFFINITY_WEIGHT = 3.0; // 2026-10-02: 2.0 → 3.0（実力差の数値ベース化で下がる希望ペア成立率を master 水準へ戻す。docs/plans/2026-10-02-rating-based-strength.md）
+const AFFINITY_WEIGHT = 3.6; // 2026-10-02: 2.0 → 3.6（実力差の数値ベース化と3人一致の項（係数0.1）で下がる希望ペア成立率を master 水準へ戻す。docs/plans/2026-10-02-rating-based-strength.md）
 // 2026-10-02: 1.0 → 2.0。variety を 2.6 → 6.0 に上げたため normal の成立率が落ちた
 // （19人3C 希望1組で 24.9% → 15.9%）。2.0 で master 以上に戻り、同コート敵になる率もほぼ 0 になる。
 // 試合数リークは最大 +0.4 程度で合格条件（+0.5 未満）内。docs/plans/2026-10-02-rank-gap-soft.md
@@ -878,7 +878,7 @@ export function computeVariety(
 /**
  * 目的6（減衰版）。コートごとに
  * `x = Σ_{6ペア} (w_ij / scale_ij)^power`、
- * コートの項 = `min(1, x / scale)`（0〜1）+ `quadWeight × min(2, 同じ4人の重み和)`（別枠で加算。0〜1 を超えうる）、全コート平均。
+ * コートの項 = `min(1, x / scale)`（0〜1）+ `quadWeight × min(2, 同じ4人の重み和)` + `tripleWeight × min(tripleCap, (Σ_{3人組4通り} 重み^triplePower)^tripleSumPower)`（3人以上一致。S字の鮮度。別枠で加算。0〜1 を超えうる）、全コート平均。
  * `w_ij` = 共演の減衰重み和 + `rawFloor` × その日の累計回数。
  * 凸関数（`power` 乗）なので、1回目の繰り返しは軽く、重なるほど急に強く効く。
  */
@@ -889,7 +889,7 @@ function computeVarietyDecayed(
   reachableCountById: Map<string, number>,
   rw: RepeatWeights
 ): number {
-  const { power, scale, quadWeight, rawFloor } = VARIETY_SHAPE;
+  const { power, scale, quadWeight, rawFloor, tripleWeight, triplePower, tripleSumPower, tripleCap } = VARIETY_SHAPE;
   const reachable = [...reachableCountById.values()].filter(v => v > 0);
   const avgReachable = reachable.length
     ? reachable.reduce((a, b) => a + b, 0) / reachable.length
@@ -919,6 +919,16 @@ function computeVarietyDecayed(
     if (quadWeight > 0 && rw.quad.size > 0) {
       const q = rw.quad.get([...members].sort().join(','));
       if (q) term += quadWeight * Math.min(q, 2);
+    }
+    if (tripleWeight > 0 && rw.triple.size > 0) {
+      // 3人以上一致: 候補4人の3人組（4通り）が過去の試合の3人組と重なる度合い。凸 + 上限
+      const sorted = [...members].sort();
+      let t = 0;
+      for (let skip = 0; skip < 4; skip++) {
+        const w = rw.triple.get(sorted.filter((_, k) => k !== skip).join(','));
+        if (w) t += Math.pow(w, triplePower);
+      }
+      term += tripleWeight * Math.min(Math.pow(t, tripleSumPower), tripleCap);
     }
     return s + term;
   }, 0);
