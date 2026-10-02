@@ -1229,7 +1229,7 @@ export function setUseStayDurationPriority(sessionId: string, value: boolean) {
 }
 
 /**
- * 男女比調整の ON/OFF。OFF にすると目的関数の gender / mixSplit の重みが下がり、
+ * 男女比調整の ON/OFF。OFF にすると点数表の男女バランス（3対1・男男vs女女）の点数が下がり、
  * 3-1 コートや男女対抗が「実力差で正当化できるとき」に作られやすくなる。
  * 詳細: docs/plans/2026-08-05-pairing-goals-and-rewrite.md
  */
