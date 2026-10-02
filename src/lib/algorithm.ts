@@ -152,21 +152,6 @@ const RECENT_MATCH_OVERLAP_LIMIT = 3;
 const SMALL_POOL_MAX_SURPLUS = 8;
 const RECENT_MATCH_OVERLAP_LIMIT_SMALL_POOL = 4;
 /**
- * 連続候補（streak>=1）を除いた候補が配置に必要な人数（4 × 配置コート数）に
- * 満たないとき true。待機が少なく連続を避けきれないので、`recency` の 3連続目以上の
- * ハード違反を外す（`RECENCY_RELAX`）。ちょうど足りるとき（8人1コート等）は false。
- * 根拠: docs/plans/2026-10-01-recency-just-finished-streak.md 「待機が足りないときの緩和」
- */
-export function shouldRelaxRecency(
-  candidates: { id: string }[],
-  courtCount: number,
-  streakById: Map<string, number>
-): boolean {
-  if (streakById.size === 0) return false;
-  const nonStreak = candidates.filter(p => !((streakById.get(p.id) ?? 0) >= 1)).length;
-  return nonStreak < 4 * courtCount;
-}
-/**
  * 3コート以上で、自グループの残り人数が4人に満たないコートが他グループから
  * 補充する際、不足数ちょうどではなく selectBestFour に多少の選択の余地を
  * 残すために上乗せする人数。大きすぎると探索コスト（候補数^4）が跳ね上がる。
@@ -2394,11 +2379,6 @@ export function assignCourts(
       normalCandidates.length - 4 * normalCourtIds.length <= SMALL_POOL_MAX_SURPLUS
         ? RECENT_MATCH_OVERLAP_LIMIT_SMALL_POOL
         : RECENT_MATCH_OVERLAP_LIMIT;
-    const recencyRelaxed = shouldRelaxRecency(
-      normalCandidates,
-      normalCourtIds.length,
-      objectiveStreakById
-    );
     const assigned = assignRoundByObjective({
       candidates: normalCandidates,
       courtIds: normalCourtIds,
@@ -2423,7 +2403,6 @@ export function assignCourts(
       ),
       strongPairs: computeStrongPairs(pairPreferences, normalCandidates),
       streakById: objectiveStreakById,
-      recencyRelaxed,
     });
     return [...reservationAssignments, ...assigned];
   }

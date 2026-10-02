@@ -7,6 +7,7 @@ import {
   computeAffinity,
   GENDER_BALANCE_OFF_WEIGHTS,
   AFFINITY_ENEMY_COST,
+  RECENCY_STREAK_SHAPE,
   type CourtPlacement,
   type PairCounts,
 } from './objective';
@@ -1274,42 +1275,59 @@ describe('assignRoundByObjective: recency（連続出場を嫌う）', () => {
     expect(picked.has('p4')).toBe(false);
   });
 
-  it('3連続目以上は重み0でも違反として避ける（ハード側）', () => {
+  it('3連続目は既定の重みでまあまあ強く避ける（ソフト）', () => {
     const picked = pickedIds(
       assignRoundByObjective({
         ...baseParams,
         streakById: new Map([['p3', 2]]), // 今回3連続目
-        weights: { recency: 0 },
       })
     );
     expect(picked.has('p4')).toBe(true);
     expect(picked.has('p3')).toBe(false);
   });
 
-  it('recencyRelaxed のときは3連続目でもハード違反にならない（重み0なら p3 が選ばれる）', () => {
+  it('3連続目はハードではない: レベル差のハード制約（順位差）を破ってまでは避けない', () => {
+    // 順位差 4 以上は同居不可（閾値 4）。p4 を入れると p0 との差が 4 になり違反するので、
+    // 3連続目の p3 を出さざるを得ない（強さのハード制約 > 連続回避）
     const picked = pickedIds(
       assignRoundByObjective({
         ...baseParams,
-        streakById: new Map([['p3', 2]]),
-        weights: { recency: 0 },
-        recencyRelaxed: true,
+        wideSpanThreshold: 4,
+        streakById: new Map([['p3', 2]]), // 今回3連続目
       })
     );
     expect(picked.has('p3')).toBe(true);
     expect(picked.has('p4')).toBe(false);
   });
 
-  it('recencyRelaxed でもソフトのコストは残る（重みが十分なら 3連続目を避ける）', () => {
+  it('4連続目以上は公平性の差があっても強く避ける', () => {
     const picked = pickedIds(
       assignRoundByObjective({
         ...baseParams,
-        streakById: new Map([['p3', 2]]),
-        weights: { recency: 100 },
-        recencyRelaxed: true,
+        priorityScoreOf: (p: Player) => (p.id === 'p4' ? 5 : 0),
+        streakById: new Map([['p3', 3]]), // 今回4連続目
       })
     );
     expect(picked.has('p4')).toBe(true);
     expect(picked.has('p3')).toBe(false);
+  });
+
+  it('hardFrom を上げると、3連続目は重み0でも違反として避ける（bench 用のハード側）', () => {
+    const original = RECENCY_STREAK_SHAPE.hardFrom;
+    RECENCY_STREAK_SHAPE.hardFrom = 3;
+    try {
+      const picked = pickedIds(
+        assignRoundByObjective({
+          ...baseParams,
+          streakById: new Map([['p3', 2]]), // 今回3連続目
+          weights: { recency: 0 },
+        })
+      );
+      expect(picked.has('p4')).toBe(true);
+      expect(picked.has('p3')).toBe(false);
+    } finally {
+      RECENCY_STREAK_SHAPE.hardFrom = original;
+    }
   });
 
   it('段階的: 2連続目の人と3連続目の人のどちらかを控えにするなら、3連続目の人を控える', () => {
@@ -1338,7 +1356,6 @@ describe('assignRoundByObjective: recency（連続出場を嫌う）', () => {
   });
 
   it('重み0を明示すれば、2連続目までのコスト（ソフト側）は無効化できる', () => {
-    // 3連続目以上のハード側（違反）は重みと無関係に効くので、ここでは streak=1 で確認する
     const baseline = assignRoundByObjective(baseParams);
     const withZeroWeight = assignRoundByObjective({
       ...baseParams,

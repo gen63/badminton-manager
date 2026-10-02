@@ -59,7 +59,6 @@ import { assignCourts } from '../src/lib/algorithm';
 import {
   DEFAULT_WEIGHTS,
   RECENCY_STREAK_SHAPE,
-  RECENCY_RELAX,
   AFFINITY_ENEMY_COST,
   AFFINITY_ENEMY_COST_SPLIT,
   AFFINITY_ENEMY_COST_SPLIT_SAFE,
@@ -257,6 +256,8 @@ interface RunResult {
   regTopBottomRate: number; // 登録レートの上位1/3 × 下位1/3 が同居した試合の割合
   carryRate: number;        // コート内の登録最上位が最下位と同じチームになった割合
   overratedWinRate: number; // 「登録が実力より 1/3 以上高い人」の勝率（-1 = 該当者なし）
+  extremeGapRate: number;  // trueRank の幅が 0.85n 以上（ほぼ全域）の試合の割合（最悪ケース。低いほど良い）
+  maxTrueGap: number;      // 1試合での trueRank 幅の最大（最悪ケース）
   trueGap: number;         // 4人の trueRank の最大−最小の平均（低いほど良い）
   // 目的4: 競る試合になる
   closeness: number;       // |真の勝率 − 0.5| の平均（低いほど競っている）
@@ -504,6 +505,9 @@ function runOnce(
   const regThird = Math.floor(n / 3);
 
   let wideGapMatches = 0;
+  let extremeGapMatches = 0;
+  let maxTrueGap = 0;
+  const extremeGapThreshold = Math.ceil(n * 0.85);
   let regTopBottomMatches = 0;
   let carryMatches = 0;
   let gapSum = 0;
@@ -539,6 +543,8 @@ function runOnce(
     const gap = Math.max(...ranks) - Math.min(...ranks);
     gapSum += gap;
     if (gap >= wideGapThreshold) wideGapMatches++;
+    if (gap >= extremeGapThreshold) extremeGapMatches++;
+    if (gap > maxTrueGap) maxTrueGap = gap;
 
     // 登録レート（アプリに入っている序列）の上位1/3 × 下位1/3 の同居。
     // 幅広% は trueRank 基準なので、「登録レート的に一番上と一番下」が混ざって
@@ -775,6 +781,8 @@ function runOnce(
     })(),
     regTopBottomRate: history.length ? regTopBottomMatches / history.length : 0,
     carryRate: history.length ? carryMatches / history.length : 0,
+    extremeGapRate: history.length ? extremeGapMatches / history.length : 0,
+    maxTrueGap,
     trueGap: history.length ? gapSum / history.length : 0,
     closeness: history.length ? closenessSum / history.length : 0,
     genderSkewRate: history.length ? genderSkewMatches / history.length : 0,
@@ -871,13 +879,6 @@ if (process.env.STREAK_GROWTH !== undefined) {
 if (process.env.STREAK_HARD_FROM !== undefined) {
   RECENCY_STREAK_SHAPE.hardFrom = Number(process.env.STREAK_HARD_FROM);
 }
-// 待機が足りないときの緩和（RECENCY_RELAX）。RELAX_DROP_HARD=0 RELAX_SCALE=1 で緩和なし（変更前）
-if (process.env.RELAX_DROP_HARD !== undefined) {
-  RECENCY_RELAX.dropHard = process.env.RELAX_DROP_HARD !== '0';
-}
-if (process.env.RELAX_SCALE !== undefined) {
-  RECENCY_RELAX.weightScale = Number(process.env.RELAX_SCALE);
-}
 const DEFAULT_CONDITIONS = '13x2,14x2,16x2,15x3,18x3,21x3,22x3,25x3';
 const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)
   .split(',')
@@ -901,6 +902,7 @@ console.log('  指標は docs/plans/2026-08-05-pairing-goals-and-rewrite.md の�
 console.log('  幅広%=目的3 競り度=目的4(チーム間の実力差) 実力幅=コート内4人の trueRank 最大−最小の平均 3-1%=目的5 男女戦%=目的5b 占有率%/共演=目的6 試合数幅=目的1 待ち=目的2');
 console.log('  待ち途中=末尾の裾を除いた空きの最大 連投%=空き1試合以下の割合 2/3/4連続%=その出場がちょうど2/3/4連続目（4は4以上）だった割合（時刻ベース） 待ちσ=空きの標準偏差（目的2の補助）');
 console.log('  端中=序列の端1/3と中央1/3の平均試合数の差（負なら端が損をしている）');
+console.log('  極端%=trueRank の幅が 0.85n 以上（ほぼ全域）の試合の割合 最大幅=1試合での trueRank 幅の最大の平均（どちらも最悪ケース。低いほど良い）');
 if (LATE_JOIN > 0) console.log('  遅参加=在席時間に比例した期待値に対する倍率（1.00 が理想）');
 if (PREF_PAIRS > 0) {
   console.log('  成立率%=目的7（ペア希望）= 実績(味方だった回数)/機会(min 試合数) の登録ペア平均');
@@ -923,7 +925,7 @@ if (PREF_PAIRS > 0) {
 console.log('  （共演のみ高いほど良い。他はすべて低いほど良い）');
 console.log('');
 console.log(
-  '  条件      NOISE  幅広%  登録上下%  背負い%  過大勝率%  競り度  実力幅  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち  待ち途中  連投%  2連続%  3連続%  4連続+%  待ちσ  勝率SD%' +
+  '  条件      NOISE  幅広%  登録上下%  背負い%  過大勝率%  競り度  実力幅  3-1%  男女戦%  端中   占有率%  共演   試合数幅  待ち  待ち途中  連投%  2連続%  3連続%  4連続+%  待ちσ  勝率SD%  極端%  最大幅' +
     (LATE_JOIN > 0 ? '  遅参加' : '') +
     (PREF_PAIRS > 0 ? '  成立率%  リーク  同居敵%  内訳mixSplit%(件数)  希望コート男女戦%  希望外コート男女戦%' : '')
 );
@@ -977,6 +979,7 @@ for (const { n, courtCount } of CONDITIONS) {
         `${(avg(r => r.streak4Rate) * 100).toFixed(2).padStart(6)}  ` +
         `${avg(r => r.idleSd).toFixed(2).padStart(5)}` +
         `  ${(avg(r => r.winRateSd) * 100).toFixed(1)}` +
+        `  ${(avg(r => r.extremeGapRate) * 100).toFixed(2)}  ${avg(r => r.maxTrueGap).toFixed(1)}` +
         (LATE_JOIN > 0 ? `   ${avg(r => r.lateRatio).toFixed(2)}倍` : '') +
         (PREF_PAIRS > 0
           ? `   ${(() => {

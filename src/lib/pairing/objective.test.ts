@@ -7,6 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  DEFAULT_WEIGHTS,
   computeRecency,
   recencyCost,
   isRecencyViolation,
@@ -25,8 +26,17 @@ function court(
 const shape = { base: 1, growth: 4 };
 
 describe('recencyCost（今回何連続目になるか → コスト。飽和しない段階的な形）', () => {
-  it('既定の形は base=1 / growth=4 / 3連続目以上を違反にする', () => {
-    expect(RECENCY_STREAK_SHAPE).toEqual({ base: 1, growth: 4, hardFrom: 3 });
+  it('既定の形は base=0.4 / growth=8 で、ハードの違反は無し（hardFrom=0）', () => {
+    expect(RECENCY_STREAK_SHAPE).toEqual({ base: 0.4, growth: 8, hardFrom: 0 });
+  });
+
+  it('既定の形: 2連続目は僅か・3連続目はまあまあ強く・4連続目以上は強く（1人あたりの実効コスト）', () => {
+    // 実効コスト = recencyCost × 重み(2.0) / 4。3連続目は 3-1 のコート（1.0 × 1.6）より重い
+    const effective = (streak: number) => (recencyCost(streak) * DEFAULT_WEIGHTS.recency) / 4;
+    expect(effective(1)).toBeCloseTo(0.2, 10); // 2連続目
+    expect(effective(2)).toBeCloseTo(1.6, 10); // 3連続目
+    expect(effective(3)).toBeCloseTo(12.8, 10); // 4連続目
+    expect(effective(2)).toBeGreaterThanOrEqual(1.0 * DEFAULT_WEIGHTS.gender);
   });
 
   it('連続していない（streak 0・未出場・不正値）は 0', () => {
@@ -56,13 +66,20 @@ describe('recencyCost（今回何連続目になるか → コスト。飽和し
   });
 });
 
-describe('isRecencyViolation（3連続目以上はハードの違反）', () => {
-  it('既定: streak 2（今回3連続目）から違反。2連続目までは違反ではない', () => {
+describe('isRecencyViolation（hardFrom 以上の連続目はハードの違反。既定は無効）', () => {
+  it('既定（hardFrom=0）は何連続目でも違反にしない（連続はソフトのコストだけで避ける）', () => {
     expect(isRecencyViolation(undefined)).toBe(false);
-    expect(isRecencyViolation(0)).toBe(false);
-    expect(isRecencyViolation(1)).toBe(false); // 2連続目
-    expect(isRecencyViolation(2)).toBe(true); // 3連続目
-    expect(isRecencyViolation(5)).toBe(true);
+    expect(isRecencyViolation(2)).toBe(false);
+    expect(isRecencyViolation(9)).toBe(false);
+  });
+
+  it('hardFrom=3 なら streak 2（今回3連続目）から違反。2連続目までは違反ではない', () => {
+    const hard3 = { hardFrom: 3 };
+    expect(isRecencyViolation(undefined, hard3)).toBe(false);
+    expect(isRecencyViolation(0, hard3)).toBe(false);
+    expect(isRecencyViolation(1, hard3)).toBe(false); // 2連続目
+    expect(isRecencyViolation(2, hard3)).toBe(true); // 3連続目
+    expect(isRecencyViolation(5, hard3)).toBe(true);
   });
 
   it('hardFrom=0 なら無効（ソフトのコストだけで測るとき）', () => {

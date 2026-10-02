@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { calculatePlayerStats, getStreaks, buildInitialOrder, buildRanksWithTies, applyStreakSwaps, assignCourts, formTeams, sortWaitingPlayers, getCallableReservationRestingIds, shouldRelaxRecency } from './algorithm';
+import { calculatePlayerStats, getStreaks, buildInitialOrder, buildRanksWithTies, applyStreakSwaps, assignCourts, formTeams, sortWaitingPlayers, getCallableReservationRestingIds } from './algorithm';
 import type { Player } from '../types/player';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
@@ -3215,35 +3215,44 @@ describe('assignCourts - 連続モードで連続出場を避ける（目的8 re
     return hist;
   };
 
-  const longRuns = (h: Map<number, number>) =>
-    [...h.entries()].filter(([run]) => run >= 3).reduce((s, [, c]) => s + c, 0);
+  const longRuns = (h: Map<number, number>, from = 3) =>
+    [...h.entries()].filter(([run]) => run >= from).reduce((s, [, c]) => s + c, 0);
   const total = (h: Map<number, number>) => [...h.values()].reduce((s, c) => s + c, 0);
 
-  it('19人3コート: 3連続以上が出ない・2連続は2割未満・試合数の偏りは広がらない', () => {
+  it('19人3コート: 4連続以上が出ない・3連続は稀・2連続は2割台まで・試合数の偏りは広がらない', () => {
+    // 連続回避はソフトのコストのみ（2026-10-02 再調整）: 2連続目は僅かに、3連続目は
+    // まあまあ強く、4連続目以上は強く避ける。3連続は 0 とは限らない（稀に残る）
     let twice = 0;
+    let thrice = 0;
     let all = 0;
     for (const seed of [1, 2, 3]) {
       const run = simulate(19, 3, seed, 45);
       const h = runLengthHistogram(run.matches);
-      expect(longRuns(h)).toBe(0);
+      expect(longRuns(h, 4)).toBe(0);
       expect(run.gamesSpread).toBeLessThanOrEqual(2);
       twice += h.get(2) ?? 0;
+      thrice += h.get(3) ?? 0;
       all += total(h);
     }
-    // 変更前は 2連続が全出場の 21% 前後（bench 連続モード）。再選出はゼロにはできない
-    // （公平性の窓・順位差などのハード制約）ので、半分程度に抑える程度で見る
-    expect(twice / all).toBeLessThan(0.2);
+    // 変更前は 2連続が全出場の 21% 前後・3連続 3.8%（bench 連続モード）
+    expect(twice / all).toBeLessThan(0.25);
+    expect(thrice / all).toBeLessThan(0.03);
   });
 
   it.each([
     [8, 1],
     [12, 2],
     [18, 3],
-  ])('%i人%iコートでも 3連続以上が出ない', (n, courts) => {
+  ])('%i人%iコートでも 4連続以上が出ず、3連続も稀', (n, courts) => {
+    let thrice = 0;
+    let all = 0;
     for (const seed of [1, 2]) {
-      const run = simulate(n, courts, seed, 40);
-      expect(longRuns(runLengthHistogram(run.matches))).toBe(0);
+      const h = runLengthHistogram(simulate(n, courts, seed, 40).matches);
+      expect(longRuns(h, 4)).toBe(0);
+      thrice += h.get(3) ?? 0;
+      all += total(h);
     }
+    expect(thrice / all).toBeLessThan(0.05);
   });
 
   it('進行中コートの開始時刻を渡さなくても落ちない（履歴だけで判定）', () => {
@@ -3260,28 +3269,5 @@ describe('assignCourts - 連続モードで連続出場を避ける（目的8 re
     ];
     const assigned = assignCourts(players.slice(0, 8), 1, old, { totalCourtCount: 2, targetCourtIds: [1] });
     expect(assigned).toHaveLength(1);
-  });
-});
-
-describe('shouldRelaxRecency（待機が足りないとき連続回避を緩める条件）', () => {
-  const ids = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `p${i}` }));
-  // p0〜p3 が「たった今終わった」連続候補
-  const streak = new Map([['p0', 1], ['p1', 1], ['p2', 1], ['p3', 1]]);
-
-  it('非連続候補が必要数ちょうど（8人1コート）なら緩めない', () => {
-    expect(shouldRelaxRecency(ids(8), 1, streak)).toBe(false);
-  });
-
-  it('非連続候補が必要数に1人足りない（7人1コート）なら緩める', () => {
-    expect(shouldRelaxRecency(ids(7), 1, streak)).toBe(true);
-  });
-
-  it('複数コート: 非連続が4×コート数ちょうど（12人2コート）なら緩めず、1人足りなければ緩める', () => {
-    expect(shouldRelaxRecency(ids(12), 2, streak)).toBe(false);
-    expect(shouldRelaxRecency(ids(11), 2, streak)).toBe(true);
-  });
-
-  it('連続候補が居なければ緩めない（履歴が空・旧データ）', () => {
-    expect(shouldRelaxRecency(ids(5), 1, new Map())).toBe(false);
   });
 });
