@@ -5,6 +5,7 @@ import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { assignCourts, sortWaitingPlayers, getCallableReservationRestingIds } from '../lib/algorithm';
+import { courtStartTimes } from '../lib/pairing/streak';
 import { getRecommendedCourtCount, getAssignmentGate } from '../lib/utils';
 import { PlayerAddInput } from '../components/PlayerAddInput';
 import { useSettingsStore } from '../stores/settingsStore';
@@ -911,6 +912,8 @@ export function MainPage() {
           reservationBlockThreshold,
           restingPlayers,
           pairPreferences,
+          // 目的8 recency: 進行中コートの開始も「他の試合の開始」として連続判定に使う
+          inProgressStartedAt: courtStartTimes(courts),
         }
       );
 

@@ -4,6 +4,7 @@ import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import { SessionError } from './errorHandler';
 import { assignRoundByObjective } from './pairing/assignRound';
+import { buildStreakById } from './pairing/streak';
 import { GENDER_BALANCE_OFF_WEIGHTS } from './pairing/objective';
 import { median } from './median';
 import type { PairPreference } from '../types/pairPreference';
@@ -134,6 +135,22 @@ const MAX_GAMES_ABOVE_AVERAGE = 3;
 const RECENT_MATCH_LOOKBACK = 3;
 /** 直近試合と何人重複したら「似た試合」と見なすか */
 const RECENT_MATCH_OVERLAP_LIMIT = 3;
+/**
+ * 目的関数エンジンで、候補プールが小さいときに直近試合の重複判定を緩める（4人全員一致のみ禁止）。
+ * 「控えの余剰人数（候補 − 配置人数）が 8 以下（＝控えが2コート分以下）」で、かつ
+ * 連続候補（`pairing/streak.ts`）が居るとき。
+ *
+ * 3人重複を禁じると、余剰が小さい（待機が「今終わった4人 + 数人」しかいない）条件では
+ * 組める4人が「直前メンバーを混ぜる」形に強制され、連続出場（目的8 recency）を
+ * 避けられない。例: 8人1コートは完全ローテーション（残り4人をそのまま入れる）が
+ * 直近の試合との4人重複に当たって禁じられ、毎回2人が連続になる。
+ * bench（連続モード）では緩めると 16人2コート・19人3コートでも連続・実力差・3-1・試合数幅が
+ * 改善する一方、占有率（目的6 多様性）は悪化する。質 > 多様性 > 公平性の優先順位で
+ * 前者を採った。余剰が大きい条件（21人3コート以上など）は影響が小さいので従来どおり。
+ * 計測: docs/plans/2026-10-01-recency-just-finished-streak.md
+ */
+const SMALL_POOL_MAX_SURPLUS = 8;
+const RECENT_MATCH_OVERLAP_LIMIT_SMALL_POOL = 4;
 /**
  * 3コート以上で、自グループの残り人数が4人に満たないコートが他グループから
  * 補充する際、不足数ちょうどではなく selectBestFour に多少の選択の余地を
@@ -364,7 +381,8 @@ function groupPlayers3Court(
  */
 function hasSimilarRecentMatch(
   fourPlayerIds: string[],
-  matchHistory: Match[]
+  matchHistory: Match[],
+  overlapLimit: number = RECENT_MATCH_OVERLAP_LIMIT
 ): boolean {
   for (const playerId of fourPlayerIds) {
     let found = 0;
@@ -376,7 +394,7 @@ function hasSimilarRecentMatch(
       found++;
 
       const overlap = fourPlayerIds.filter(id => matchMembers.includes(id));
-      if (overlap.length >= RECENT_MATCH_OVERLAP_LIMIT) return true;
+      if (overlap.length >= overlapLimit) return true;
     }
   }
   return false;
@@ -2005,6 +2023,13 @@ export function assignCourts(
      * docs/plans/2026-08-05-pairing-goals-and-rewrite.md 参照。
      */
     useObjectiveEngine?: boolean;
+    /**
+     * 現在進行中（配置済み）コートの試合開始時刻。目的8 `recency` の連続判定で
+     * 「他の試合が始まったか」に使う（`courtStartTimes` で courts から作る。
+     * これから配置する対象コートはクリア済みの状態で渡すこと）。省略時は履歴上の
+     * 試合の開始だけで判定する。
+     */
+    inProgressStartedAt?: number[];
   }
 ): CourtAssignment[] {
   const activePlayers = players.filter((p) => !p.isResting);
@@ -2340,38 +2365,20 @@ export function assignCourts(
     // 中央値・reservationBlockThreshold は予約保留判定（上の isReservationBlocked）と
     // 共通のものを使い回す（新しい設定項目は増やさない。plan 3b）。
     const pairPreferences = options?.pairPreferences ?? [];
-    // 目的8 recency（連続出場を少し嫌う）の入力。
-    // 値は streakOf =「直近の連続出場数」。
-    //   - 最新の出場からの経過が RECENCY_SPAN（＝コート数）以上なら 0（連続していない）
-    //   - そこから遡り、隣り合う出場どうしの間隔が RECENCY_SPAN 未満である限り数える
-    //   - 未出場は Map に入れない（＝0）
-    // 「2連続までは自由、3連続目から嫌う」を表現するための入力で、減点の形
-    // （STREAK_ALLOWANCE / STREAK_RAMP）は objective.ts 側が持つ。
-    // `matchHistory` は古い順（末尾が最新）なので**末尾から1回だけ**走査する。
-    // docs/plans/2026-09-08-recency-penalty.md
-    const objectiveRecencySpan = Math.max(1, totalCourtCount);
-    const objectiveStreakById = new Map<string, number>();
-    {
-      // その人を最後に見た試合の位置。連続が途切れた人は broken に入れて以後無視する。
-      const lastSeenIndex = new Map<string, number>();
-      const broken = new Set<string>();
-      for (let i = matchHistory.length - 1; i >= 0; i--) {
-        const match = matchHistory[i];
-        for (const id of [...match.teamA, ...match.teamB]) {
-          if (!id) continue; // シングルスの空スロット
-          if (broken.has(id)) continue;
-          const last = lastSeenIndex.get(id);
-          // 間隔 = 2つの出場の間に行われた試合数（末尾側は「最後の出場より後の試合数」）
-          const gap = last === undefined ? matchHistory.length - 1 - i : last - i - 1;
-          if (gap >= objectiveRecencySpan) {
-            broken.add(id); // 1巡以上空いている → ここで連続は終わり
-            continue;
-          }
-          objectiveStreakById.set(id, (objectiveStreakById.get(id) ?? 0) + 1);
-          lastSeenIndex.set(id, i);
-        }
-      }
-    }
+    // 目的8 recency（連続出場を嫌う）の入力。値は streakOf =「直近の連続出場数」。
+    // 「たった今終わったコートに居た人」だけが 1 以上（最後の試合の終了以降に他の
+    // 試合が開始していない人）。時刻は履歴内の値どうしの比較のみ（Date.now() 非依存）。
+    // 進行中コートの開始も「他の試合の開始」に数えるので options.inProgressStartedAt で受ける。
+    // 定義の詳細: src/lib/pairing/streak.ts / docs/plans/2026-10-01-recency-just-finished-streak.md
+    const objectiveStreakById = buildStreakById(matchHistory, options?.inProgressStartedAt);
+    // 候補プールが小さく、避けたい連続候補が居るときだけ直近試合の重複判定を緩める
+    // （SMALL_POOL_MAX_SURPLUS 参照）。連続候補が居ない（履歴が空・時刻が無い旧データ）
+    // なら緩める理由が無いので従来どおり
+    const objectiveOverlapLimit =
+      objectiveStreakById.size > 0 &&
+      normalCandidates.length - 4 * normalCourtIds.length <= SMALL_POOL_MAX_SURPLUS
+        ? RECENT_MATCH_OVERLAP_LIMIT_SMALL_POOL
+        : RECENT_MATCH_OVERLAP_LIMIT;
     const assigned = assignRoundByObjective({
       candidates: normalCandidates,
       courtIds: normalCourtIds,
@@ -2382,7 +2389,7 @@ export function assignCourts(
         calculatePriorityScore(p, practiceStartTime, useStayDuration, lateBalance),
       pairCounts: historyCounts.pair,
       pairKeyOf: pairKey,
-      isRecentDuplicate: (ids) => hasSimilarRecentMatch(ids, matchHistory),
+      isRecentDuplicate: (ids) => hasSimilarRecentMatch(ids, matchHistory, objectiveOverlapLimit),
       wideSpanThreshold: objectiveWideSpanThreshold,
       preferGenderMix,
       lateBalanceMode: options?.lateBalanceMode ?? false,
