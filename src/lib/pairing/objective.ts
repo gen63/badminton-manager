@@ -60,8 +60,19 @@ export const SCORE_TABLE = {
   teamDiff: 3,
 
   // ── 顔ぶれ・連続 ──
-  /** 3人以上一致。同じ3人組が前に一緒だった鮮度（0〜1）× 28 点を、コートの4つの3人組ぶん足す（4人一致は最大 112 点） */
+  /**
+   * 3人以上一致。同じ3人組が前に一緒だった鮮度（0〜1）× この点数を、コートの4つの3人組ぶん足す。
+   * 点数は余り人数（候補 − 必要人数）で `tripleRepeat`（余りが少ない日）〜 `tripleRepeatMax`（余りに余裕がある日）
+   * の間を動く（`tripleRepeatPointsFor`）。4人一致は4つの3人組すべてに当たる。
+   * 余りが少ない日は 3人一致より試合数の公平性を優先したい（弱く 28 点）。
+   * 余りに余裕がある日は公平性を損なわず顔ぶれを散らせるので強く 44 点。
+   */
   tripleRepeat: 28,
+  /** 余りに余裕がある日の3人以上一致の点数（`tripleRepeat` が余りの少ない日の点数） */
+  tripleRepeatMax: 44,
+  /** 余りが `tripleRampStart` 以下なら `tripleRepeat`、`tripleRampEnd` 以上なら `tripleRepeatMax`、間は smoothstep でなめらかにつなぐ（段差なし） */
+  tripleRampStart: 5,
+  tripleRampEnd: 7,
   /** 連続出場。2連続目 5 点 / 3連続目 25 点 / 4連続目以上 100 点 */
   streak: [5, 25, 100] as readonly number[],
 
@@ -132,6 +143,8 @@ export interface ScoreContext {
    * 優先度スコアを「1試合分の差」で割った値（`assignRound.ts` が作る）。
    */
   needById: Map<string, number>;
+  /** このラウンドの3人以上一致の点数（`tripleRepeatPointsFor(余り)`）。省略時は `SCORE_TABLE.tripleRepeat` */
+  tripleRepeatPoints?: number;
 }
 
 const dev = (ctx: ScoreContext, id: string): number => ctx.deviationById.get(id) ?? 50;
@@ -215,7 +228,7 @@ export function courtFixedPoints(ids: readonly string[], ctx: ScoreContext): { s
     for (let skip = 0; skip < 4; skip++) {
       triple += ctx.tripleWeights.get(comboKey(sorted.filter((_, k) => k !== skip))) ?? 0;
     }
-    triple *= SCORE_TABLE.tripleRepeat;
+    triple *= ctx.tripleRepeatPoints ?? SCORE_TABLE.tripleRepeat;
   }
 
   let streak = 0;
@@ -263,6 +276,17 @@ export function extremeSurplusFactor(surplus: number): number {
   const { extremeRampStart: a, extremeRampEnd: b } = SCORE_TABLE;
   if (!(b > a)) return surplus >= b ? 1 : 0;
   return Math.min(1, Math.max(0, (surplus - a) / (b - a)));
+}
+
+/**
+ * 余り人数に応じた3人以上一致の点数。余りが `tripleRampStart` 以下なら `tripleRepeat`、
+ * `tripleRampEnd` 以上なら `tripleRepeatMax`、間は smoothstep（単調増加・連続・端点でなめらか）。
+ */
+export function tripleRepeatPointsFor(surplus: number): number {
+  const { tripleRepeat: lo, tripleRepeatMax: hi, tripleRampStart: a, tripleRampEnd: b } = SCORE_TABLE;
+  if (!(b > a)) return surplus >= b ? hi : lo;
+  const t = Math.min(1, Math.max(0, (surplus - a) / (b - a)));
+  return lo + (hi - lo) * t * t * (3 - 2 * t);
 }
 
 /** 余り人数（候補 − 必要人数）に応じた公平性の倍率。余りが多いほど 1 に近づく（単調減少・連続） */
