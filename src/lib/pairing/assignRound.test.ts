@@ -1,17 +1,13 @@
+/**
+ * 目的関数ベースの配置エンジン（`assignRound.ts`）のテスト。
+ * 点数表は `objective.ts` の `SCORE_TABLE`（偏差何点分の悪さ）。設計は
+ * docs/plans/2026-10-02-simplify-scoring.md。
+ *
+ * 点数表を書き換えるテストは `withTable` で必ず元に戻す。
+ */
 import { describe, it, expect } from 'vitest';
-import { assignRoundByObjective } from './assignRound';
-import {
-  computeMixSplit,
-  computeVariety,
-  computeObjectiveTerms,
-  computeAffinity,
-  GENDER_BALANCE_OFF_WEIGHTS,
-  AFFINITY_ENEMY_COST,
-  RECENCY_STREAK_SHAPE,
-  RANK_GAP_SOFT_SHAPE,
-  type CourtPlacement,
-  type PairCounts,
-} from './objective';
+import { assignRoundByObjective, type AssignRoundParams } from './assignRound';
+import { SCORE_TABLE, courtBreakdown, courtSpan, fairnessPoints, type ScoreContext } from './objective';
 import type { Player } from '../../types/player';
 
 function makePlayer(id: string, overrides: Partial<Player> = {}): Player {
@@ -27,1386 +23,585 @@ function makePlayer(id: string, overrides: Partial<Player> = {}): Player {
   };
 }
 
-function pairKey(a: string, b: string): string {
-  return [a, b].sort().join(',');
-}
-
-function emptyPairCounts(): PairCounts {
-  return { partner: new Map(), opponent: new Map() };
-}
-
-/** priorityScoreOf: id の数字部分をそのままスコアに使う（p0 が最優先） */
+/** priorityScoreOf: id の数字部分をそのままスコアに使う（p0 が最優先。1差 = 1試合分） */
 function priorityScoreOf(p: Player): number {
-  return Number(p.id.replace('p', ''));
+  return Number(p.id.replace(/\D/g, ''));
 }
 
-function rankByIdFrom(ids: string[]): Map<string, number> {
-  return new Map(ids.map((id, index) => [id, index]));
+/** 並び順の先頭ほど偏差が高い（80, 77, 74, ...。3点刻み） */
+function devByOrder(ids: string[], step = 3): Map<string, number> {
+  return new Map(ids.map((id, i) => [id, 80 - step * i]));
 }
+
+/** SCORE_TABLE を一時的に書き換えて実行し、必ず戻す */
+function withTable<T>(patch: Partial<typeof SCORE_TABLE>, fn: () => T): T {
+  const saved = { ...SCORE_TABLE };
+  Object.assign(SCORE_TABLE, patch);
+  try {
+    return fn();
+  } finally {
+    Object.assign(SCORE_TABLE, saved);
+  }
+}
+
+type Params = Omit<AssignRoundParams, 'preferGenderMix' | 'priorityScoreOf'> &
+  Partial<Pick<AssignRoundParams, 'preferGenderMix' | 'priorityScoreOf'>>;
+
+const run = (params: Params) =>
+  assignRoundByObjective({ preferGenderMix: false, priorityScoreOf, ...params });
+
+const idsOf = (r: ReturnType<typeof run>) => new Set(r.flatMap(c => [...c.teamA, ...c.teamB]));
+const courtOf = (r: ReturnType<typeof run>, id: string) =>
+  r.find(c => [...c.teamA, ...c.teamB].includes(id))!;
+const areTeammates = (r: ReturnType<typeof run>, a: string, b: string) => {
+  const c = courtOf(r, a);
+  return (c.teamA.includes(a) && c.teamA.includes(b)) || (c.teamB.includes(a) && c.teamB.includes(b));
+};
 
 describe('assignRoundByObjective', () => {
-  it('4人×コート数が必ず配置される', () => {
+  it('4人×コート数が必ず配置される（重複なし）', () => {
     const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-    const result = assignRoundByObjective({
+    const result = run({
       candidates,
       courtIds: [1, 2, 3],
-      rankById,
-      rosterSize: 12,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
+      deviationById: devByOrder(candidates.map(p => p.id)),
     });
-
     expect(result).toHaveLength(3);
     const allIds = result.flatMap(c => [...c.teamA, ...c.teamB]);
-    expect(new Set(allIds).size).toBe(12); // 重複なし
+    expect(new Set(allIds).size).toBe(12);
     expect(result.map(c => c.courtId).sort()).toEqual([1, 2, 3]);
   });
 
-  it('同じ入力で必ず同じ出力（決定性）', () => {
+  it('候補が4人に満たなければ空（例外を投げない）', () => {
+    const candidates = Array.from({ length: 3 }, (_, i) => makePlayer(`p${i}`));
+    expect(run({ candidates, courtIds: [1], deviationById: devByOrder(['p0', 'p1', 'p2']) })).toEqual([]);
+  });
+
+  it('同じ入力で必ず同じ出力（決定性。1コート・複数コートとも）', () => {
     const candidates = Array.from({ length: 16 }, (_, i) =>
       makePlayer(`p${i}`, { gender: i % 3 === 0 ? 'F' : 'M' })
     );
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-    const pairCounts: PairCounts = {
-      partner: new Map([[pairKey('p0', 'p1'), 2]]),
-      opponent: new Map([[pairKey('p2', 'p3'), 1]]),
-    };
-
-    const run = () =>
-      assignRoundByObjective({
-        candidates,
-        courtIds: [1, 2, 3, 4],
-        rankById,
-        rosterSize: 16,
-        priorityScoreOf,
-        pairCounts,
-        pairKeyOf: pairKey,
-        wideSpanThreshold: Math.ceil(16 * (2 / 3)),
-        preferGenderMix: false,
-      });
-
-    const a = run();
-    const b = run();
-    expect(a).toEqual(b);
+    const deviationById = devByOrder(candidates.map(p => p.id), 2);
+    const tripleWeights = new Map([['p0,p1,p2', 0.9]]);
+    for (const courtIds of [[1], [1, 2, 3, 4]]) {
+      const go = () => run({ candidates, courtIds, deviationById, tripleWeights });
+      expect(go()).toEqual(go());
+    }
   });
 
-  it('ハード制約（順位差）を満たす解があるとき、それが選ばれる', () => {
-    // 16人・4コート。優先度順に並べると素直な初期解では順位差が大きい
-    // 組み合わせが生じうるが、閾値を満たす解が必ず存在する人数構成にしてある。
+  it('極端な実力差のハード制約を満たす解があるとき、それが選ばれる（人数に関係なく適用）', () => {
+    // 16人・4コート。偏差は 80〜35（3点刻み）。両端 p0 と p15 は 45 離れて極端。
+    // 優先度順の素直な割り当てなら各コートの幅は小さく収まるが、極端な組があれば必ず外れる
     const candidates = Array.from({ length: 16 }, (_, i) => makePlayer(`p${i}`));
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-    const wideSpanThreshold = Math.ceil(16 * (2 / 3)); // 11
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2, 3, 4],
-      rankById,
-      rosterSize: 16,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold,
-      preferGenderMix: false,
-    });
-
+    const deviationById = devByOrder(candidates.map(p => p.id));
+    const result = run({ candidates, courtIds: [1, 2, 3, 4], deviationById });
     for (const court of result) {
-      const ids = [...court.teamA, ...court.teamB];
-      const ranks = ids.map(id => rankById.get(id)!);
-      const gap = Math.max(...ranks) - Math.min(...ranks);
-      expect(gap).toBeLessThan(wideSpanThreshold);
+      expect(courtSpan([...court.teamA, ...court.teamB], deviationById)).toBeLessThan(SCORE_TABLE.extremeSpan);
     }
   });
 
-  it('直近に同じ4人が出ていても強制はせず、他に同程度の解があればそちらが選ばれる（ソフト）', () => {
+  it('小人数（8人）でも極端な実力差は同居させない', () => {
+    // p0=80 と p7=20 は 60 離れて極端。優先度は p0 と p7 を先頭にして同居を誘う
     const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-    // p0..p3 の同じ4人が直前に出た（減衰重みは新しいので大きい）
-    const repeatWeights = {
-      pair: new Map<string, number>(),
-      quad: new Map([['p0,p1,p2,p3', 0.9]]),
-      triple: new Map<string, number>(),
-    };
-    for (let i = 0; i < 4; i++) {
-      for (let j = i + 1; j < 4; j++) repeatWeights.pair.set(pairKey(`p${i}`, `p${j}`), 0.9);
-    }
-    const run = (withRepeat: boolean) =>
-      assignRoundByObjective({
-        candidates,
-        courtIds: [1],
-        rankById,
-        rosterSize: 8,
-        priorityScoreOf,
-        pairCounts: emptyPairCounts(),
-        repeatWeights: withRepeat ? repeatWeights : undefined,
-        pairKeyOf: pairKey,
-        wideSpanThreshold: null,
-        preferGenderMix: false,
-      });
-    const ids = (r: ReturnType<typeof run>) => new Set([...r[0].teamA, ...r[0].teamB]);
-    // 履歴なしなら優先度順の先頭 p0..p3 が出る
-    expect([...ids(run(false))].sort()).toEqual(['p0', 'p1', 'p2', 'p3']);
-    // 同じ4人の重みがあると、1人以上入れ替わる（ハードではないので強制はしない）
-    const withRepeat = ids(run(true));
+    const deviationById = new Map([
+      ['p0', 80], ['p1', 55], ['p2', 54], ['p3', 53], ['p4', 52], ['p5', 51], ['p6', 50], ['p7', 20],
+    ]);
+    const result = run({
+      candidates,
+      courtIds: [1],
+      deviationById,
+      priorityScoreOf: p => (p.id === 'p0' || p.id === 'p7' ? 0 : 1),
+    });
+    const ids = idsOf(result);
+    expect(ids.has('p0') && ids.has('p7')).toBe(false);
+  });
+
+  it('同じ顔ぶれの繰り返し（3人以上一致）はソフト: 他に同程度の解があれば入れ替わるが、強制はしない', () => {
+    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+    const deviationById = devByOrder(candidates.map(p => p.id));
+    // p0〜p3 の同じ4人が直前に出た（4つの3人組すべてが新しい）
+    const tripleWeights = new Map(['p0,p1,p2', 'p0,p1,p3', 'p0,p2,p3', 'p1,p2,p3'].map(k => [k, 1] as const));
+    const base = { candidates, courtIds: [1], deviationById };
+    // 履歴なしなら優先度順の先頭 p0..p3
+    expect([...idsOf(run(base))].sort()).toEqual(['p0', 'p1', 'p2', 'p3']);
+    // 同じ4人の重みがあると、1人以上入れ替わる
+    const withRepeat = idsOf(run({ ...base, tripleWeights }));
     expect(['p0', 'p1', 'p2', 'p3'].filter(id => withRepeat.has(id)).length).toBeLessThan(4);
+    // 4人しか居なければ強制はせず同じ4人が出る（解が返る）
+    const four = run({ ...base, candidates: candidates.slice(0, 4), tripleWeights });
+    expect(idsOf(four).size).toBe(4);
   });
 
   it('解が存在しないとき例外を投げず、違反最小の解を返す', () => {
-    // 4人しかいないので、全員を1コートに入れざるを得ない。順位差の閾値を極端に
-    // 小さくして、どんな組み合わせでも必ず違反するようにする。
+    // 4人しか居ないので全員を1コートに入れるしかない。極端な実力差の閾値を極端に小さくして必ず違反させる
     const candidates = Array.from({ length: 4 }, (_, i) => makePlayer(`p${i}`));
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    expect(() =>
-      assignRoundByObjective({
-        candidates,
-        courtIds: [1],
-        rankById,
-        rosterSize: 4,
-        priorityScoreOf,
-        pairCounts: emptyPairCounts(),
-        pairKeyOf: pairKey,
-        wideSpanThreshold: 1, // 順位差1以上で違反 → 4人いる限り必ず違反する
-        preferGenderMix: false,
-      })
-    ).not.toThrow();
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1],
-      rankById,
-      rosterSize: 4,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: 1,
-      preferGenderMix: false,
+    const params = { candidates, courtIds: [1], deviationById: devByOrder(candidates.map(p => p.id)) };
+    withTable({ extremeSpan: 1 }, () => {
+      expect(() => run(params)).not.toThrow();
+      const result = run(params);
+      expect(result).toHaveLength(1);
+      expect(idsOf(result).size).toBe(4);
     });
-
-    expect(result).toHaveLength(1);
-    const ids = [...result[0].teamA, ...result[0].teamB];
-    expect(new Set(ids).size).toBe(4);
   });
 
-  it('通常の入力ですべての項が0〜1に収まる', () => {
-    const ids = Array.from({ length: 12 }, (_, i) => `p${i}`);
-    const rankById = rankByIdFrom(ids);
-    const priorityRankById = rankByIdFrom(ids);
-    const genderById = new Map<string, 'M' | 'F' | undefined>(
-      ids.map((id, i) => [id, i % 2 === 0 ? 'M' : 'F'] as const)
+  it('1コートは窓内の全組み合わせ×チーム分けの最小点と一致する（全列挙）', () => {
+    // 乱数で偏差・性別を振った8人から1コート。ブルートフォースの最小点と、返った解の点が一致する
+    let seed = 12345;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    for (let trial = 0; trial < 12; trial++) {
+      const candidates = Array.from({ length: 8 }, (_, i) =>
+        makePlayer(`p${i}`, { gender: rnd() < 0.5 ? 'F' : 'M' })
+      );
+      const deviationById = new Map(candidates.map(p => [p.id, 40 + Math.floor(rnd() * 28)] as const)); // 幅 < 30
+      const need = new Map(candidates.map((p, i) => [p.id, Math.floor(i / 2)] as const));
+      const genderById = new Map(candidates.map(p => [p.id, p.gender] as const));
+      const ctx: ScoreContext = {
+        deviationById, genderById, genderBalanceOn: true, preferGenderMix: false,
+        tripleWeights: new Map(), streakById: new Map(), affinityPairs: [], needById: need,
+      };
+      const total = (four: string[], teams: [[string, string], [string, string]]) => {
+        const bench = candidates.map(p => p.id).filter(id => !four.includes(id));
+        return courtBreakdown(teams[0], teams[1], ctx).total + fairnessPoints(four, bench, need);
+      };
+      const result = run({
+        candidates, courtIds: [1], deviationById,
+        priorityScoreOf: p => need.get(p.id)!,
+      });
+      const got = total(
+        [...result[0].teamA, ...result[0].teamB],
+        [result[0].teamA, result[0].teamB]
+      );
+      // 窓 = 4 + ceil(4 × 0.7) = 7 → 優先度順の先頭7人（p7 は出せない）
+      const pool = candidates.slice(0, 7).map(p => p.id);
+      let best = Infinity;
+      for (let a = 0; a < pool.length; a++) for (let b = a + 1; b < pool.length; b++)
+        for (let c = b + 1; c < pool.length; c++) for (let d = c + 1; d < pool.length; d++) {
+          const four = [pool[a], pool[b], pool[c], pool[d]];
+          const [w, x, y, z] = four;
+          for (const teams of [[[w, x], [y, z]], [[w, y], [x, z]], [[w, z], [x, y]]] as [[string, string], [string, string]][]) {
+            best = Math.min(best, total(four, teams));
+          }
+        }
+      expect(got).toBeCloseTo(best, 6);
+    }
+  });
+
+  it('候補22人・1コートの全列挙でも十分速い（次の試合の予測でも呼ばれる）', () => {
+    const candidates = Array.from({ length: 22 }, (_, i) =>
+      makePlayer(`p${i}`, { gender: i % 2 ? 'F' : 'M', gamesPlayed: i % 3 })
     );
-    const courts: CourtPlacement[] = [
-      { courtId: 1, teamA: ['p0', 'p1'], teamB: ['p2', 'p3'] },
-      { courtId: 2, teamA: ['p4', 'p5'], teamB: ['p6', 'p7'] },
-      { courtId: 3, teamA: ['p8', 'p9'], teamB: ['p10', 'p11'] },
-    ];
-    const pairCounts: PairCounts = {
-      partner: new Map([[pairKey('p0', 'p1'), 20]]), // 極端な値でもクランプされる
-      opponent: new Map([[pairKey('p2', 'p3'), 20]]),
-    };
-
-    const terms = computeObjectiveTerms({
-      courts,
-      benchIds: [],
-      priorityRankById,
-      candidateCount: ids.length,
-      rankById,
-      rosterSize: ids.length,
-      genderById,
-      preferGenderMix: false,
-      pairCounts,
-      pairKeyOf: pairKey,
-      reachableCountById: new Map(ids.map(id => [id, ids.length - 1])),
-      formRankById: rankById,
-      affinityPairs: [],
-      streakById: new Map(),
-    });
-
-    for (const [key, value] of Object.entries(terms)) {
-      expect(value, `${key} は 0〜1 の範囲`).toBeGreaterThanOrEqual(0);
-      expect(value, `${key} は 0〜1 の範囲`).toBeLessThanOrEqual(1);
+    const deviationById = devByOrder(candidates.map(p => p.id), 2);
+    const tripleWeights = new Map([['p0,p1,p2', 0.9], ['p3,p4,p5', 0.5]]);
+    const start = performance.now();
+    for (let i = 0; i < 5; i++) {
+      run({ candidates, courtIds: [1], deviationById, tripleWeights, priorityScoreOf: p => p.gamesPlayed });
     }
-  });
-
-  it('空コート・空控えでも0〜1に収まる（0除算しない）', () => {
-    const terms = computeObjectiveTerms({
-      courts: [],
-      benchIds: [],
-      priorityRankById: new Map(),
-      candidateCount: 0,
-      rankById: new Map(),
-      rosterSize: 0,
-      genderById: new Map(),
-      preferGenderMix: false,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      reachableCountById: new Map(),
-      formRankById: new Map(),
-      affinityPairs: [],
-      streakById: new Map(),
-    });
-
-    for (const value of Object.values(terms)) {
-      expect(Number.isFinite(value)).toBe(true);
-      expect(value).toBeGreaterThanOrEqual(0);
-      expect(value).toBeLessThanOrEqual(1);
-    }
+    expect((performance.now() - start) / 5).toBeLessThan(500);
   });
 });
 
-describe('computeMixSplit', () => {
-  const court = (
-    teamA: [string, string],
-    teamB: [string, string]
-  ): CourtPlacement => ({ courtId: 1, teamA, teamB });
-
-  /** m0/m1 が男性、f0/f1 が女性 */
-  const genders = new Map<string, 'M' | 'F' | undefined>([
-    ['m0', 'M'],
-    ['m1', 'M'],
-    ['f0', 'F'],
-    ['f1', 'F'],
-    ['x0', undefined],
-  ]);
-
-  it('2-2 を男男 vs 女女に分けたら 1.0', () => {
-    expect(computeMixSplit([court(['m0', 'm1'], ['f0', 'f1'])], genders)).toBe(1);
-    expect(computeMixSplit([court(['f0', 'f1'], ['m0', 'm1'])], genders)).toBe(1);
+describe('試合数の公平性（優先度の高い人を外さない・低い人を出さない）', () => {
+  it('偏差が同じなら、試合数の少ない人から出る', () => {
+    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+    const deviationById = new Map(candidates.map(p => [p.id, 50] as const));
+    const picked = idsOf(run({ candidates, courtIds: [1], deviationById, priorityScoreOf: p => (p.id < 'p4' ? 1 : 0) }));
+    expect([...picked].sort()).toEqual(['p4', 'p5', 'p6', 'p7']);
   });
 
-  it('2-2 を MIX×MIX に分けたら 0', () => {
-    expect(computeMixSplit([court(['m0', 'f0'], ['m1', 'f1'])], genders)).toBe(0);
-    expect(computeMixSplit([court(['f0', 'm1'], ['m0', 'f1'])], genders)).toBe(0);
-  });
-
-  it('2-2 以外のコートは判定しない', () => {
-    const fourMale = new Map<string, 'M' | 'F' | undefined>([
-      ['m0', 'M'],
-      ['m1', 'M'],
-      ['m2', 'M'],
-      ['m3', 'M'],
-    ]);
-    expect(computeMixSplit([court(['m0', 'm1'], ['m2', 'm3'])], fourMale)).toBe(0);
-
-    const threeOne = new Map<string, 'M' | 'F' | undefined>([
-      ['m0', 'M'],
-      ['m1', 'M'],
-      ['m2', 'M'],
-      ['f0', 'F'],
-    ]);
-    expect(computeMixSplit([court(['m0', 'm1'], ['m2', 'f0'])], threeOne)).toBe(0);
-  });
-
-  it('性別未設定がいるコートは判定しない', () => {
-    expect(computeMixSplit([court(['m0', 'm1'], ['f0', 'x0'])], genders)).toBe(0);
-  });
-});
-
-describe('assignRoundByObjective の性別チーム分け', () => {
-  it('2M2F のコートは男女戦（男男 vs 女女）にせず MIX×MIX に分ける', () => {
-    // 実力順を M, F, F, M にすると competitive（順位和の差）は
-    // 男男 vs 女女（0+3 vs 1+2 = 差0）を最良とし、MIX は最良でも差2。
-    // mixSplit が無ければ男女戦が選ばれる配置。
-    const candidates = [
-      makePlayer('m0', { gender: 'M' }),
-      makePlayer('f0', { gender: 'F' }),
-      makePlayer('f1', { gender: 'F' }),
-      makePlayer('m1', { gender: 'M' }),
-    ];
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1],
-      rankById: rankByIdFrom(['m0', 'f0', 'f1', 'm1']),
-      rosterSize: 4,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-    });
-
-    expect(result).toHaveLength(1);
-    const genderOf = new Map(candidates.map(p => [p.id, p.gender]));
-    const malesInA = result[0].teamA.filter(id => genderOf.get(id) === 'M').length;
-    expect(malesInA).toBe(1); // 各チームが男女1人ずつ = MIX×MIX
-  });
-
-  it('男女比調整 OFF（GENDER_BALANCE_OFF_WEIGHTS）なら、実力が釣り合う男女戦を許容する', () => {
-    // 上のテストと全く同じ入力。重みだけ差し替えると結論が反転することを見る
-    // （= トグルが実際に配置を変えている / テストが空回りしていない）。
-    const candidates = [
-      makePlayer('m0', { gender: 'M' }),
-      makePlayer('f0', { gender: 'F' }),
-      makePlayer('f1', { gender: 'F' }),
-      makePlayer('m1', { gender: 'M' }),
-    ];
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1],
-      rankById: rankByIdFrom(['m0', 'f0', 'f1', 'm1']),
-      rosterSize: 4,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-      weights: GENDER_BALANCE_OFF_WEIGHTS,
-    });
-
-    expect(result).toHaveLength(1);
-    const genderOf = new Map(candidates.map(p => [p.id, p.gender]));
-    const malesInA = result[0].teamA.filter(id => genderOf.get(id) === 'M').length;
-    expect(malesInA).not.toBe(1); // 男男 vs 女女 = 順位和が完全に釣り合う組み合わせ
+  it('レート差が小さい範囲では、試合数が1試合分多いだけの人より少ない人を優先する', () => {
+    // p3 は試合数が1多い。偏差が3点違う p4 と入れ替えるほうが、逆転1組(15点)より得（幅の悪化が小さい）
+    const candidates = Array.from({ length: 5 }, (_, i) => makePlayer(`p${i}`));
+    const deviationById = new Map([['p0', 60], ['p1', 59], ['p2', 58], ['p3', 57], ['p4', 56]]);
+    const picked = idsOf(run({
+      candidates, courtIds: [1], deviationById,
+      priorityScoreOf: p => (p.id === 'p3' ? 1 : 0),
+    }));
+    expect(picked.has('p4')).toBe(true);
+    expect(picked.has('p3')).toBe(false);
   });
 });
 
 describe('公平性の窓（優先度順から離れすぎない）', () => {
   it('質を優先しても、優先度が大きく後ろの人は出場させない', () => {
-    // 12人1コート。priorityScoreOf は id の数字（p0 が最優先）。
-    // 必要人数 4 / 余剰 8 → 窓は 4 + ceil(8 * 0.7) = 10 番目まで。p10 以降は出せない。
+    // 12人1コート。必要4 / 余剰8 → 窓は 4 + ceil(8 × 0.7) = 10 番目まで。p10 以降は出せない。
+    // p0〜p2 と同格の p10 を入れれば質は一気に解消する（p3〜p9 は幅25の離れた層）。
+    // ソフトの公平性を切って、窓というハード制約だけの効きを見る
     const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
-
-    // 実力順位を仕込む。優先度どおりの p0〜p3 だと p3 だけ実力が離れていて
-    // skillGap も competitive も最悪。p10 を入れれば両方一気に解消する
-    // （p4〜p9 は p3 と同格なので、窓の中の入れ替えでは解消できない）。
-    const rankById = new Map<string, number>([
-      ['p0', 0], ['p1', 1], ['p2', 2],
-      ['p3', 11], ['p4', 11], ['p5', 11], ['p6', 11],
-      ['p7', 11], ['p8', 11], ['p9', 11],
-      ['p10', 3], ['p11', 12],
+    const deviationById = new Map<string, number>([
+      ['p0', 80], ['p1', 78], ['p2', 76],
+      ...['p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9'].map(id => [id, 55] as const),
+      ['p10', 77], ['p11', 40],
     ]);
+    const result = withTable({ fairnessPerGame: 0 }, () => run({ candidates, courtIds: [1], deviationById }));
+    const chosen = [...idsOf(result)].map(id => Number(id.slice(1)));
+    expect(Math.max(...chosen)).toBeLessThan(10); // 窓が無ければ p10 が呼ばれる状況
+  });
 
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1],
-      rankById,
-      rosterSize: 13,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-    });
-
-    const chosen = [...result[0].teamA, ...result[0].teamB].map(id =>
-      Number(id.replace('p', ''))
-    );
-    // 窓が無ければ p10 が呼ばれる状況。窓があるので 10 番目以降は出せない。
-    expect(Math.max(...chosen)).toBeLessThan(10);
+  it('複数コートでも窓の外の人は出さない（局所探索のハード制約）', () => {
+    // 12人2コート: 必要8・余剰4 → 窓 8 + ceil(2.8) = 11 番目まで。p11 は出せない
+    const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
+    // p11 を最上位の偏差にして、質の最適化が p11 を呼びたくなるようにする
+    const deviationById = new Map(candidates.map(p => [p.id, p.id === 'p11' ? 80 : 60 - Number(p.id.slice(1))] as const));
+    const result = withTable({ fairnessPerGame: 0 }, () => run({ candidates, courtIds: [1, 2], deviationById }));
+    expect(idsOf(result).has('p11')).toBe(false);
   });
 
   it('候補が必要人数ちょうどなら窓は誰も弾かない', () => {
     const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2],
-      rankById: rankByIdFrom(candidates.map(p => p.id)),
-      rosterSize: 8,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-    });
+    const result = run({ candidates, courtIds: [1, 2], deviationById: devByOrder(candidates.map(p => p.id)) });
     expect(result).toHaveLength(2);
-    expect(new Set(result.flatMap(c => [...c.teamA, ...c.teamB])).size).toBe(8);
+    expect(idsOf(result).size).toBe(8);
   });
 });
 
-describe('computeVariety の閾値スケール', () => {
-  const courts: CourtPlacement[] = [
-    { courtId: 1, teamA: ['a0', 'a1'], teamB: ['a2', 'a3'] },
-  ];
-  const counts = (n: number): PairCounts => {
-    const partner = new Map<string, number>();
-    const ids = ['a0', 'a1', 'a2', 'a3'];
-    for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) partner.set(pairKey(ids[i], ids[j]), n);
-    }
-    return { partner, opponent: new Map() };
-  };
-
-  it('組める相手が少ない人の共演回数は割り引いて評価する', () => {
-    // 全員が同じ回数（2回）共演している状況。
-    // 組める相手が平均並み（20人）なら満点のペナルティ、
-    // 平均の半分（10人）しかいない人が混じるなら半分に割り引かれる。
-    const average = new Map(['a0', 'a1', 'a2', 'a3'].map(id => [id, 20]));
-    const narrow = new Map(average);
-    narrow.set('a0', 10);
-
-    const wide = computeVariety(courts, counts(2), pairKey, average);
-    const narrowed = computeVariety(courts, counts(2), pairKey, narrow);
-
-    expect(narrowed).toBeLessThan(wide);
-  });
-
-  it('全員の相手数が同じならスケールは掛からない', () => {
-    const same = new Map(['a0', 'a1', 'a2', 'a3'].map(id => [id, 8]));
-    const other = new Map(['a0', 'a1', 'a2', 'a3'].map(id => [id, 30]));
-    expect(computeVariety(courts, counts(3), pairKey, same)).toBe(
-      computeVariety(courts, counts(3), pairKey, other)
-    );
-  });
-});
-
-describe('後半均等化モード（公平性の窓を狭める）', () => {
+describe('後半均等化モード（公平性の窓を狭める・点数を強める）', () => {
   /** 16人・2コート。必要8人・余剰8人なので、通常は14位まで、後半均等化なら11位まで許可 */
   const setup = (lateBalanceMode: boolean) => {
     const candidates = Array.from({ length: 16 }, (_, i) =>
       makePlayer(`p${i}`, { gender: i % 2 === 0 ? 'M' : 'F', gamesPlayed: i })
     );
-    // 実力順位を優先度順とずらし、質の最適化が窓の外の人を選びたくなるようにする
-    const rankById = new Map(candidates.map((p, i) => [p.id, (i * 7) % 16]));
-    return assignRoundByObjective({
+    // 偏差を優先度順とずらし、質の最適化が窓の外の人を選びたくなるようにする
+    const deviationById = new Map(candidates.map((p, i) => [p.id, 80 - ((i * 7) % 16) * 2] as const));
+    return run({
       candidates,
       courtIds: [1, 2],
-      rankById,
-      rosterSize: 16,
+      deviationById,
       priorityScoreOf: p => p.gamesPlayed,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
       lateBalanceMode,
-      // 窓の仕組み（公平性の窓の広さ）を見るテスト。`waiting` の既定を 14 に上げた
-      // （2026-10-02、docs/plans/2026-10-02-rating-based-strength.md）と、順位だけの
-      // この合成データでは通常でも優先度順から外れなくなるため、改定前の 4.0 に固定する
-      weights: { waiting: 4.0 },
     });
   };
-  const priorityOf = (result: ReturnType<typeof setup>) =>
-    result.flatMap(c => [...c.teamA, ...c.teamB]).map(id => Number(id.slice(1)));
+  const priorityOf = (result: ReturnType<typeof setup>) => [...idsOf(result)].map(id => Number(id.slice(1)));
 
-  it('通常は質のために優先度順を飛ばす（窓 0.7 = 14位まで）', () => {
-    const picked = priorityOf(setup(false));
-    expect(Math.max(...picked)).toBeGreaterThan(7); // 上位8人ちょうどではない
-    expect(Math.max(...picked)).toBeLessThan(14); // ただし窓の外は選ばない
+  it('窓の仕組み: 通常は 0.7（14位まで）、ON は 0.3（11位まで）', () => {
+    withTable({ fairnessPerGame: 0 }, () => {
+      const normal = priorityOf(setup(false));
+      expect(Math.max(...normal)).toBeGreaterThan(7); // 上位8人ちょうどではない
+      expect(Math.max(...normal)).toBeLessThan(14); // ただし窓の外は選ばない
+      expect(Math.max(...priorityOf(setup(true)))).toBeLessThan(11);
+    });
   });
 
-  it('後半均等化 ON では窓が狭まり、優先度順に近づく（窓 0.3 = 11位まで）', () => {
-    const picked = priorityOf(setup(true));
-    expect(Math.max(...picked)).toBeLessThan(11);
-  });
-
-  it('ON のほうが選出が優先度順に近い', () => {
-    expect(Math.max(...priorityOf(setup(true)))).toBeLessThan(
-      Math.max(...priorityOf(setup(false)))
-    );
+  it('ON のほうが選出が優先度順に近い（点数も込みの既定でも）', () => {
+    const sum = (r: ReturnType<typeof setup>) => priorityOf(r).reduce((a, b) => a + b, 0);
+    expect(sum(setup(true))).toBeLessThanOrEqual(sum(setup(false)));
+    expect(Math.max(...priorityOf(setup(true)))).toBeLessThan(11);
   });
 });
 
-describe('順位差のハード制約: 登録序列とハシゴ式序列の両方で判定する', () => {
-  // 16人1コート。狙いの4人（p0, p1, p14, p15）を優先度で先頭に固定し、
-  // ハシゴ式序列でも隣同士にしておく。この4人が通るかどうかは
-  // **登録序列の幅だけ**で決まる、という状況を作る。
+describe('極端な実力差のハード制約（偏差で判定）', () => {
+  // 16人1コート。狙いの4人（p0, p1, p14, p15）を優先度で先頭に固定する
   const target = ['p0', 'p1', 'p14', 'p15'];
   const ids = Array.from({ length: 16 }, (_, i) => `p${i}`);
   const candidates = ids.map(id => makePlayer(id));
-  // 優先度: 狙いの4人が 0..3、残りは 10 以降
   const priority = (p: Player) => {
     const i = target.indexOf(p.id);
     return i >= 0 ? i : 10 + ids.indexOf(p.id);
   };
-  // ハシゴ式後は狙いの4人が先頭に固まっている（＝当日の調子は近い）
-  const formOrder = [...target, ...ids.filter(id => !target.includes(id))];
 
-  const run = (rankById: Map<string, number>) =>
-    assignRoundByObjective({
-      candidates,
-      courtIds: [1],
-      rankById,
-      formRankById: rankByIdFrom(formOrder),
-      rosterSize: 16,
-      priorityScoreOf: priority,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: Math.ceil(16 * (2 / 3)), // 11
-      preferGenderMix: false,
-    });
-
-  it('ハシゴ式序列で近くても、登録序列で幅が広すぎれば同居させない', () => {
-    // 登録序列は id 順 → p0(0), p1(1), p14(14), p15(15) で幅15 ≥ 11 → 違反
-    const regRank = rankByIdFrom(ids);
-    const result = run(regRank);
-    expect(result).toHaveLength(1);
-    const picked = [...result[0].teamA, ...result[0].teamB];
-    const span =
-      Math.max(...picked.map(id => regRank.get(id)!)) -
-      Math.min(...picked.map(id => regRank.get(id)!));
-    expect(span).toBeLessThan(11);
-    // 優先度どおりの4人がそのまま通ってはいない
+  it('偏差が極端に離れた4人は、優先度が先頭でも同居させない', () => {
+    const deviationById = devByOrder(ids); // p0=80 ... p15=35 → p0〜p15 は 45 差
+    const result = run({ candidates, courtIds: [1], deviationById, priorityScoreOf: priority });
+    const picked = [...idsOf(result)];
+    expect(courtSpan(picked, deviationById)).toBeLessThan(SCORE_TABLE.extremeSpan);
     expect(new Set(picked)).not.toEqual(new Set(target));
   });
 
-  it('登録序列でも近ければ、その4人がそのまま選ばれる（テストが空回りしていない）', () => {
-    // formRank と同じ並びを登録序列にすると、狙いの4人は幅3 → 制約を通る
-    const result = run(rankByIdFrom(formOrder));
-    const picked = new Set([...result[0].teamA, ...result[0].teamB]);
-    expect(picked).toEqual(new Set(target));
+  it('偏差が近ければ、その4人がそのまま選ばれる（テストが空回りしていない）', () => {
+    const deviationById = new Map(ids.map(id => [id, target.includes(id) ? 60 + target.indexOf(id) : 40] as const));
+    const result = run({ candidates, courtIds: [1], deviationById, priorityScoreOf: priority });
+    expect(idsOf(result)).toEqual(new Set(target));
   });
 });
 
-describe('computeAffinity（objective.ts）', () => {
-  const court = (
-    courtId: number,
-    teamA: [string, string],
-    teamB: [string, string]
-  ): CourtPlacement => ({ courtId, teamA, teamB });
-
-  it('味方（同コートで partner）は寄与0', () => {
-    const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
-    const pairs = [{ a: 'p0', b: 'p1' }];
-    expect(computeAffinity(courts, [], pairs)).toBe(0);
-  });
-
-  it('同コートで敵なら寄与は AFFINITY_ENEMY_COST（既定1.0）', () => {
-    // 2026-09-17: 実運用バグ（同性の希望ペアが2-2コートで敵にされる）の調査で
-    // 0.5 → 1.0 に変更した。「同コートで敵」は「別コート」と同じ最大コストになる
-    // （中間の 0.5 を廃止）。詳細は `AFFINITY_ENEMY_COST` のコメント（objective.ts）
-    // と `docs/plans/2026-08-31-pair-preference.md` 追記を参照。
-    const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
-    const pairs = [{ a: 'p0', b: 'p2' }];
-    expect(computeAffinity(courts, [], pairs)).toBe(AFFINITY_ENEMY_COST.value);
-    expect(AFFINITY_ENEMY_COST.value).toBe(1.0);
-  });
-
-  it('別コートなら寄与1.0', () => {
-    const courts = [
-      court(1, ['p0', 'p1'], ['p2', 'p3']),
-      court(2, ['p4', 'p5'], ['p6', 'p7']),
-    ];
-    const pairs = [{ a: 'p0', b: 'p4' }];
-    expect(computeAffinity(courts, [], pairs)).toBe(1.0);
-  });
-
-  it('片方以上がベンチなら寄与1.0', () => {
-    const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
-    const bench = ['p4'];
-    const pairs = [{ a: 'p0', b: 'p4' }];
-    expect(computeAffinity(courts, bench, pairs)).toBe(1.0);
-  });
-
-  it('評価対象ペア数で平均する（複数ペア）', () => {
-    const courts = [
-      court(1, ['p0', 'p1'], ['p2', 'p3']),
-      court(2, ['p4', 'p5'], ['p6', 'p7']),
-    ];
-    const pairs = [
-      { a: 'p0', b: 'p1' }, // 味方 → 0
-      { a: 'p0', b: 'p4' }, // 別コート → 1.0
-    ];
-    expect(computeAffinity(courts, [], pairs)).toBeCloseTo(0.5);
-  });
-
-  it('対象ペアが0件なら0（未登録・両者ともプールに現れないペアも対象外）', () => {
-    const courts = [court(1, ['p0', 'p1'], ['p2', 'p3'])];
-    expect(computeAffinity(courts, [], [])).toBe(0);
-    // 登録はされているが両者ともコート・ベンチのどちらにも現れないペア
-    const pairs = [{ a: 'x0', b: 'x1' }];
-    expect(computeAffinity(courts, [], pairs)).toBe(0);
-  });
-});
-
-describe('assignRoundByObjective: affinity（ペア希望・normal）', () => {
-  it('回帰の担保: affinity の重みを0にすれば、希望ペアを登録しても配置は変わらない', () => {
-    // 8人ちょうど・2コート。rankById が id の数字順そのままなので、
-    // wideSpanThreshold なしの初期解は実力順に [p0-p3] / [p4-p7] へ素直に分かれる。
-    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-    const baseParams = {
+describe('コート内の最大−最小（凸の点数）: 小人数でも大きく離れた組を避ける', () => {
+  // 12人・1コート。優先度は p0 と p11（両端）が最優先、p5・p6 が次点。
+  // 点数が線形・小さいと両端 p0×p11 が同じコートに入るが、既定の点数表（knee 超えの上乗せ）は避ける
+  const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
+  const deviationById = devByOrder(candidates.map(p => p.id), 2.5); // p0=80 ... p11=52.5（幅27.5: 極端（30）未満）
+  const go = () =>
+    run({
       candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 8,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-    };
-
-    const baseline = assignRoundByObjective(baseParams);
-    const withZeroWeight = assignRoundByObjective({
-      ...baseParams,
-      // 実力差の大きい p0-p7 を登録しても、重み0なら効かないはず
-      affinityPairs: [{ a: 'p0', b: 'p7' }],
-      weights: { affinity: 0 },
+      courtIds: [1],
+      deviationById,
+      priorityScoreOf: p => (p.id === 'p0' || p.id === 'p11' ? 0 : p.id === 'p5' || p.id === 'p6' ? 0.5 : 1),
     });
 
-    expect(withZeroWeight).toEqual(baseline);
+  it('幅の点数を切ると両端が同居する（効果を確かめる対照）', () => {
+    const ids = withTable({ courtSpan: 0, courtSpanExcess: 0 }, () => idsOf(go()));
+    expect(ids.has('p0') && ids.has('p11')).toBe(true);
+  });
+
+  it('既定の点数表では、両端（偏差差27.5）の同居を避ける', () => {
+    const ids = idsOf(go());
+    expect(ids.has('p0') && ids.has('p11')).toBe(false);
+  });
+});
+
+describe('男女バランスとチーム分け', () => {
+  // 偏差: m0=62, f0=54, f1=46, m1=38。男男 vs 女女は完全に釣り合う（差0）が、
+  // MIX×MIX の最良も差16（平均差8 = 16点）に収まる
+  const candidates = [
+    makePlayer('m0', { gender: 'M' }),
+    makePlayer('f0', { gender: 'F' }),
+    makePlayer('f1', { gender: 'F' }),
+    makePlayer('m1', { gender: 'M' }),
+  ];
+  const deviationById = new Map([['m0', 62], ['f0', 54], ['f1', 46], ['m1', 38]]);
+  const malesInA = (r: ReturnType<typeof run>) =>
+    r[0].teamA.filter(id => candidates.find(p => p.id === id)!.gender === 'M').length;
+
+  it('2M2F のコートは男女戦（男男 vs 女女）にせず MIX×MIX に分ける（男女比調整 ON）', () => {
+    const result = run({ candidates, courtIds: [1], deviationById });
+    expect(malesInA(result)).toBe(1);
+  });
+
+  it('男女比調整 OFF なら、実力が釣り合う男女戦を許容する（点数が小さいので釣り合いが勝つ）', () => {
+    const result = run({ candidates, courtIds: [1], deviationById, genderBalanceMode: false });
+    expect(malesInA(result)).not.toBe(1);
+  });
+
+  it('3-1 が避けられるなら 2-2 / 4-0 を選ぶ（偏差が同じ6人から4人）', () => {
+    const six = [
+      ...['a', 'b', 'c', 'd'].map(id => makePlayer(id, { gender: 'M' as const })),
+      ...['e', 'f'].map(id => makePlayer(id, { gender: 'F' as const })),
+    ];
+    const result = run({
+      candidates: six,
+      courtIds: [1],
+      deviationById: new Map(six.map(p => [p.id, 50] as const)),
+      priorityScoreOf: () => 0,
+    });
+    const females = [...idsOf(result)].filter(id => six.find(p => p.id === id)!.gender === 'F').length;
+    expect([0, 2, 4]).toContain(females); // 1人・3人（3-1）にはならない
+  });
+});
+
+describe('ペア希望（normal）', () => {
+  const eight = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+  const eightDev = devByOrder(eight.map(p => p.id));
+
+  it('回帰の担保: pairPref を0にすれば、希望ペアを登録しても配置は変わらない', () => {
+    const base = { candidates: eight, courtIds: [1, 2], deviationById: eightDev };
+    const baseline = run(base);
+    const zero = withTable({ pairPref: 0 }, () => run({ ...base, affinityPairs: [{ a: 'p0', b: 'p7' }] }));
+    expect(zero).toEqual(baseline);
   });
 
   it('比較用: 希望が無ければ p0 と p7 は別コートになる（下のテストが空回りしていないことの確認）', () => {
-    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 8,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-    });
-    const courtOf = (id: string) =>
-      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
-    expect(courtOf('p0').courtId).not.toBe(courtOf('p7').courtId);
+    const result = run({ candidates: eight, courtIds: [1, 2], deviationById: eightDev });
+    expect(courtOf(result, 'p0').courtId).not.toBe(courtOf(result, 'p7').courtId);
   });
 
-  it('希望ペアが味方として配置される（実力差を押し切るだけの重みを与える）', () => {
-    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 8,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-      affinityPairs: [{ a: 'p0', b: 'p7' }],
-      weights: { affinity: 20 }, // skillGap 等を押し切れる大きさ
-    });
-
-    const courtOf = (id: string) =>
-      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
-    const courtP0 = courtOf('p0');
-    const courtP7 = courtOf('p7');
-    expect(courtP0.courtId).toBe(courtP7.courtId);
-    const sameTeam =
-      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p7')) ||
-      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p7'));
-    expect(sameTeam).toBe(true); // 同コートに集めるだけでなく味方になっている（splitCost 側の担保）
-  });
-
-  // 2026-09-01: 飽和（実績比率ベースの deficit・TARGET_RATIO）を廃止したため、
-  // 「目標到達（deficit=0）なら効果が無い」というテストは意味を失った
-  // （対象ペアは常に最大強度で、実績に関係なく効き続ける）。削除した。
-  // 「評価対象ペア数で平均する」（分母＝予算制）という性質自体は
-  // `computeAffinity` の単体テスト（上の「評価対象ペア数で平均する
-  // （複数ペア）」）で引き続き担保している。
-});
-
-describe('assignRoundByObjective: 実運用バグ — 同性の希望ペアが2-2コートで敵にされる', () => {
-  // 実運用報告: strength: 'normal' の希望ペアを設定した同性2人が「同じコートには
-  // 入ったのにペア（味方）にならず、敵同士になった」。
-  //
-  // 原因（修正前の splitCost の重み比較。既定重み: competitive=1.0 / mixSplit=1.0 /
-  // affinity=1.0、`AffinityPair` 1組なので affinityTargetCount=1、修正前の
-  // 「同コートで敵」の寄与は 0.5）。4人を実力順 a<b<c<d、希望ペアが両端 (a, d) で、
-  // b, c が希望ペアと逆の性別（a, d が男性、b, c が女性）だとする:
-  //
-  //   [a,d]vs[b,c]（味方）: competitive=0/7          mixSplit=1.0（男男 vs 女女）  affinity=0      → 合計 1.0
-  //   [a,c]vs[b,d]（敵）  : competitive=2/7=0.286     mixSplit=0                    affinity=0.5    → 合計 0.786
-  //   [a,b]vs[c,d]（敵）  : competitive=4/7=0.571     mixSplit=0                    affinity=0.5    → 合計 1.071
-  //
-  // 「敵にして mixSplit を回避する」(0.786) が「味方にして男女戦にする」(1.0) より
-  // 常に安い（mixSplit の重み1.0 が affinity の最大寄与 0.5 を上回るため）。
-  // `normalizeSplit` はコスト最小の分け方を選ぶので、必ず敵同士に割られていた
-  // （2026-09-17 に発見・再現。詳細な数値と bench 実測は
-  // `docs/plans/2026-08-31-pair-preference.md` 追記を参照）。
-  //
-  // ## 2026-09-17 の修正（当初）: 「男女戦を増やさない」を絶対条件として維持
-  //
-  // 当初は `AFFINITY_ENEMY_COST_SPLIT` を上げると mixSplit との綱引きに直接
-  // 勝ってしまい男女戦が増えるため、「3-1・男女戦を避ける」原則に反するとして
-  // 0.5 のまま変更せず、`computeAffinity`（大局評価）側だけを 1.0 に上げた。
-  // このテストの8人・ベンチ0という構成（コート構成を組み替える余地が無い
-  // 最悪ケース）は、大局評価をどれだけ強めても解消しない残存ケースとして
-  // 「敵に分けられたまま」であることをここで担保していた。
-  //
-  // ## 2026-09-19: 運用者判断による仕様変更（今回の変更）
-  //
-  // 「ペア希望が登録されているコートに限り、男女戦（男男 vs 女女）を許容する」
-  // 方針に変更された（`docs/plans/2026-08-31-pair-preference.md` 追記
-  // 「運用者判断による仕様変更（2026-09-19）」参照）。`AFFINITY_ENEMY_COST_SPLIT`
-  // を `mixSplit`（重み1.0）に確実に勝つ値（0.5→**1.2**）まで引き上げたため、
-  // **この最悪ケースも含めて味方になる**（＝このコートは男女戦になる）よう
-  // 直った。希望ペアを含まないコートはこの分岐（`affinityPairs` に対象ペアが
-  // 無い）に一切入らないため mixSplit がそのまま効き、男女戦は増えない
-  // （下の「希望ペアを含まないコートでは男女戦にしない」テスト参照）。
-  it('2026-09-19 仕様変更で直った: 同性の希望ペア（両端の実力・逃げ道が無い8人）は2-2コートで味方になる（男女戦を許容）', () => {
-    // 8人・2コート。wideSpanThreshold なし（8人 < 14人）なので、初期解は
-    // 実力順の先頭4人（p0〜p3）がそのままコート1に入る。ベンチ0人＝コート構成を
-    // 組み替える余地が無い、意図的な最悪ケース。
-    const candidates = [
-      makePlayer('p0', { gender: 'M' }), // 希望ペア（両端の実力: p0 と p3）
-      makePlayer('p1', { gender: 'F' }),
-      makePlayer('p2', { gender: 'F' }),
-      makePlayer('p3', { gender: 'M' }),
-      makePlayer('p4', { gender: 'M' }),
-      makePlayer('p5', { gender: 'F' }),
-      makePlayer('p6', { gender: 'M' }),
-      makePlayer('p7', { gender: 'F' }),
-    ];
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 8,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-      affinityPairs: [{ a: 'p0', b: 'p3' }], // strength: 'normal' 相当
-      // weights は既定値（DEFAULT_WEIGHTS）のまま = 本番と同じ挙動を再現する
-    });
-
-    const courtOf = (id: string) =>
-      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
-    const courtP0 = courtOf('p0');
-    const courtP3 = courtOf('p3');
-
-    // 設計意図: 「同じコートに入ったなら味方にする」。まず同じコートに入ることを確認。
-    expect(courtP0.courtId).toBe(courtP3.courtId);
-
-    // 仕様変更後: この最悪ケースでも味方になる（＝男女戦を許容する）。
-    const sameTeam =
-      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p3')) ||
-      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p3'));
-    expect(sameTeam).toBe(true);
-
-    // 男女戦（男男 vs 女女）になっていることも確認する（意図した結果であることの担保）。
-    const genders = [...courtP0.teamA, ...courtP0.teamB].map(
-      id => candidates.find(p => p.id === id)!.gender
+  it('希望ペアが味方として配置される（実力差を押し切るだけの点を与える）', () => {
+    const result = withTable({ pairPref: 300 }, () =>
+      run({ candidates: eight, courtIds: [1, 2], deviationById: eightDev, affinityPairs: [{ a: 'p0', b: 'p7' }] })
     );
-    const maleInTeamA = courtP0.teamA.filter(
-      id => candidates.find(p => p.id === id)!.gender === 'M'
-    ).length;
-    if (genders.filter(g => g === 'M').length === 2) {
-      expect(maleInTeamA === 0 || maleInTeamA === 2).toBe(true); // 男女戦（男男 vs 女女）
-    }
+    expect(courtOf(result, 'p0').courtId).toBe(courtOf(result, 'p7').courtId);
+    expect(areTeammates(result, 'p0', 'p7')).toBe(true); // 同コートに集めるだけでなく味方になっている
   });
 
-  it('希望ペアを含まないコートでは男女戦にしない（今回の仕様変更の適用範囲の担保）', () => {
-    // 上と全く同じ8人・同じ実力順・同じ性別構成だが、希望ペアを**登録しない**。
-    // splitCost の affinity 項は affinityPairs が空なら一切加算されないので、
-    // mixSplit（重み1.0）がそのまま効き、2-2 は必ず MIX×MIX に分かれる
-    // （＝男女戦にならない）ことを確認する。
-    const candidates = [
-      makePlayer('p0', { gender: 'M' }),
-      makePlayer('p1', { gender: 'F' }),
-      makePlayer('p2', { gender: 'F' }),
-      makePlayer('p3', { gender: 'M' }),
-      makePlayer('p4', { gender: 'M' }),
-      makePlayer('p5', { gender: 'F' }),
-      makePlayer('p6', { gender: 'M' }),
-      makePlayer('p7', { gender: 'F' }),
-    ];
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 8,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-      // affinityPairs 省略 = 希望ペアなし
-    });
-
-    for (const court of result) {
-      const ids = [...court.teamA, ...court.teamB];
-      const genders = ids.map(id => candidates.find(p => p.id === id)!.gender);
-      const maleCount = genders.filter(g => g === 'M').length;
-      if (genders.every(g => g === 'M' || g === 'F') && maleCount === 2) {
-        const maleInTeamA = court.teamA.filter(
-          id => candidates.find(p => p.id === id)!.gender === 'M'
-        ).length;
-        expect(maleInTeamA).toBe(1); // 2-2 なら必ず MIX×MIX（男女戦ではない）
-      }
-    }
+  it('既定の点数でも、同じコートに入った希望ペアは敵にならない（隣り合う実力）', () => {
+    const result = run({ candidates: eight, courtIds: [1, 2], deviationById: eightDev, affinityPairs: [{ a: 'p0', b: 'p1' }] });
+    expect(courtOf(result, 'p0').courtId).toBe(courtOf(result, 'p1').courtId);
+    expect(areTeammates(result, 'p0', 'p1')).toBe(true);
   });
 
-  it('複数の希望ペアが登録されていても、それを含まないコートは男女戦にしない（無関係コートへの波及がないことの担保）', () => {
-    // 16人・4コート。p0-p3（同性・両端実力）を希望ペアとして登録する。
-    // それとは無関係な q グループ（希望ペア非対象）のコートが男女戦に
-    // ならないことを確認する（`affinityTargetCount` で割らなくなった
-    // ことで、無関係コートへ影響が漏れていないかの回帰）。
-    const worst = [
-      makePlayer('p0', { gender: 'M' }),
-      makePlayer('p1', { gender: 'F' }),
-      makePlayer('p2', { gender: 'F' }),
-      makePlayer('p3', { gender: 'M' }),
-      makePlayer('p4', { gender: 'M' }),
-      makePlayer('p5', { gender: 'F' }),
-      makePlayer('p6', { gender: 'M' }),
-      makePlayer('p7', { gender: 'F' }),
-    ];
-    const extra = [
-      makePlayer('q0', { gender: 'M' }),
-      makePlayer('q1', { gender: 'F' }),
-      makePlayer('q2', { gender: 'F' }),
-      makePlayer('q3', { gender: 'M' }),
-      makePlayer('q4', { gender: 'M' }),
-      makePlayer('q5', { gender: 'F' }),
-      makePlayer('q6', { gender: 'M' }),
-      makePlayer('q7', { gender: 'F' }),
-    ];
+  // 実運用バグ（2026-09-17）の系統: 同性の希望ペアが 2-2 コートで敵にされる。
+  // 2026-09-19 の運用者判断: 「希望ペアが登録されているコートに限り男女戦を許容する」。
+  const worst = [
+    makePlayer('p0', { gender: 'M' }), // 希望ペア（両端の実力: p0 と p3）
+    makePlayer('p1', { gender: 'F' }),
+    makePlayer('p2', { gender: 'F' }),
+    makePlayer('p3', { gender: 'M' }),
+    makePlayer('p4', { gender: 'M' }),
+    makePlayer('p5', { gender: 'F' }),
+    makePlayer('p6', { gender: 'M' }),
+    makePlayer('p7', { gender: 'F' }),
+  ];
+  const worstDev = devByOrder(worst.map(p => p.id));
+  const genderOf = (id: string) => worst.find(p => p.id === id)!.gender;
+  const isMixSplit = (c: { teamA: string[]; teamB: string[] }) => {
+    const ids = [...c.teamA, ...c.teamB];
+    const gs = ids.map(genderOf);
+    if (gs.filter(g => g === 'M').length !== 2) return false;
+    const m = c.teamA.filter(id => genderOf(id) === 'M').length;
+    return m === 0 || m === 2;
+  };
+
+  it('同性の希望ペア（両端の実力・逃げ道が無い8人）は2-2コートで味方になる（男女戦を許容）', () => {
+    const result = run({ candidates: worst, courtIds: [1, 2], deviationById: worstDev, affinityPairs: [{ a: 'p0', b: 'p3' }] });
+    expect(courtOf(result, 'p0').courtId).toBe(courtOf(result, 'p3').courtId);
+    expect(areTeammates(result, 'p0', 'p3')).toBe(true);
+    expect(isMixSplit(courtOf(result, 'p0'))).toBe(true); // 男女戦（男男 vs 女女）
+  });
+
+  it('希望ペアを含まないコートでは男女戦にしない', () => {
+    const result = run({ candidates: worst, courtIds: [1, 2], deviationById: worstDev });
+    for (const court of result) expect(isMixSplit(court)).toBe(false);
+  });
+
+  it('複数コートで希望ペアを登録しても、それを含まないコートは男女戦にしない（無関係コートへの波及なし）', () => {
+    const extra = worst.map(p => makePlayer(p.id.replace('p', 'q'), { gender: p.gender }));
     const candidates = [...worst, ...extra];
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2, 3, 4],
-      rankById,
-      rosterSize: candidates.length,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-      affinityPairs: [{ a: 'p0', b: 'p3' }], // q グループは希望ペア非対象
-    });
-
-    const p0p3CourtId = result.find(c =>
-      [...c.teamA, ...c.teamB].includes('p0')
-    )!.courtId;
-
+    const deviationById = devByOrder(candidates.map(p => p.id), 2);
+    const result = run({ candidates, courtIds: [1, 2, 3, 4], deviationById, affinityPairs: [{ a: 'p0', b: 'p3' }] });
+    const pairCourt = courtOf(result, 'p0').courtId;
+    const g = (id: string) => candidates.find(p => p.id === id)!.gender;
     for (const court of result) {
-      if (court.courtId === p0p3CourtId) continue; // 希望ペアを含むコートは対象外
-      const ids = [...court.teamA, ...court.teamB];
-      const genders = ids.map(id => candidates.find(p => p.id === id)!.gender);
-      const maleCount = genders.filter(g => g === 'M').length;
-      if (genders.every(g => g === 'M' || g === 'F') && maleCount === 2) {
-        const maleInTeamA = court.teamA.filter(
-          id => candidates.find(p => p.id === id)!.gender === 'M'
-        ).length;
-        expect(maleInTeamA).toBe(1); // 希望ペアを含まないコートは常に MIX×MIX
+      if (court.courtId === pairCourt) continue;
+      const gs = [...court.teamA, ...court.teamB].map(g);
+      if (gs.filter(x => x === 'M').length === 2) {
+        expect(court.teamA.filter(id => g(id) === 'M').length).toBe(1);
       }
     }
   });
 
-
-  it('比較用: 異性の希望ペア（同条件）は mixSplit と衝突しないので味方になる', () => {
-    // p0(M) と p1(F) を希望ペアにする。この2人を同チームにしても
-    // 2-2 の性別構成は保てるので mixSplit は発生しない。affinity だけで解決する
-    // シンプルなケースであり、上のテストが「同性特有」の問題であることの対照。
-    const candidates = [
-      makePlayer('p0', { gender: 'M' }),
-      makePlayer('p1', { gender: 'F' }), // 希望ペア相手
-      makePlayer('p2', { gender: 'F' }),
-      makePlayer('p3', { gender: 'M' }),
-      makePlayer('p4', { gender: 'M' }),
-      makePlayer('p5', { gender: 'F' }),
-      makePlayer('p6', { gender: 'M' }),
-      makePlayer('p7', { gender: 'F' }),
-    ];
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 8,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-      affinityPairs: [{ a: 'p0', b: 'p1' }],
-    });
-
-    const courtOf = (id: string) =>
-      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
-    const courtP0 = courtOf('p0');
-    const courtP1 = courtOf('p1');
-    expect(courtP0.courtId).toBe(courtP1.courtId);
-    const sameTeam =
-      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p1')) ||
-      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p1'));
-    expect(sameTeam).toBe(true);
+  it('比較用: 異性の希望ペアは男女戦と衝突しないので味方になる', () => {
+    const result = run({ candidates: worst, courtIds: [1, 2], deviationById: worstDev, affinityPairs: [{ a: 'p0', b: 'p1' }] });
+    expect(courtOf(result, 'p0').courtId).toBe(courtOf(result, 'p1').courtId);
+    expect(areTeammates(result, 'p0', 'p1')).toBe(true);
   });
 
-  it('案C（2026-09-17 追記）: 男女戦に関係ない場面で competitive に負けていたケースが直る', () => {
-    // コーディネーター指摘の残存経路（男女戦とは無関係）を再現・確認する回帰テスト。
-    // 性別未設定（男女戦の判定対象外 = mixSplit は常に無効）の8人・2コート、
-    // 希望ペアが実力隣接の下位2人（p0, p1）。4人を実力順 a<b<c<d とすると
-    // 希望ペア=(a,b) で、これを味方にすると competitive の不均衡が最大になる
-    // （残り2人 c,d も強制的に組まされるため）:
-    //
-    //   [a,d]|[b,c]（敵）: competitive=0/7=0        affinity(旧0.5) → 合計0.5 ← 旧は最小
-    //   [a,b]|[c,d]（味方）: competitive=4/7=0.571   affinity=0      → 合計0.571
-    //
-    // 旧既定（`AFFINITY_ENEMY_COST_SPLIT_SAFE`相当が0.5）では 0.5 < 0.571 で
-    // 「敵に分ける」が勝っていた。`AFFINITY_ENEMY_COST_SPLIT_SAFE`（既定1.0）に
-    // 上げると 1.0 > 0.571 で「味方にする」が勝つ。mixSplit が一切絡まない
-    // （性別未設定）ので、男女戦を増やす経路が無いままこのケースだけ直る。
-    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`)); // gender未設定
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 8,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-      affinityPairs: [{ a: 'p0', b: 'p1' }], // 実力隣接の下位2人
-      // weights・AFFINITY_ENEMY_COST_SPLIT_SAFE は既定値のまま（本番と同じ）
-    });
-
-    const courtOf = (id: string) =>
-      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
-    const courtP0 = courtOf('p0');
-    const courtP1 = courtOf('p1');
-    expect(courtP0.courtId).toBe(courtP1.courtId);
-    const sameTeam =
-      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p1')) ||
-      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p1'));
-    expect(sameTeam).toBe(true); // 案C適用後は味方になる（旧既定では敵だった）
+  it('性別未設定でも、実力が隣接する希望ペアは味方になる（チームの釣り合いに負けない）', () => {
+    // 希望ペアが下位2人 (p6,p7) だと [a,b]|[c,d] で釣り合いが最も崩れる並び
+    const result = run({ candidates: eight, courtIds: [1, 2], deviationById: eightDev, affinityPairs: [{ a: 'p6', b: 'p7' }] });
+    expect(courtOf(result, 'p6').courtId).toBe(courtOf(result, 'p7').courtId);
+    expect(areTeammates(result, 'p6', 'p7')).toBe(true);
   });
 });
 
-describe('assignRoundByObjective: strong（ペア希望・強度「必ず」のハード制約）', () => {
-  it('回帰の担保: mixSplit と衝突する同性ペアでも strong なら必ず味方になる（男女戦バグ修正の影響を受けない）', () => {
-    // 上の「実運用バグ」テストと全く同じ人数構成（同性ペアが両端の実力・2-2・
-    // ベンチ0）で、`strength: 'normal'` の代わりに `strong` を使う。本番の配線
-    // （`algorithm.ts`）は strong なペアも `affinityPairs` と `strongPairs` の
-    // 両方に同時に現れるので、ここでも両方渡して再現する。
-    // ハード制約（`violations`）は目的関数より辞書式で先に評価されるため
-    // （`compareEval`）、`AFFINITY_ENEMY_COST` / `AFFINITY_ENEMY_COST_SPLIT` の
-    // 値を変更しても strong の「必ず味方」は影響を受けない、という回帰テスト。
+describe('ペア希望「必ず」（strong）のハード制約', () => {
+  const eight = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
+  const twelve = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
+
+  it('回帰: 男女戦と衝突する同性ペアでも strong なら必ず味方になる', () => {
     const candidates = [
-      makePlayer('p0', { gender: 'M' }),
-      makePlayer('p1', { gender: 'F' }),
-      makePlayer('p2', { gender: 'F' }),
-      makePlayer('p3', { gender: 'M' }),
-      makePlayer('p4', { gender: 'M' }),
-      makePlayer('p5', { gender: 'F' }),
-      makePlayer('p6', { gender: 'M' }),
-      makePlayer('p7', { gender: 'F' }),
+      makePlayer('p0', { gender: 'M' }), makePlayer('p1', { gender: 'F' }),
+      makePlayer('p2', { gender: 'F' }), makePlayer('p3', { gender: 'M' }),
+      makePlayer('p4', { gender: 'M' }), makePlayer('p5', { gender: 'F' }),
+      makePlayer('p6', { gender: 'M' }), makePlayer('p7', { gender: 'F' }),
     ];
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 8,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-      affinityPairs: [{ a: 'p0', b: 'p3' }],
-      strongPairs: [{ a: 'p0', b: 'p3' }],
-    });
-
-    const courtOf = (id: string) =>
-      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
-    const courtP0 = courtOf('p0');
-    const courtP3 = courtOf('p3');
-    expect(courtP0.courtId).toBe(courtP3.courtId);
-    const sameTeam =
-      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p3')) ||
-      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p3'));
-    expect(sameTeam).toBe(true); // strong は男女戦になっても必ず味方にする
+    // 実運用の配線どおり affinityPairs と strongPairs の両方に載せる。ハードは点数より先に評価される
+    const result = withTable({ pairPref: 0 }, () =>
+      run({
+        candidates, courtIds: [1, 2], deviationById: devByOrder(candidates.map(p => p.id)),
+        affinityPairs: [{ a: 'p0', b: 'p3' }], strongPairs: [{ a: 'p0', b: 'p3' }],
+      })
+    );
+    expect(courtOf(result, 'p0').courtId).toBe(courtOf(result, 'p3').courtId);
+    expect(areTeammates(result, 'p0', 'p3')).toBe(true);
   });
 
   it('両方が出るなら必ず味方になる（候補=必要人数ちょうど・ベンチ0でも解が返る）', () => {
-    // 8人ちょうど・2コート（ベンチ0）。この条件自体が「候補が必要人数ちょうど」の
-    // 回帰テストを兼ねる。
-    const candidates = Array.from({ length: 8 }, (_, i) => makePlayer(`p${i}`));
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 8,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
+    const result = run({
+      candidates: eight, courtIds: [1, 2], deviationById: devByOrder(eight.map(p => p.id)),
       strongPairs: [{ a: 'p0', b: 'p7' }],
     });
-
     expect(result).toHaveLength(2);
-    expect(new Set(result.flatMap(c => [...c.teamA, ...c.teamB])).size).toBe(8);
-
-    const courtOf = (id: string) =>
-      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
-    const courtP0 = courtOf('p0');
-    const courtP7 = courtOf('p7');
-    expect(courtP0.courtId).toBe(courtP7.courtId);
-    const sameTeam =
-      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p7')) ||
-      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p7'));
-    expect(sameTeam).toBe(true);
+    expect(idsOf(result).size).toBe(8);
+    expect(courtOf(result, 'p0').courtId).toBe(courtOf(result, 'p7').courtId);
+    expect(areTeammates(result, 'p0', 'p7')).toBe(true);
   });
 
-  // 2026-09-01 仕様変更: (a)「両方出るなら必ず味方」に加えて
-  // (b)「2人一緒に出るか、2人とも控えるか」もハード制約にした。
-  // 「片方だけの出場は許される」という旧テストは意味を失った（(b) 違反に
-  // なるため、まだ順番でない方を引っ張り込むか、順番が来ている方も控えに
-  // 回すかのどちらかで解決する）。以下、両方のケースをテストする。
-
   it('片方の順番だけ来ているとき、窓の内側なら引っ張り込んで2人そろって出場する', () => {
-    // 12人・2コート（必要8・余剰4）。窓（FAIRNESS_WINDOW_RATIO=0.7）は
-    // windowLimit = 8 + ceil(4*0.7) = 11 なので、優先度順11番目（p10、0始まり）
-    // までは出場させてよい。p9 は窓の内側（初期解では素直な優先度順どおり
-    // p0〜p7 が選ばれ p9 はベンチだが、(b) を満たすために引っ張り込める）。
-    const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 12,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
+    // 12人・2コート（必要8・余剰4）。窓は 8 + ceil(4×0.7) = 11 番目まで。p9 は窓の内側
+    const result = run({
+      candidates: twelve, courtIds: [1, 2], deviationById: devByOrder(twelve.map(p => p.id), 2),
       strongPairs: [{ a: 'p0', b: 'p9' }],
     });
-
     expect(result).toHaveLength(2);
-    const playing = new Set(result.flatMap(c => [...c.teamA, ...c.teamB]));
-    expect(playing.has('p0')).toBe(true);
-    expect(playing.has('p9')).toBe(true); // 窓の内側なので引っ張り込まれる
-
-    const courtOf = (id: string) =>
-      result.find(c => [...c.teamA, ...c.teamB].includes(id))!;
-    const courtP0 = courtOf('p0');
-    const courtP9 = courtOf('p9');
-    expect(courtP0.courtId).toBe(courtP9.courtId);
-    const sameTeam =
-      (courtP0.teamA.includes('p0') && courtP0.teamA.includes('p9')) ||
-      (courtP0.teamB.includes('p0') && courtP0.teamB.includes('p9'));
-    expect(sameTeam).toBe(true); // 一緒に出るなら味方（(a) も同時に満たされる）
+    expect(idsOf(result).has('p0') && idsOf(result).has('p9')).toBe(true);
+    expect(courtOf(result, 'p0').courtId).toBe(courtOf(result, 'p9').courtId);
+    expect(areTeammates(result, 'p0', 'p9')).toBe(true);
   });
 
   it('相手が公平性の窓の外なら2人とも控えになる（解が返り、コートは埋まる）', () => {
-    // 12人・2コート（必要8・余剰4）。windowLimit=11 なので p11（優先度順
-    // 最下位・0始まりで11番目）は窓の外 — ハード制約なので引っ張り込めない。
-    // (b) を満たす唯一の道は p0 も控えに回すこと（行列は飛べないが、
-    // 控えに回るのは誰の順番も追い越さないので窓と衝突しない）。
-    const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-
-    const result = assignRoundByObjective({
-      candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 12,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
+    const result = run({
+      candidates: twelve, courtIds: [1, 2], deviationById: devByOrder(twelve.map(p => p.id), 2),
       strongPairs: [{ a: 'p0', b: 'p11' }],
     });
-
-    // 詰まらない: 例外を投げず、コート（必要8人）はちゃんと埋まる
     expect(result).toHaveLength(2);
-    const playing = new Set(result.flatMap(c => [...c.teamA, ...c.teamB]));
-    expect(playing.size).toBe(8);
-    // 2人とも控えに回っている（(b) 違反を避けるため）
-    expect(playing.has('p0')).toBe(false);
-    expect(playing.has('p11')).toBe(false);
+    expect(idsOf(result).size).toBe(8);
+    expect(idsOf(result).has('p0')).toBe(false);
+    expect(idsOf(result).has('p11')).toBe(false);
+  });
+
+  it('1コート（全列挙）でも (b) 2人一緒に出るか2人とも控えるかを守る', () => {
+    const result = run({
+      candidates: twelve, courtIds: [1], deviationById: devByOrder(twelve.map(p => p.id), 2),
+      strongPairs: [{ a: 'p0', b: 'p3' }],
+    });
+    const ids = idsOf(result);
+    expect(ids.has('p0')).toBe(ids.has('p3'));
+    if (ids.has('p0')) expect(areTeammates(result, 'p0', 'p3')).toBe(true);
   });
 
   it('実力差が大きくても例外を投げず解が返る（詰まない）', () => {
-    // 9人・2コート（必要8・余剰1）。p0-p8 の実力差（順位差8）は
-    // wideSpanThreshold=5 と衝突するため、両方を同時に出場させて味方にすると
-    // 必ず順位差の制約に違反する。ベンチが1人分あるので、どちらかを
-    // ベンチへ回せば両方の制約を満たせる解が存在する。
+    // 9人・2コート（必要8・余剰1）。p0-p8 は 24 離れる。極端の閾値を 15 に下げ、
+    // 両方を同時に出して味方にすると他の2人が必ず違反する状況でも詰まらないこと
     const candidates = Array.from({ length: 9 }, (_, i) => makePlayer(`p${i}`));
-    const rankById = rankByIdFrom(candidates.map(p => p.id));
-    const runParams = {
-      candidates,
-      courtIds: [1, 2],
-      rankById,
-      rosterSize: 9,
-      priorityScoreOf,
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: 5,
-      preferGenderMix: false,
+    const params = {
+      candidates, courtIds: [1, 2], deviationById: devByOrder(candidates.map(p => p.id)),
       strongPairs: [{ a: 'p0', b: 'p8' }],
     };
-
-    expect(() => assignRoundByObjective(runParams)).not.toThrow();
-
-    const result = assignRoundByObjective(runParams);
-    expect(result).toHaveLength(2);
-    const allIds = result.flatMap(c => [...c.teamA, ...c.teamB]);
-    expect(new Set(allIds).size).toBe(8); // 重複なく8人配置される（1人はベンチ）
-
-    // 両者が同時に出場しているなら味方になっているはず（strong 制約は生きている）。
-    // トレードオフで順位差制約に違反する可能性は plan 3d の想定どおり許容する。
-    const playing = new Set(allIds);
-    if (playing.has('p0') && playing.has('p8')) {
-      const court = result.find(c => [...c.teamA, ...c.teamB].includes('p0'))!;
-      const sameTeam =
-        (court.teamA.includes('p0') && court.teamA.includes('p8')) ||
-        (court.teamB.includes('p0') && court.teamB.includes('p8'));
-      expect(sameTeam).toBe(true);
-    }
+    withTable({ extremeSpan: 15 }, () => {
+      expect(() => run(params)).not.toThrow();
+      const result = run(params);
+      expect(result).toHaveLength(2);
+      expect(idsOf(result).size).toBe(8);
+      if (idsOf(result).has('p0') && idsOf(result).has('p8')) expect(areTeammates(result, 'p0', 'p8')).toBe(true);
+    });
   });
 });
 
-describe('assignRoundByObjective: recency（連続出場を嫌う）', () => {
-  // 5人・1コート（4人必要）。全員 gamesPlayed が同じなので優先度は完全に同点で、
-  // タイブレーク（実力順位 → ID）により既定では p0〜p3 が選ばれる。
-  // p3 だけが「たった今終わったコートに居た（連続候補）」状態を作り、recency がこの同点を
-  // 崩して p4 を選ぶかどうかを見る。
-  const candidates = Array.from({ length: 5 }, (_, i) => makePlayer(`p${i}`));
-  const rankById = rankByIdFrom(candidates.map(p => p.id));
-  const baseParams = {
-    candidates,
-    courtIds: [1],
-    rankById,
-    rosterSize: 5,
-    priorityScoreOf: () => 0, // 全員同点（＝試合数が同じ）
-    pairCounts: emptyPairCounts(),
-    pairKeyOf: pairKey,
-    wideSpanThreshold: null,
-    preferGenderMix: false,
-  };
-  const pickedIds = (result: ReturnType<typeof assignRoundByObjective>) =>
-    new Set(result.flatMap(c => [...c.teamA, ...c.teamB]));
-
-  it('比較用: streak を渡さなければ p3 が選ばれる（下のテストが空回りしていない確認）', () => {
-    const picked = pickedIds(assignRoundByObjective(baseParams));
-    expect(picked.has('p3')).toBe(true);
-    expect(picked.has('p4')).toBe(false);
-  });
-
-  it('試合数が同じなら、連続出場が続いている人より休んでいる人が選ばれる', () => {
-    const picked = pickedIds(
-      assignRoundByObjective({
-        ...baseParams,
-        // p3 は4連続で出ている。p4 は Map に無い＝連続していない
-        streakById: new Map([['p3', 4]]),
-        weights: { recency: 20 }, // 実力差・待ちの項を押し切れる大きさ
-      })
-    );
-    expect(picked.has('p4')).toBe(true);
-    expect(picked.has('p3')).toBe(false);
-  });
-
-  it('2連続目（streak=1）でも、他が同条件なら休んでいる人に道を譲る（軽いコスト）', () => {
-    // 2連続目のコストは 1 × 重み / 4。重みが十分なら同点の p4 が選ばれる
-    // （既定の重みで他の項と競るときは負ける＝「軽い」。bench は plan 参照）
-    const picked = pickedIds(
-      assignRoundByObjective({
-        ...baseParams,
-        streakById: new Map([['p3', 1]]),
-        // 5人ロースターでは skillGap の凸項（幅 p0〜p4 は1.0）が大きいので、それを押し切る重み。
-        // `waiting` は既定を 14 に上げる前（2026-10-02）の 4.0 に固定して、この項の効きを変えない
-        weights: { recency: 60, waiting: 4.0 },
-      })
-    );
-    expect(picked.has('p4')).toBe(true);
-    expect(picked.has('p3')).toBe(false);
-  });
-
-  it('2連続目のコストは軽い: 既定の重みでは、ほかに差が付く項があればそちらが勝つ', () => {
-    // p4 を優先度の最下位（＝試合数が多い）にすると、公平性の項は p3 を出す側に働く。
-    // 2連続目のコストはそれを覆さない（連続回避は強さ・公平より優先しない）
-    const picked = pickedIds(
-      assignRoundByObjective({
-        ...baseParams,
-        priorityScoreOf: (p: Player) => (p.id === 'p4' ? 5 : 0),
-        streakById: new Map([['p3', 1]]),
-      })
-    );
-    expect(picked.has('p3')).toBe(true);
-    expect(picked.has('p4')).toBe(false);
-  });
-
-  it('3連続目は既定の重みでまあまあ強く避ける（ソフト）', () => {
-    const picked = pickedIds(
-      assignRoundByObjective({
-        ...baseParams,
-        streakById: new Map([['p3', 2]]), // 今回3連続目
-        weights: { skillGap: 0 }, // 5人ロースターでは凸の skillGap 項が大きく、連続の効きだけを見るため外す
-      })
-    );
-    expect(picked.has('p4')).toBe(true);
-    expect(picked.has('p3')).toBe(false);
-  });
-
-  it('3連続目はハードではない: レベル差のハード制約（順位差）を破ってまでは避けない', () => {
-    // 順位差 4 以上は同居不可（閾値 4）。p4 を入れると p0 との差が 4 になり違反するので、
-    // 3連続目の p3 を出さざるを得ない（強さのハード制約 > 連続回避）
-    const picked = pickedIds(
-      assignRoundByObjective({
-        ...baseParams,
-        wideSpanThreshold: 4,
-        streakById: new Map([['p3', 2]]), // 今回3連続目
-      })
-    );
-    expect(picked.has('p3')).toBe(true);
-    expect(picked.has('p4')).toBe(false);
-  });
-
-  it('4連続目以上は公平性の差があっても強く避ける', () => {
-    const picked = pickedIds(
-      assignRoundByObjective({
-        ...baseParams,
-        priorityScoreOf: (p: Player) => (p.id === 'p4' ? 5 : 0),
-        streakById: new Map([['p3', 3]]), // 今回4連続目
-      })
-    );
-    expect(picked.has('p4')).toBe(true);
-    expect(picked.has('p3')).toBe(false);
-  });
-
-  it('hardFrom を上げると、3連続目は重み0でも違反として避ける（bench 用のハード側）', () => {
-    const original = RECENCY_STREAK_SHAPE.hardFrom;
-    RECENCY_STREAK_SHAPE.hardFrom = 3;
-    try {
-      const picked = pickedIds(
-        assignRoundByObjective({
-          ...baseParams,
-          streakById: new Map([['p3', 2]]), // 今回3連続目
-          weights: { recency: 0 },
-        })
-      );
-      expect(picked.has('p4')).toBe(true);
-      expect(picked.has('p3')).toBe(false);
-    } finally {
-      RECENCY_STREAK_SHAPE.hardFrom = original;
-    }
-  });
-
-  it('段階的: 2連続目の人と3連続目の人のどちらかを控えにするなら、3連続目の人を控える', () => {
-    const picked = pickedIds(
-      assignRoundByObjective({
-        ...baseParams,
-        streakById: new Map([
-          ['p2', 2], // 3連続目になる
-          ['p3', 1], // 2連続目になる
-        ]),
-        weights: { recency: 20 }, // 5人ロースターの skillGap 凸項を押し切る重み（段階の大小だけを見る）
-      })
-    );
-    expect(picked.has('p3')).toBe(true);
-    expect(picked.has('p2')).toBe(false);
-  });
-
-  it('避けられないとき（控えが居ない）は配置を諦めず、連続の人も出す', () => {
-    const four = candidates.slice(0, 4);
-    const result = assignRoundByObjective({
-      ...baseParams,
-      candidates: four,
-      rosterSize: 4,
-      streakById: new Map([['p0', 3], ['p1', 3], ['p2', 3], ['p3', 3]]),
-    });
-    expect(pickedIds(result).size).toBe(4);
-  });
-
-  it('重み0を明示すれば、2連続目までのコスト（ソフト側）は無効化できる', () => {
-    const baseline = assignRoundByObjective(baseParams);
-    const withZeroWeight = assignRoundByObjective({
-      ...baseParams,
-      streakById: new Map([['p3', 1]]),
-      weights: { recency: 0 },
-    });
-    expect(withZeroWeight).toEqual(baseline);
-  });
-
-  it('streakById を省略すればこの項は無効（既定の挙動を変えない）', () => {
-    const baseline = assignRoundByObjective(baseParams);
-    const withoutStreak = assignRoundByObjective({
-      ...baseParams,
-      weights: { recency: 20 },
-    });
-    expect(withoutStreak).toEqual(baseline);
-  });
-});
-
-describe('assignRoundByObjective: strong ペアの順位差は順位差ハード制約から除外する', () => {
-  // 回帰: 上位と下位を「必ず」にすると、同コートに置くと順位差違反（formRank と
-  // rankById の2件）、別々に出すと strong 違反（1件）で、辞書式の violations 比較
-  // では別々に出す方が勝ち、strong が破られていた。
-  // `docs/plans/2026-10-01-strong-pair-rank-span.md`
+describe('ペア「必ず」の2人の間の差は、極端な実力差の判定から除外する', () => {
+  // 回帰: 上位と下位を「必ず」にすると、同コートに置くと極端な実力差違反、別々に出すと strong 違反で、
+  // 違反数の比較では別々に出す方が勝ち、strong が破られていた。
+  // docs/plans/2026-10-01-strong-pair-rank-span.md
   const ids = Array.from({ length: 20 }, (_, i) => `p${i}`);
   const candidates = ids.map(id => makePlayer(id));
-  const rankById = rankByIdFrom(ids);
+  const deviationById = devByOrder(ids); // p0=80 ... p19=23
 
-  /** 出場回数の少ない順に回す決定的なラウンド進行（乱数なし） */
-  const simulate = (threshold: number, strongPairs: { a: string; b: string }[], rounds: number) => {
-    const plays = new Map(ids.map(id => [id, 0]));
-    let together = 0;
-    let onlyOne = 0;
-    let allTeammates = true;
-    let othersWithinSpan = true;
-    for (let r = 0; r < rounds; r++) {
-      const result = assignRoundByObjective({
-        candidates,
-        courtIds: [1, 2, 3],
-        rankById,
-        rosterSize: 20,
-        priorityScoreOf: p => plays.get(p.id)! * 100 + Number(p.id.slice(1)),
-        pairCounts: emptyPairCounts(),
-        pairKeyOf: pairKey,
-        wideSpanThreshold: threshold,
-        preferGenderMix: false,
-        strongPairs,
-      });
-      for (const c of result) {
-        for (const id of [...c.teamA, ...c.teamB]) plays.set(id, plays.get(id)! + 1);
-      }
-      for (const { a, b } of strongPairs) {
-        const courtA = result.find(c => [...c.teamA, ...c.teamB].includes(a));
-        const courtB = result.find(c => [...c.teamA, ...c.teamB].includes(b));
-        if (!courtA !== !courtB) onlyOne++;
-        if (courtA && courtB) {
-          together++;
-          const mate =
-            (courtA.teamA.includes(a) && courtA.teamA.includes(b)) ||
-            (courtA.teamB.includes(a) && courtA.teamB.includes(b));
-          if (courtA !== courtB || !mate) allTeammates = false;
-          // ペア以外の2人は、ペアの両方との差が閾値未満でなければならない
-          for (const id of [...courtA.teamA, ...courtA.teamB]) {
-            if (id === a || id === b) continue;
-            const rk = rankById.get(id)!;
-            if (
-              Math.abs(rk - rankById.get(a)!) >= threshold ||
-              Math.abs(rk - rankById.get(b)!) >= threshold
-            ) {
-              othersWithinSpan = false;
+  const simulate = (threshold: number, strongPairs: { a: string; b: string }[], rounds: number) =>
+    withTable({ extremeSpan: threshold }, () => {
+      const plays = new Map(ids.map(id => [id, 0]));
+      let together = 0;
+      let onlyOne = 0;
+      let allTeammates = true;
+      let othersWithinSpan = true;
+      for (let r = 0; r < rounds; r++) {
+        const result = run({
+          candidates, courtIds: [1, 2, 3], deviationById,
+          priorityScoreOf: p => plays.get(p.id)! * 100 + Number(p.id.slice(1)),
+          strongPairs,
+        });
+        for (const id of idsOf(result)) plays.set(id, plays.get(id)! + 1);
+        for (const { a, b } of strongPairs) {
+          const courtA = result.find(c => [...c.teamA, ...c.teamB].includes(a));
+          const courtB = result.find(c => [...c.teamA, ...c.teamB].includes(b));
+          if (!courtA !== !courtB) onlyOne++;
+          if (courtA && courtB) {
+            together++;
+            if (courtA !== courtB || !areTeammates(result, a, b)) allTeammates = false;
+            // ペア以外の2人は、ペアの両方との差が閾値未満でなければならない
+            for (const id of [...courtA.teamA, ...courtA.teamB]) {
+              if (id === a || id === b) continue;
+              if (
+                Math.abs(deviationById.get(id)! - deviationById.get(a)!) >= threshold ||
+                Math.abs(deviationById.get(id)! - deviationById.get(b)!) >= threshold
+              ) othersWithinSpan = false;
             }
           }
         }
       }
-    }
-    return { together, onlyOne, allTeammates, othersWithinSpan };
-  };
+      return { together, onlyOne, allTeammates, othersWithinSpan };
+    });
 
-  // 閾値10 では、ペア2人の差が 10 以上でも「ペア以外の2人が両方と閾値未満」に
-  // なれる組（p0×p10: p1〜p9 が該当）を使う。p0×p19 のように構造上その2人が
-  // 取れない組は、案A でも順位差違反が残るため対象外（plan 参照）。
+  // ペア2人の差が閾値以上でも「ペア以外の2人が両方と閾値未満」になれる組を使う
+  // （p0×p19 のように構造上その2人が取れない組は、除外しても違反が残るため対象外）
   const cases = [
-    { threshold: 10, pair: { a: 'p0', b: 'p10' } },
-    { threshold: Math.ceil(20 * (2 / 3)), pair: { a: 'p0', b: 'p19' } },
+    { threshold: 30, pair: { a: 'p0', b: 'p10' } }, // 差30
+    { threshold: 35, pair: { a: 'p0', b: 'p12' } }, // 差36（既定の 30 とは別の閾値でも成り立つ）
   ];
   for (const { threshold, pair } of cases) {
     it(`strong=[${pair.a},${pair.b}] は閾値${threshold}でも片方だけ出場せず、出場時は必ず味方`, () => {
@@ -1424,40 +619,85 @@ describe('assignRoundByObjective: strong ペアの順位差は順位差ハード
   }
 });
 
-describe('assignRoundByObjective: 小人数（ハード制約なし）でも順位が大きく離れた組を避ける（skillGap の凸ペナルティ）', () => {
-  // 12人・1コート。優先度は p0 と p11（両端）が最優先、p5・p6 が次点。
-  // 線形の skillGap（slope=0）では両端 p0×p11 が同じコートに入るが、
-  // 既定の凸形は幅が knee を超えるぶんを重くして、p0×p11 の同居を避ける。
-  // docs/plans/2026-10-02-rank-gap-soft.md
-  const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
-  const rankById = rankByIdFrom(candidates.map(p => p.id));
-  const run = () =>
-    assignRoundByObjective({
-      candidates,
-      courtIds: [1],
-      rankById,
-      rosterSize: 12,
-      priorityScoreOf: (p: Player) => (p.id === 'p0' || p.id === 'p11' ? 0 : p.id === 'p5' || p.id === 'p6' ? 0.5 : 1),
-      pairCounts: emptyPairCounts(),
-      pairKeyOf: pairKey,
-      wideSpanThreshold: null,
-      preferGenderMix: false,
-    });
-  const idsOf = (r: ReturnType<typeof assignRoundByObjective>) => new Set(r.flatMap(c => [...c.teamA, ...c.teamB]));
+describe('連続出場（2/3/4連続目の点）', () => {
+  // 5人・1コート（4人必要）。全員 priority 同点・偏差も同じなので、どの4人でも点は同じ。
+  // 連続の点が無ければ同点は優先度順の先頭に倒れ、p0〜p3 が選ばれる。
+  // p3 だけが「たった今終わったコートに居た（連続候補）」状態を作る
+  const candidates = Array.from({ length: 5 }, (_, i) => makePlayer(`p${i}`));
+  const deviationById = new Map(candidates.map(p => [p.id, 70] as const));
+  const base = { candidates, courtIds: [1], deviationById, priorityScoreOf: () => 0 };
 
-  it('線形（slope=0）では両端が同居する（凸形の効果を確かめる対照）', () => {
-    const original = { ...RANK_GAP_SOFT_SHAPE };
-    Object.assign(RANK_GAP_SOFT_SHAPE, { knee: 0, slope: 0, regMix: 0 });
-    try {
-      const ids = idsOf(run());
-      expect(ids.has('p0') && ids.has('p11')).toBe(true);
-    } finally {
-      Object.assign(RANK_GAP_SOFT_SHAPE, original);
-    }
+  it('比較用: streak を渡さなければ p3 が選ばれる（下のテストが空回りしていない確認）', () => {
+    const picked = idsOf(run(base));
+    expect(picked.has('p3')).toBe(true);
+    expect(picked.has('p4')).toBe(false);
   });
 
-  it('既定の凸形では、13人未満でも両端（順位差11）の同居を避ける', () => {
-    const ids = idsOf(run());
-    expect(ids.has('p0') && ids.has('p11')).toBe(false);
+  it('2連続目（streak=1）でも、他が同条件なら休んでいる人に道を譲る', () => {
+    const picked = idsOf(run({ ...base, streakById: new Map([['p3', 1]]) }));
+    expect(picked.has('p4')).toBe(true);
+    expect(picked.has('p3')).toBe(false);
+  });
+
+  it('2連続目の点は軽い: 試合数が1試合分多い（p4）ほうの逆転のほうが重ければ p3 が出る', () => {
+    const picked = idsOf(run({
+      ...base,
+      priorityScoreOf: (p: Player) => (p.id === 'p4' ? 1 : 0),
+      streakById: new Map([['p3', 1]]),
+    }));
+    expect(picked.has('p3')).toBe(true);
+    expect(picked.has('p4')).toBe(false);
+  });
+
+  it('3連続目（streak=2）は避ける', () => {
+    const picked = idsOf(run({ ...base, streakById: new Map([['p3', 2]]) }));
+    expect(picked.has('p4')).toBe(true);
+    expect(picked.has('p3')).toBe(false);
+  });
+
+  it('3連続目はハードではない: 極端な実力差のハード制約を破ってまでは避けない', () => {
+    // p4 を入れると p0 との差が 40 で極端（30 以上）。3連続目の p3 を出さざるを得ない
+    const picked = idsOf(run({
+      ...base,
+      deviationById: new Map([['p0', 70], ['p1', 70], ['p2', 70], ['p3', 70], ['p4', 30]]),
+      streakById: new Map([['p3', 2]]),
+    }));
+    expect(picked.has('p3')).toBe(true);
+    expect(picked.has('p4')).toBe(false);
+  });
+
+  it('4連続目以上は、試合数が1試合分多い人を出す逆転があっても強く避ける', () => {
+    const picked = idsOf(run({
+      ...base,
+      priorityScoreOf: (p: Player) => (p.id === 'p4' ? 1 : 0),
+      streakById: new Map([['p3', 3]]), // 今回4連続目
+    }));
+    expect(picked.has('p4')).toBe(true);
+    expect(picked.has('p3')).toBe(false);
+  });
+
+  it('段階的: 2連続目の人と3連続目の人のどちらかを控えにするなら、3連続目の人を控える', () => {
+    const picked = idsOf(run({
+      ...base,
+      streakById: new Map([['p2', 2], ['p3', 1]]),
+    }));
+    expect(picked.has('p3')).toBe(true);
+    expect(picked.has('p2')).toBe(false);
+  });
+
+  it('避けられないとき（控えが居ない）は配置を諦めず、連続の人も出す', () => {
+    const four = candidates.slice(0, 4);
+    const result = run({ ...base, candidates: four, streakById: new Map(four.map(p => [p.id, 3] as const)) });
+    expect(idsOf(result).size).toBe(4);
+  });
+
+  it('連続の点を0にすれば、連続の項は無効化できる', () => {
+    const baseline = run(base);
+    const zero = withTable({ streak: [0, 0, 0] }, () => run({ ...base, streakById: new Map([['p3', 3]]) }));
+    expect(zero).toEqual(baseline);
+  });
+
+  it('streakById を省略すればこの項は無効', () => {
+    expect(run({ ...base, streakById: undefined })).toEqual(run(base));
   });
 });

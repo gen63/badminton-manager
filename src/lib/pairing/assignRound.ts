@@ -1,30 +1,37 @@
 /**
  * 目的関数ベースの1ラウンド同時配置エンジン。
  *
- * `docs/plans/2026-08-05-pairing-goals-and-rewrite.md` の新設計:
- *   ハード制約（順位差の閾値 / 直近の重複）→ 目的関数（6目的の重み付き合計）→
- *   局所探索（最急降下、乱数なしで決定的）。
+ * 採点は `objective.ts` の点数表（偏差何点分の悪さ）。ここは「どう選ぶか」だけを持つ。
+ * 設計: docs/plans/2026-10-02-simplify-scoring.md（旧: 2026-08-05-pairing-goals-and-rewrite.md）
  *
- * `algorithm.ts` の `selectBestFour` 等（既存の候補選出・修復パス群）とは独立に
- * 動く別モジュール。既存コードは import しない（`objective.ts` も同様）。
+ * ## ハード制約（違反数が少ない解を、点数より先に選ぶ）
+ *
+ * 1. 公平性の窓: 優先度順で「必要人数 + 余り × 比率」番目より後ろの人を出さない
+ *    （後半均等化モードは比率を狭める）
+ * 2. ペア希望「必ず」（strong）: 出るなら必ず味方 / 2人とも出るか2人とも控える
+ * 3. 極端な実力差: コート内の偏差の最大−最小が `SCORE_TABLE.extremeSpan` 以上
+ *    （人数に関係なく適用。「必ず」ペア2人の間は除く）
+ *
+ * ## 選び方
+ *
+ * - 1コート: 窓内の候補から4人の全組み合わせ × チーム分け3通りを全列挙し、
+ *   （違反数, 点数）が最小のものを採る（全滅でも違反最小→点数最小で必ず返す）
+ * - 複数コート: 優先度上位から作った初期解を、決定的な局所探索（最急降下）で改善する
+ *
+ * `algorithm.ts` は import しない（循環参照防止）。
  */
 import type { Player } from '../../types/player';
-import type { RepeatWeights } from './repeatDecay';
 import type { CourtAssignment } from '../../types/court';
 import {
-  DEFAULT_WEIGHTS,
-  computeObjectiveTerms,
-  weightedObjective,
-  isRecencyViolation,
-  AFFINITY_ENEMY_COST_SPLIT,
-  AFFINITY_ENEMY_COST_SPLIT_SAFE,
-  type ObjectiveWeights,
-  type CourtPlacement,
-  type PairCounts,
-  numericTeamDiff,
+  SCORE_TABLE,
+  courtFixedPoints,
+  splitPoints,
+  courtSpan,
+  fairnessPoints,
+  looseAffinityPoints,
   type AffinityPair,
+  type ScoreContext,
 } from './objective';
-import { STRENGTH_SHAPE } from './strength';
 
 /**
  * 強度「必ず」の希望ペア1組ぶんの入力。`docs/plans/2026-08-31-pair-preference.md`
@@ -40,691 +47,360 @@ export interface AssignRoundParams {
   candidates: Player[];
   /** 埋めるコート */
   courtIds: number[];
-  /**
-   * 登録レートそのままの順位（ハシゴ式適用**前**、0始まり）。
-   *
-   * 用途は**順位差のハード制約のみ**。「初期レートの高い人と下位層を混ぜない」
-   * ための判定に使う（`formRankById` と両方で判定し、どちらかを破れば違反）。
-   * 帯の形成（`skillGap`）とチームの釣り合い（`competitive` / `normalizeSplit`）
-   * には使わない — そちらは `formRankById`。
-   *
-   * 2026-08-18 に一度この用途からも外して `formRankById` だけで判定していたが、
-   * 登録レート的な最上位層と最下位層の同居が実データで 56.2% まで起きたため
-   * 2026-08-25 に復活させた。
-   */
-  rankById: Map<string, number>;
-  /**
-   * ハシゴ式（`applyStreakSwaps`）適用**後**の順位。省略時は `rankById` と同じ。
-   *
-   * **これが実働の序列**。登録レートはこの序列の初期値でしかなく、以後は当日の
-   * 勝敗で上下する。帯の形成（`skillGap`）とチームの釣り合い（`competitive` /
-   * `normalizeSplit`）はこちらを使う。
-   *
-   * `reachableCountById` はこの序列だけで数える。順位差のハード制約と初期解の
-   * 実現可能性判定は **この序列と `rankById` の両方**で判定する（どちらかを
-   * 破れば違反）。
-   *
-   * 旧エンジンは安全網（`hasWideRankSpan`）を登録序列だけで張っていたが、それだと
-   * 登録レートが実力とズレている人が実力相応の帯まで降りられない（登録4位の人は
-   * ハシゴ式で13位まで沈んでも 16位以降と同居できず、勝率が23%で頭打ちになった）。
-   * 逆にこの序列だけにすると、登録レート的な最上位層と最下位層の同居が実データで
-   * 56.2% まで起きた。**両方を課すのが折衷案**で、ハシゴ式の振れ幅は
-   * `maxDrift`（±1グループ）が抑える。
-   */
-  formRankById?: Map<string, number>;
-  /** 登録レートの標準化した強さ（`strength.ts`）。省略時は数値ベース無効（順位のみ） */
-  strengthById?: Map<string, number>;
-  /** 当日の勝敗補正つきの強さ。省略時は `strengthById` と同じ */
-  formStrengthById?: Map<string, number>;
-  rosterSize: number;
-  /** 低いほど優先。algorithm.ts の calculatePriorityScore を呼び出し側が渡す */
+  /** 偏差（`deviation.ts`）。当日のロースター全員分 */
+  deviationById: Map<string, number>;
+  /** 優先度スコア。小さいほど優先（試合数 ÷ 滞在分数）。-Infinity = 未出場（最優先） */
   priorityScoreOf: (p: Player) => number;
-  pairCounts: PairCounts;
-  /** 減衰付き共演重み（variety）。省略時は累計回数のみ */
-  repeatWeights?: RepeatWeights;
-  /** ペアのキー生成規則（呼び出し側と統一すること） */
-  pairKeyOf: (a: string, b: string) => string;
-  /** 順位差のハード制約。null なら制約なし（14人未満） */
-  wideSpanThreshold: number | null;
+  /** 「1試合分」に相当する優先度スコアの差。公平性の点数の単位換算に使う。省略時 1 */
+  oneGameDelta?: number;
+  /** 3人組キー → 鮮度つき重み（`buildTripleWeights`）。省略時は3人以上一致の項なし */
+  tripleWeights?: Map<string, number>;
   preferGenderMix: boolean;
-  /** 後半均等化モード。公平性の窓を狭めて優先度順に近づける */
+  /** 男女比調整。false なら男女の点数が小さい値（`SCORE_TABLE.genderOff`）になる。既定 true */
+  genderBalanceMode?: boolean;
+  /** 後半均等化モード（公平性の窓を狭める） */
   lateBalanceMode?: boolean;
-  weights?: Partial<ObjectiveWeights>;
-  /**
-   * 希望ペアの一覧。省略時は空配列（＝ペア希望なし）。
-   * `docs/plans/2026-08-31-pair-preference.md` 参照。
-   *
-   * **`Map<pairKey, ...>` ではなく配列。** pairKey は `[a, b].sort().join(',')`
-   * のような不可逆な文字列なので、Map 形式だと「候補プールの全ペアを毎回
-   * 列挙してキーを引く」しかできない。希望ペアは実運用で1〜3組しかないため、
-   * 配列にして「希望ペアだけを回して2人の所在を調べる」向きにすることで、
-   * 候補人数に依存しない O(希望組数) にしている（詳細は `objective.ts` の
-   * `AffinityPair` のコメント）。
-   */
+  /** ペア希望（normal。strong も含めてよい）。味方にならないと `pairPref` 点 */
   affinityPairs?: AffinityPair[];
-  /**
-   * 強度「必ず」の希望ペアの一覧（ハード制約）。
-   * (a) 両方が同じラウンドで出場するなら必ず味方にする
-   * (b) 2人一緒に出るか、2人とも控えるか（片方だけの出場は許さない）
-   * `docs/plans/2026-08-31-pair-preference.md` の 3d 参照（2026-09-01 に (b) を
-   * 追加する仕様変更）。省略時は空配列。
-   *
-   * `affinityPairs` と同じ理由で pairKey の Set ではなく配列にしている。
-   */
   strongPairs?: StrongPair[];
-  /**
-   * 目的8 `recency`（連続出場を嫌う）の入力。値は **`streakOf`**
-   * （＝直近の連続出場数。「たった今終わったコートに居た人」だけが 1 以上。
-   * 詳細は `objective.ts` の `ObjectiveInput.streakById` のコメント）。
-   *
-   * **省略時は空 Map ＝ この項は常に 0**（＝無効）。呼び出し側（`algorithm.ts`）が
-   * `pairing/streak.ts` の `buildStreakById` で組み立てる。
-   * `docs/plans/2026-10-01-recency-just-finished-streak.md`
-   */
+  /** 連続出場数（`streak.ts`）。省略時は連続の項なし */
   streakById?: Map<string, number>;
 }
 
-/** 局所探索の反復上限 */
 const MAX_ITERATIONS = 200;
 
-/**
- * 公平性の窓の緩み。余剰人数（候補数 − 必要人数）のうち何割まで
- * 「優先度順を飛ばしてよいか」を決める。0 なら完全に優先度順（質の最適化の
- * 自由度ゼロ）、1 なら窓なし（従来）。
- *
- * 固定値にすると候補プールがコート数に対して十分大きい条件でしか発動せず、
- * 遅参加の過剰が最も酷い 14人2コート / 18人3コートで効かなかった。
- */
+/** 公平性の窓の比率: 余った人数のこの割合まで、優先度順の後ろの人を出してよい */
 const FAIRNESS_WINDOW_RATIO = 0.7;
-
-/**
- * 後半均等化モードのときの窓の緩み。通常より狭くして優先度順に近づける。
- *
- * 「試合数のバラつきをゼロにする」のではなく「減らす」オプションなので 0 にはしない。
- * bench（SEEDS=60 NOISE=0）で 0.7 → 0.3 にすると試合数幅が 21人3C で 1.33 → 1.05、
- * 16人2C で 2.00 → 1.25 に縮み、代償は 3-1 が +1.7〜2.0pt 程度。0.2 以下は幅が
- * ほとんど縮まらないのに 3-1 だけ悪化し、0 では 3-1 が 8% まで崩れる。
- */
 const LATE_BALANCE_WINDOW_RATIO = 0.3;
 
-/** コート1つ分の内部状態。slots = [teamA0, teamA1, teamB0, teamB1] */
-interface CourtState {
-  courtId: number;
-  slots: [string, string, string, string];
-}
+const EPS = 1e-9;
 
-interface SearchState {
-  courts: CourtState[];
-  bench: string[];
+type Slots = [string, string, string, string];
+
+/** コート1つ（4人の集合）の最良のチーム分けと、その違反数・点数 */
+interface CourtEval {
+  slots: Slots;
+  violations: number;
+  points: number;
 }
 
 interface Evaluation {
   violations: number;
-  objective: number;
+  points: number;
 }
 
-function courtMembers(court: CourtState): string[] {
-  return court.slots;
+interface SearchState {
+  courts: { courtId: number; slots: Slots }[];
+  bench: string[];
 }
 
-function toPlacement(court: CourtState): CourtPlacement {
-  return {
-    courtId: court.courtId,
-    teamA: [court.slots[0], court.slots[1]],
-    teamB: [court.slots[2], court.slots[3]],
-  };
-}
-
-function cloneState(state: SearchState): SearchState {
-  return {
-    courts: state.courts.map(c => ({ courtId: c.courtId, slots: [...c.slots] as CourtState['slots'] })),
-    bench: [...state.bench],
-  };
-}
-
-/** 状態を一意に表す文字列（同点タイブレーク用。プレイヤーID辞書順で決定的） */
-function stateKey(state: SearchState): string {
-  return state.courts
-    .slice()
-    .sort((a, b) => a.courtId - b.courtId)
-    .map(c => {
-      const teamA = [c.slots[0], c.slots[1]].sort();
-      const teamB = [c.slots[2], c.slots[3]].sort();
-      const [first, second] =
-        teamA.join(',') <= teamB.join(',') ? [teamA, teamB] : [teamB, teamA];
-      return `${c.courtId}:${first.join(',')}/${second.join(',')}`;
-    })
-    .join('|');
-}
-
-/** (violations, objective) の辞書式比較。負なら a が良い */
-function compareEval(a: Evaluation, b: Evaluation): number {
-  if (a.violations !== b.violations) return a.violations - b.violations;
-  return a.objective - b.objective;
-}
-
-/**
- * コート内の順位差（最大の |r_i - r_j|）。順位差のハード制約の判定に使う。
- *
- * 強度「必ず」のペア（`strongPairs`）の **2人どうしの差だけ**は数えない。上位と
- * 下位を「必ず」にしたペアは、同じコートに置いた時点で順位差が閾値を超える。
- * これを違反として数えると、違反数は辞書式で最優先なので「別々に出す（＝片方だけ
- * 出場）」より「同じコートに置く」ほうが違反が多くなり、「必ず」が破られる
- * （20人・閾値10・[p0,p19] で together=10 / 片方だけ=29）。「必ず」はユーザーが
- * 明示した希望なので、ペア内の差は容認する。ペアの一方と他の2人、他の2人どうしの
- * 差は従来どおり判定する（4人なので全6組を見ても安い）。strongPairs が空なら
- * 従来の max - min と完全に同じ。
- * `docs/plans/2026-10-01-strong-pair-rank-span.md`
- * 順位が取れない ID は 0 扱い（呼び出し側が事前に弾く場合はそちらで判定する）。
- */
-function maxRankGap(
-  ids: readonly string[],
-  rankMap: Map<string, number>,
-  strongPairs: readonly StrongPair[]
-): number {
-  let gap = 0;
-  for (let i = 0; i < ids.length; i++) {
-    for (let j = i + 1; j < ids.length; j++) {
-      if (strongPairs.some(({ a, b }) => (ids[i] === a && ids[j] === b) || (ids[i] === b && ids[j] === a))) {
-        continue;
-      }
-      const d = Math.abs((rankMap.get(ids[i]) ?? 0) - (rankMap.get(ids[j]) ?? 0));
-      if (d > gap) gap = d;
-    }
-  }
-  return gap;
-}
+const better = (a: Evaluation, b: Evaluation): number =>
+  a.violations !== b.violations ? a.violations - b.violations : a.points - b.points;
 
 export function assignRoundByObjective(params: AssignRoundParams): CourtAssignment[] {
-  const {
-    candidates,
-    courtIds,
-    rankById,
-    rosterSize,
-    priorityScoreOf,
-    pairCounts,
-    repeatWeights,
-    pairKeyOf,
-    wideSpanThreshold,
-    preferGenderMix,
-    lateBalanceMode = false,
-  } = params;
-
-  const formRankById = params.formRankById ?? rankById;
-  const strengthById = params.strengthById;
-  const formStrengthById = params.formStrengthById ?? strengthById;
+  const { candidates, courtIds, deviationById, priorityScoreOf, preferGenderMix } = params;
+  const lateBalanceMode = params.lateBalanceMode ?? false;
   const affinityPairs = params.affinityPairs ?? [];
   const strongPairs = params.strongPairs ?? [];
-  // 目的8 recency。省略時は空 Map = この項が常に 0（＝無効）。
-  const streakById = params.streakById ?? new Map<string, number>();
+  const dev = (id: string): number => deviationById.get(id) ?? 50;
 
-  const weights: ObjectiveWeights = { ...DEFAULT_WEIGHTS, ...params.weights };
-
-  const genderById = new Map<string, 'M' | 'F' | undefined>(
-    candidates.map(p => [p.id, p.gender] as const)
-  );
-
-  // 1. 優先度順にソート。
-  //
-  // 同点は**実力順位**で割る。滞在時間ベースの優先度は同時進行のラウンドで同点に
-  // なりやすく、ここを ID の辞書順にすると実力順位と無関係な並びになって、
-  // 「両端だけを選ぶ」ような歪んだ選出が起きる。既存エンジンはタイブレークを持たず
-  // 入力順（＝序列順）で安定ソートされるので、実質的に順位順で割っており、
-  // それに揃える。ID は順位が引き分けたときの最終手段としてのみ使う。
+  // 1. 優先度順にソート。同点は偏差の高い順（旧エンジンが入力＝序列順の安定ソートだったのに揃える）
   const sortedCandidates = [...candidates].sort((a, b) => {
     const diff = priorityScoreOf(a) - priorityScoreOf(b);
     if (diff !== 0) return diff;
-    const rankDiff = (formRankById.get(a.id) ?? 0) - (formRankById.get(b.id) ?? 0);
-    if (rankDiff !== 0) return rankDiff;
+    const d = dev(b.id) - dev(a.id);
+    if (d !== 0) return d;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
-
   const candidateCount = sortedCandidates.length;
+  const priorityRankById = new Map(sortedCandidates.map((p, i) => [p.id, i] as const));
 
-  // 各候補が「同じコートに入れる相手」の人数。variety の閾値スケールに使う。
-  const reachableCountById = new Map<string, number>(
-    candidates.map(p => {
-      if (wideSpanThreshold === null) return [p.id, candidates.length - 1] as const;
-      const rank = formRankById.get(p.id) ?? 0;
-      const count = candidates.filter(
-        q => q.id !== p.id && Math.abs((formRankById.get(q.id) ?? 0) - rank) < wideSpanThreshold
-      ).length;
-      return [p.id, count] as const;
+  // 試合数換算の優先度（小さいほど先に出すべき）。未出場（-Infinity）は最小の有限値より1試合ぶん先
+  const oneGame = params.oneGameDelta && params.oneGameDelta > 0 ? params.oneGameDelta : 1;
+  const finiteScores = sortedCandidates.map(priorityScoreOf).filter(Number.isFinite);
+  const minFinite = finiteScores.length ? Math.min(...finiteScores) / oneGame : 0;
+  const needById = new Map(
+    sortedCandidates.map(p => {
+      const s = priorityScoreOf(p);
+      return [p.id, Number.isFinite(s) ? s / oneGame : minFinite - 1] as const;
     })
   );
-  const priorityRankById = new Map<string, number>(
-    sortedCandidates.map((p, index) => [p.id, index] as const)
-  );
+
+  const ctx: ScoreContext = {
+    deviationById,
+    genderById: new Map(candidates.map(p => [p.id, p.gender] as const)),
+    genderBalanceOn: params.genderBalanceMode ?? true,
+    preferGenderMix,
+    tripleWeights: params.tripleWeights ?? new Map(),
+    streakById: params.streakById ?? new Map(),
+    affinityPairs,
+    needById,
+  };
+  const poolIds = new Set(candidates.map(p => p.id));
 
   const neededCount = Math.min(4 * courtIds.length, candidateCount - (candidateCount % 4));
   const usableCourtCount = Math.min(courtIds.length, Math.floor(candidateCount / 4));
   const usedCourtIds = courtIds.slice(0, usableCourtCount);
+  if (usableCourtCount === 0) return [];
 
-  const selected = sortedCandidates.slice(0, neededCount);
+  // 公平性の窓（ハード1）
+  const surplus = candidateCount - neededCount;
+  const windowLimit =
+    neededCount + Math.ceil(surplus * (lateBalanceMode ? LATE_BALANCE_WINDOW_RATIO : FAIRNESS_WINDOW_RATIO));
 
-  // 2. 初期解の構築。
-  //
-  // `wideSpanThreshold` が null（14人未満で制約なし）の場合は、優先度順の先頭
-  // 4×コート数人を実力順位で昇順ソートしてから先頭ブロックから順にコートへ
-  // 割り当てる（各コートの順位幅を最小化する）。
-  //
-  // 制約がある場合は、コートを1面ずつ「制約を満たすように」貪欲に埋める:
-  // まだ選ばれていない候補のうち最も優先度が高い人を1人目に置き、残り3人は
-  // 優先度順に見て「そのコートに入れても順位差の制約を破らない」人を先頭から
-  // 採る。足りない場合は制約を無視して優先度順に埋める（局所探索が後で改善する）。
-  let initialCourts: CourtState[];
-  if (wideSpanThreshold === null) {
-    const rankSortedSelected = [...selected].sort((a, b) => {
-      const rankA = formRankById.get(a.id) ?? 0;
-      const rankB = formRankById.get(b.id) ?? 0;
-      if (rankA !== rankB) return rankA - rankB;
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    });
-    initialCourts = usedCourtIds.map((courtId, courtIndex) => {
-      const four = rankSortedSelected.slice(courtIndex * 4, courtIndex * 4 + 4);
-      return {
-        courtId,
-        slots: [four[0].id, four[1].id, four[2].id, four[3].id] as CourtState['slots'],
-      };
-    });
-  } else {
-    const threshold = wideSpanThreshold;
-    const pool = [...sortedCandidates]; // 優先度順。消費した人を都度取り除く。
-    initialCourts = usedCourtIds.map(courtId => {
-      const chosenIndices: number[] = [0];
-      // 登録序列側の幅も同時に見る。局所探索の近傍は「出場者⇔控えの1人スワップ」
-      // しか無いため、4人中2人を同時に入れ替えないと解消しない違反は初期解から
-      // 抜け出せない（例: ハシゴ式序列では隣同士だが登録序列では両端、という4人。
-      // 1人ずつ入れ替えても幅が閾値未満にならず、最急降下がその場に留まる）。
-      // 幅は `maxRankGap`（「必ず」ペア内の差は除外）で測る。
-
-      // 制約を満たす範囲で優先度順に3人追加。
-      for (let i = 1; i < pool.length && chosenIndices.length < 4; i++) {
-        const trialIds = [...chosenIndices.map(k => pool[k].id), pool[i].id];
-        if (maxRankGap(trialIds, formRankById, strongPairs) >= threshold) continue;
-        if (maxRankGap(trialIds, rankById, strongPairs) >= threshold) continue;
-        chosenIndices.push(i);
-      }
-
-      // 制約を満たす人が足りない場合、優先度順に残りを埋める。
-      for (let i = 1; i < pool.length && chosenIndices.length < 4; i++) {
-        if (!chosenIndices.includes(i)) {
-          chosenIndices.push(i);
-        }
-      }
-
-      chosenIndices.sort((a, b) => a - b);
-      const four = chosenIndices.map(i => pool[i]);
-      for (let k = chosenIndices.length - 1; k >= 0; k--) {
-        pool.splice(chosenIndices[k], 1);
-      }
-
-      return {
-        courtId,
-        slots: [four[0].id, four[1].id, four[2].id, four[3].id] as CourtState['slots'],
-      };
-    });
-  }
-
-  // 控えは「実際にコートへ配置されなかった人」から求める。
-  //
-  // `sortedCandidates.slice(neededCount)` のように静的に決めてはいけない。
-  // 順位差の制約がある分岐では優先度順の先頭 neededCount 人がそのまま出場するとは
-  // 限らず（制約を満たす人を後ろから拾う）、コートに出た人が控えにも残ってしまう。
-  // その状態で「出場者⇔控え」のスワップが走ると**同一人物が1試合に重複し、
-  // 別の1人が消える**（実測で全試合の10.5%が破損した）。
-  const placedIds = new Set<string>();
-  for (const court of initialCourts) {
-    for (const id of court.slots) placedIds.add(id);
-  }
-  const bench = sortedCandidates
-    .filter(p => !placedIds.has(p.id))
-    .map(p => p.id)
-    .sort();
-
-  // 2b. チーム分けの正規化。
-  //
-  // 目的関数のうちチーム分け（4人をどう2対2に割るか）に依存するのは
-  // `competitive` と `mixSplit` の2つだけで、どちらもコートごとの寄与の平均。
-  // つまり**各コートを独立に最適化すれば全体最適**になるので、探索状態には
-  // 「誰がどのコートか」だけを持たせ、分け方は毎回ここで導出する。
-  //
-  // これを局所探索に任せると、最急降下では「入れ替え → 分け直し」の2手を
-  // またげず、途中の悪い分け方に阻まれて入れ替え自体が却下される
-  // （実測: 少数派2人を同じコートに集める修復が 3-1×2 のまま止まった）。
-  const splitCost = (slots: CourtState['slots']): number => {
-    const rankOf = (id: string): number => formRankById.get(id) ?? 0;
-    const diff = Math.abs(
-      rankOf(slots[0]) + rankOf(slots[1]) - rankOf(slots[2]) - rankOf(slots[3])
-    );
-    let compBase = diff / Math.max(1, rosterSize - 1);
-    if (formStrengthById && STRENGTH_SHAPE.compMix > 0) {
-      compBase =
-        (1 - STRENGTH_SHAPE.compMix) * compBase +
-        STRENGTH_SHAPE.compMix *
-          numericTeamDiff([slots[0], slots[1]], [slots[2], slots[3]], formStrengthById);
-    }
-    const competitive = compBase * weights.competitive;
-
-    const genders = slots.map(id => genderById.get(id));
-    const allGendered = genders.every(g => g === 'M' || g === 'F');
-    const isTwoTwo = allGendered && genders.filter(g => g === 'M').length === 2;
-    const maleInA = (genders[0] === 'M' ? 1 : 0) + (genders[1] === 'M' ? 1 : 0);
-    const mixSplit = isTwoTwo && maleInA !== 1 ? weights.mixSplit : 0;
-
-    // affinity（ペア希望）。`computeAffinity`（objective.ts）は「誰がどのコートか」
-    // だけを見て味方/敵を判定するが、チーム分け（teamA/teamB）自体は
-    // `normalizeSplit` がこの `splitCost` だけで決めており、探索状態には
-    // 含まれない（2b のコメント参照）。ここに足さないと「2人を同じコートに
-    // 集めるところまでは効くが、味方にならず敵同士になる」という中途半端な
-    // 結果になる（`docs/plans/2026-08-31-pair-preference.md` 4. 実装上の落とし穴）。
-    // 味方（同チーム）は寄与0なので、チームを跨ぐ組み合わせだけを見ればよい。
-    //
-    // `affinityPairs`（実運用1〜3組）だけを回す。`normalizeSplit` は1コートにつき
-    // 3通りの分け方を試すたびにこれを呼ぶため、`pairKeyOf`（sort+join の文字列
-    // 生成）を避けて ID の直接比較にしている。
-    //
-    // **`affinityTargetCount`（登録組数）では割らない**（2026-09-19 変更）。
-    // `computeAffinity`（大局評価）は「予算制」として評価対象ペア数で割る必要が
-    // あるが（コート間の入れ替えを比較する土俵を揃えるため）、`splitCost` は
-    // **1つのコートの3通りの分け方から argmin を選ぶだけ**の関数で、
-    // `affinityTargetCount` はその3択のどれでも同じ値（このコートに含まれる
-    // ペアとは無関係に、候補プール全体の登録組数で決まる）。同じ定数で割っても
-    // 3択の順位（どれが最小か）自体は変わらない ―― はずだが、実際には
-    // `competitive` と `mixSplit` は割られていないため、割ることで
-    // affinity 項だけが他の2項に対して相対的に弱まる。結果、**このコートとは
-    // 無関係な別のコートに登録ペアがあるだけで、このコートのチーム分けの
-    // 強さが 1/N に薄まる**という筋の悪い依存が生じていた（例: N=3 なら
-    // どのコートも効き目が1/3。3組のうち2組が全く別のコートにいても関係ない）。
-    // 割り算をやめても実際の登録組数は実運用で1〜3組（`affinityPairs` のコメント
-    // 参照）なのでループ回数は変わらず、N=1 と N=3 で挙動が一致することを
-    // `docs/plans/2026-08-31-pair-preference.md` の追記で数値確認済み。
-    //
-    // 「敵」の寄与は2種類の定数を条件付きで使い分ける（案C。
-    // `docs/plans/2026-08-31-pair-preference.md` 追記参照）:
-    //   `AFFINITY_ENEMY_COST_SPLIT`      … 味方にすると男女戦になる場合
-    //   `AFFINITY_ENEMY_COST_SPLIT_SAFE` … 味方にしても男女戦にならない場合
-    // 「味方にすると男女戦になるか」= このコートが2-2構成（`isTwoTwo`。このコートに
-    // 乗っている4人の性別構成だけで決まり、3択のどの分け方を見ているかに依存しない
-    // ので options のループの外＝コートごとに一度だけ判定すればよい）かつ、
-    // ペアの2人が同性（性別未設定を含むペアは対象外＝ SAFE 側を使う。性別未設定は
-    // `computeMixSplit` / `isTwoTwo` の対象外＝男女戦の判定自体が及ばないため）。
-    //
-    // **2026-09-19: 運用者判断で「男女戦を増やさない」原則を、ペア希望が
-    // 登録されているコートに限り緩めた。** `AFFINITY_ENEMY_COST_SPLIT` を
-    // `mixSplit`（重み1.0）に確実に勝つ値まで引き上げたため、このコートに
-    // registered な同性ペアが2-2コートの両端実力に来ると、今後は味方にする
-    // （＝男女戦になる）ことを選ぶ。希望ペアを含まないコートは、この分岐に
-    // 一切入らない（`affinityPairs` に無い4人は affinity=0 のまま）ので
-    // `mixSplit` がそのまま効き、男女戦は増えない。詳細は
-    // `AFFINITY_ENEMY_COST_SPLIT` のコメント（objective.ts）参照。
-    let affinity = 0;
-    if (affinityPairs.length > 0) {
-      for (const { a, b } of affinityPairs) {
-        const aInTeamA = slots[0] === a || slots[1] === a;
-        const aInTeamB = slots[2] === a || slots[3] === a;
-        const bInTeamA = slots[0] === b || slots[1] === b;
-        const bInTeamB = slots[2] === b || slots[3] === b;
-        const crossTeam = (aInTeamA && bInTeamB) || (aInTeamB && bInTeamA);
-        if (!crossTeam) continue;
-        const genderA = genderById.get(a);
-        const genderB = genderById.get(b);
-        const sameSexPair = genderA !== undefined && genderA === genderB;
-        const wouldCauseMixSplit = isTwoTwo && sameSexPair;
-        const enemyCost = wouldCauseMixSplit
-          ? AFFINITY_ENEMY_COST_SPLIT.value
-          : AFFINITY_ENEMY_COST_SPLIT_SAFE.value;
-        affinity += enemyCost;
-      }
-    }
-
-    return competitive + mixSplit + affinity * weights.affinity;
-  };
-
-  /** コート4人を、コスト最小の分け方に並べ替える（同点は実力順で決定的に選ぶ） */
-  const normalizeSplit = (slots: CourtState['slots']): CourtState['slots'] => {
-    const [a, b, c, d] = [...slots].sort((x, y) => {
-      const rankDiff = (formRankById.get(x) ?? 0) - (formRankById.get(y) ?? 0);
-      if (rankDiff !== 0) return rankDiff;
-      return x < y ? -1 : x > y ? 1 : 0;
-    });
-    const options: CourtState['slots'][] = [
+  // コート単位の評価（4人の集合ごとにキャッシュ）。チーム分けは3通りから（違反, 点数）最小
+  const courtCache = new Map<string, CourtEval>();
+  const evalCourt = (ids: readonly string[]): CourtEval => {
+    const sorted = [...ids].sort();
+    const key = sorted.join(',');
+    const hit = courtCache.get(key);
+    if (hit) return hit;
+    // 偏差の高い順に a,b,c,d とし、[a+d / b+c][a+c / b+d][a+b / c+d] の3通り
+    const [a, b, c, d] = [...ids].sort((x, y) => dev(y) - dev(x) || (x < y ? -1 : x > y ? 1 : 0));
+    const options: Slots[] = [
       [a, d, b, c],
       [a, c, b, d],
       [a, b, c, d],
     ];
-    let best = options[0];
-    let bestCost = splitCost(best);
-    for (const option of options.slice(1)) {
-      const cost = splitCost(option);
-      if (cost < bestCost) {
-        best = option;
-        bestCost = cost;
+    const fixed = courtFixedPoints(ids, ctx);
+    const fixedTotal = fixed.span + fixed.triple + fixed.streak;
+    let best: CourtEval | null = null;
+    for (const slots of options) {
+      // 「必ず」ペアが同コートで敵になる分割は違反
+      let violations = 0;
+      for (const { a: pa, b: pb } of strongPairs) {
+        const inA = (id: string) => slots[0] === id || slots[1] === id;
+        const inB = (id: string) => slots[2] === id || slots[3] === id;
+        if ((inA(pa) && inB(pb)) || (inB(pa) && inA(pb))) violations++;
       }
+      const split = splitPoints([slots[0], slots[1]], [slots[2], slots[3]], ctx);
+      const points = fixedTotal + split.teamDiff + split.gender + split.pairEnemy;
+      const cand: CourtEval = { slots, violations, points };
+      if (!best || better(cand, best) < -EPS) best = cand;
     }
-    return best;
+    const result = best!;
+    // 極端な実力差（ハード3）。分割に依らないので最後に足す
+    if (courtSpan(ids, deviationById, strongPairs) >= SCORE_TABLE.extremeSpan) result.violations++;
+    courtCache.set(key, result);
+    return result;
   };
 
-  const normalizeState = (s: SearchState): SearchState => {
-    for (const court of s.courts) court.slots = normalizeSplit(court.slots);
-    return s;
-  };
-
-  let state: SearchState = normalizeState({ courts: initialCourts, bench });
-
-  const evaluate = (s: SearchState): Evaluation => {
+  const evaluate = (courts: readonly Slots[]): Evaluation => {
     let violations = 0;
-    const placements: CourtPlacement[] = s.courts.map(toPlacement);
-    for (const court of s.courts) {
-      const members = courtMembers(court);
-      if (wideSpanThreshold !== null) {
-        // 順位差のハード制約は **2つの序列の両方** で判定する。
-        //
-        //   formRank（ハシゴ式後） … 当日の調子を含めた実働の帯を守る
-        //   rankById（登録レート）  … 登録レート的な最上位層と最下位層を混ぜない
-        //
-        // formRank だけで判定していた時期は、ハシゴ式で序列が入れ替わるぶん
-        // 「登録レートの上位1/3 × 下位1/3」の同居が実データで 56.2% まで起きていた
-        // （2026-08-22 / 20人48試合）。運用上「初期レートの高い人が下位と混ざる
-        // 試合は避けたい」という要求があり、登録序列側の判定を足した。
-        // 計測: docs/plans/2026-08-05-pairing-goals-and-rewrite.md
-        // formRankById 省略時は rankById と同一なので二重に数えない
-        const rankMaps =
-          formRankById === rankById ? [formRankById] : [formRankById, rankById];
-        for (const rankMap of rankMaps) {
-          const ranks = members
-            .map(id => rankMap.get(id))
-            .filter((r): r is number => r !== undefined);
-          if (ranks.length === members.length) {
-            // 「必ず」ペア2人の間の差は除外（`maxRankGap` 参照）
-            if (maxRankGap(members, rankMap, strongPairs) >= wideSpanThreshold) violations++;
-          }
-        }
+    let points = 0;
+    const courtIdOf = new Map<string, number>();
+    const partnerOf = new Map<string, string>();
+    const selected: string[] = [];
+    courts.forEach((slots, idx) => {
+      const ce = evalCourt(slots);
+      violations += ce.violations;
+      points += ce.points;
+      const [a, b, c, d] = ce.slots;
+      for (const id of ce.slots) {
+        courtIdOf.set(id, idx);
+        selected.push(id);
       }
-    }
-    // 強度「必ず」の希望ペア: (a)「2人が同じラウンドで出場するなら必ず味方」
-    // に加えて (b)「2人一緒に出るか、2人とも控えるか」も必須にする
-    // （2026-09-01 仕様変更。旧版は (a) のみで片方だけの出場を許していた。
-    // `docs/plans/2026-08-31-pair-preference.md` 3d 参照 — 「(b) は公平性の窓と
-    // 衝突して詰む」という当初の記述は誤りで、後日 (b) を採用する形に訂正した）。
-    //
-    // (b) は公平性の窓（ハード制約）と衝突しない。窓は「まだ順番でない人を
-    // 出場させるな」であって「窓の中の人を必ず出場させろ」ではないので、
-    // 片方が窓の外にいて引っ張り込めない場合は**2人とも控えに回せば**
-    // (a)(b) 両方を満たせる。控えが作れない（候補=必要人数ちょうど）場合でも
-    // 「2人を同じコートの味方にする」分割は必ず存在するので、どちらに転んでも
-    // 詰まない。
-    //
-    // ベンチにいる人は対象外なので、courts に現れる人だけを母集団に判定すれば
-    // 足りる（bench まで含める affinity の分母とは違い、こちらは courts のみ）。
-    // コート所属・パートナーの Map（O(出場者数)）は今までどおり1回だけ構築するが、
-    // それを使って「コート上の全ペア」を回すのではなく **`strongPairs`（実運用
-    // 1〜2組）だけ**を回す。前者は evaluate() を数万回呼ぶ局所探索と組み合わさって
-    // 実測 4〜8倍の性能回帰になったため、希望ペア側から走査する向きに変えている。
-    if (strongPairs.length > 0) {
-      const courtIdOfMember = new Map<string, number>();
-      const partnerOfMember = new Map<string, string>();
-      for (const court of s.courts) {
-        const members = courtMembers(court);
-        for (const id of members) courtIdOfMember.set(id, court.courtId);
-        partnerOfMember.set(court.slots[0], court.slots[1]);
-        partnerOfMember.set(court.slots[1], court.slots[0]);
-        partnerOfMember.set(court.slots[2], court.slots[3]);
-        partnerOfMember.set(court.slots[3], court.slots[2]);
-      }
-      for (const { a, b } of strongPairs) {
-        const courtA = courtIdOfMember.get(a);
-        const courtB = courtIdOfMember.get(b);
-        const onA = courtA !== undefined;
-        const onB = courtB !== undefined;
-        if (onA !== onB) {
-          violations++; // (b) 片方だけがコート上
-        } else if (onA && onB) {
-          if (courtA !== courtB) {
-            violations++; // (a) 同じラウンドで出場しているのに別コート
-          } else if (partnerOfMember.get(a) !== b) {
-            violations++; // (a) 同じコートだが敵同士
-          }
-        }
-        // 両方とも控え: 違反なし
-      }
-    }
-    // 公平性の窓: 優先度順で「必要人数 + slack」番目より後ろの人を出場させない。
-    // 旧エンジンは優先度順に上から取る構造だったので公平性が強く守られていた。
-    // 新エンジンは fairness を重み付きの一項目にしたため、質の項に押し負けて
-    // 出遅れている人を飛ばしてしまう。質の最適化は窓の中だけで行わせる。
-    const surplus = candidateCount - neededCount;
-    const ratio = lateBalanceMode ? LATE_BALANCE_WINDOW_RATIO : FAIRNESS_WINDOW_RATIO;
-    const windowLimit = neededCount + Math.ceil(surplus * ratio);
-    if (windowLimit < candidateCount) {
-      for (const court of s.courts) {
-        for (const id of courtMembers(court)) {
-          if ((priorityRankById.get(id) ?? 0) >= windowLimit) violations++;
-        }
-      }
-    }
-    // 目的8 recency のハード側（`RECENCY_STREAK_SHAPE.hardFrom`）。既定は 0＝無効で、
-    // 連続はソフトのコストだけで避ける（強さ系のハード制約と同列にしないため。
-    // 2026-10-02 の再調整）。bench が hardFrom を上げて比較するために残してある。
-    // 連続候補がいなければ素通り
-    if (streakById.size > 0) {
-      for (const court of s.courts) {
-        for (const id of courtMembers(court)) {
-          if (isRecencyViolation(streakById.get(id))) violations++;
-        }
-      }
-    }
-    const terms = computeObjectiveTerms({
-      courts: placements,
-      benchIds: s.bench,
-      priorityRankById,
-      candidateCount,
-      rankById,
-      rosterSize,
-      genderById,
-      preferGenderMix,
-      pairCounts,
-      repeatWeights,
-      pairKeyOf,
-      reachableCountById,
-      formRankById,
-      strengthById,
-      formStrengthById,
-      affinityPairs,
-      streakById,
+      partnerOf.set(a, b);
+      partnerOf.set(b, a);
+      partnerOf.set(c, d);
+      partnerOf.set(d, c);
     });
-    return { violations, objective: weightedObjective(terms, weights) };
+    // ペア「必ず」(a) 同コートなら味方（分割側で数え済み）/ (b) 2人一緒に出るか2人とも控える / 別コートは違反
+    for (const { a, b } of strongPairs) {
+      const ca = courtIdOf.get(a);
+      const cb = courtIdOf.get(b);
+      if ((ca === undefined) !== (cb === undefined)) violations++;
+      else if (ca !== undefined && ca !== cb) violations++;
+    }
+    // 公平性の窓（ハード1）。窓の外の人を1人出すごとに1違反
+    if (windowLimit < candidateCount) {
+      for (const id of selected) if ((priorityRankById.get(id) ?? 0) >= windowLimit) violations++;
+    }
+    const selectedSet = new Set(selected);
+    points += fairnessPoints(
+      selected,
+      sortedCandidates.filter(p => !selectedSet.has(p.id)).map(p => p.id),
+      needById,
+      lateBalanceMode
+    );
+    if (affinityPairs.length > 0) {
+      // 同コートで味方でも敵でもない（別コート・ベンチ）。同コートの敵は分割の点数に入っている
+      points += looseAffinityPoints(courtIdOf, poolIds, affinityPairs);
+    }
+    return { violations, points };
   };
 
-  // 3. 近傍生成（決定的な順序で列挙する）
-  function* generateNeighbors(s: SearchState): Generator<SearchState> {
-    const courtsSorted = [...s.courts].sort((a, b) => a.courtId - b.courtId);
+  let finalSlots: Slots[];
 
-    // (a) 異なるコートの出場者2人を交換
-    for (let i = 0; i < courtsSorted.length; i++) {
-      for (let j = i + 1; j < courtsSorted.length; j++) {
-        for (let slotI = 0; slotI < 4; slotI++) {
-          for (let slotJ = 0; slotJ < 4; slotJ++) {
-            const next = cloneState(s);
-            const courtI = next.courts.find(c => c.courtId === courtsSorted[i].courtId)!;
-            const courtJ = next.courts.find(c => c.courtId === courtsSorted[j].courtId)!;
-            const tmp = courtI.slots[slotI];
-            courtI.slots[slotI] = courtJ.slots[slotJ];
-            courtJ.slots[slotJ] = tmp;
-            yield normalizeState(next);
+  if (usedCourtIds.length === 1) {
+    // 2a. 1コート: 窓内の候補から4人の全組み合わせを全列挙（チーム分けは evalCourt が3通りを見る）
+    const pool = sortedCandidates.slice(0, Math.max(4, Math.min(windowLimit, candidateCount))).map(p => p.id);
+    let bestSlots: Slots | null = null;
+    let bestEval: Evaluation | null = null;
+    for (let i = 0; i < pool.length - 3; i++) {
+      for (let j = i + 1; j < pool.length - 2; j++) {
+        for (let k = j + 1; k < pool.length - 1; k++) {
+          for (let l = k + 1; l < pool.length; l++) {
+            const four: Slots = [pool[i], pool[j], pool[k], pool[l]];
+            const ev = evaluate([four]);
+            if (!bestEval || better(ev, bestEval) < -EPS) {
+              bestEval = ev;
+              bestSlots = evalCourt(four).slots;
+            }
+          }
+        }
+      }
+    }
+    finalSlots = [bestSlots!];
+  } else {
+    // 2b. 複数コート: 優先度上位 neededCount 人（「必ず」ペアは窓の内側なら2人セットで）を
+    // 偏差順に4人ずつ区切った初期解 → 局所探索。
+    // 近傍は1人ずつの入れ替えなので、「必ず」ペアの (a)(b) は2手がかりで直せない場合がある。
+    // 初期解でペアを同じコートに置いておく（直せなければ違反として残り、探索が改善する）
+    const partnerOf = new Map<string, string>();
+    for (const { a, b } of strongPairs) {
+      partnerOf.set(a, b);
+      partnerOf.set(b, a);
+    }
+    const chosen: string[] = [];
+    const chosenSet = new Set<string>();
+    for (const c of sortedCandidates) {
+      if (chosen.length >= neededCount) break;
+      if (chosenSet.has(c.id)) continue;
+      const mate = partnerOf.get(c.id);
+      if (mate === undefined) {
+        chosen.push(c.id);
+        chosenSet.add(c.id);
+      } else if (
+        !chosenSet.has(mate) &&
+        (priorityRankById.get(mate) ?? Infinity) < windowLimit &&
+        chosen.length + 2 <= neededCount
+      ) {
+        chosen.push(c.id, mate);
+        chosenSet.add(c.id);
+        chosenSet.add(mate);
+      }
+    }
+    for (const c of sortedCandidates) {
+      if (chosen.length >= neededCount) break;
+      if (!chosenSet.has(c.id)) {
+        chosen.push(c.id);
+        chosenSet.add(c.id);
+      }
+    }
+    // 単位（ペアは2人で1単位）を偏差順に並べ、ペアが区切りで割れないように4人ずつ詰める
+    const units: string[][] = [];
+    const unitSeen = new Set<string>();
+    for (const id of chosen) {
+      if (unitSeen.has(id)) continue;
+      const mate = partnerOf.get(id);
+      if (mate !== undefined && chosenSet.has(mate)) {
+        units.push([id, mate]);
+        unitSeen.add(id);
+        unitSeen.add(mate);
+      } else {
+        units.push([id]);
+        unitSeen.add(id);
+      }
+    }
+    const unitDev = (u: string[]) => u.reduce((sum, id) => sum + dev(id), 0) / u.length;
+    units.sort((x, y) => unitDev(y) - unitDev(x) || (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0));
+    const blocks: string[][] = usedCourtIds.map(() => []);
+    let bi = 0;
+    while (units.length > 0) {
+      while (bi < blocks.length - 1 && blocks[bi].length >= 4) bi++;
+      const room = 4 - blocks[bi].length;
+      let k = units.findIndex(u => u.length <= room);
+      if (k < 0) k = 0;
+      blocks[bi].push(...units.splice(k, 1)[0]);
+    }
+    const selected = blocks.flat();
+    let state: SearchState = {
+      courts: usedCourtIds.map((courtId, i) => ({
+        courtId,
+        slots: evalCourt(blocks[i]).slots,
+      })),
+      bench: sortedCandidates
+        .map(p => p.id)
+        .filter(id => !selected.includes(id))
+        .sort(),
+    };
+    const evalState = (s: SearchState) => evaluate(s.courts.map(c => c.slots));
+    const keyOf = (s: SearchState) =>
+      s.courts.map(c => `${c.courtId}:${[...c.slots].sort().join(',')}`).join('|');
+
+    function* neighbors(s: SearchState): Generator<SearchState> {
+      const cs = [...s.courts].sort((a, b) => a.courtId - b.courtId);
+      const make = (): SearchState => ({
+        courts: s.courts.map(c => ({ courtId: c.courtId, slots: [...c.slots] as Slots })),
+        bench: [...s.bench],
+      });
+      const norm = (n: SearchState): SearchState => {
+        for (const c of n.courts) c.slots = evalCourt(c.slots).slots;
+        return n;
+      };
+      // (a) 異なるコートの出場者2人を交換
+      for (let i = 0; i < cs.length; i++) {
+        for (let j = i + 1; j < cs.length; j++) {
+          for (let si = 0; si < 4; si++) {
+            for (let sj = 0; sj < 4; sj++) {
+              const n = make();
+              const ci = n.courts.find(c => c.courtId === cs[i].courtId)!;
+              const cj = n.courts.find(c => c.courtId === cs[j].courtId)!;
+              [ci.slots[si], cj.slots[sj]] = [cj.slots[sj], ci.slots[si]];
+              yield norm(n);
+            }
+          }
+        }
+      }
+      // (b) 出場者1人と控え1人を交換
+      for (const court of cs) {
+        for (let slot = 0; slot < 4; slot++) {
+          for (const benchId of s.bench) {
+            const n = make();
+            const nc = n.courts.find(c => c.courtId === court.courtId)!;
+            const bi = n.bench.indexOf(benchId);
+            const out = nc.slots[slot];
+            nc.slots[slot] = benchId;
+            n.bench[bi] = out;
+            n.bench.sort();
+            yield norm(n);
           }
         }
       }
     }
 
-    // (b) 出場者1人と控え1人を交換
-    for (const court of courtsSorted) {
-      for (let slot = 0; slot < 4; slot++) {
-        for (const benchId of s.bench) {
-          const next = cloneState(s);
-          const nc = next.courts.find(c => c.courtId === court.courtId)!;
-          const benchIndex = next.bench.indexOf(benchId);
-          const outgoing = nc.slots[slot];
-          nc.slots[slot] = benchId;
-          next.bench[benchIndex] = outgoing;
-          next.bench.sort();
-          yield normalizeState(next);
+    let current = evalState(state);
+    for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+      let bestN: SearchState | null = null;
+      let bestEval: Evaluation | null = null;
+      let bestKey = '';
+      for (const n of neighbors(state)) {
+        const ev = evalState(n);
+        if (bestEval === null) {
+          bestN = n; bestEval = ev; bestKey = keyOf(n);
+          continue;
+        }
+        const cmp = better(ev, bestEval);
+        if (cmp < -EPS) {
+          bestN = n; bestEval = ev; bestKey = keyOf(n);
+        } else if (Math.abs(cmp) <= EPS) {
+          const key = keyOf(n);
+          if (key < bestKey) { bestN = n; bestEval = ev; bestKey = key; }
         }
       }
+      if (!bestN || !bestEval) break;
+      if (better(bestEval, current) >= -EPS) break; // 改善なし
+      state = bestN;
+      current = bestEval;
     }
-
-    // チーム分けを変更するだけの近傍は不要。`normalizeState` が全ての近傍で
-    // 各コートを最適な分け方に揃えるため、探索の途中でも分け方は常に最適。
+    const byId = new Map(state.courts.map(c => [c.courtId, c.slots] as const));
+    finalSlots = usedCourtIds.map(id => byId.get(id)!);
   }
 
-  // 4. 局所探索（最急降下）。改善が無くなるか MAX_ITERATIONS 回で終了。
-  let currentEval = evaluate(state);
-  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    let bestNeighbor: SearchState | null = null;
-    let bestNeighborEval: Evaluation | null = null;
-    let bestNeighborKey = '';
-
-    for (const neighbor of generateNeighbors(state)) {
-      const ev = evaluate(neighbor);
-      if (bestNeighborEval === null) {
-        bestNeighbor = neighbor;
-        bestNeighborEval = ev;
-        bestNeighborKey = stateKey(neighbor);
-        continue;
-      }
-      const cmp = compareEval(ev, bestNeighborEval);
-      if (cmp < 0) {
-        bestNeighbor = neighbor;
-        bestNeighborEval = ev;
-        bestNeighborKey = stateKey(neighbor);
-      } else if (cmp === 0) {
-        const key = stateKey(neighbor);
-        if (key < bestNeighborKey) {
-          bestNeighbor = neighbor;
-          bestNeighborEval = ev;
-          bestNeighborKey = key;
-        }
-      }
-    }
-
-    if (!bestNeighbor || !bestNeighborEval) break;
-    if (compareEval(bestNeighborEval, currentEval) >= 0) break; // 改善なし
-
-    state = bestNeighbor;
-    currentEval = bestNeighborEval;
-  }
-
-  // 5. 結果を CourtAssignment[] へ変換（入力の courtIds 順）
-  const byCourtId = new Map(state.courts.map(c => [c.courtId, c] as const));
-  const result: CourtAssignment[] = [];
-  for (const courtId of usedCourtIds) {
-    const court = byCourtId.get(courtId);
-    if (!court) continue;
-    result.push({
-      courtId,
-      teamA: [court.slots[0], court.slots[1]],
-      teamB: [court.slots[2], court.slots[3]],
-    });
-  }
-  return result;
+  return usedCourtIds.map((courtId, i) => ({
+    courtId,
+    teamA: [finalSlots[i][0], finalSlots[i][1]],
+    teamB: [finalSlots[i][2], finalSlots[i][3]],
+  }));
 }

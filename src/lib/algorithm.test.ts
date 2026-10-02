@@ -6,8 +6,6 @@ import type { Reservation } from '../types/reservation';
 import type { Court } from '../types/court';
 import { withInProgressGames } from './effectiveGames';
 import { courtStartTimes } from './pairing/streak';
-import { DEFAULT_WEIGHTS } from './pairing/objective';
-import { VARIETY_SHAPE } from './pairing/repeatDecay';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -880,30 +878,19 @@ describe('assignCourts - 2コート逐次配置（1コートずつ）の実力�
     practiceStartTime: now - 60 * 60 * 1000,
   };
 
-  it('16人: 優先度が高くても、順位差が閾値以上になる組み合わせは選ばれない', () => {
+  it('16人: 優先度が高くても、偏差が極端に離れる組み合わせは選ばれない', () => {
     // (A) 目的3（実力差のハード制約）そのものを検証する目的レベルのテスト。
-    // 分類判断: このテストは書き換えていない（アサーションは目的3をそのまま表現している）。
+    // 2026-10-02 の単純化で、判定は順位差（14人以上・人数の2/3）から
+    // 「当日ロースター内の偏差（平均50・SD10）の最大−最小が 30 以上」へ置き換わった。
     //
-    // 【新エンジンの不具合を疑う】: 現状このテストは新エンジンで失敗する。
-    // `assignRoundByObjective`（src/lib/pairing/assignRound.ts）の
-    // wideSpanThreshold 制約つき初期解構築（171-209行目付近）で、
-    // 制約を満たす4人を選ぶ `pool` は sortedCandidates 全員（＝ bench 候補も含む）
-    // から貪欲に消費するのに対し、SearchState.bench は別途
-    // `sortedCandidates.slice(neededCount)`（優先度上位から数えた末尾）という
-    // 静的な計算のまま。両者が食い違うラウンドでは同一プレイヤーがコートと
-    // bench の両方に現れ（重複）、別の1人が誰にも割り当てられず消える
-    // （実測: このテストで [p0,p2,p7,p7] のように p7 が重複し p1 が消失する）。
-    // 修復を試みず報告のみ（このテストファイル以外は変更しない指示のため）。
-    // 16人なので閾値は ceil(16 * 2/3) = 11。
     // このラウンドの待機は p0,p1,p2,p7,p12 の5人だけ（他11人は別コートでプレイ中）。
-    // 5人から4人を選ぶ組は5通りで、p12 を含むものは必ず順位差が11以上になり弾かれる。
-    //   {p0,p1,p2,p7}=7 / {p0,p1,p2,p12}=12 / {p0,p1,p7,p12}=12
-    //   {p0,p2,p7,p12}=12 / {p1,p2,p7,p12}=11
+    // 5人から4人を選ぶ組は5通りで、p12 を含むものは必ず偏差差が30以上になり弾かれる。
+    // p12 だけレートが極端に低い（偏差 20）。p0〜p2 は 56〜57、p7 は 52.6 なので
+    //   {p0,p1,p2,p7}=差4.9 / p12 を含む4通りはいずれも差 ≥ 32（p0〜p2 とは 36 以上、p7 とも 32.6）
     // p12 だけ gamesPlayed=0（最優先）にしてあるので、制約が無ければ必ず選ばれる。
-    // バンド方式（上位N人×下位N人だけ禁止）では p1×p12 のような「片方が端でない」
-    // 組を弾けないため、このテストは順位差方式でしか通らない。
+    const ratingOf = (i: number) => (i === 12 ? 100 : 2000 - i * 30);
     const allPlayers: Player[] = Array.from({ length: 16 }, (_, i) =>
-      createRatedPlayer(`p${i}`, `P${i}`, 2000 - i * 50, i === 12 ? 0 : 5)
+      createRatedPlayer(`p${i}`, `P${i}`, ratingOf(i), i === 12 ? 0 : 5)
     );
     const waitingIds = ['p0', 'p1', 'p2', 'p7', 'p12'];
     const waiting = allPlayers.filter(p => waitingIds.includes(p.id));
@@ -915,7 +902,7 @@ describe('assignCourts - 2コート逐次配置（1コートずつ）の実力�
 
     expect(assignments).toHaveLength(1);
     const ids = [...assignments[0].teamA, ...assignments[0].teamB].sort();
-    expect(ids, `順位差の制約を無視して p12 が選ばれた [${ids.join(', ')}]`)
+    expect(ids, `極端な実力差の制約を無視して p12 が選ばれた [${ids.join(', ')}]`)
       .toEqual(['p0', 'p1', 'p2', 'p7']);
   });
 
@@ -1383,44 +1370,21 @@ describe('assignCourts - 特定の1人への偏りのペナルティ（集中度
     activatedAt: NOW - 60 * 60 * 1000,
   });
 
-  it('目的関数（目的6・顔ぶれ）は突出して多く組んだペアを、分散したペアより避ける', () => {
-    // 新エンジンの variety 項（`computeVariety`）は「最多ペアの共演回数」を
-    // 直接見るため、合計が同程度でも集中度が違えば区別できる（目的6の本来の狙い）。
+  it('目的関数（顔ぶれ）は、直近で同じ3人が一緒だった組を避ける（3人以上一致の鮮度つき項）', () => {
+    // 2026-10-02 の単純化で、ペアごとの共演回数の集中（旧 variety のペア項）は撤去し、
+    // 「3人以上一致」（鮮度つき）の1項にまとめた。ここでは「直近の試合と3人が重なる組」を避けることを見る。
     //
-    // 待機9人（p0〜p8）から4人を選ぶ。履歴は:
-    //   - p0-p1 が6回パートナー（集中。最多ペア=6回）
-    //   - p2/p3/p4 は互いに2回ずつ（分散。合計は同程度だが最多ペア=2回）
-    // p5〜p8 は控えの選択肢を広げるための同条件プレイヤー（本番同様、待機列には
-    // 通常複数の交換候補がいる）。
+    // 待機9人（p0〜p8）から4人を選ぶ。履歴は p0,p1 vs p2,p3 の1試合だけ（直後＝鮮度1）。
+    // 全員 gamesPlayed・レートがほぼ同じなので、点数が同程度の組は多数ある。
     const allPlayers = Array.from({ length: 12 }, (_, i) =>
       createPlayer(`p${i}`, 1500 - i * 2)
     );
     const waitingIds = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'];
     const waiting = allPlayers.filter(p => waitingIds.includes(p.id));
-
-    const history: Match[] = [];
-    const add = (teamA: [string, string], teamB: [string, string]): void => {
-      history.push({
-        id: `h${history.length}`,
-        courtId: 1,
-        teamA,
-        teamB,
-        scoreA: 21,
-        scoreB: 15,
-        winner: 'A',
-        startedAt: 0,
-        finishedAt: 0,
-      });
-    };
-    // 対戦相手は毎回変えて、対戦相手側の重複が効かないようにする
-    const outsiders: [string, string][] = [
-      ['p9', 'p10'], ['p11', 'p9'], ['p10', 'p11'],
-      ['p9', 'p10'], ['p11', 'p9'], ['p10', 'p11'],
-    ];
-    for (const opp of outsiders) add(['p0', 'p1'], opp);
-    for (const pair of [['p2', 'p3'], ['p2', 'p4'], ['p3', 'p4']] as [string, string][]) {
-      for (const opp of [['p5', 'p7'], ['p9', 'p11']] as [string, string][]) add(pair, opp);
-    }
+    const history: Match[] = [{
+      id: 'h0', courtId: 1, teamA: ['p0', 'p1'], teamB: ['p2', 'p3'],
+      scoreA: 21, scoreB: 15, winner: 'A', startedAt: 0, finishedAt: 0,
+    }];
 
     const assignments = assignCourts(waiting, 1, history, {
       totalCourtCount: 1,
@@ -1431,11 +1395,8 @@ describe('assignCourts - 特定の1人への偏りのペナルティ（集中度
 
     expect(assignments).toHaveLength(1);
     const ids = [...assignments[0].teamA, ...assignments[0].teamB];
-    // 6回組んだ p0 と p1 が再び同じコートに入らない
-    expect(
-      ids.includes('p0') && ids.includes('p1'),
-      `6回組んだ p0-p1 が再選出された [${ids.join(', ')}]`
-    ).toBe(false);
+    const overlap = ids.filter(id => ['p0', 'p1', 'p2', 'p3'].includes(id)).length;
+    expect(overlap, `直近の試合と ${overlap} 人かぶっている [${ids.join(', ')}]`).toBeLessThanOrEqual(2);
   });
 });
 
@@ -1472,24 +1433,13 @@ describe('assignCourts - 性別ペナルティ', () => {
     );
     const allPlayers = [...players, ...fillers];
 
-    // 「同優先度」は優先度スコアが同点という意味で、公平性の項は同点でも実力順の並びで
-    // 末尾の人を控えにしたがる。`waiting` を 14（2026-10-02）に上げると性別より強く効いて
-    // しまうので、このテストは性別と優先度の相対関係を見るため改定前の 4.0 に固定する
-    // （docs/plans/2026-10-02-rating-based-strength.md）。
-    const savedWaiting = DEFAULT_WEIGHTS.waiting;
-    DEFAULT_WEIGHTS.waiting = 4.0;
-    let assignments: ReturnType<typeof assignCourts>;
-    try {
-      assignments = assignCourts(players, 1, [], {
-        totalCourtCount: 1,
-        targetCourtIds: [1],
-        practiceStartTime: now - 60 * 60 * 1000,
-        useStayDurationPriority: false,
-        allPlayers,
-      });
-    } finally {
-      DEFAULT_WEIGHTS.waiting = savedWaiting;
-    }
+    const assignments = assignCourts(players, 1, [], {
+      totalCourtCount: 1,
+      targetCourtIds: [1],
+      practiceStartTime: now - 60 * 60 * 1000,
+      useStayDurationPriority: false,
+      allPlayers,
+    });
 
     const assigned = [...assignments[0].teamA, ...assignments[0].teamB];
     const maleCount = assigned.filter(id => id.startsWith('m')).length;
@@ -1801,7 +1751,11 @@ describe('assignCourts - 2コート同時配置の少数派2-2修復 (改善2: r
     expect(genderCounts.sort()).toEqual([0, 2]);
   });
 
-  it('ロースター12人では順位差のハード制約が無く、少数派2-2への修復が成立する', () => {
+  // 12人2コート・少数派(p2,p10)2人。履歴・試合数は実際に発生した局面の固定値。
+  // 2026-10-02 の単純化で、実力は当日ロースター内の偏差で測るようになり、男女バランス（3-1 は ON で 40 点）より
+  // コート内の最大−最小（1点につき 2.5 点）が優先される。少数派2人の実力が近ければ 2-2 が安く作れるが、
+  // 大きく離れていれば 2-2 を作るためにレベル差を広げることはしない（レベル差 > 男女）。
+  const run12 = (minorityRating: number) => {
     const players: Player[] = [
       { id: 'p0', name: 'P0', rating: 1000, gender: 'M', gamesPlayed: 7, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
       { id: 'p1', name: 'P1', rating: 999, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
@@ -1813,7 +1767,7 @@ describe('assignCourts - 2コート同時配置の少数派2-2修復 (改善2: r
       { id: 'p7', name: 'P7', rating: 993, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
       { id: 'p8', name: 'P8', rating: 992, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
       { id: 'p9', name: 'P9', rating: 991, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
-      { id: 'p10', name: 'P10', rating: 990, gender: 'F', gamesPlayed: 5, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
+      { id: 'p10', name: 'P10', rating: minorityRating, gender: 'F', gamesPlayed: 5, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
       { id: 'p11', name: 'P11', rating: 989, gender: 'M', gamesPlayed: 6, isResting: false, lastPlayedAt: 0, activatedAt: 0 },
     ];
     const history: Match[] = [
@@ -1846,18 +1800,20 @@ describe('assignCourts - 2コート同時配置の少数派2-2修復 (改善2: r
       allPlayers: players,
     });
 
-    // 少数派(p2,p10)が同じコートに集まる（2-2 が作れる）。
-    //
-    // 以前は実力差のハード制約（バンド方式、12人でも適用）が入れ替えを阻んで
-    // 1-1 のままだったが、目的3 のハード制約は `WIDE_RANK_SPAN_MIN_ROSTER`(14) 未満の
-    // 少人数には掛からなくなったため、修復が通るようになった。
-    // bench でも 12人2コートの 3-1 率は 11.4% → 4.6% に改善している
-    // （docs/plans/2026-08-05-pairing-goals-and-rewrite.md）。
-    const genderCounts = assignments.map(a => {
+    return assignments.map(a => {
       const ids = [...a.teamA, ...a.teamB];
       return ids.filter(id => id === 'p2' || id === 'p10').length;
     });
-    expect(genderCounts.sort()).toEqual([0, 2]);
+  };
+
+  it('12人では、少数派2人の実力が近ければ同じコートに集めて 2-2 に修復される', () => {
+    // p10 のレートを p2（998）と同じにする → 2人を同居させてもコート内の幅が広がらない
+    expect(run12(998).sort()).toEqual([0, 2]);
+  });
+
+  it('少数派2人の実力が大きく離れているときは、2-2 を作るためにコート内の幅を広げない（レベル差 > 男女）', () => {
+    // p2=998 / p10=990 の元の局面: 同居させると偏差差が 23 になる。3-1 が2つ残るほうが点数が小さい
+    expect(run12(990).sort()).toEqual([1, 1]);
   });
 });
 
@@ -2996,7 +2952,10 @@ describe('sortWaitingPlayers - 滞在時間モードの起点（opsCompletedAt�
   });
 });
 
-describe('assignCourts - ハシゴ式（applyStreakSwaps）が新エンジンにも効く', () => {
+// 新エンジン（目的関数ベース）は 2026-10-02 の単純化で登録レートの偏差だけを実力の物差しにし、
+// ハシゴ式（当日の勝敗による序列の補正）を使わなくなった（docs/plans/2026-10-02-simplify-scoring.md）。
+// ハシゴ式そのものの検証は旧エンジン（useObjectiveEngine: false）に対して残す。
+describe('assignCourts - ハシゴ式（applyStreakSwaps）は旧エンジンで効く', () => {
   const NOW = 1_700_000_000_000;
   const N = 17;
 
@@ -3026,6 +2985,7 @@ describe('assignCourts - ハシゴ式（applyStreakSwaps）が新エンジンに
         practiceStartTime: NOW,
         allPlayers: players,
         useStayDurationPriority: true,
+        useObjectiveEngine: false,
       });
       for (const c of assignments) {
         const ids = [...c.teamA, ...c.teamB];
@@ -3056,17 +3016,8 @@ describe('assignCourts - ハシゴ式（applyStreakSwaps）が新エンジンに
   };
 
   it('勝ち続けると対戦相手が強くなり、負け続けると弱くなる', () => {
-    // ハシゴ式の効きだけを見るテスト。3人一致の項（variety の別枠）が足されると、1人の全勝/全敗で
-    // 組が変わっても同じ3人を避ける力が相手の偏りを一部打ち消す（差 1.0 → 0.67）ため、この項だけ切って検証する。
-    const savedTriple = VARIETY_SHAPE.tripleWeight;
-    VARIETY_SHAPE.tripleWeight = 0;
-    let whenWinning: number, whenLosing: number;
-    try {
-      whenWinning = meanOpponentRank(true);
-      whenLosing = meanOpponentRank(false);
-    } finally {
-      VARIETY_SHAPE.tripleWeight = savedTriple;
-    }
+    const whenWinning = meanOpponentRank(true);
+    const whenLosing = meanOpponentRank(false);
 
     // ハシゴ式が無いと勝敗が組み合わせに一切影響せず、両者は完全に一致する
     // （実装前の実測では差 0.00 だった）。
