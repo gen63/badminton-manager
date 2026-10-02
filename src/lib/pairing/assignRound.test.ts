@@ -128,6 +128,7 @@ describe('assignRoundByObjective', () => {
     const repeatWeights = {
       pair: new Map<string, number>(),
       quad: new Map([['p0,p1,p2,p3', 0.9]]),
+      triple: new Map<string, number>(),
     };
     for (let i = 0; i < 4; i++) {
       for (let j = i + 1; j < 4; j++) repeatWeights.pair.set(pairKey(`p${i}`, `p${j}`), 0.9);
@@ -472,6 +473,10 @@ describe('後半均等化モード（公平性の窓を狭める）', () => {
       wideSpanThreshold: null,
       preferGenderMix: false,
       lateBalanceMode,
+      // 窓の仕組み（公平性の窓の広さ）を見るテスト。`waiting` の既定を 14 に上げた
+      // （2026-10-02、docs/plans/2026-10-02-rating-based-strength.md）と、順位だけの
+      // この合成データでは通常でも優先度順から外れなくなるため、改定前の 4.0 に固定する
+      weights: { waiting: 4.0 },
     });
   };
   const priorityOf = (result: ReturnType<typeof setup>) =>
@@ -1212,8 +1217,9 @@ describe('assignRoundByObjective: recency（連続出場を嫌う）', () => {
       assignRoundByObjective({
         ...baseParams,
         streakById: new Map([['p3', 1]]),
-        // 5人ロースターでは skillGap の凸項（幅 p0〜p4 は1.0）が大きいので、それを押し切る重み
-        weights: { recency: 60 },
+        // 5人ロースターでは skillGap の凸項（幅 p0〜p4 は1.0）が大きいので、それを押し切る重み。
+        // `waiting` は既定を 14 に上げる前（2026-10-02）の 4.0 に固定して、この項の効きを変えない
+        weights: { recency: 60, waiting: 4.0 },
       })
     );
     expect(picked.has('p4')).toBe(true);

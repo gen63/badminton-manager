@@ -33,11 +33,12 @@ describe('recencyCost（今回何連続目になるか → コスト。飽和し
   });
 
   it('既定の形: 2連続目は僅か・3連続目はまあまあ強く・4連続目以上は強く（1人あたりの実効コスト）', () => {
-    // 実効コスト = recencyCost × 重み(5.0) / 4。3連続目は 3-1 のコート（1.0 × 3.0）より重い
+    // 実効コスト = recencyCost × 重み(9.0) / 4。3連続目は 3-1 のコート（1.0 × 3.7）より重い
+    expect(DEFAULT_WEIGHTS.recency).toBe(9.0);
     const effective = (streak: number) => (recencyCost(streak) * DEFAULT_WEIGHTS.recency) / 4;
-    expect(effective(1)).toBeCloseTo(0.5, 10); // 2連続目
-    expect(effective(2)).toBeCloseTo(4, 10); // 3連続目
-    expect(effective(3)).toBeCloseTo(32, 10); // 4連続目
+    expect(effective(1)).toBeCloseTo(0.9, 10); // 2連続目
+    expect(effective(2)).toBeCloseTo(7.2, 10); // 3連続目
+    expect(effective(3)).toBeCloseTo(57.6, 10); // 4連続目
     expect(effective(2)).toBeGreaterThanOrEqual(1.0 * DEFAULT_WEIGHTS.gender);
   });
 

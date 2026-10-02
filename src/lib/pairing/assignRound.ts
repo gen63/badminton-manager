@@ -21,8 +21,10 @@ import {
   type ObjectiveWeights,
   type CourtPlacement,
   type PairCounts,
+  numericTeamDiff,
   type AffinityPair,
 } from './objective';
+import { STRENGTH_SHAPE } from './strength';
 
 /**
  * 強度「必ず」の希望ペア1組ぶんの入力。`docs/plans/2026-08-31-pair-preference.md`
@@ -70,6 +72,10 @@ export interface AssignRoundParams {
    * `maxDrift`（±1グループ）が抑える。
    */
   formRankById?: Map<string, number>;
+  /** 登録レートの標準化した強さ（`strength.ts`）。省略時は数値ベース無効（順位のみ） */
+  strengthById?: Map<string, number>;
+  /** 当日の勝敗補正つきの強さ。省略時は `strengthById` と同じ */
+  formStrengthById?: Map<string, number>;
   rosterSize: number;
   /** 低いほど優先。algorithm.ts の calculatePriorityScore を呼び出し側が渡す */
   priorityScoreOf: (p: Player) => number;
@@ -245,6 +251,8 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   } = params;
 
   const formRankById = params.formRankById ?? rankById;
+  const strengthById = params.strengthById;
+  const formStrengthById = params.formStrengthById ?? strengthById;
   const affinityPairs = params.affinityPairs ?? [];
   const strongPairs = params.strongPairs ?? [];
   // 目的8 recency。省略時は空 Map = この項が常に 0（＝無効）。
@@ -389,7 +397,14 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     const diff = Math.abs(
       rankOf(slots[0]) + rankOf(slots[1]) - rankOf(slots[2]) - rankOf(slots[3])
     );
-    const competitive = (diff / Math.max(1, rosterSize - 1)) * weights.competitive;
+    let compBase = diff / Math.max(1, rosterSize - 1);
+    if (formStrengthById && STRENGTH_SHAPE.compMix > 0) {
+      compBase =
+        (1 - STRENGTH_SHAPE.compMix) * compBase +
+        STRENGTH_SHAPE.compMix *
+          numericTeamDiff([slots[0], slots[1]], [slots[2], slots[3]], formStrengthById);
+    }
+    const competitive = compBase * weights.competitive;
 
     const genders = slots.map(id => genderById.get(id));
     const allGendered = genders.every(g => g === 'M' || g === 'F');
@@ -613,6 +628,8 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       pairKeyOf,
       reachableCountById,
       formRankById,
+      strengthById,
+      formStrengthById,
       affinityPairs,
       streakById,
     });

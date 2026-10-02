@@ -27,6 +27,12 @@ export interface RepeatWeights {
   pair: Map<string, number>;
   /** 同じ4人（チーム分けは問わない）の減衰重み和 */
   quad: Map<string, number>;
+  /**
+   * 3人組（過去の各試合の4人から作る4通り。チーム分け不問）の鮮度重み和。
+   * 旧 B3「直近の試合と4人中3人以上が重複」の後継。同4人の再演は4つの3人組すべてに当たる。
+   * 減衰は pair / quad の指数ではなく S字の鮮度曲線（`freshnessWeight`）
+   */
+  triple: Map<string, number>;
 }
 
 /** variety の形。bench が上書きして比較できるよう書き換え可能にしてある */
@@ -41,19 +47,48 @@ export const VARIETY_SHAPE = {
   scale: 6,
   /** 同じ4人の重み和（上限2）にかける係数。ペア項とは別枠で足す */
   quadWeight: 1.5,
+  /** 3人以上一致項の係数。ペア項・同4人項とは別枠で足す（4人一致は両方に当たる） */
+  tripleWeight: 0.1,
+  /** 3人組ごとの重み（鮮度和）にかける指数。同じ3人が重なるほど急に効く */
+  triplePower: 1.5,
+  /** コート内の3人組4通りの合計 T にかける指数（T^q） */
+  tripleSumPower: 1.3,
+  /** T^q の上限 */
+  tripleCap: 16,
+  /** 3人組の鮮度（S字）: 重みが半分になる「本人たちのその後の試合数」 */
+  freshMid: 5,
+  /** 3人組の鮮度（S字）: 小さいほど急に落ちる */
+  freshWidth: 1.8,
   /** 減衰しない累計（その日全体の回数）を足す係数。0 なら完全に減衰のみ */
   rawFloor: 0.1,
 };
+
+/**
+ * 3人組の鮮度（0〜1）。`since` は3人がその試合の後に平均で何試合したか（0=直前）。
+ * 2試合後 0.89、5試合後 0.53、10試合後 0.06、15試合後 ≈0 の単調非増加S字。
+ */
+export function freshnessWeight(
+  since: number,
+  shape: Partial<Pick<typeof VARIETY_SHAPE, 'freshMid' | 'freshWidth'>> = VARIETY_SHAPE
+): number {
+  const s = Math.max(0, since);
+  const mid = shape.freshMid ?? VARIETY_SHAPE.freshMid;
+  const width = shape.freshWidth ?? VARIETY_SHAPE.freshWidth;
+  const sig = (x: number) => 1 / (1 + Math.exp(-x / width));
+  return sig(mid - s) / sig(mid);
+}
 
 export function buildRepeatWeights(
   matchHistory: Match[],
   pairKeyOf: (a: string, b: string) => string,
   comboKeyOf: (ids: readonly string[]) => string,
-  shape: Pick<typeof VARIETY_SHAPE, 'mode' | 'decay'> = VARIETY_SHAPE
+  shape: Pick<typeof VARIETY_SHAPE, 'mode' | 'decay'> &
+    Partial<Pick<typeof VARIETY_SHAPE, 'freshMid' | 'freshWidth'>> = VARIETY_SHAPE
 ): RepeatWeights {
   const pair = new Map<string, number>();
   const quad = new Map<string, number>();
-  if (shape.mode === 'off' || matchHistory.length === 0) return { pair, quad };
+  const triple = new Map<string, number>();
+  if (shape.mode === 'off' || matchHistory.length === 0) return { pair, quad, triple };
 
   // 各人の出場通番（1始まり）と総出場数 → 「その試合の後の出場数」
   const ordinal: number[][] = [];
@@ -82,6 +117,14 @@ export function buildRepeatWeights(
       }
     }
     add(quad, comboKeyOf(ids), wAll);
+    for (let skip = 0; skip < 4; skip++) {
+      const ks = [0, 1, 2, 3].filter(k => k !== skip);
+      add(
+        triple,
+        comboKeyOf(ks.map(k => ids[k])),
+        freshnessWeight(ks.reduce((a, k) => a + since[k], 0) / 3, shape)
+      );
+    }
   });
-  return { pair, quad };
+  return { pair, quad, triple };
 }

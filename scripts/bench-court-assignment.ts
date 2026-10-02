@@ -57,6 +57,7 @@
  */
 import { assignCourts } from '../src/lib/algorithm';
 import { VARIETY_SHAPE } from '../src/lib/pairing/repeatDecay';
+import { STRENGTH_SHAPE } from '../src/lib/pairing/strength';
 import {
   DEFAULT_WEIGHTS,
   RECENCY_STREAK_SHAPE,
@@ -294,6 +295,12 @@ interface RunResult {
   // 繰り返しを直接見る指標（docs/plans/2026-10-02-variety-decay.md）
   quadRate: number;        // その4人と同じ顔ぶれ（チーム分け不問）が既に出ていた試合の割合
   recent3Rate: number;     // 4人中3人以上が、メンバー誰かの直近3試合と一致した試合の割合（旧 B3 該当）
+  // 1人あたりの繰り返し回数（1回の練習内。出場した人だけで平均。docs/plans/2026-10-02-exhaustive-freshness.md）
+  // 4人一致 = 過去に同じ4人（チーム分け不問）の試合があった。3人一致 = 過去の1試合と3人以上同じ（4人一致を含む）
+  // 直近 = 本人の直近3試合以内にその一致があった（3人一致は本人の直近3試合のどれかと3人以上同じ）
+  quadPP: number; quadMax: number; quadRecentPP: number;
+  tripPP: number; tripMax: number; tripRecentPP: number;
+  gamesPP: number;
   pair3Rate: number;       // 同コートの2人組のうち、その日3回目以上の共演を含む試合の割合
   pair4Rate: number;       // 同上、4回目以上
   again3Rate: number;      // 1試合あたり、直前の共演から2人とも3試合以内（間に自分が出た試合が2以下）で再び同コートになった2人組の数（6組中）
@@ -439,6 +446,7 @@ function runOnce(
         allPlayers: players,
         useStayDurationPriority: true,
         useObjectiveEngine: USE_OBJECTIVE_ENGINE,
+        ...(process.env.GENDER_OFF === '1' ? { genderBalanceMode: false } : {}),
         pairPreferences,
         // 進行中コートの開始時刻（本番は courtStartTimes(courts)）。目的8 recency の連続判定用
         inProgressStartedAt: pending.map(m => m.startedAt),
@@ -719,7 +727,10 @@ function runOnce(
 
   // 繰り返し指標
   let quadRepeat = 0, recent3 = 0, pair3 = 0, pair4 = 0, again3 = 0, again5 = 0;
+  const ppQuad = new Map<string, number>(), ppQuadRecent = new Map<string, number>();
+  const ppTrip = new Map<string, number>(), ppTripRecent = new Map<string, number>();
   {
+    const allPrev: string[][] = [];
     const quadSeen = new Set<string>();
     const pairSeen = new Map<string, number>();
     const memberHist = new Map<string, string[][]>(players.map(p => [p.id, []]));
@@ -729,6 +740,16 @@ function runOnce(
       const ids = [...m.teamA, ...m.teamB];
       const qk = [...ids].sort().join(',');
       if (quadSeen.has(qk)) quadRepeat++;
+      const bump = (mp: Map<string, number>, id: string) => mp.set(id, (mp.get(id) ?? 0) + 1);
+      const trip = allPrev.some(prev => ids.filter(x => prev.includes(x)).length >= 3);
+      for (const id of ids) {
+        const last3 = memberHist.get(id)!.slice(-3);
+        if (quadSeen.has(qk)) bump(ppQuad, id);
+        if (last3.some(prev => ids.every(x => prev.includes(x)))) bump(ppQuadRecent, id);
+        if (trip) bump(ppTrip, id);
+        if (last3.some(prev => ids.filter(x => prev.includes(x)).length >= 3)) bump(ppTripRecent, id);
+      }
+      allPrev.push(ids);
       quadSeen.add(qk);
       let r3 = false;
       for (const id of ids) {
@@ -763,6 +784,11 @@ function runOnce(
       for (const id of ids) memberHist.get(id)!.push(ids);
     }
   }
+
+  const active = players.filter(p => p.gamesPlayed > 0);
+  const ppMean = (mp: Map<string, number>) =>
+    active.length ? active.reduce((a, p) => a + (mp.get(p.id) ?? 0), 0) / active.length : 0;
+  const ppMax = (mp: Map<string, number>) => Math.max(0, ...active.map(p => mp.get(p.id) ?? 0));
 
   // 目的6: 試合をした人だけを対象に「最多相手 / 自分の試合数」を平均する
   const shares = players
@@ -869,6 +895,9 @@ function runOnce(
     earlyRatio: meanOf(earlyRatios),
     quadRate: history.length ? quadRepeat / history.length : 0,
     recent3Rate: history.length ? recent3 / history.length : 0,
+    quadPP: ppMean(ppQuad), quadMax: ppMax(ppQuad), quadRecentPP: ppMean(ppQuadRecent),
+    tripPP: ppMean(ppTrip), tripMax: ppMax(ppTrip), tripRecentPP: ppMean(ppTripRecent),
+    gamesPP: active.length ? active.reduce((a, p) => a + p.gamesPlayed, 0) / active.length : 0,
     pair3Rate: history.length ? pair3 / history.length : 0,
     pair4Rate: history.length ? pair4 / history.length : 0,
     again3Rate: history.length ? again3 / history.length : 0,
@@ -969,11 +998,21 @@ const DEFAULT_CONDITIONS = '13x2,14x2,16x2,15x3,18x3,21x3,22x3,25x3';
 if (process.env.SKNEE !== undefined) RANK_GAP_SOFT_SHAPE.knee = Number(process.env.SKNEE);
 if (process.env.SSLOPE !== undefined) RANK_GAP_SOFT_SHAPE.slope = Number(process.env.SSLOPE);
 if (process.env.SREG !== undefined) RANK_GAP_SOFT_SHAPE.regMix = Number(process.env.SREG);
+// 実力差の数値ベース化（docs/plans/2026-10-02-rating-based-strength.md）。0 で従来どおり（順位のみ）
+if (process.env.SGAPMIX !== undefined) STRENGTH_SHAPE.gapMix = Number(process.env.SGAPMIX);
+if (process.env.SCOMPMIX !== undefined) STRENGTH_SHAPE.compMix = Number(process.env.SCOMPMIX);
+if (process.env.SLADDER !== undefined) STRENGTH_SHAPE.ladder = Number(process.env.SLADDER);
 if (process.env.VMODE !== undefined) VARIETY_SHAPE.mode = process.env.VMODE as 'off' | 'games';
+if (process.env.VMID !== undefined) VARIETY_SHAPE.freshMid = Number(process.env.VMID);
+if (process.env.VWIDTH !== undefined) VARIETY_SHAPE.freshWidth = Number(process.env.VWIDTH);
 if (process.env.VDECAY !== undefined) VARIETY_SHAPE.decay = Number(process.env.VDECAY);
 if (process.env.VPOWER !== undefined) VARIETY_SHAPE.power = Number(process.env.VPOWER);
 if (process.env.VSCALE !== undefined) VARIETY_SHAPE.scale = Number(process.env.VSCALE);
 if (process.env.VQUAD !== undefined) VARIETY_SHAPE.quadWeight = Number(process.env.VQUAD);
+if (process.env.VTSUM !== undefined) VARIETY_SHAPE.tripleSumPower = Number(process.env.VTSUM);
+if (process.env.VTRIPLE !== undefined) VARIETY_SHAPE.tripleWeight = Number(process.env.VTRIPLE);
+if (process.env.VTPOWER !== undefined) VARIETY_SHAPE.triplePower = Number(process.env.VTPOWER);
+if (process.env.VTCAP !== undefined) VARIETY_SHAPE.tripleCap = Number(process.env.VTCAP);
 if (process.env.VFLOOR !== undefined) VARIETY_SHAPE.rawFloor = Number(process.env.VFLOOR);
 if (process.env.VWEIGHT !== undefined) DEFAULT_WEIGHTS.variety = Number(process.env.VWEIGHT);
 if (process.env.VGEN !== undefined) DEFAULT_WEIGHTS.gender = Number(process.env.VGEN);
@@ -1085,6 +1124,7 @@ for (const { n, courtCount } of CONDITIONS) {
         `  ${(avg(r => r.winRateSd) * 100).toFixed(1)}` +
         `  ${(avg(r => r.extremeGapRate) * 100).toFixed(2)}  ${avg(r => r.maxTrueGap).toFixed(1)}` +
         `  ${(avg(r => r.quadRate) * 100).toFixed(1)}  ${(avg(r => r.recent3Rate) * 100).toFixed(1)}  ${(avg(r => r.pair3Rate) * 100).toFixed(1)}  ${(avg(r => r.pair4Rate) * 100).toFixed(1)}  ${avg(r => r.again3Rate).toFixed(2)}  ${avg(r => r.again5Rate).toFixed(2)}` +
+        `  | 練習内(1人) 試合${avg(r => r.gamesPP).toFixed(1)} 4人一致 平均${avg(r => r.quadPP).toFixed(2)} 最多${avg(r => r.quadMax).toFixed(1)} 直近${avg(r => r.quadRecentPP).toFixed(2)} / 3人一致 平均${avg(r => r.tripPP).toFixed(2)} 最多${avg(r => r.tripMax).toFixed(1)} 直近${avg(r => r.tripRecentPP).toFixed(2)}` +
         (LATE_JOIN > 0 ? `   ${avg(r => r.lateRatio).toFixed(2)}倍` : '') +
         (PREF_PAIRS > 0
           ? `   ${(() => {

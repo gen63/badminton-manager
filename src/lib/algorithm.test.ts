@@ -6,6 +6,8 @@ import type { Reservation } from '../types/reservation';
 import type { Court } from '../types/court';
 import { withInProgressGames } from './effectiveGames';
 import { courtStartTimes } from './pairing/streak';
+import { DEFAULT_WEIGHTS } from './pairing/objective';
+import { VARIETY_SHAPE } from './pairing/repeatDecay';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -1470,13 +1472,24 @@ describe('assignCourts - 性別ペナルティ', () => {
     );
     const allPlayers = [...players, ...fillers];
 
-    const assignments = assignCourts(players, 1, [], {
-      totalCourtCount: 1,
-      targetCourtIds: [1],
-      practiceStartTime: now - 60 * 60 * 1000,
-      useStayDurationPriority: false,
-      allPlayers,
-    });
+    // 「同優先度」は優先度スコアが同点という意味で、公平性の項は同点でも実力順の並びで
+    // 末尾の人を控えにしたがる。`waiting` を 14（2026-10-02）に上げると性別より強く効いて
+    // しまうので、このテストは性別と優先度の相対関係を見るため改定前の 4.0 に固定する
+    // （docs/plans/2026-10-02-rating-based-strength.md）。
+    const savedWaiting = DEFAULT_WEIGHTS.waiting;
+    DEFAULT_WEIGHTS.waiting = 4.0;
+    let assignments: ReturnType<typeof assignCourts>;
+    try {
+      assignments = assignCourts(players, 1, [], {
+        totalCourtCount: 1,
+        targetCourtIds: [1],
+        practiceStartTime: now - 60 * 60 * 1000,
+        useStayDurationPriority: false,
+        allPlayers,
+      });
+    } finally {
+      DEFAULT_WEIGHTS.waiting = savedWaiting;
+    }
 
     const assigned = [...assignments[0].teamA, ...assignments[0].teamB];
     const maleCount = assigned.filter(id => id.startsWith('m')).length;
@@ -3043,8 +3056,17 @@ describe('assignCourts - ハシゴ式（applyStreakSwaps）が新エンジンに
   };
 
   it('勝ち続けると対戦相手が強くなり、負け続けると弱くなる', () => {
-    const whenWinning = meanOpponentRank(true);
-    const whenLosing = meanOpponentRank(false);
+    // ハシゴ式の効きだけを見るテスト。3人一致の項（variety の別枠）が足されると、1人の全勝/全敗で
+    // 組が変わっても同じ3人を避ける力が相手の偏りを一部打ち消す（差 1.0 → 0.67）ため、この項だけ切って検証する。
+    const savedTriple = VARIETY_SHAPE.tripleWeight;
+    VARIETY_SHAPE.tripleWeight = 0;
+    let whenWinning: number, whenLosing: number;
+    try {
+      whenWinning = meanOpponentRank(true);
+      whenLosing = meanOpponentRank(false);
+    } finally {
+      VARIETY_SHAPE.tripleWeight = savedTriple;
+    }
 
     // ハシゴ式が無いと勝敗が組み合わせに一切影響せず、両者は完全に一致する
     // （実装前の実測では差 0.00 だった）。
