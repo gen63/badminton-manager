@@ -808,6 +808,10 @@ const WIDE_RANK_SPAN_RATIO = 2 / 3;
  * そもそも少人数セッションでは全体の実力幅自体が狭く、「大きく離れている」が
  * 成立しにくい（`MIN_ROSTER_FOR_SKILL_GAP` と同じ考え方）。
  * 計測: docs/plans/2026-08-05-pairing-goals-and-rewrite.md
+ *
+ * 2026-10-02: 14人未満でも「大きく離れた組」を強く嫌えるよう、ソフト側の skillGap を凸形にした
+ * （`RANK_GAP_SOFT_SHAPE`）。ハードを小人数へ広げる案は 3-1・試合数幅・待ちが悪化して不採用。
+ * docs/plans/2026-10-02-rank-gap-soft.md
  */
 const WIDE_RANK_SPAN_MIN_ROSTER = 14;
 

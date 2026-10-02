@@ -1562,13 +1562,15 @@ describe('assignCourts - 少数派性別1人のときの3-1ペナルティ無効
     // options.allPlayers（セッション全体、他コートでプレイ中の p6(F) を含む）では
     // 女性が2人いる = 2-2が作れる可能性がある「バランスが取れる構成」。
     // このときは genderPairImpossible が false のまま維持され、
-    // 従来どおり 3-1 ペナルティが有効 → 単独では待っていても p5 は選ばれない。
+    // 従来どおり 3-1 ペナルティが有効 → 試合数が同じなら p5 は選ばれない。
+    // （2026-10-02: 公平性の重みを 1.5 → 5.0 に上げたため、p5 が試合数で遅れていれば
+    //  3-1 でも出場させる。docs/plans/2026-10-02-rank-gap-soft.md）
     const players: Player[] = [
       createGenderedPlayer('p1', 'P1', 1500, 'M', 10),
       createGenderedPlayer('p2', 'P2', 1500, 'M', 10),
       createGenderedPlayer('p3', 'P3', 1500, 'M', 10),
       createGenderedPlayer('p4', 'P4', 1500, 'M', 10),
-      createGenderedPlayer('p5', 'P5', 1500, 'F', 8),
+      createGenderedPlayer('p5', 'P5', 1500, 'F', 10),
     ];
     const allPlayers: Player[] = [
       ...players,

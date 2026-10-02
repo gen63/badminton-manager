@@ -60,6 +60,7 @@ import { VARIETY_SHAPE } from '../src/lib/pairing/repeatDecay';
 import {
   DEFAULT_WEIGHTS,
   RECENCY_STREAK_SHAPE,
+  RANK_GAP_SOFT_SHAPE,
   AFFINITY_ENEMY_COST,
   AFFINITY_ENEMY_COST_SPLIT,
   AFFINITY_ENEMY_COST_SPLIT_SAFE,
@@ -941,6 +942,9 @@ if (process.env.STREAK_HARD_FROM !== undefined) {
   RECENCY_STREAK_SHAPE.hardFrom = Number(process.env.STREAK_HARD_FROM);
 }
 const DEFAULT_CONDITIONS = '13x2,14x2,16x2,15x3,18x3,21x3,22x3,25x3';
+if (process.env.SKNEE !== undefined) RANK_GAP_SOFT_SHAPE.knee = Number(process.env.SKNEE);
+if (process.env.SSLOPE !== undefined) RANK_GAP_SOFT_SHAPE.slope = Number(process.env.SSLOPE);
+if (process.env.SREG !== undefined) RANK_GAP_SOFT_SHAPE.regMix = Number(process.env.SREG);
 if (process.env.VMODE !== undefined) VARIETY_SHAPE.mode = process.env.VMODE as 'off' | 'games';
 if (process.env.VDECAY !== undefined) VARIETY_SHAPE.decay = Number(process.env.VDECAY);
 if (process.env.VPOWER !== undefined) VARIETY_SHAPE.power = Number(process.env.VPOWER);
@@ -950,6 +954,9 @@ if (process.env.VFLOOR !== undefined) VARIETY_SHAPE.rawFloor = Number(process.en
 if (process.env.VWEIGHT !== undefined) DEFAULT_WEIGHTS.variety = Number(process.env.VWEIGHT);
 if (process.env.VGEN !== undefined) DEFAULT_WEIGHTS.gender = Number(process.env.VGEN);
 if (process.env.VREC !== undefined) DEFAULT_WEIGHTS.recency = Number(process.env.VREC);
+if (process.env.VFAIR !== undefined) DEFAULT_WEIGHTS.fairness = Number(process.env.VFAIR);
+if (process.env.VWAIT !== undefined) DEFAULT_WEIGHTS.waiting = Number(process.env.VWAIT);
+if (process.env.VMIX !== undefined) DEFAULT_WEIGHTS.mixSplit = Number(process.env.VMIX);
 if (process.env.VSKILL !== undefined) DEFAULT_WEIGHTS.skillGap = Number(process.env.VSKILL);
 if (process.env.VCOMP !== undefined) DEFAULT_WEIGHTS.competitive = Number(process.env.VCOMP);
 const CONDITIONS = (process.env.CONDITIONS ?? DEFAULT_CONDITIONS)

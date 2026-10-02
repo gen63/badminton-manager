@@ -40,9 +40,9 @@ export const VARIETY_SHAPE = {
   /** コートのペア項 x を min(1, x/scale) で 0〜1 に写す（scale に達すると頭打ち） */
   scale: 6,
   /** 同じ4人の重み和（上限2）にかける係数。ペア項とは別枠で足す */
-  quadWeight: 0.5,
+  quadWeight: 1.5,
   /** 減衰しない累計（その日全体の回数）を足す係数。0 なら完全に減衰のみ */
-  rawFloor: 0.2,
+  rawFloor: 0.1,
 };
 
 export function buildRepeatWeights(

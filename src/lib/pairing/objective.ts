@@ -130,6 +130,18 @@ const MIX_SPLIT_WEIGHT = 1.0;
 const SKILL_GAP_WEIGHT = 1.5;
 
 /**
+ * skillGap のソフト側の形（bench が上書きして比較できるよう書き換え可能）。
+ * `docs/plans/2026-10-02-rank-gap-soft.md`
+ *
+ * 1コートあたりの項 = g + slope × max(0, g − knee)²
+ * （g = 順位幅 ÷（ロースター人数−1）。regMix > 0 なら formRank の幅と登録順位の幅を
+ * (1−regMix):regMix で混ぜる）。幅が knee を超えると二乗で急に重くなる凸形。
+ * ハード制約が掛からない14人未満でも「大きく離れた組」を強く嫌えるようにするのが目的。
+ * slope > 0 のとき項は 1 を超えうる（クランプしない）。
+ */
+export const RANK_GAP_SOFT_SHAPE = { knee: 0.3, slope: 6, regMix: 0.5 };
+
+/**
  * `affinity` の重み。2.0 → **1.0**（飽和廃止にあわせて再計測。
  * `docs/plans/2026-08-31-pair-preference.md` 6d.）。
  *
@@ -179,7 +191,9 @@ const SKILL_GAP_WEIGHT = 1.5;
 const AFFINITY_WEIGHT = 1.0;
 
 /**
- * `recency` の重み。**2.0**。計測の全文は
+ * `recency` の重み。**5.0**（2026-10-02: 2.0 → 5.0。skillGap の凸化・variety 強化で
+ * 3連続が増えるのを抑えるため。`docs/plans/2026-10-02-rank-gap-soft.md`）。
+ * 以下は 2.0 の時点の計測（経緯として残す）。計測の全文は
  * `docs/plans/2026-10-01-recency-just-finished-streak.md`（初版の経緯は
  * `docs/plans/2026-09-08-recency-penalty.md`）。
  *
@@ -207,7 +221,7 @@ const AFFINITY_WEIGHT = 1.0;
  * （終了順に履歴へ積み、進行中コートの開始時刻を `inProgressStartedAt` で渡す）。
  * この項を再計測するときは先に確かめること。
  */
-const RECENCY_WEIGHT = 2.0;
+const RECENCY_WEIGHT = 5.0;
 
 /**
  * 優先順位（質 > 多様性 > 公平性）を反映した既定値。
@@ -244,11 +258,11 @@ const RECENCY_WEIGHT = 2.0;
 export const DEFAULT_WEIGHTS: ObjectiveWeights = {
   skillGap: SKILL_GAP_WEIGHT,
   competitive: 1.0,
-  gender: 1.6,
+  gender: 3.0,
   mixSplit: MIX_SPLIT_WEIGHT, // 質
-  variety: 2.6, // 多様性
-  fairness: 1.5,
-  waiting: 1.5, // 公平性
+  variety: 6.0, // 多様性（2026-10-02: 2.6 → 6.0。skillGap 凸化と同時に再調整。docs/plans/2026-10-02-rank-gap-soft.md）
+  fairness: 5.0,
+  waiting: 4.0, // 公平性（同上: 1.5 → 5.0 / 4.0。skillGap 凸化で出る試合数の偏りを抑える）
   affinity: AFFINITY_WEIGHT, // ペア希望（bench 実測。根拠は AFFINITY_WEIGHT のコメント参照）
   recency: RECENCY_WEIGHT, // 連続出場を嫌う（2連続目は僅かに、3連続目はまあまあ強く、4連続目以上は強く。すべてソフト。形は RECENCY_STREAK_SHAPE）
 };
@@ -665,19 +679,31 @@ export function computeWaiting(
 export function computeSkillGap(
   courts: CourtPlacement[],
   rankById: Map<string, number>,
-  rosterSize: number
+  rosterSize: number,
+  shape: { knee: number; slope: number; regMix: number } = RANK_GAP_SOFT_SHAPE,
+  regRankById?: Map<string, number>
 ): number {
   if (courts.length === 0) return 0;
   const denom = Math.max(1, rosterSize - 1);
+  const span = (ids: string[], map: Map<string, number>): number | undefined => {
+    const ranks = ids.map(id => map.get(id)).filter((r): r is number => r !== undefined);
+    if (ranks.length === 0) return undefined;
+    return (Math.max(...ranks) - Math.min(...ranks)) / denom;
+  };
   const sum = courts.reduce((s, court) => {
-    const ranks = courtMembers(court)
-      .map(id => rankById.get(id))
-      .filter((r): r is number => r !== undefined);
-    if (ranks.length === 0) return s;
-    const gap = Math.max(...ranks) - Math.min(...ranks);
-    return s + gap / denom;
+    const ids = courtMembers(court);
+    const gForm = span(ids, rankById);
+    if (gForm === undefined) return s;
+    let g = gForm;
+    if (shape.regMix > 0 && regRankById) {
+      const gReg = span(ids, regRankById);
+      if (gReg !== undefined) g = (1 - shape.regMix) * gForm + shape.regMix * gReg;
+    }
+    const over = Math.max(0, g - shape.knee);
+    return s + g + shape.slope * over * over;
   }, 0);
-  return clamp01(sum / courts.length);
+  const mean = sum / courts.length;
+  return shape.slope > 0 ? Math.max(0, mean) : clamp01(mean);
 }
 
 /**
@@ -1051,7 +1077,13 @@ export function computeObjectiveTerms(input: ObjectiveInput): ObjectiveTerms {
   return {
     fairness: computeFairness(input.courts, input.priorityRankById, input.candidateCount),
     waiting: computeWaiting(input.benchIds, input.priorityRankById, input.candidateCount),
-    skillGap: computeSkillGap(input.courts, input.formRankById, input.rosterSize),
+    skillGap: computeSkillGap(
+      input.courts,
+      input.formRankById,
+      input.rosterSize,
+      RANK_GAP_SOFT_SHAPE,
+      input.rankById
+    ),
     competitive: computeCompetitive(input.courts, input.formRankById, input.rosterSize),
     gender: computeGender(input.courts, input.genderById, input.preferGenderMix),
     mixSplit: computeMixSplit(input.courts, input.genderById),

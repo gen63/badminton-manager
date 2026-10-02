@@ -8,6 +8,7 @@ import {
   GENDER_BALANCE_OFF_WEIGHTS,
   AFFINITY_ENEMY_COST,
   RECENCY_STREAK_SHAPE,
+  RANK_GAP_SOFT_SHAPE,
   type CourtPlacement,
   type PairCounts,
 } from './objective';
@@ -1211,7 +1212,8 @@ describe('assignRoundByObjective: recency（連続出場を嫌う）', () => {
       assignRoundByObjective({
         ...baseParams,
         streakById: new Map([['p3', 1]]),
-        weights: { recency: 20 },
+        // 5人ロースターでは skillGap の凸項（幅 p0〜p4 は1.0）が大きいので、それを押し切る重み
+        weights: { recency: 60 },
       })
     );
     expect(picked.has('p4')).toBe(true);
@@ -1237,6 +1239,7 @@ describe('assignRoundByObjective: recency（連続出場を嫌う）', () => {
       assignRoundByObjective({
         ...baseParams,
         streakById: new Map([['p3', 2]]), // 今回3連続目
+        weights: { skillGap: 0 }, // 5人ロースターでは凸の skillGap 項が大きく、連続の効きだけを見るため外す
       })
     );
     expect(picked.has('p4')).toBe(true);
@@ -1295,6 +1298,7 @@ describe('assignRoundByObjective: recency（連続出場を嫌う）', () => {
           ['p2', 2], // 3連続目になる
           ['p3', 1], // 2連続目になる
         ]),
+        weights: { recency: 20 }, // 5人ロースターの skillGap 凸項を押し切る重み（段階の大小だけを見る）
       })
     );
     expect(picked.has('p3')).toBe(true);
@@ -1412,4 +1416,42 @@ describe('assignRoundByObjective: strong ペアの順位差は順位差ハード
       expect(r.othersWithinSpan).toBe(true);
     });
   }
+});
+
+describe('assignRoundByObjective: 小人数（ハード制約なし）でも順位が大きく離れた組を避ける（skillGap の凸ペナルティ）', () => {
+  // 12人・1コート。優先度は p0 と p11（両端）が最優先、p5・p6 が次点。
+  // 線形の skillGap（slope=0）では両端 p0×p11 が同じコートに入るが、
+  // 既定の凸形は幅が knee を超えるぶんを重くして、p0×p11 の同居を避ける。
+  // docs/plans/2026-10-02-rank-gap-soft.md
+  const candidates = Array.from({ length: 12 }, (_, i) => makePlayer(`p${i}`));
+  const rankById = rankByIdFrom(candidates.map(p => p.id));
+  const run = () =>
+    assignRoundByObjective({
+      candidates,
+      courtIds: [1],
+      rankById,
+      rosterSize: 12,
+      priorityScoreOf: (p: Player) => (p.id === 'p0' || p.id === 'p11' ? 0 : p.id === 'p5' || p.id === 'p6' ? 0.5 : 1),
+      pairCounts: emptyPairCounts(),
+      pairKeyOf: pairKey,
+      wideSpanThreshold: null,
+      preferGenderMix: false,
+    });
+  const idsOf = (r: ReturnType<typeof assignRoundByObjective>) => new Set(r.flatMap(c => [...c.teamA, ...c.teamB]));
+
+  it('線形（slope=0）では両端が同居する（凸形の効果を確かめる対照）', () => {
+    const original = { ...RANK_GAP_SOFT_SHAPE };
+    Object.assign(RANK_GAP_SOFT_SHAPE, { knee: 0, slope: 0, regMix: 0 });
+    try {
+      const ids = idsOf(run());
+      expect(ids.has('p0') && ids.has('p11')).toBe(true);
+    } finally {
+      Object.assign(RANK_GAP_SOFT_SHAPE, original);
+    }
+  });
+
+  it('既定の凸形では、13人未満でも両端（順位差11）の同居を避ける', () => {
+    const ids = idsOf(run());
+    expect(ids.has('p0') && ids.has('p11')).toBe(false);
+  });
 });
