@@ -30,6 +30,7 @@ import {
   fairnessPoints,
   extremeSurplusFactor,
   tripleRepeatPointsFor,
+  courtSpanExcessPointsFor,
   looseAffinityPoints,
   type AffinityPair,
   type ScoreContext,
@@ -148,6 +149,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   // 公平性の窓（ハード1）
   const surplus = candidateCount - neededCount;
   ctx.tripleRepeatPoints = tripleRepeatPointsFor(surplus); // 余りに余裕がある日ほど3人以上一致を強く嫌う
+  ctx.courtSpanExcessPoints = courtSpanExcessPointsFor(surplus); // 余りに余裕がある日ほど偏差差20超を強く嫌う（5〜7点）
   const windowLimit =
     neededCount + Math.ceil(surplus * (lateBalanceMode ? LATE_BALANCE_WINDOW_RATIO : FAIRNESS_WINDOW_RATIO));
 

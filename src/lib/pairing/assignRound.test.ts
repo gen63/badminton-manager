@@ -358,7 +358,7 @@ describe('コート内の最大−最小（凸の点数）: 小人数でも大�
     });
 
   it('幅の点数を切ると両端が同居する（効果を確かめる対照）', () => {
-    const ids = withTable({ courtSpan: 0, courtSpanExcess: 0 }, () => idsOf(go()));
+    const ids = withTable({ courtSpan: 0, courtSpanExcess: 0, courtSpanExcessMax: 0 }, () => idsOf(go()));
     expect(ids.has('p0') && ids.has('p11')).toBe(true);
   });
 

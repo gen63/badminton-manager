@@ -53,9 +53,15 @@ export const SCORE_TABLE = {
   // ── レベル差（最優先） ──
   /** コート内の最大−最小。偏差が1点開くごとに 2.5 点 */
   courtSpan: 2.5,
-  /** コート内の最大−最小が偏差20を超えた分は、1点につきさらに 5 点上乗せ（大差ほど強く嫌う凸形） */
+  /**
+   * コート内の最大−最小が偏差 `courtSpanKnee`(20) を超えた分は、1点につきさらに上乗せ（大差ほど強く嫌う凸形）。
+   * 上乗せ点数は余り人数（候補 − 必要人数）で `courtSpanExcess`（余りが少ない日 5 点）〜
+   * `courtSpanExcessMax`（余りに余裕がある日 7 点）の間を動く（`courtSpanExcessPointsFor`）。
+   * ランプの区間は `tripleRampStart` / `tripleRampEnd`（余り 5〜7）を共有する。
+   */
   courtSpanKnee: 20,
   courtSpanExcess: 5,
+  courtSpanExcessMax: 7,
   /** チーム平均の差。平均偏差が1点開くごとに 3 点（= 2チームの偏差合計の差 × 1.5） */
   teamDiff: 3,
 
@@ -145,6 +151,8 @@ export interface ScoreContext {
   needById: Map<string, number>;
   /** このラウンドの3人以上一致の点数（`tripleRepeatPointsFor(余り)`）。省略時は `SCORE_TABLE.tripleRepeat` */
   tripleRepeatPoints?: number;
+  /** このラウンドの偏差差 knee 超えの上乗せ点数（`courtSpanExcessPointsFor(余り)`）。省略時は `SCORE_TABLE.courtSpanExcess` */
+  courtSpanExcessPoints?: number;
 }
 
 const dev = (ctx: ScoreContext, id: string): number => ctx.deviationById.get(id) ?? 50;
@@ -220,7 +228,7 @@ export function courtFixedPoints(ids: readonly string[], ctx: ScoreContext): { s
   const rawSpan = courtSpan(ids, ctx.deviationById);
   const span =
     SCORE_TABLE.courtSpan * rawSpan +
-    SCORE_TABLE.courtSpanExcess * Math.max(0, rawSpan - SCORE_TABLE.courtSpanKnee);
+    (ctx.courtSpanExcessPoints ?? SCORE_TABLE.courtSpanExcess) * Math.max(0, rawSpan - SCORE_TABLE.courtSpanKnee);
 
   let triple = 0;
   if (ctx.tripleWeights.size > 0) {
@@ -283,10 +291,25 @@ export function extremeSurplusFactor(surplus: number): number {
  * `tripleRampEnd` 以上なら `tripleRepeatMax`、間は smoothstep（単調増加・連続・端点でなめらか）。
  */
 export function tripleRepeatPointsFor(surplus: number): number {
-  const { tripleRepeat: lo, tripleRepeatMax: hi, tripleRampStart: a, tripleRampEnd: b } = SCORE_TABLE;
-  if (!(b > a)) return surplus >= b ? hi : lo;
+  const { tripleRepeat: lo, tripleRepeatMax: hi } = SCORE_TABLE;
+  return lo + (hi - lo) * surplusSmoothstep(surplus);
+}
+
+/**
+ * 余り人数に応じた偏差差 knee 超えの上乗せ点数。余りが `tripleRampStart` 以下なら `courtSpanExcess`(5)、
+ * `tripleRampEnd` 以上なら `courtSpanExcessMax`(7)、間は smoothstep（単調増加・連続）。
+ */
+export function courtSpanExcessPointsFor(surplus: number): number {
+  const { courtSpanExcess: lo, courtSpanExcessMax: hi } = SCORE_TABLE;
+  return lo + (hi - lo) * surplusSmoothstep(surplus);
+}
+
+/** 余り人数 → 0〜1 の smoothstep（`tripleRampStart` 以下で 0、`tripleRampEnd` 以上で 1）。3人一致・偏差差上乗せで共有 */
+function surplusSmoothstep(surplus: number): number {
+  const { tripleRampStart: a, tripleRampEnd: b } = SCORE_TABLE;
+  if (!(b > a)) return surplus >= b ? 1 : 0;
   const t = Math.min(1, Math.max(0, (surplus - a) / (b - a)));
-  return lo + (hi - lo) * t * t * (3 - 2 * t);
+  return t * t * (3 - 2 * t);
 }
 
 /** 余り人数（候補 − 必要人数）に応じた公平性の倍率。余りが多いほど 1 に近づく（単調減少・連続） */

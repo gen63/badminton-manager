@@ -9,6 +9,7 @@ import {
   courtSpan,
   extremeSurplusFactor,
   tripleRepeatPointsFor,
+  courtSpanExcessPointsFor,
   fairnessPoints,
   fairnessSurplusFactor,
   genderPoints,
@@ -304,6 +305,27 @@ describe('tripleRepeatPointsFor（余り→3人以上一致の点数）', () => 
     }
     for (let n = 0; n <= 8; n++) {
       expect(Math.abs(tripleRepeatPointsFor(n - 1e-6) - tripleRepeatPointsFor(n + 1e-6))).toBeLessThan(1e-3);
+    }
+  });
+});
+
+describe('courtSpanExcessPointsFor（余り→偏差差20超の上乗せ点数）', () => {
+  const grid = Array.from({ length: 161 }, (_, i) => i * 0.05);
+  it('端点: 余り5以下は 5 点、7以上は 7 点', () => {
+    expect(courtSpanExcessPointsFor(0)).toBe(5);
+    expect(courtSpanExcessPointsFor(5)).toBe(5);
+    expect(courtSpanExcessPointsFor(7)).toBe(7);
+    expect(courtSpanExcessPointsFor(100)).toBe(7);
+    expect(courtSpanExcessPointsFor(6)).toBeCloseTo(6, 9);
+  });
+  it('単調増加', () => {
+    for (let i = 1; i < grid.length; i++) {
+      expect(courtSpanExcessPointsFor(grid[i])).toBeGreaterThanOrEqual(courtSpanExcessPointsFor(grid[i - 1]) - 1e-12);
+    }
+  });
+  it('連続（段差なし）', () => {
+    for (let n = 0; n <= 8; n++) {
+      expect(Math.abs(courtSpanExcessPointsFor(n - 1e-6) - courtSpanExcessPointsFor(n + 1e-6))).toBeLessThan(1e-3);
     }
   });
 });
