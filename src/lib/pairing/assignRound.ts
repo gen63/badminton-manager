@@ -97,6 +97,19 @@ interface SearchState {
   bench: string[];
 }
 
+/** 分割 slots=[A1,A2,B1,B2] で同コートの敵になっているペア希望の組数 */
+function enemyPairCount(slots: Slots, pairs: readonly AffinityPair[]): number {
+  let n = 0;
+  for (const { a, b } of pairs) {
+    const aA = slots[0] === a || slots[1] === a;
+    const aB = slots[2] === a || slots[3] === a;
+    const bA = slots[0] === b || slots[1] === b;
+    const bB = slots[2] === b || slots[3] === b;
+    if ((aA && bB) || (aB && bA)) n++;
+  }
+  return n;
+}
+
 const better = (a: Evaluation, b: Evaluation): number =>
   a.violations !== b.violations ? a.violations - b.violations : a.points - b.points;
 
@@ -153,7 +166,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   const windowLimit =
     neededCount + Math.ceil(surplus * (lateBalanceMode ? LATE_BALANCE_WINDOW_RATIO : FAIRNESS_WINDOW_RATIO));
 
-  // コート単位の評価（4人の集合ごとにキャッシュ）。チーム分けは3通りから（違反, 点数）最小
+  // コート単位の評価（4人の集合ごとにキャッシュ）。チーム分けは a+d / b+c 固定。「必ず」ペア違反時のみ3通りから（違反, 点数）最小
   const courtCache = new Map<string, CourtEval>();
   const evalCourt = (ids: readonly string[]): CourtEval => {
     const sorted = [...ids].sort();
@@ -169,8 +182,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
     ];
     const fixed = courtFixedPoints(ids, ctx);
     const fixedTotal = fixed.span + fixed.triple + fixed.streak;
-    let best: CourtEval | null = null;
-    for (const slots of options) {
+    const cands = options.map(slots => {
       // 「必ず」ペアが同コートで敵になる分割は違反
       let violations = 0;
       for (const { a: pa, b: pb } of strongPairs) {
@@ -180,10 +192,38 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       }
       const split = splitPoints([slots[0], slots[1]], [slots[2], slots[3]], ctx);
       const points = fixedTotal + split.teamDiff + split.gender + split.pairEnemy;
-      const cand: CourtEval = { slots, violations, points };
-      if (!best || better(cand, best) < -EPS) best = cand;
+      // チーム平均偏差差（teamDiff の素。偏差単位）
+      const diff = Math.abs(dev(slots[0]) + dev(slots[1]) - dev(slots[2]) - dev(slots[3])) / 2;
+      const enemies = enemyPairCount(slots, affinityPairs);
+      return { slots, violations, points, diff, enemies } as CourtEval & { diff: number; enemies: number };
+    });
+    // 最強＋最弱 vs 2位＋3位 は常にチーム平均差が最小。「必ず」違反が無ければこれが基本。
+    // 弱いペア希望は、希望を満たす分割が平均差 T 以下のときだけ分割を変えてよい（極端な格上相手を避ける）。
+    // 男女点は分割の選択に使わない（点数としてだけ加算）
+    let result: CourtEval & { diff: number; enemies: number } = cands[0];
+    let strongFallback = false;
+    if (cands[0].violations > 0) {
+      // 「必ず」違反を避けるときだけ、3通りから（違反, 点数）最小
+      strongFallback = true;
+      for (const cand of cands) if (better(cand, result) < -EPS) result = cand;
+    } else if (cands[0].enemies > 0 && SCORE_TABLE.pairPref > 0) {
+      let pick: (typeof cands)[number] | null = null;
+      for (const cand of cands.slice(1)) {
+        if (cand.violations > 0 || cand.diff > SCORE_TABLE.pairSplitMaxDiff + EPS) continue;
+        if (cand.enemies >= cands[0].enemies) continue;
+        if (!pick || cand.enemies < pick.enemies || (cand.enemies === pick.enemies && cand.diff < pick.diff - EPS)) pick = cand;
+      }
+      if (pick) result = pick;
     }
-    const result = best!;
+    // 同コートなのに希望ペアが敵にされた（T を超えて組ませられない）コートは、別コート・ベンチより明確に悪くする。
+    // 顔ぶれ選択で「T 以下で組める顔ぶれ」か「希望ペアを別コートにする」ほうを優先させる
+    if (result.enemies > 0 && SCORE_TABLE.pairPref > 0 && SCORE_TABLE.pairSplitBlocked > 0) {
+      result = { ...result, points: result.points + SCORE_TABLE.pairSplitBlocked * result.enemies };
+    }
+    // 「必ず」のために平均差が T を超える分割になるコートは、顔ぶれ選択の段階で強く避ける
+    if (strongFallback && result.diff > SCORE_TABLE.pairSplitMaxDiff) {
+      result = { ...result, points: result.points + SCORE_TABLE.strongSplitExcess * (result.diff - SCORE_TABLE.pairSplitMaxDiff) };
+    }
     // 極端な実力差。分割に依らないので最後に足す（「必ず」ペア2人の間は除く）
     const rawSpan = courtSpan(ids, deviationById, strongPairs);
     if (rawSpan >= SCORE_TABLE.extremeSpan) {

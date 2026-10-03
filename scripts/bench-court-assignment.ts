@@ -53,6 +53,7 @@
  */
 import { assignCourts } from '../src/lib/algorithm';
 import { SCORE_TABLE } from '../src/lib/pairing/objective';
+import { buildDeviationById } from '../src/lib/pairing/deviation';
 import { median } from '../src/lib/median';
 import type { Player } from '../src/types/player';
 import type { Match } from '../src/types/match';
@@ -330,6 +331,12 @@ const MIXED_WINDOW_MS = process.env.CONTINUOUS === '1' ? 0 : 60_000;
 // ENGINE=objective で src/lib/pairing/assignRound.ts の新エンジンを使う。既定は既存エンジン。
 const USE_OBJECTIVE_ENGINE = process.env.ENGINE === 'objective';
 
+/**
+ * ペア希望の成立と、そのコートのチーム平均偏差差 |Δ|（登録レートの偏差。エンジンが見る値）の記録。
+ * 条件ごとに出力後リセットする。mate = 希望ペアが味方だったコート、enemy = 同コートで敵だったコート。
+ */
+const prefDelta = { mate: [] as number[], enemy: [] as number[], all: [] as number[] };
+
 function runOnce(
   n: number,
   courtCount: number,
@@ -471,6 +478,17 @@ function runOnce(
         p.lastPlayedAt = finishedAt;
       }
       if (pairPreferences.length > 0) {
+        const devMap = buildDeviationById(players);
+        const dv = (id: string) => devMap.get(id) ?? 50;
+        const delta = Math.abs(dv(a.teamA[0]) + dv(a.teamA[1]) - dv(a.teamB[0]) - dv(a.teamB[1])) / 2;
+        prefDelta.all.push(delta);
+        for (const pref of pairPreferences) {
+          const [pa, pb] = pref.playerIds;
+          const ids4 = [...a.teamA, ...a.teamB];
+          if (!ids4.includes(pa) || !ids4.includes(pb)) continue;
+          const mate = (a.teamA.includes(pa) && a.teamA.includes(pb)) || (a.teamB.includes(pa) && a.teamB.includes(pb));
+          (mate ? prefDelta.mate : prefDelta.enemy).push(delta);
+        }
         const incPartner = (x: string, y: string) => {
           const k = pairKeyBench(x, y);
           partnerCounts.set(k, (partnerCounts.get(k) ?? 0) + 1);
@@ -986,6 +1004,16 @@ for (const { n, courtCount } of CONDITIONS) {
       const r = runOnce(n, courtCount, ROUNDS, noise, seed);
       if (r) results.push(r);
     }
+    const dStat = (xs: number[]) => {
+      if (xs.length === 0) return 'n=0';
+      const v = [...xs].sort((x, y) => x - y);
+      const q = (r: number) => v[Math.min(v.length - 1, Math.floor(v.length * r))];
+      return `n=${v.length} 平均${(v.reduce((x, y) => x + y, 0) / v.length).toFixed(1)} 95%点${q(0.95).toFixed(1)} 最大${v[v.length - 1].toFixed(1)} 8超${((v.filter(x => x > 8).length / v.length) * 100).toFixed(1)}% 10超${((v.filter(x => x >= 10).length / v.length) * 100).toFixed(1)}%`;
+    };
+    const deltaLine = PREF_PAIRS > 0
+      ? `    |Δ|(チーム平均偏差差) 希望味方側[${dStat(prefDelta.mate)}] 希望敵側[${dStat(prefDelta.enemy)}] 全試合[${dStat(prefDelta.all)}]`
+      : '';
+    prefDelta.mate.length = 0; prefDelta.enemy.length = 0; prefDelta.all.length = 0;
     if (results.length === 0) {
       console.log(`  ${`${n}人${courtCount}C`.padEnd(9)} ${String(noise).padStart(5)}  (計測不能)`);
       continue;
@@ -1061,6 +1089,7 @@ for (const { n, courtCount } of CONDITIONS) {
             })()}`
           : '')
     );
+    if (deltaLine) console.log(deltaLine);
   }
   console.log('');
 }
