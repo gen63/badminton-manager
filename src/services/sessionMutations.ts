@@ -131,19 +131,22 @@ function withOpsCompletedAt(
 }
 
 /**
- * 会費・名簿が両方完了し、かつ「会費・名簿の強制休憩」で休憩中のプレイヤーを
- * 自動で休憩解除する（`forcedRestActive` は false で降ろす。Firestore は undefined 不可）。
- * 自主休憩（forcedRestActive なし）や結果未登録休憩は対象外。
- * activatedAt は未設定（0）のときのみ now を入れる（computeToggleRest と同じ）。
+ * 会費・名簿が両方完了した休憩中プレイヤーを自動で休憩解除する。対象は次のいずれか:
+ *   - 会費・名簿の強制休憩中（`forcedRestActive`）
+ *   - 未到着（`activatedAt === 0`＝一度もチェックインしていない。練習開始時は全員この状態）
+ * 一度到着後に自主休憩した人（activatedAt > 0 かつ forcedRestActive なし）や
+ * 結果未登録休憩は対象外。activatedAt は 0 のときのみ now を入れる（computeToggleRest と同じ）。
+ * `forcedRestActive` は立っていたときだけ false に降ろす（Firestore は undefined 不可）。
  */
 function withAutoResume(p: Player, now: number): Player {
   const ops = p.operationStatus;
   if (!ops?.payment || !ops?.roster) return p;
-  if (!p.isResting || !p.forcedRestActive) return p;
+  if (!p.isResting) return p;
+  if (!p.forcedRestActive && p.activatedAt !== 0) return p;
   return {
     ...p,
     isResting: false,
-    forcedRestActive: false,
+    ...(p.forcedRestActive ? { forcedRestActive: false } : {}),
     activatedAt: p.activatedAt === 0 ? now : p.activatedAt,
   };
 }

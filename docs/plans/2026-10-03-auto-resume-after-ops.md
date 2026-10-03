@@ -22,6 +22,14 @@
 - Firestore は undefined 不可のため、解除は key 削除でなく `false` で表す。
 - 本人通知文言を「対応すると自動で休憩が解除されます」に変更。
 
+## 到着時の自動復帰（追記）
+
+- 練習開始時は全員 `isResting: true, activatedAt: 0` で追加され、到着時に手動で休憩解除していた。
+- `withAutoResume` の対象を「`forcedRestActive` **または** `activatedAt === 0`（未到着）」に拡張。
+  会費・名簿が両方完了した時点で待機になり、`activatedAt = now`（チェックイン時刻）。
+- 一度到着後に自主休憩した人（activatedAt > 0、フラグなし）は対象外。
+- `forcedRestActive` は立っていたときだけ false に降ろす。
+
 ## 再休憩との関係
 
 - 自動復帰後に再び未対応へ戻した場合は何もしない。次の試合後に既存の再発火ロジックが
