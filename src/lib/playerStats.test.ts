@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Player } from '../types/player';
-import { computeExpectedGames, expectedDiffTone, computeGamesStats, computeStayStats, formatDiff, formatExpected, formatMedian, formatStayMinutes } from './playerStats';
+import { computeExpectedGames, expectedDiffTone, computeGamesStats, computeStayStats, formatDiff, formatExpected, formatSinceLastGame, formatMedian, formatStayMinutes } from './playerStats';
 
 const MIN = 60000;
 const mk = (id: string, gamesPlayed: number, done: boolean, opsCompletedAt?: number): Player =>
@@ -155,5 +155,23 @@ describe('expectedDiffTone', () => {
   it('−2.5 以下は alert（表示と同じ小数1桁丸め）', () => {
     expect(expectedDiffTone(-2.46)).toBe('alert');
     expect(expectedDiffTone(-4)).toBe('alert');
+  });
+});
+
+describe('formatSinceLastGame', () => {
+  const now = 1_000_000_000;
+  const MIN = 60000;
+  it('試合中・未試合', () => {
+    expect(formatSinceLastGame(now - 5 * MIN, true, now)).toBe('試合中');
+    expect(formatSinceLastGame(0, false, now)).toBe('未試合');
+  });
+  it('60分未満は分', () => {
+    expect(formatSinceLastGame(now - 25 * MIN, false, now)).toBe('前回 25分前');
+    expect(formatSinceLastGame(now - 59 * MIN - 59000, false, now)).toBe('前回 59分前');
+    expect(formatSinceLastGame(now, false, now)).toBe('前回 0分前');
+  });
+  it('60分以上は時間+分', () => {
+    expect(formatSinceLastGame(now - 65 * MIN, false, now)).toBe('前回 1時間5分前');
+    expect(formatSinceLastGame(now - 120 * MIN, false, now)).toBe('前回 2時間前');
   });
 });

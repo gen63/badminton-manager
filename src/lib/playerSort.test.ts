@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sortPlayersByExpectedDiff } from './playerSort';
+import { sortPlayersByExpectedDiff, sortPlayersBySinceLastGame } from './playerSort';
 import type { ExpectedGames } from './playerStats';
 
 const p = (name: string, gamesPlayed: number) => ({ id: name, name, gamesPlayed });
@@ -42,6 +42,40 @@ describe('sortPlayersByExpectedDiff', () => {
   it('入力配列を破壊しない', () => {
     const input = [p('b', 1), p('a', 1)];
     sortPlayersByExpectedDiff(input, exp({ a: 0, b: 1 }), null);
+    expect(input.map((x) => x.name)).toEqual(['b', 'a']);
+  });
+});
+
+describe('sortPlayersBySinceLastGame', () => {
+  const now = 1_000_000_000;
+  const MIN = 60000;
+  const q = (name: string, agoMin: number | null) => ({ id: name, name, gamesPlayed: 0, lastPlayedAt: agoMin === null ? 0 : now - agoMin * MIN });
+
+  it('未試合 → 経過の長い順 → 試合中（最後尾）', () => {
+    const ps = [q('a', 5), q('b', 40), q('c', null), q('d', 20), q('e', 70)];
+    const { others } = sortPlayersBySinceLastGame(ps, new Set(['d']), now, null);
+    expect(others.map((x) => x.name)).toEqual(['c', 'e', 'b', 'a', 'd']);
+  });
+
+  it('同値は名前昇順', () => {
+    const { others } = sortPlayersBySinceLastGame([q('い', 10), q('あ', 10), q('う', null), q('え', null)], new Set(), now, null);
+    expect(others.map((x) => x.name)).toEqual(['う', 'え', 'あ', 'い']);
+  });
+
+  it('コート上なら lastPlayedAt=0 でも最後尾', () => {
+    const { others } = sortPlayersBySinceLastGame([q('a', null), q('b', 3)], new Set(['a']), now, null);
+    expect(others.map((x) => x.name)).toEqual(['b', 'a']);
+  });
+
+  it('本人は self に切り出され others から除外', () => {
+    const { self, others } = sortPlayersBySinceLastGame([q('a', 5), q('me', 50), q('c', 1)], new Set(), now, 'me');
+    expect(self?.name).toBe('me');
+    expect(others.map((x) => x.name)).toEqual(['a', 'c']);
+  });
+
+  it('入力配列を破壊しない', () => {
+    const input = [q('b', 1), q('a', 9)];
+    sortPlayersBySinceLastGame(input, new Set(), now, null);
     expect(input.map((x) => x.name)).toEqual(['b', 'a']);
   });
 });
