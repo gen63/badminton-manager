@@ -280,9 +280,6 @@ export function SettingsPage() {
             </span>
             セッションQR・URL
           </h2>
-          <p className="text-[11px] text-muted-foreground mb-3">
-            その場にいる人にはQRを読んでもらい、離れた人にはURLを送れば参加できます。
-          </p>
           {/* QR はカードの高さを常時 200px 押し上げるため、既定は閉じたアコーディオンに
               収納する。中身は閉じていてもマウントしたまま `hidden` で隠すので、
               開いた瞬間に描画待ちが発生せず、aria-controls の参照先も常に存在する。 */}
@@ -303,9 +300,6 @@ export function SettingsPage() {
           </button>
           <div id="session-qr-panel" hidden={!qrExpanded} className="mb-3">
             <SessionQrCode url={sessionUrl} />
-          </div>
-          <div className="bg-muted rounded-xl p-3 mb-3">
-            <p className="text-xs font-mono break-all text-foreground">{sessionUrl}</p>
           </div>
           <button
             onClick={handleCopyUrl}
@@ -589,7 +583,7 @@ export function SettingsPage() {
                   ? useStayDurationPriority
                     ? '滞在時間あたりの試合数のバラつきを抑えます（組み合わせの質より順番を優先）'
                     : '試合数のバラつきを抑えます（組み合わせの質より順番を優先）'
-                  : '練習開始から120分経過で自動的にONになります'}
+                  : '練習終了の60分前に自動的にONになります'}
               </p>
             </div>
           </div>
