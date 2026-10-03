@@ -7,7 +7,7 @@ import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { useGuardedAction } from '../hooks/useGuardedAction';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
-import { Trash2, Pencil, Users, ChevronDown, ChevronUp, Clock } from 'lucide-react';
+import { Trash2, Edit3, Users, ChevronDown, ChevronUp, Clock } from 'lucide-react';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { resolveFees } from '../lib/accountingCalc';
@@ -225,24 +225,6 @@ export function PlayerSelect() {
                 {genderLabel(player.gender)}
               </span>
               <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
-              {canEdit && (
-                <button
-                  onClick={() => handleEdit(player)}
-                  aria-label={`${player.name}を編集`}
-                  className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
-                >
-                  <Pencil className="w-3 h-3" />
-                </button>
-              )}
-              {!hasHistory && canDelete && (
-                <button
-                  onClick={() => handleDelete(player)}
-                  aria-label={`${player.name}を削除`}
-                  className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              )}
               {/* 試合数（1行目の右端） */}
               <span className="ml-auto pl-1 text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 tabular-nums">
                 {player.gamesPlayed}
@@ -291,6 +273,30 @@ export function PlayerSelect() {
               {status.roster ? '✓' : ''}名簿
             </button>
           </div>
+
+          {/* 編集 / 削除（最右列。どちらも無ければ列ごと出さない） */}
+          {(canEdit || (!hasHistory && canDelete)) && (
+            <div className="flex flex-col gap-0.5 flex-shrink-0 w-7 self-center">
+              {canEdit && (
+                <button
+                  onClick={() => handleEdit(player)}
+                  aria-label={`${player.name}を編集`}
+                  className="p-1 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
+                >
+                  <Edit3 size={13} />
+                </button>
+              )}
+              {!hasHistory && canDelete && (
+                <button
+                  onClick={() => handleDelete(player)}
+                  aria-label={`${player.name}を削除`}
+                  className="p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
