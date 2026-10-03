@@ -371,7 +371,8 @@ export function PlayerSelect() {
           <div className="flex items-start gap-2 mb-4">
             <h2 className="section-title">
               参加者一覧
-              <span className="ml-2 text-sm font-normal text-muted-foreground">
+              {/* 内訳は括弧内で割れないよう2行目へ丸ごと送る（右にモード表示があり1行に収まらないため） */}
+              <span className="block text-sm font-normal text-muted-foreground whitespace-nowrap">
                 ({formatGenderBreakdown(genderBreakdown)})
               </span>
             </h2>
@@ -388,7 +389,7 @@ export function PlayerSelect() {
                 {useStayDurationPriority ? '滞在時間モード' : '回数平均モード'}
               </span>
               <span className="text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
-                {useStayDurationPriority ? '滞在時間に応じて試合数を調整' : '試合回数が少ない人を優先'}
+                {useStayDurationPriority ? '滞在時間で試合数を調整' : '試合回数が少ない人を優先'}
               </span>
             </div>
           </div>
