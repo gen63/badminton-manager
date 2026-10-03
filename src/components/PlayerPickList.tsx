@@ -3,15 +3,9 @@ import { Check } from 'lucide-react';
 import type { Player } from '../types/player';
 import { usePlayerGameStats } from '../hooks/usePlayerGameStats';
 import { GameSortToggle } from './GameSortToggle';
+import { GameStatsRows } from './GameStatsRows';
 import { sortPlayersByExpectedDiff, sortPlayersBySinceLastGame } from '../lib/playerSort';
-import {
-  EXPECTED_DIFF_TONE_CLASS,
-  expectedDiffTone,
-  formatDiff,
-  formatExpected,
-  formatSinceLastGame,
-  type GameSortMode,
-} from '../lib/playerStats';
+import type { GameSortMode } from '../lib/playerStats';
 
 interface PlayerPickListProps {
   players: Player[];
@@ -32,7 +26,7 @@ interface PlayerPickListProps {
  * 選択状態の持ち方（Set / 配列）は呼び出し側に委ねるため `isSelected` / `onToggle` を props で受け取る。
  */
 export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, showGameStats = false }: PlayerPickListProps) {
-  const { now, expectedById, inCourtIds } = usePlayerGameStats(players);
+  const { now, expectedById, stayById, inCourtIds, useStayDurationPriority } = usePlayerGameStats(players);
   // 並び順の切替（永続化しない）。既定は期待差
   const [sortMode, setSortMode] = useState<GameSortMode>('expected');
 
@@ -60,6 +54,28 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, s
           ? 'text-pink-600'
           : 'text-foreground';
 
+        const nameRow = (
+            <div className="flex items-center gap-2 min-w-0 flex-wrap">
+              <span className={`font-semibold text-sm min-w-0 break-words ${player.isResting ? 'text-muted-foreground' : textColor}`}>
+                {getPlayerName(player.id)}
+              </span>
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                player.gender === 'M'
+                  ? 'bg-blue-100 text-blue-700'
+                  : player.gender === 'F'
+                  ? 'bg-pink-100 text-pink-700'
+                  : 'bg-muted text-muted-foreground'
+              }`}>
+                {player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : '-'}
+              </span>
+              {player.isResting && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700">
+                  休憩中
+                </span>
+              )}
+            </div>
+        );
+
         return (
           <button
             key={player.id}
@@ -75,37 +91,21 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, s
             {/* 名前が長くてもバッジやチェックを押し出さないよう、折り返しを許す
                 （min-w-0 が無いと flex アイテムが縮まない）。truncate は使わない
                 — docs/plans/2026-08-12-history-name-overflow.md の方針 */}
-            <div className="min-w-0 flex flex-col items-start gap-0.5">
-              <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                <span className={`font-semibold text-sm min-w-0 break-words ${player.isResting ? 'text-muted-foreground' : textColor}`}>
-                  {getPlayerName(player.id)}
-                </span>
-                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                  player.gender === 'M'
-                    ? 'bg-blue-100 text-blue-700'
-                    : player.gender === 'F'
-                    ? 'bg-pink-100 text-pink-700'
-                    : 'bg-muted text-muted-foreground'
-                }`}>
-                  {player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : '-'}
-                </span>
-                {player.isResting && (
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700">
-                    休憩中
-                  </span>
-                )}
-              </div>
-              {showGameStats && (
-                <GameStatsLine
-                  gamesPlayed={player.gamesPlayed}
-                  sortMode={sortMode}
-                  expected={expectedById.get(player.id)}
-                  lastPlayedAt={player.lastPlayedAt}
-                  inCourt={inCourtIds.has(player.id)}
-                  now={now}
-                />
-              )}
-            </div>
+            {showGameStats ? (
+              <GameStatsRows
+                gamesPlayed={player.gamesPlayed}
+                sortMode={sortMode}
+                stay={useStayDurationPriority ? stayById.get(player.id) : undefined}
+                expected={expectedById.get(player.id)}
+                lastPlayedAt={player.lastPlayedAt}
+                inCourt={inCourtIds.has(player.id)}
+                now={now}
+              >
+                {nameRow}
+              </GameStatsRows>
+            ) : (
+              nameRow
+            )}
             {selected && (
               <div className="w-6 h-6 shrink-0 bg-green-500 rounded-full flex items-center justify-center text-white">
                 <Check size={16} />
@@ -114,34 +114,6 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, s
           </button>
         );
       })}
-    </div>
-  );
-}
-
-interface GameStatsLineProps {
-  gamesPlayed: number;
-  sortMode: GameSortMode;
-  expected: { expected: number | null; diff: number | null } | undefined;
-  lastPlayedAt: number;
-  inCourt: boolean;
-  now: number;
-}
-
-/** 行内の小さな補足（11px）。期待差ソート時は「N試合 · 期待 x.x (±y.y)」、経過時間ソート時は「N試合 · 前回 …」 */
-function GameStatsLine({ gamesPlayed, sortMode, expected, lastPlayedAt, inCourt, now }: GameStatsLineProps) {
-  return (
-    <div className="flex items-center gap-1 text-[11px] leading-tight tabular-nums text-muted-foreground whitespace-nowrap">
-      <span>{gamesPlayed}試合</span>
-      <span aria-hidden>·</span>
-      {sortMode === 'lastGame' ? (
-        <span>{formatSinceLastGame(lastPlayedAt, inCourt, now)}</span>
-      ) : expected && expected.expected !== null && expected.diff !== null ? (
-        <span className={EXPECTED_DIFF_TONE_CLASS[expectedDiffTone(expected.diff)]}>
-          期待 {formatExpected(expected.expected)} ({formatDiff(expected.diff)})
-        </span>
-      ) : (
-        <span>期待 —</span>
-      )}
     </div>
   );
 }
