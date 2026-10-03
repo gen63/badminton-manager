@@ -22,6 +22,8 @@ interface GameStatsRowsProps {
   lastPlayedAt: number;
   inCourt: boolean;
   now: number;
+  /** 2段目左に出す注意書き（予約ゲートの警告など）。あれば経過・滞在表示の前に並べる */
+  note?: ReactNode;
 }
 
 /**
@@ -40,6 +42,7 @@ export function GameStatsRows({
   lastPlayedAt,
   inCourt,
   now,
+  note,
 }: GameStatsRowsProps) {
   const left =
     sortMode === 'lastGame'
@@ -57,9 +60,10 @@ export function GameStatsRows({
         <span className="flex-shrink-0 text-right whitespace-nowrap text-foreground">{gamesPlayed}試合</span>
       </div>
       <div className="flex items-center gap-2">
-        <span className="whitespace-nowrap text-muted-foreground">{left}</span>
+        {note}
+        {left && <span className="whitespace-nowrap text-muted-foreground">{left}</span>}
         <span
-          className={`ml-auto text-right whitespace-nowrap ${
+          className={`ml-auto shrink-0 text-right whitespace-nowrap ${
             hasExpected ? EXPECTED_DIFF_TONE_CLASS[expectedDiffTone(expected!.diff!)] : ''
           }`}
         >

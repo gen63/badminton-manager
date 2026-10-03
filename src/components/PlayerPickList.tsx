@@ -70,11 +70,11 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, s
           : 'text-foreground';
 
         const nameRow = (
-            <div className="flex items-center gap-2 min-w-0 flex-wrap">
-              <span className={`font-semibold text-sm min-w-0 break-words ${player.isResting ? 'text-muted-foreground' : textColor}`}>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`font-semibold text-sm min-w-0 truncate ${player.isResting ? 'text-muted-foreground' : textColor}`}>
                 {getPlayerName(player.id)}
               </span>
-              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+              <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
                 player.gender === 'M'
                   ? 'bg-blue-100 text-blue-700'
                   : player.gender === 'F'
@@ -84,22 +84,22 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, s
                 {player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : '-'}
               </span>
               {player.isResting && (
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700">
+                <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700">
                   休憩中
-                </span>
-              )}
-              {blocked && (
-                <span className="basis-full text-[10px] font-semibold text-red-600">
-                  期待差+{RESERVATION_EXPECTED_DIFF_LIMIT}以上のため予約不可
-                </span>
-              )}
-              {pickState === 'warn' && (
-                <span className="basis-full text-[10px] font-semibold text-amber-600">
-                  期待差+{RESERVATION_EXPECTED_DIFF_LIMIT}以上（保留されます）
                 </span>
               )}
             </div>
         );
+
+        const note = blocked ? (
+          <span className="min-w-0 truncate text-[10px] font-semibold text-red-600">
+            期待差+{RESERVATION_EXPECTED_DIFF_LIMIT}以上のため予約不可
+          </span>
+        ) : pickState === 'warn' ? (
+          <span className="min-w-0 truncate text-[10px] font-semibold text-amber-600">
+            期待差+{RESERVATION_EXPECTED_DIFF_LIMIT}以上（保留されます）
+          </span>
+        ) : undefined;
 
         return (
           <button
@@ -117,9 +117,7 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, s
                 : 'bg-card border-border'
             }`}
           >
-            {/* 名前が長くてもバッジやチェックを押し出さないよう、折り返しを許す
-                （min-w-0 が無いと flex アイテムが縮まない）。truncate は使わない
-                — docs/plans/2026-08-12-history-name-overflow.md の方針 */}
+            {/* 名前は truncate（min-w-0 が無いと flex アイテムが縮まない）。バッジ・試合数・期待値は shrink-0 */}
             {showGameStats ? (
               <GameStatsRows
                 gamesPlayed={player.gamesPlayed}
@@ -129,6 +127,7 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, s
                 lastPlayedAt={player.lastPlayedAt}
                 inCourt={inCourtIds.has(player.id)}
                 now={now}
+                note={note}
               >
                 {nameRow}
               </GameStatsRows>
