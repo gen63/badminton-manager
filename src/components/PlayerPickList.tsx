@@ -71,7 +71,7 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, s
 
         const nameRow = (
             <div className="flex items-center gap-2 min-w-0">
-              <span className={`font-semibold text-sm min-w-0 truncate ${player.isResting ? 'text-muted-foreground' : textColor}`}>
+              <span className={`font-semibold text-sm min-w-0 break-words ${player.isResting ? 'text-muted-foreground' : textColor}`}>
                 {getPlayerName(player.id)}
               </span>
               <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
@@ -117,7 +117,9 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, s
                 : 'bg-card border-border'
             }`}
           >
-            {/* 名前は truncate（min-w-0 が無いと flex アイテムが縮まない）。バッジ・試合数・期待値は shrink-0 */}
+            {/* 名前が長くてもバッジや試合数を押し出さないよう折り返しを許す（min-w-0 が無いと
+                flex アイテムが縮まない）。truncate は使わない
+                — docs/plans/2026-08-12-history-name-overflow.md の方針 */}
             {showGameStats ? (
               <GameStatsRows
                 gamesPlayed={player.gamesPlayed}
