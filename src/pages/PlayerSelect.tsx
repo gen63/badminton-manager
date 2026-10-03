@@ -2,38 +2,28 @@ import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
-import { usePresenceStore } from '../stores/presenceStore';
 import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { useGuardedAction } from '../hooks/useGuardedAction';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
-import { Trash2, Pencil, Users, ChevronDown, ChevronUp, Clock } from 'lucide-react';
+import { Trash2, Edit3, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { resolveFees } from '../lib/accountingCalc';
 import { useDefaultFees } from '../hooks/useDefaultFees';
-import { formatLastSeen, type LastSeenTone } from '../lib/lastSeen';
-import { sortPlayers, type PlayerSortMode } from '../lib/playerSort';
+import { sortPlayersByExpectedDiff } from '../lib/playerSort';
 import { countByGender, formatGenderBreakdown, genderLabel } from '../lib/genderBreakdown';
-import { formatTime } from '../lib/utils';
+import { computeExpectedGames, computeGamesStats, computeStayStats, formatDiff, formatExpected, formatMedian, formatStayMinutes } from '../lib/playerStats';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
 import { PlayerEditModal } from '../components/PlayerEditModal';
 
-/** 経過時間トーンごとの表示色（DESIGN.md のカラーガイドラインに沿った semantic 色） */
-const LAST_SEEN_TONE_CLASS: Record<LastSeenTone, string> = {
-  live: 'text-emerald-600',
-  recent: 'text-muted-foreground',
-  stale: 'text-amber-600',
-  never: 'text-muted-foreground',
-};
-
-/** 経過時間バッジの再評価間隔（相対時間表示なので `PresenceIndicator` より長め） */
-const LAST_SEEN_TICK_MS = 30_000;
+/** 滞在時間（相対時間）の再評価間隔 */
+const STAY_TICK_MS = 30_000;
 
 /**
  * 性別バッジの表示色。男=青 / 女=ピンクは `PlayerEditModal`・`ReservationPage` と揃える。
- * 未設定は「埋めてほしい」注意喚起なので amber（`LAST_SEEN_TONE_CLASS.stale` と同系）。
+ * 未設定は「埋めてほしい」注意喚起なので amber。
  */
 const GENDER_BADGE_CLASS: Record<'M' | 'F' | 'unknown', string> = {
   M: 'bg-blue-100 text-blue-700',
@@ -48,15 +38,15 @@ export function PlayerSelect() {
   const isAdminFn = useSessionStore((s) => s.isAdmin);
   const currentUser = useSessionStore((s) => s.currentUser);
   const practiceType = useSettingsStore((s) => s.practiceType);
+  // 滞在表示は滞在時間優先モードのときだけ（回数平均モードでは出さない）
+  const useStayDurationPriority = useSettingsStore((s) => s.useStayDurationPriority);
   const isAdmin = isAdminFn();
-  const lastSeen = usePresenceStore((s) => s.lastSeen);
-  // 相対時間の再評価用 tick。非管理者では interval 自体を張らない（無駄な再レンダー回避）。
+  // 滞在時間の再評価用 tick（並び順が期待との差＝滞在按分に依存するため全員で張る）
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
-    if (!isAdmin) return;
-    const id = setInterval(() => setNow(Date.now()), LAST_SEEN_TICK_MS);
+    const id = setInterval(() => setNow(Date.now()), STAY_TICK_MS);
     return () => clearInterval(id);
-  }, [isAdmin]);
+  }, []);
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
   const rosterToggle = useGuardedAction(async (playerId: string) => {
@@ -75,9 +65,6 @@ export function PlayerSelect() {
   // タップしたらその選択（override）を優先し、以降は allComplete の変化で
   // 上書きされない（下記 paidCollapsed の算出を参照）。
   const [paidCollapsedOverride, setPaidCollapsedOverride] = useState<boolean | null>(null);
-  // ソート選択（settingsStore へは永続化しない。CLAUDE.md のローカルストレージ最小化方針）。
-  // 非管理者は lastSeen データが見えないため、ロジックでも 'games' 固定にする（下記 sortedPlayers 参照）。
-  const [sortMode, setSortMode] = useState<PlayerSortMode>('games');
   // 会費は「セッション保存値 → グローバル既定 → コード定数」の順に解決する
   const { fees: defaultFees } = useDefaultFees();
   const practiceDefaults = resolveFees(practiceType, defaultFees);
@@ -89,8 +76,15 @@ export function PlayerSelect() {
     matchHistory.flatMap((match) => [...match.teamA, ...match.teamB])
   );
 
-  // 参加者一覧のソート（非管理者は lastSeen が非表示のため常に 'games' 固定）
-  const sortedPlayers = sortPlayers(players, isAdmin ? sortMode : 'games', lastSeen);
+  // 試合数の統計と滞在時間。滞在はアルゴリズムの resolveStayStart と同じ起点
+  const gamesStats = computeGamesStats(players);
+  const stayStats = computeStayStats(players, session?.config.practiceStartTime ?? 0, now);
+
+  // 期待試合数と実績との差。並び順（全員共通）に使い、数値の表示は管理者のみ
+  const expectedById = computeExpectedGames(players, useStayDurationPriority ? 'stay' : 'count', stayStats.byId);
+
+  // 期待との差が小さい順（足りていない人が上）。本人は常に最上部へ固定し others から除外する
+  const { self: selfPlayer, others: sortedPlayers } = sortPlayersByExpectedDiff(players, expectedById, currentUser);
 
   // 見出しに出す性別内訳（例: 13人：男8・女4・未設定1）
   const genderBreakdown = countByGender(players);
@@ -196,86 +190,105 @@ export function PlayerSelect() {
     const canEdit = isAdmin || player.name === currentUser;
     // 削除は admin/creator のみ（自分自身の self-delete は誤操作リスクのため不可）。
     const canDelete = isAdmin;
-    // 最終画面参照からの経過時間（管理者のみ）。1行目は幅がタイトなため、
-    // カード内の2行目に表示してレイアウト崩れ・シフトを避ける。
-    const lastSeenAt = isAdmin ? lastSeen[player.name] : undefined;
-    const view = formatLastSeen(lastSeenAt, now);
+    // 期待試合数・滞在時間（管理者のみ）。1行目は幅がタイトなためカード内の2行目に表示する。
+    const expectedInfo = isAdmin ? expectedById.get(player.id) : undefined;
+    const stay = isAdmin && useStayDurationPriority ? stayStats.byId.get(player.id) : undefined;
     return (
       <div
         key={player.id}
         className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm"
       >
         <div className="flex items-center gap-2">
-          {/* 性別 + 名前 + 編集/削除 */}
-          <div className="flex-1 min-w-0 flex items-center gap-2">
-            {/* 性別バッジ。未設定を一目で見つけて編集モーダルで埋められるようにする */}
-            <span
-              aria-label={`性別${genderLabel(player.gender)}`}
-              className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] leading-none font-medium ${
-                GENDER_BADGE_CLASS[player.gender ?? 'unknown']
-              }`}
+          {/* 左カラム: 1行目（性別・名前・試合数）+ 2行目（管理者のみ） */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              {/* 性別バッジ。未設定を一目で見つけて編集モーダルで埋められるようにする */}
+              <span
+                aria-label={`性別${genderLabel(player.gender)}`}
+                className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] leading-none font-medium ${
+                  GENDER_BADGE_CLASS[player.gender ?? 'unknown']
+                }`}
+              >
+                {genderLabel(player.gender)}
+              </span>
+              <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
+              <span className="flex-shrink-0 text-xs font-medium text-foreground tabular-nums whitespace-nowrap">
+                {player.gamesPlayed}試合
+              </span>
+            </div>
+
+            {/* 2行目（管理者のみ）: 期待試合数と実績との差 + 滞在時間 */}
+            {isAdmin && (
+              <div className="mt-0.5 flex items-center gap-1 min-h-3 text-[10px] leading-tight">
+                {expectedInfo && expectedInfo.expected !== null && expectedInfo.diff !== null && (
+                  <span
+                    className={`tabular-nums whitespace-nowrap ${
+                      Math.round(expectedInfo.diff * 10) / 10 <= -1 ? 'text-amber-600' : 'text-muted-foreground'
+                    }`}
+                  >
+                    期待 {formatExpected(expectedInfo.expected)} ({formatDiff(expectedInfo.diff)})
+                  </span>
+                )}
+                {stay && (
+                  <span className="ml-auto text-muted-foreground tabular-nums whitespace-nowrap">
+                    {stay.complete
+                      ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
+                      : '滞在 —（未完了）'}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 右カラム: 支払 / 名簿 ボタンを縦並び */}
+          <div className="flex flex-col gap-1 flex-shrink-0 self-center">
+            <button
+              onClick={() => handlePaymentClick(player.id)}
+              className="w-14 min-h-[28px] text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1"
+              style={{
+                backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
+                color: status.payment ? '#ffffff' : '#6b7280',
+              }}
             >
-              {genderLabel(player.gender)}
-            </span>
-            <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
-            {canEdit && (
-              <button
-                onClick={() => handleEdit(player)}
-                aria-label={`${player.name}を編集`}
-                className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
-              >
-                <Pencil className="w-3 h-3" />
-              </button>
-            )}
-            {!hasHistory && canDelete && (
-              <button
-                onClick={() => handleDelete(player)}
-                aria-label={`${player.name}を削除`}
-                className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            )}
+              {status.payment ? '✓' : ''}支払
+            </button>
+            <button
+              onClick={() => void rosterToggle.run(player.id)}
+              disabled={rosterToggle.isPending}
+              className="w-14 min-h-[28px] text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
+              style={{
+                backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
+                color: status.roster ? '#ffffff' : '#6b7280',
+              }}
+            >
+              {status.roster ? '✓' : ''}名簿
+            </button>
           </div>
 
-          {/* 試合数 */}
-          <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 tabular-nums">
-            {player.gamesPlayed}
-          </span>
-
-          {/* 支払 / 名簿 ボタン */}
-          <button
-            onClick={() => handlePaymentClick(player.id)}
-            className="w-14 flex-shrink-0 text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1"
-            style={{
-              backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
-              color: status.payment ? '#ffffff' : '#6b7280',
-            }}
-          >
-            {status.payment ? '✓' : ''}支払
-          </button>
-          <button
-            onClick={() => void rosterToggle.run(player.id)}
-            disabled={rosterToggle.isPending}
-            className="w-14 flex-shrink-0 text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
-            style={{
-              backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
-              color: status.roster ? '#ffffff' : '#6b7280',
-            }}
-          >
-            {status.roster ? '✓' : ''}名簿
-          </button>
+          {/* 編集 / 削除（最右列。どちらも無ければ列ごと出さない） */}
+          {(canEdit || (!hasHistory && canDelete)) && (
+            <div className="flex flex-col gap-0.5 flex-shrink-0 w-7 self-center">
+              {canEdit && (
+                <button
+                  onClick={() => handleEdit(player)}
+                  aria-label={`${player.name}を編集`}
+                  className="p-1 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
+                >
+                  <Edit3 size={13} />
+                </button>
+              )}
+              {!hasHistory && canDelete && (
+                <button
+                  onClick={() => handleDelete(player)}
+                  aria-label={`${player.name}を削除`}
+                  className="p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
-
-        {/* 最終画面参照からの経過時間（2行目・管理者のみ） */}
-        {isAdmin && (
-          <div className={`mt-0.5 flex items-center gap-1 text-[10px] leading-tight ${LAST_SEEN_TONE_CLASS[view.tone]}`}>
-            <Clock className="w-3 h-3 shrink-0" aria-hidden />
-            <span title={typeof lastSeenAt === 'number' ? formatTime(lastSeenAt) : undefined}>
-              {view.label}
-            </span>
-          </div>
-        )}
       </div>
     );
   };
@@ -296,6 +309,9 @@ export function PlayerSelect() {
 
     return (
       <div className="space-y-2">
+        {/* 本人は完了/未完了・アコーディオンに関わらず常に最上部 */}
+        {selfPlayer && renderPlayerCard(selfPlayer)}
+
         {/* 未完了の参加者（常に表示） */}
         {incompletePlayers.map(renderPlayerCard)}
 
@@ -333,6 +349,22 @@ export function PlayerSelect() {
             <Users size={20} />
             <h1 className="text-lg font-bold">参加者管理</h1>
           </div>
+          {/* 現在の割り振りモード（全員に表示）。色は SessionCreate の選択状態に寄せず区別優先 */}
+          <div className="ml-auto flex flex-col items-end gap-0.5">
+            <span
+              className="px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+              style={
+                useStayDurationPriority
+                  ? { backgroundColor: '#e0e7ff', color: '#3730a3' }
+                  : { backgroundColor: '#d1fae5', color: '#065f46' }
+              }
+            >
+              {useStayDurationPriority ? '滞在時間モード' : '回数平均モード'}
+            </span>
+            <span className="text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
+              {useStayDurationPriority ? '滞在時間が長い人を優先' : '試合回数が少ない人を優先'}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -345,22 +377,12 @@ export function PlayerSelect() {
               ({formatGenderBreakdown(genderBreakdown)})
             </span>
           </h2>
-          {/* ソート切替（管理者のみ表示。非管理者には lastSeen の根拠データが見えないため） */}
-          {isAdmin && (
-            <div className="flex gap-2 mb-3">
-              {([['games', '試合数が多い順'], ['lastSeen', '見ていない順']] as const).map(([mode, label]) => (
-                <button
-                  key={mode}
-                  onClick={() => setSortMode(mode)}
-                  aria-pressed={sortMode === mode}
-                  className={`flex-1 min-h-[44px] px-2 rounded-xl text-sm font-medium transition-colors active:scale-[0.98] ${
-                    sortMode === mode ? '' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                  }`}
-                  style={sortMode === mode ? { backgroundColor: '#e0e7ff', color: '#3730a3' } : undefined}
-                >
-                  {label}
-                </button>
-              ))}
+          {isAdmin && gamesStats && (
+            <div className="mb-3 rounded-lg bg-muted px-3 py-1.5 text-[11px] text-muted-foreground tabular-nums flex flex-wrap gap-x-3 gap-y-0.5">
+              <span>最大 {gamesStats.max}試合</span>
+              <span>最小 {gamesStats.min}試合</span>
+              <span>中央値 {formatMedian(gamesStats.median)}試合</span>
+              {useStayDurationPriority && stayStats.maxMinutes > 0 && <span>最長滞在 {formatStayMinutes(stayStats.maxMinutes)}</span>}
             </div>
           )}
           {renderPlayerList()}

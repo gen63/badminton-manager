@@ -1,0 +1,122 @@
+import type { Player } from '../types/player';
+import { resolveStayStart } from './algorithm';
+
+export interface GamesStats {
+  max: number;
+  min: number;
+  median: number;
+}
+
+/** 試合数の max / min / median。空配列は null。 */
+export function computeGamesStats(players: ReadonlyArray<Pick<Player, 'gamesPlayed'>>): GamesStats | null {
+  if (players.length === 0) return null;
+  const sorted = players.map((p) => p.gamesPlayed).sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  return { max: sorted[sorted.length - 1], min: sorted[0], median };
+}
+
+/** 中央値の表示（整数はそのまま、小数は1桁）。 */
+export function formatMedian(median: number): string {
+  return Number.isInteger(median) ? String(median) : median.toFixed(1);
+}
+
+export interface StayInfo {
+  /** 会費・名簿が両方完了しているか（未完了は滞在0扱い） */
+  complete: boolean;
+  /** 滞在分（下限なし、0 以上） */
+  minutes: number;
+  /** 最長滞在者を100%とした割合（整数%）。最大滞在が0なら null */
+  percent: number | null;
+}
+
+export interface StayStats {
+  maxMinutes: number;
+  byId: Map<string, StayInfo>;
+}
+
+/** 滞在時間モードのアルゴリズム（resolveStayStart）と同じ起点で各人の滞在分と割合を求める。 */
+export function computeStayStats(
+  players: ReadonlyArray<Player>,
+  practiceStartTime: number,
+  now: number,
+): StayStats {
+  const raw = players.map((p) => {
+    const complete = p.operationStatus?.payment === true && p.operationStatus?.roster === true;
+    const start = resolveStayStart(p, practiceStartTime, now);
+    return { id: p.id, complete, minutes: Math.max(0, (now - start) / 60000) };
+  });
+  const maxMinutes = raw.reduce((m, r) => Math.max(m, r.minutes), 0);
+  const byId = new Map<string, StayInfo>();
+  for (const r of raw) {
+    byId.set(r.id, {
+      complete: r.complete,
+      minutes: r.minutes,
+      percent: maxMinutes > 0 ? Math.round((r.minutes / maxMinutes) * 100) : null,
+    });
+  }
+  return { maxMinutes, byId };
+}
+
+/** 分 → `H:MM`（例: 83 → 1:23） */
+export function formatStayMinutes(minutes: number): string {
+  const total = Math.floor(minutes);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+export type ExpectedGamesMode = 'count' | 'stay';
+
+export interface ExpectedGames {
+  /** 期待試合数。算出できない（未完了・滞在合計0・人数0）は null */
+  expected: number | null;
+  /** 実績 − 期待値。expected が null なら null */
+  diff: number | null;
+}
+
+/**
+ * 各人の「期待試合数」と実績との差。
+ * - count（回数平均モード）: 全員の試合数合計 / 人数（全員同じ）。
+ * - stay（滞在時間モード）: 会費・名簿完了者だけで按分。期待値_i = 完了者の試合数合計 × 滞在分_i / 完了者の滞在分合計。
+ *   未完了者と、滞在合計が0のときは null。
+ */
+export function computeExpectedGames(
+  players: ReadonlyArray<Pick<Player, 'id' | 'gamesPlayed'>>,
+  mode: ExpectedGamesMode,
+  stayById: ReadonlyMap<string, StayInfo>,
+): Map<string, ExpectedGames> {
+  const result = new Map<string, ExpectedGames>();
+  const make = (p: Pick<Player, 'gamesPlayed'>, expected: number | null): ExpectedGames => ({
+    expected,
+    diff: expected === null ? null : p.gamesPlayed - expected,
+  });
+
+  if (mode === 'count') {
+    const total = players.reduce((s, p) => s + p.gamesPlayed, 0);
+    const avg = players.length > 0 ? total / players.length : null;
+    for (const p of players) result.set(p.id, make(p, avg));
+    return result;
+  }
+
+  const done = players.filter((p) => stayById.get(p.id)?.complete === true);
+  const totalGames = done.reduce((s, p) => s + p.gamesPlayed, 0);
+  const totalMinutes = done.reduce((s, p) => s + (stayById.get(p.id)?.minutes ?? 0), 0);
+  for (const p of players) {
+    const info = stayById.get(p.id);
+    const expected =
+      info?.complete === true && totalMinutes > 0 ? (totalGames * info.minutes) / totalMinutes : null;
+    result.set(p.id, make(p, expected));
+  }
+  return result;
+}
+
+/** 期待試合数の表示（小数1桁） */
+export function formatExpected(expected: number): string {
+  return expected.toFixed(1);
+}
+
+/** 差の表示（符号付き小数1桁。丸めて 0.0 になるものは `±0`） */
+export function formatDiff(diff: number): string {
+  const r = Math.round(diff * 10) / 10;
+  if (r === 0) return '±0';
+  return `${r > 0 ? '+' : '−'}${Math.abs(r).toFixed(1)}`;
+}
