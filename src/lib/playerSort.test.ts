@@ -1,63 +1,47 @@
 import { describe, it, expect } from 'vitest';
-import { sortPlayers } from './playerSort';
+import { sortPlayersByExpectedDiff } from './playerSort';
+import type { ExpectedGames } from './playerStats';
 
-interface TestPlayer {
-  name: string;
-  gamesPlayed: number;
-}
+const p = (name: string, gamesPlayed: number) => ({ id: name, name, gamesPlayed });
+const exp = (entries: Record<string, number | null>) =>
+  new Map<string, ExpectedGames>(
+    Object.entries(entries).map(([id, diff]) => [id, { expected: diff === null ? null : 0, diff }]),
+  );
 
-const player = (name: string, gamesPlayed: number): TestPlayer => ({ name, gamesPlayed });
-
-describe('sortPlayers', () => {
-  it('games モード: 試合数が多い順に並ぶ', () => {
-    const players = [player('A', 1), player('B', 3), player('C', 2)];
-    expect(sortPlayers(players, 'games', {}).map((p) => p.name)).toEqual(['B', 'C', 'A']);
+describe('sortPlayersByExpectedDiff', () => {
+  it('差が小さい順（足りていない人が上）', () => {
+    const { others } = sortPlayersByExpectedDiff([p('a', 5), p('b', 5), p('c', 5)], exp({ a: 1.5, b: -2, c: 0 }), null);
+    expect(others.map((x) => x.name)).toEqual(['b', 'c', 'a']);
   });
 
-  it('games モード: 試合数が同値なら名前昇順で安定化する', () => {
-    const players = [player('ひろき', 2), player('あきら', 2), player('けん', 2)];
-    expect(sortPlayers(players, 'games', {}).map((p) => p.name)).toEqual(['あきら', 'けん', 'ひろき']);
+  it('差 null は差ありの後ろ、その中は試合数昇順 → 名前昇順', () => {
+    const { others } = sortPlayersByExpectedDiff(
+      [p('う', 3), p('あ', 1), p('い', 1), p('え', 9)],
+      exp({ う: null, あ: null, い: null, え: 4 }),
+      null,
+    );
+    expect(others.map((x) => x.name)).toEqual(['え', 'あ', 'い', 'う']);
   });
 
-  it('lastSeen モード: 最終参照が古い順（昇順）に並ぶ', () => {
-    const players = [player('A', 0), player('B', 0), player('C', 0)];
-    const lastSeen = { A: 3000, B: 1000, C: 2000 };
-    expect(sortPlayers(players, 'lastSeen', lastSeen).map((p) => p.name)).toEqual(['B', 'C', 'A']);
+  it('差が同値なら名前昇順', () => {
+    const { others } = sortPlayersByExpectedDiff([p('い', 2), p('あ', 2)], exp({ い: 0.5, あ: 0.5 }), null);
+    expect(others.map((x) => x.name)).toEqual(['あ', 'い']);
   });
 
-  it('lastSeen モード: 未閲覧（lastSeen エントリ無し）が最上位', () => {
-    const players = [player('A', 0), player('B', 0), player('C', 0)];
-    const lastSeen = { A: 1000, C: 2000 }; // B はエントリ無し = 未閲覧
-    expect(sortPlayers(players, 'lastSeen', lastSeen).map((p) => p.name)).toEqual(['B', 'A', 'C']);
+  it('currentUser は self に切り出され others から除外される', () => {
+    const { self, others } = sortPlayersByExpectedDiff([p('a', 5), p('me', 9), p('c', 1)], exp({ a: 1, me: 3, c: -1 }), 'me');
+    expect(self?.name).toBe('me');
+    expect(others.map((x) => x.name)).toEqual(['c', 'a']);
   });
 
-  it('lastSeen モード: 同一 lastSeen は試合数の多い順で tie-break する', () => {
-    const players = [player('A', 1), player('B', 3), player('C', 2)];
-    const lastSeen = { A: 1000, B: 1000, C: 1000 };
-    expect(sortPlayers(players, 'lastSeen', lastSeen).map((p) => p.name)).toEqual(['B', 'C', 'A']);
-  });
-
-  it('lastSeen モード: lastSeen・試合数とも同値なら名前昇順で tie-break する', () => {
-    const players = [player('ひろき', 1), player('あきら', 1), player('けん', 1)];
-    const lastSeen = { ひろき: 1000, あきら: 1000, けん: 1000 };
-    expect(sortPlayers(players, 'lastSeen', lastSeen).map((p) => p.name)).toEqual(['あきら', 'けん', 'ひろき']);
-  });
-
-  it('lastSeen モード: 値が数値でない (NaN) 場合も未閲覧として先頭に寄せる', () => {
-    const players = [player('A', 0), player('B', 0)];
-    const lastSeen = { A: 1000, B: Number.NaN };
-    expect(sortPlayers(players, 'lastSeen', lastSeen).map((p) => p.name)).toEqual(['B', 'A']);
+  it('currentUser が不在・未設定なら self は null', () => {
+    expect(sortPlayersByExpectedDiff([p('a', 1)], exp({ a: 0 }), 'zzz').self).toBeNull();
+    expect(sortPlayersByExpectedDiff([p('a', 1)], exp({ a: 0 }), null).self).toBeNull();
   });
 
   it('入力配列を破壊しない', () => {
-    const players = [player('A', 1), player('B', 3), player('C', 2)];
-    const original = [...players];
-    sortPlayers(players, 'games', {});
-    expect(players).toEqual(original);
-  });
-
-  it('空配列を渡すと空配列を返す', () => {
-    expect(sortPlayers([], 'games', {})).toEqual([]);
-    expect(sortPlayers([], 'lastSeen', {})).toEqual([]);
+    const input = [p('b', 1), p('a', 1)];
+    sortPlayersByExpectedDiff(input, exp({ a: 0, b: 1 }), null);
+    expect(input.map((x) => x.name)).toEqual(['b', 'a']);
   });
 });

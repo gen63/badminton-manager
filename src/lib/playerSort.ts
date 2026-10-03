@@ -1,43 +1,42 @@
-/** 参加者管理ページのソートモード。`games` = 試合数が多い順（既定）、`lastSeen` = 見ていない順 */
-export type PlayerSortMode = 'games' | 'lastSeen';
+import type { ExpectedGames } from './playerStats';
 
 /** ソートに必要な最小フィールドだけを要求（Player 型全体に依存させない） */
 interface SortablePlayer {
+  id: string;
   name: string;
   gamesPlayed: number;
 }
 
 /**
- * 参加者一覧を指定モードでソートした新配列を返す（入力配列は破壊しない）。
+ * 参加者一覧を「期待との差（実績 − 期待値）が小さい順」（足りていない人が上）に並べ、
+ * currentUser と名前が一致する本人を `self` に切り出す（入力配列は破壊しない）。
  *
- * - `games`: 試合数が多い順。同値は名前昇順（`localeCompare('ja')`）で安定化する
- *   （現状は同値時の順序が配列順依存なので、tie-break を入れて描画のちらつきも減らす）。
- * - `lastSeen`: 最終画面参照が古い人が上（見ていない順）。`lastSeen[name]` が
- *   `undefined` / 数値でない場合は `未閲覧` として最上位に寄せる。同値は試合数の
- *   多い順 → 名前昇順で安定化する。
+ * - 差が算出できない人（null。未完了など）は差ありの人の後ろ。その中は試合数昇順。
+ * - 最終 tie-break は名前昇順（`localeCompare('ja')`）。
+ * - `self` は並びと無関係に取り出され、`others` からは除外される。
  */
-export function sortPlayers<T extends SortablePlayer>(
+export function sortPlayersByExpectedDiff<T extends SortablePlayer>(
   players: T[],
-  mode: PlayerSortMode,
-  lastSeen: { [username: string]: number },
-): T[] {
-  if (mode === 'lastSeen') {
-    return [...players].sort((a, b) => {
-      const aSeen = toLastSeenSortKey(lastSeen[a.name]);
-      const bSeen = toLastSeenSortKey(lastSeen[b.name]);
-      if (aSeen !== bSeen) return aSeen - bSeen;
-      if (b.gamesPlayed !== a.gamesPlayed) return b.gamesPlayed - a.gamesPlayed;
-      return a.name.localeCompare(b.name, 'ja');
-    });
-  }
-
-  return [...players].sort((a, b) => {
-    if (b.gamesPlayed !== a.gamesPlayed) return b.gamesPlayed - a.gamesPlayed;
+  expectedById: ReadonlyMap<string, ExpectedGames>,
+  currentUser: string | null | undefined,
+): { self: T | null; others: T[] } {
+  const diffOf = (p: T): number | null => expectedById.get(p.id)?.diff ?? null;
+  const sorted = [...players].sort((a, b) => {
+    const da = diffOf(a);
+    const db = diffOf(b);
+    if (da !== null && db !== null) {
+      if (da !== db) return da - db;
+    } else if (da !== null) {
+      return -1;
+    } else if (db !== null) {
+      return 1;
+    } else if (a.gamesPlayed !== b.gamesPlayed) {
+      return a.gamesPlayed - b.gamesPlayed;
+    }
     return a.name.localeCompare(b.name, 'ja');
   });
-}
-
-/** `lastSeen` の値をソート用キーに変換する。未閲覧（未設定/数値でない）は `-Infinity` として先頭に寄せる */
-function toLastSeenSortKey(value: number | undefined): number {
-  return typeof value === 'number' && !Number.isNaN(value) ? value : -Infinity;
+  const selfIndex = currentUser ? sorted.findIndex((p) => p.name === currentUser) : -1;
+  if (selfIndex < 0) return { self: null, others: sorted };
+  const self = sorted[selfIndex];
+  return { self, others: sorted.filter((_, i) => i !== selfIndex) };
 }
