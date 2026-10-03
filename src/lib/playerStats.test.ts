@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Player } from '../types/player';
-import { computeExpectedGames, computeGamesStats, computeStayStats, formatDiff, formatExpected, formatMedian, formatStayMinutes } from './playerStats';
+import { computeExpectedGames, expectedDiffTone, computeGamesStats, computeStayStats, formatDiff, formatExpected, formatMedian, formatStayMinutes } from './playerStats';
 
 const MIN = 60000;
 const mk = (id: string, gamesPlayed: number, done: boolean, opsCompletedAt?: number): Player =>
@@ -139,5 +139,21 @@ describe('computeStayStats の練習終了頭打ち', () => {
     const ps = [mk('a', 1, true, start)];
     expect(computeStayStats(ps, start, now).byId.get('a')?.minutes).toBeCloseTo(240);
     expect(computeStayStats(ps, start, now, 0).byId.get('a')?.minutes).toBeCloseTo(240);
+  });
+});
+
+describe('expectedDiffTone', () => {
+  it('−1.5 より大きければ normal', () => {
+    expect(expectedDiffTone(0)).toBe('normal');
+    expect(expectedDiffTone(-1.4)).toBe('normal');
+    expect(expectedDiffTone(2.5)).toBe('normal');
+  });
+  it('−1.5〜−2.4 は watch', () => {
+    expect(expectedDiffTone(-1.5)).toBe('watch');
+    expect(expectedDiffTone(-2.44)).toBe('watch');
+  });
+  it('−2.5 以下は alert（表示と同じ小数1桁丸め）', () => {
+    expect(expectedDiffTone(-2.46)).toBe('alert');
+    expect(expectedDiffTone(-4)).toBe('alert');
   });
 });

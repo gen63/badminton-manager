@@ -123,3 +123,18 @@ export function formatDiff(diff: number): string {
   if (r === 0) return '±0';
   return `${r > 0 ? '+' : '−'}${Math.abs(r).toFixed(1)}`;
 }
+
+/**
+ * 期待との差の注意度（管理者向けの色分け）。表示と同じ小数1桁に丸めて判定する。
+ * - normal: −1.5 より大きい（普通の揺らぎ。説明不要）
+ * - watch: −1.5〜−2.4（やや少ない。様子を見る）
+ * - alert: −2.5 以下（明らかに少ない。声かけ・調整）
+ */
+export type ExpectedDiffTone = 'normal' | 'watch' | 'alert';
+
+export function expectedDiffTone(diff: number): ExpectedDiffTone {
+  const r = Math.round(diff * 10) / 10;
+  if (r <= -2.5) return 'alert';
+  if (r <= -1.5) return 'watch';
+  return 'normal';
+}

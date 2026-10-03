@@ -13,7 +13,7 @@ import { resolveFees } from '../lib/accountingCalc';
 import { useDefaultFees } from '../hooks/useDefaultFees';
 import { sortPlayersByExpectedDiff } from '../lib/playerSort';
 import { countByGender, formatGenderBreakdown, genderLabel } from '../lib/genderBreakdown';
-import { computeExpectedGames, computeGamesStats, computeStayStats, formatDiff, formatExpected, formatMedian, formatStayMinutes } from '../lib/playerStats';
+import { computeExpectedGames, computeGamesStats, computeStayStats, expectedDiffTone, formatDiff, formatExpected, formatMedian, formatStayMinutes, type ExpectedDiffTone } from '../lib/playerStats';
 import { resolvePracticeEndTime } from '../lib/practiceEndPhase';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
@@ -30,6 +30,13 @@ const GENDER_BADGE_CLASS: Record<'M' | 'F' | 'unknown', string> = {
   M: 'bg-blue-100 text-blue-700',
   F: 'bg-pink-100 text-pink-700',
   unknown: 'bg-amber-100 text-amber-700',
+};
+
+/** 期待との差の色分け（normal=揺らぎ / watch=様子見 / alert=声かけ・調整） */
+const EXPECTED_DIFF_TONE_CLASS: Record<ExpectedDiffTone, string> = {
+  normal: 'text-muted-foreground',
+  watch: 'text-amber-600',
+  alert: 'text-red-600 font-medium',
 };
 
 export function PlayerSelect() {
@@ -252,7 +259,7 @@ export function PlayerSelect() {
                 {expectedInfo && expectedInfo.expected !== null && expectedInfo.diff !== null && (
                   <span
                     className={`tabular-nums whitespace-nowrap ${
-                      Math.round(expectedInfo.diff * 10) / 10 <= -1 ? 'text-amber-600' : 'text-muted-foreground'
+                      EXPECTED_DIFF_TONE_CLASS[expectedDiffTone(expectedInfo.diff)]
                     }`}
                   >
                     期待 {formatExpected(expectedInfo.expected)} ({formatDiff(expectedInfo.diff)})
