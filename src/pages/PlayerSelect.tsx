@@ -16,6 +16,7 @@ import { formatLastSeen, type LastSeenTone } from '../lib/lastSeen';
 import { sortPlayers, type PlayerSortMode } from '../lib/playerSort';
 import { countByGender, formatGenderBreakdown, genderLabel } from '../lib/genderBreakdown';
 import { formatTime } from '../lib/utils';
+import { computeGamesStats, computeStayStats, formatMedian, formatStayMinutes } from '../lib/playerStats';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
 import { PlayerEditModal } from '../components/PlayerEditModal';
@@ -91,6 +92,10 @@ export function PlayerSelect() {
 
   // 参加者一覧のソート（非管理者は lastSeen が非表示のため常に 'games' 固定）
   const sortedPlayers = sortPlayers(players, isAdmin ? sortMode : 'games', lastSeen);
+
+  // 試合数の統計と滞在時間（管理者のみ表示）。滞在はアルゴリズムの resolveStayStart と同じ起点
+  const gamesStats = computeGamesStats(players);
+  const stayStats = computeStayStats(players, session?.config.practiceStartTime ?? 0, now);
 
   // 見出しに出す性別内訳（例: 13人：男8・女4・未設定1）
   const genderBreakdown = countByGender(players);
@@ -200,82 +205,93 @@ export function PlayerSelect() {
     // カード内の2行目に表示してレイアウト崩れ・シフトを避ける。
     const lastSeenAt = isAdmin ? lastSeen[player.name] : undefined;
     const view = formatLastSeen(lastSeenAt, now);
+    const stay = isAdmin ? stayStats.byId.get(player.id) : undefined;
     return (
       <div
         key={player.id}
         className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm"
       >
         <div className="flex items-center gap-2">
-          {/* 性別 + 名前 + 編集/削除 */}
-          <div className="flex-1 min-w-0 flex items-center gap-2">
-            {/* 性別バッジ。未設定を一目で見つけて編集モーダルで埋められるようにする */}
-            <span
-              aria-label={`性別${genderLabel(player.gender)}`}
-              className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] leading-none font-medium ${
-                GENDER_BADGE_CLASS[player.gender ?? 'unknown']
-              }`}
+          {/* 左カラム: 1行目（性別・名前・編集/削除・試合数）+ 2行目（管理者のみ） */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              {/* 性別バッジ。未設定を一目で見つけて編集モーダルで埋められるようにする */}
+              <span
+                aria-label={`性別${genderLabel(player.gender)}`}
+                className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] leading-none font-medium ${
+                  GENDER_BADGE_CLASS[player.gender ?? 'unknown']
+                }`}
+              >
+                {genderLabel(player.gender)}
+              </span>
+              <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
+              {canEdit && (
+                <button
+                  onClick={() => handleEdit(player)}
+                  aria-label={`${player.name}を編集`}
+                  className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              )}
+              {!hasHistory && canDelete && (
+                <button
+                  onClick={() => handleDelete(player)}
+                  aria-label={`${player.name}を削除`}
+                  className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              )}
+              {/* 試合数（1行目の右端） */}
+              <span className="ml-auto pl-1 text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 tabular-nums">
+                {player.gamesPlayed}
+              </span>
+            </div>
+
+            {/* 最終画面参照からの経過時間・滞在時間（2行目・管理者のみ） */}
+            {isAdmin && (
+              <div className={`mt-0.5 flex items-center gap-1 text-[10px] leading-tight ${LAST_SEEN_TONE_CLASS[view.tone]}`}>
+                <Clock className="w-3 h-3 shrink-0" aria-hidden />
+                <span title={typeof lastSeenAt === 'number' ? formatTime(lastSeenAt) : undefined}>
+                  {view.label}
+                </span>
+                {stay && (
+                  <span className="ml-auto text-muted-foreground tabular-nums whitespace-nowrap">
+                    {stay.complete
+                      ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
+                      : '滞在 —（未完了）'}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 右カラム: 支払 / 名簿 ボタンを縦並び */}
+          <div className="flex flex-col gap-1 flex-shrink-0 self-center">
+            <button
+              onClick={() => handlePaymentClick(player.id)}
+              className="w-14 min-h-[28px] text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1"
+              style={{
+                backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
+                color: status.payment ? '#ffffff' : '#6b7280',
+              }}
             >
-              {genderLabel(player.gender)}
-            </span>
-            <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
-            {canEdit && (
-              <button
-                onClick={() => handleEdit(player)}
-                aria-label={`${player.name}を編集`}
-                className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
-              >
-                <Pencil className="w-3 h-3" />
-              </button>
-            )}
-            {!hasHistory && canDelete && (
-              <button
-                onClick={() => handleDelete(player)}
-                aria-label={`${player.name}を削除`}
-                className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            )}
+              {status.payment ? '✓' : ''}支払
+            </button>
+            <button
+              onClick={() => void rosterToggle.run(player.id)}
+              disabled={rosterToggle.isPending}
+              className="w-14 min-h-[28px] text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
+              style={{
+                backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
+                color: status.roster ? '#ffffff' : '#6b7280',
+              }}
+            >
+              {status.roster ? '✓' : ''}名簿
+            </button>
           </div>
-
-          {/* 試合数 */}
-          <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 tabular-nums">
-            {player.gamesPlayed}
-          </span>
-
-          {/* 支払 / 名簿 ボタン */}
-          <button
-            onClick={() => handlePaymentClick(player.id)}
-            className="w-14 flex-shrink-0 text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1"
-            style={{
-              backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
-              color: status.payment ? '#ffffff' : '#6b7280',
-            }}
-          >
-            {status.payment ? '✓' : ''}支払
-          </button>
-          <button
-            onClick={() => void rosterToggle.run(player.id)}
-            disabled={rosterToggle.isPending}
-            className="w-14 flex-shrink-0 text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
-            style={{
-              backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
-              color: status.roster ? '#ffffff' : '#6b7280',
-            }}
-          >
-            {status.roster ? '✓' : ''}名簿
-          </button>
         </div>
-
-        {/* 最終画面参照からの経過時間（2行目・管理者のみ） */}
-        {isAdmin && (
-          <div className={`mt-0.5 flex items-center gap-1 text-[10px] leading-tight ${LAST_SEEN_TONE_CLASS[view.tone]}`}>
-            <Clock className="w-3 h-3 shrink-0" aria-hidden />
-            <span title={typeof lastSeenAt === 'number' ? formatTime(lastSeenAt) : undefined}>
-              {view.label}
-            </span>
-          </div>
-        )}
       </div>
     );
   };
@@ -351,7 +367,10 @@ export function PlayerSelect() {
               {([['games', '試合数が多い順'], ['lastSeen', '見ていない順']] as const).map(([mode, label]) => (
                 <button
                   key={mode}
-                  onClick={() => setSortMode(mode)}
+                  onClick={() => {
+                    setSortMode(mode);
+                    setPaidCollapsedOverride(false);
+                  }}
                   aria-pressed={sortMode === mode}
                   className={`flex-1 min-h-[44px] px-2 rounded-xl text-sm font-medium transition-colors active:scale-[0.98] ${
                     sortMode === mode ? '' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
@@ -361,6 +380,14 @@ export function PlayerSelect() {
                   {label}
                 </button>
               ))}
+            </div>
+          )}
+          {isAdmin && sortMode === 'games' && gamesStats && (
+            <div className="mb-3 rounded-lg bg-muted px-3 py-1.5 text-[11px] text-muted-foreground tabular-nums flex flex-wrap gap-x-3 gap-y-0.5">
+              <span>最大 {gamesStats.max}試合</span>
+              <span>最小 {gamesStats.min}試合</span>
+              <span>中央値 {formatMedian(gamesStats.median)}試合</span>
+              {stayStats.maxMinutes > 0 && <span>最長滞在 {formatStayMinutes(stayStats.maxMinutes)}</span>}
             </div>
           )}
           {renderPlayerList()}

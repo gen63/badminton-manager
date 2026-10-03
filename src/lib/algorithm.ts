@@ -1140,7 +1140,7 @@ function computeOneGameDelta(
  *
  * 詳細: docs/plans/2026-08-11-stay-start-at-ops-complete.md
  */
-function resolveStayStart(player: Player, practiceStartTime: number, now: number): number {
+export function resolveStayStart(player: Player, practiceStartTime: number, now: number): number {
   const opsComplete = player.operationStatus?.payment === true && player.operationStatus?.roster === true;
   if (!opsComplete) {
     return now;
