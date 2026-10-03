@@ -333,18 +333,18 @@ export function PlayerSelect() {
       <div className="max-w-md mx-auto p-3 space-y-3">
         {/* プレイヤーリスト */}
         <div className="card p-4">
-          <div className="flex items-start gap-2 mb-4">
-            {/* 左: 「参加者」と内訳は同じ行。内訳が収まらないときだけ括弧ごと次行へ送る（途中では割らない） */}
+          <div className="flex items-center gap-2 mb-4">
+            {/* 左: 「参加者」と内訳は同じ行（右のモード表示2行に対して縦中央）。内訳が収まらないときだけ括弧ごと次行へ送る（途中では割らない） */}
             <div className="min-w-0 flex flex-wrap items-center gap-x-2">
               <h2 className="section-title h-7 flex items-center">参加者</h2>
               <span className="h-7 flex items-center text-sm font-normal text-muted-foreground whitespace-nowrap">
                 ({formatGenderBreakdown(genderBreakdown)})
               </span>
             </div>
-            {/* 現在の割り振りモード（全員に表示）。1行目の高さを見出しと揃え、補足は右寄せの2行目 */}
+            {/* 現在の割り振りモード（全員に表示）。バッジ＋補足を右寄せの2行で */}
             <div className="ml-auto flex-shrink-0 flex flex-col items-end gap-0.5">
               <span
-                className="px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap my-1.5"
+                className="px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
                 style={
                   useStayDurationPriority
                     ? { backgroundColor: '#e0e7ff', color: '#3730a3' }
