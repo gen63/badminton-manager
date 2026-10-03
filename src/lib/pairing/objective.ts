@@ -96,6 +96,8 @@ export const SCORE_TABLE = {
    * 超えるなら希望は不成立（a+d / b+c のまま）。極端な弱い者いじめを避ける。
    */
   pairSplitMaxDiff: 8,
+  /** 同コートに入ったのに T を超えるため敵にされた希望ペア1組あたりの上乗せ。別コート・ベンチ（pairPref のみ）より悪くする */
+  pairSplitBlocked: 50,
   /** 「必ず」のため平均偏差差が T を超える分割になるコートへの上乗せ（T 超過 1 偏差あたり）。顔ぶれ選択で避ける */
   strongSplitExcess: 100,
 

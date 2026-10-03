@@ -215,6 +215,11 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       }
       if (pick) result = pick;
     }
+    // 同コートなのに希望ペアが敵にされた（T を超えて組ませられない）コートは、別コート・ベンチより明確に悪くする。
+    // 顔ぶれ選択で「T 以下で組める顔ぶれ」か「希望ペアを別コートにする」ほうを優先させる
+    if (result.enemies > 0 && SCORE_TABLE.pairPref > 0 && SCORE_TABLE.pairSplitBlocked > 0) {
+      result = { ...result, points: result.points + SCORE_TABLE.pairSplitBlocked * result.enemies };
+    }
     // 「必ず」のために平均差が T を超える分割になるコートは、顔ぶれ選択の段階で強く避ける
     if (strongFallback && result.diff > SCORE_TABLE.pairSplitMaxDiff) {
       result = { ...result, points: result.points + SCORE_TABLE.strongSplitExcess * (result.diff - SCORE_TABLE.pairSplitMaxDiff) };

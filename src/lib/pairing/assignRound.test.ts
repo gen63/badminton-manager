@@ -561,6 +561,23 @@ describe('ペア希望と分割（平均偏差差の上限 T）', () => {
     expect(idsOf(off).has('p2')).toBe(true);
   });
 
+  it('T を超えるため敵にされるコートは、他に選択肢があれば顔ぶれ選択で避ける（pairSplitBlocked）', () => {
+    // p0(80) と p1(79) が希望。p2(52),p3(50) と同コートだと平均差 > T で敵にされる。
+    // 上乗せが無いとその顔ぶれが選ばれ、あると希望ペアを別にして p2..p5 を選ぶ
+    const six = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5'].map(id => makePlayer(id));
+    const dev = new Map([['p0', 80], ['p1', 79], ['p2', 52], ['p3', 50], ['p4', 60], ['p5', 59]]);
+    const prio: Record<string, number> = { p0: 0, p1: 0, p2: 0, p3: 0, p4: 0.3, p5: 0.3 };
+    const input = {
+      candidates: six, courtIds: [1], deviationById: dev, priorityScoreOf: (p: Player) => prio[p.id],
+      affinityPairs: [{ a: 'p0', b: 'p1' }],
+    };
+    const off = withTable({ pairSplitBlocked: 0 }, () => run(input));
+    expect(idsOf(off).has('p0') && idsOf(off).has('p1')).toBe(true);
+    expect(areTeammates(off, 'p0', 'p1')).toBe(false); // T 超で敵にされる
+    const on = run(input);
+    expect(idsOf(on).has('p0') && idsOf(on).has('p1') && !areTeammates(on, 'p0', 'p1')).toBe(false);
+  });
+
   it('「必ず」で T 超えが避けられないときは上乗せ点が付くが、「必ず」は守る', () => {
     const dev = new Map([['p0', 80], ['p1', 60], ['p2', 55], ['p3', 50]]);
     const r = run({
