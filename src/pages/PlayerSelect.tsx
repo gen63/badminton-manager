@@ -233,11 +233,16 @@ export function PlayerSelect() {
 
             {/* 最終画面参照からの経過時間・滞在時間（2行目・管理者のみ） */}
             {isAdmin && (
-              <div className={`mt-0.5 flex items-center gap-1 text-[10px] leading-tight ${LAST_SEEN_TONE_CLASS[view.tone]}`}>
-                <Clock className="w-3 h-3 shrink-0" aria-hidden />
-                <span title={typeof lastSeenAt === 'number' ? formatTime(lastSeenAt) : undefined}>
-                  {view.label}
-                </span>
+              <div className={`mt-0.5 flex items-center gap-1 min-h-3 text-[10px] leading-tight ${LAST_SEEN_TONE_CLASS[view.tone]}`}>
+                {/* 「試合数が多い順」では参照時間は不要なので滞在表示だけにする */}
+                {sortMode === 'lastSeen' && (
+                  <>
+                    <Clock className="w-3 h-3 shrink-0" aria-hidden />
+                    <span title={typeof lastSeenAt === 'number' ? formatTime(lastSeenAt) : undefined}>
+                      {view.label}
+                    </span>
+                  </>
+                )}
                 {stay && (
                   <span className="ml-auto text-muted-foreground tabular-nums whitespace-nowrap">
                     {stay.complete
