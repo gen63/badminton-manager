@@ -203,73 +203,78 @@ export function PlayerSelect() {
     const canEdit = isAdmin || player.name === currentUser;
     // 削除は admin/creator のみ（自分自身の self-delete は誤操作リスクのため不可）。
     const canDelete = isAdmin;
-    // 期待試合数・滞在時間（管理者のみ）。1行目は幅がタイトなためカード内の2行目に表示する。
-    const expectedInfo = isAdmin ? expectedById.get(player.id) : undefined;
-    const stay = isAdmin && useStayDurationPriority ? stayStats.byId.get(player.id) : undefined;
+    // 期待試合数・滞在時間（全員に表示。滞在は滞在時間モードのみ）
+    const expectedInfo = expectedById.get(player.id);
+    const stay = useStayDurationPriority ? stayStats.byId.get(player.id) : undefined;
     return (
       <div
         key={player.id}
         className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm"
       >
         <div className="flex items-center gap-2">
-          {/* 左カラム: 性別・名前・編集/削除（カードの縦方向中央。名前は残り幅で truncate） */}
-          <div className="flex-1 min-w-[9.75rem] flex items-center gap-2">
-            {/* 性別バッジ。未設定を一目で見つけて編集モーダルで埋められるようにする */}
-            <span
-              aria-label={`性別${genderLabel(player.gender)}`}
-              className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] leading-none font-medium ${
-                GENDER_BADGE_CLASS[player.gender ?? 'unknown']
-              }`}
-            >
-              {genderLabel(player.gender)}
-            </span>
-            <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
-            {/* 編集 / 削除（名前のすぐ右。どちらも無ければ出さない） */}
-            {(canEdit || (!hasHistory && canDelete)) && (
-              <div className="flex items-center gap-1 flex-shrink-0">
-                {canEdit && (
-                  <button
-                    onClick={() => handleEdit(player)}
-                    aria-label={`${player.name}を編集`}
-                    className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                )}
-                {!hasHistory && canDelete && (
-                  <button
-                    onClick={() => handleDelete(player)}
-                    aria-label={`${player.name}を削除`}
-                    className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* 右テキスト列（右揃え）: 1行目「N試合」/ 2行目（管理者のみ）「滞在 … 期待 …」（期待が右端）。390px では収まらず期待/滞在が折り返す（左の名前幅を確保するため） */}
-          <div className="min-w-0 flex flex-col items-end text-right text-[11px] leading-tight tabular-nums">
-            <span className="text-foreground whitespace-nowrap">
-              {player.gamesPlayed}試合
-            </span>
-            {isAdmin && (
-              <div className="mt-0.5 flex flex-wrap justify-end gap-x-1.5">
-                {stay && (
-                  <span className="whitespace-nowrap text-muted-foreground">
-                    {stay.complete
-                      ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
-                      : '滞在 —（未完了）'}
-                  </span>
-                )}
-                {expectedInfo && expectedInfo.expected !== null && expectedInfo.diff !== null && (
-                  <span className={`whitespace-nowrap ${EXPECTED_DIFF_TONE_CLASS[expectedDiffTone(expectedInfo.diff)]}`}>
-                    期待 {formatExpected(expectedInfo.expected)} ({formatDiff(expectedInfo.diff)})
-                  </span>
+          {/* 2段構成。1段目: 性別・名前・編集/削除 | N試合、2段目: 滞在 | 期待（N試合の真下）。文字は 11px 統一 */}
+          {/* 段ごとに独立した flex にする（grid だと右列幅が広い「期待」に引っ張られ1段目の名前幅が削られるため） */}
+          <div className="flex-1 min-w-0 flex flex-col gap-0.5 text-[11px] leading-tight tabular-nums">
+            <div className="flex items-center gap-2">
+              {/* 1段目左: 性別・名前・編集/削除（名前は残り幅で truncate） */}
+              <div className="flex-1 min-w-0 flex items-center gap-2">
+                {/* 性別バッジ。未設定を一目で見つけて編集モーダルで埋められるようにする */}
+                <span
+                  aria-label={`性別${genderLabel(player.gender)}`}
+                  className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] leading-none font-medium ${
+                    GENDER_BADGE_CLASS[player.gender ?? 'unknown']
+                  }`}
+                >
+                  {genderLabel(player.gender)}
+                </span>
+                <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
+                {/* 編集 / 削除（名前のすぐ右。どちらも無ければ出さない） */}
+                {(canEdit || (!hasHistory && canDelete)) && (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {canEdit && (
+                      <button
+                        onClick={() => handleEdit(player)}
+                        aria-label={`${player.name}を編集`}
+                        className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
+                    {!hasHistory && canDelete && (
+                      <button
+                        onClick={() => handleDelete(player)}
+                        aria-label={`${player.name}を削除`}
+                        className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
+              {/* 1段目右: N試合 */}
+              <span className="flex-shrink-0 text-right whitespace-nowrap text-foreground">{player.gamesPlayed}試合</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* 2段目左: 滞在（滞在時間モードのみ。未完了は「—（未完了）」） */}
+              <span className="whitespace-nowrap text-muted-foreground">
+                {stay &&
+                  (stay.complete
+                    ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
+                    : '滞在 —（未完了）')}
+              </span>
+              {/* 2段目右: 期待（差の色分け） */}
+              <span
+                className={`ml-auto text-right whitespace-nowrap ${
+                  expectedInfo && expectedInfo.diff !== null ? EXPECTED_DIFF_TONE_CLASS[expectedDiffTone(expectedInfo.diff)] : ''
+                }`}
+              >
+                {expectedInfo &&
+                  expectedInfo.expected !== null &&
+                  expectedInfo.diff !== null &&
+                  `期待 ${formatExpected(expectedInfo.expected)} (${formatDiff(expectedInfo.diff)})`}
+              </span>
+            </div>
           </div>
 
           {/* 右カラム: 支払 / 名簿 ボタンを縦並び */}
@@ -389,7 +394,7 @@ export function PlayerSelect() {
               </span>
             </div>
           </div>
-          {isAdmin && gamesStats && (
+          {gamesStats && (
             <div className="mb-3 rounded-lg bg-muted px-3 py-1.5 text-[11px] text-muted-foreground tabular-nums flex flex-wrap gap-x-3 gap-y-0.5">
               <span>最大 {gamesStats.max}試合</span>
               <span>最小 {gamesStats.min}試合</span>
