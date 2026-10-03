@@ -408,7 +408,7 @@ export function PlayerSelect() {
           </div>
           {/* ソート切替（全員に表示。永続化しない） */}
           <div className="flex gap-2 mb-3">
-            {([['expected', '期待に届いてない順'], ['lastGame', '待ち時間が長い順']] as const).map(([mode, label]) => (
+            {([['expected', '期待差'], ['lastGame', '経過時間']] as const).map(([mode, label]) => (
               <button
                 key={mode}
                 onClick={() => {
