@@ -16,7 +16,7 @@ import { formatLastSeen, type LastSeenTone } from '../lib/lastSeen';
 import { sortPlayers, type PlayerSortMode } from '../lib/playerSort';
 import { countByGender, formatGenderBreakdown, genderLabel } from '../lib/genderBreakdown';
 import { formatTime } from '../lib/utils';
-import { computeGamesStats, computeStayStats, formatMedian, formatStayMinutes } from '../lib/playerStats';
+import { computeExpectedGames, computeGamesStats, computeStayStats, formatDiff, formatExpected, formatMedian, formatStayMinutes } from '../lib/playerStats';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
 import { PlayerEditModal } from '../components/PlayerEditModal';
@@ -98,6 +98,9 @@ export function PlayerSelect() {
   // 試合数の統計と滞在時間（管理者のみ表示）。滞在はアルゴリズムの resolveStayStart と同じ起点
   const gamesStats = computeGamesStats(players);
   const stayStats = computeStayStats(players, session?.config.practiceStartTime ?? 0, now);
+
+  // 期待試合数と実績との差（管理者の「試合数が多い順」のみ表示）
+  const expectedById = computeExpectedGames(players, useStayDurationPriority ? 'stay' : 'count', stayStats.byId);
 
   // 見出しに出す性別内訳（例: 13人：男8・女4・未設定1）
   const genderBreakdown = countByGender(players);
@@ -207,6 +210,7 @@ export function PlayerSelect() {
     // カード内の2行目に表示してレイアウト崩れ・シフトを避ける。
     const lastSeenAt = isAdmin ? lastSeen[player.name] : undefined;
     const view = formatLastSeen(lastSeenAt, now);
+    const expectedInfo = isAdmin && sortMode === 'games' ? expectedById.get(player.id) : undefined;
     const stay = isAdmin && useStayDurationPriority ? stayStats.byId.get(player.id) : undefined;
     return (
       <div
@@ -234,6 +238,15 @@ export function PlayerSelect() {
               <span className="font-medium text-foreground tabular-nums whitespace-nowrap">
                 {player.gamesPlayed}試合
               </span>
+              {expectedInfo && expectedInfo.expected !== null && expectedInfo.diff !== null && (
+                <span
+                  className={`tabular-nums whitespace-nowrap ${
+                    Math.round(expectedInfo.diff * 10) / 10 <= -1 ? 'text-amber-600' : 'text-muted-foreground'
+                  }`}
+                >
+                  期待 {formatExpected(expectedInfo.expected)} ({formatDiff(expectedInfo.diff)})
+                </span>
+              )}
               {/* 「試合数が多い順」では参照時間は不要なので滞在表示だけにする */}
               {isAdmin && sortMode === 'lastSeen' && (
                 <span className={`flex items-center gap-1 ${LAST_SEEN_TONE_CLASS[view.tone]}`}>

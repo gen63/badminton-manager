@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Player } from '../types/player';
-import { computeGamesStats, computeStayStats, formatMedian, formatStayMinutes } from './playerStats';
+import { computeExpectedGames, computeGamesStats, computeStayStats, formatDiff, formatExpected, formatMedian, formatStayMinutes } from './playerStats';
 
 const MIN = 60000;
 const mk = (id: string, gamesPlayed: number, done: boolean, opsCompletedAt?: number): Player =>
@@ -57,5 +57,53 @@ describe('formatStayMinutes', () => {
   it('H:MM', () => {
     expect(formatStayMinutes(83)).toBe('1:23');
     expect(formatStayMinutes(5.9)).toBe('0:05');
+  });
+});
+
+describe('computeExpectedGames', () => {
+  const now = 10_000 * MIN;
+  const start = now - 120 * MIN;
+
+  it('回数平均モードは全員 合計/人数', () => {
+    const ps = [mk('a', 8, true), mk('b', 4, false), mk('c', 3, true)];
+    const stay = computeStayStats(ps, start, now);
+    const r = computeExpectedGames(ps, 'count', stay.byId);
+    expect(r.get('a')).toEqual({ expected: 5, diff: 3 });
+    expect(r.get('b')).toEqual({ expected: 5, diff: -1 });
+    expect(r.get('c')?.expected).toBe(5);
+  });
+
+  it('人数0は空', () => {
+    expect(computeExpectedGames([], 'count', new Map()).size).toBe(0);
+  });
+
+  it('滞在モードは完了者のみで滞在按分、未完了は null', () => {
+    // a: 120分, b: 60分 (開始から60分遅れて完了), c: 未完了
+    const ps = [mk('a', 6, true, start), mk('b', 2, true, now - 60 * MIN), mk('c', 9, false)];
+    const stay = computeStayStats(ps, start, now);
+    const r = computeExpectedGames(ps, 'stay', stay.byId);
+    // T' = 8, 滞在 120:60 → a=5.333.., b=2.666..
+    expect(r.get('a')?.expected).toBeCloseTo(16 / 3);
+    expect(r.get('a')?.diff).toBeCloseTo(6 - 16 / 3);
+    expect(r.get('b')?.expected).toBeCloseTo(8 / 3);
+    expect(r.get('c')).toEqual({ expected: null, diff: null });
+  });
+
+  it('滞在合計が0なら全員 null', () => {
+    const ps = [mk('a', 3, true, now), mk('b', 2, true, now)];
+    const stay = computeStayStats(ps, start, now);
+    const r = computeExpectedGames(ps, 'stay', stay.byId);
+    expect(r.get('a')?.expected).toBeNull();
+    expect(r.get('b')?.diff).toBeNull();
+  });
+});
+
+describe('formatExpected / formatDiff', () => {
+  it('小数1桁', () => expect(formatExpected(7.25)).toBe('7.3'));
+  it('符号付き', () => {
+    expect(formatDiff(0.8)).toBe('+0.8');
+    expect(formatDiff(-1.04)).toBe('−1.0');
+    expect(formatDiff(0.04)).toBe('±0');
+    expect(formatDiff(-0.04)).toBe('±0');
   });
 });

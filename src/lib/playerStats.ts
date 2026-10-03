@@ -63,3 +63,60 @@ export function formatStayMinutes(minutes: number): string {
   const total = Math.floor(minutes);
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
+
+export type ExpectedGamesMode = 'count' | 'stay';
+
+export interface ExpectedGames {
+  /** 期待試合数。算出できない（未完了・滞在合計0・人数0）は null */
+  expected: number | null;
+  /** 実績 − 期待値。expected が null なら null */
+  diff: number | null;
+}
+
+/**
+ * 各人の「期待試合数」と実績との差。
+ * - count（回数平均モード）: 全員の試合数合計 / 人数（全員同じ）。
+ * - stay（滞在時間モード）: 会費・名簿完了者だけで按分。期待値_i = 完了者の試合数合計 × 滞在分_i / 完了者の滞在分合計。
+ *   未完了者と、滞在合計が0のときは null。
+ */
+export function computeExpectedGames(
+  players: ReadonlyArray<Pick<Player, 'id' | 'gamesPlayed'>>,
+  mode: ExpectedGamesMode,
+  stayById: ReadonlyMap<string, StayInfo>,
+): Map<string, ExpectedGames> {
+  const result = new Map<string, ExpectedGames>();
+  const make = (p: Pick<Player, 'gamesPlayed'>, expected: number | null): ExpectedGames => ({
+    expected,
+    diff: expected === null ? null : p.gamesPlayed - expected,
+  });
+
+  if (mode === 'count') {
+    const total = players.reduce((s, p) => s + p.gamesPlayed, 0);
+    const avg = players.length > 0 ? total / players.length : null;
+    for (const p of players) result.set(p.id, make(p, avg));
+    return result;
+  }
+
+  const done = players.filter((p) => stayById.get(p.id)?.complete === true);
+  const totalGames = done.reduce((s, p) => s + p.gamesPlayed, 0);
+  const totalMinutes = done.reduce((s, p) => s + (stayById.get(p.id)?.minutes ?? 0), 0);
+  for (const p of players) {
+    const info = stayById.get(p.id);
+    const expected =
+      info?.complete === true && totalMinutes > 0 ? (totalGames * info.minutes) / totalMinutes : null;
+    result.set(p.id, make(p, expected));
+  }
+  return result;
+}
+
+/** 期待試合数の表示（小数1桁） */
+export function formatExpected(expected: number): string {
+  return expected.toFixed(1);
+}
+
+/** 差の表示（符号付き小数1桁。丸めて 0.0 になるものは `±0`） */
+export function formatDiff(diff: number): string {
+  const r = Math.round(diff * 10) / 10;
+  if (r === 0) return '±0';
+  return `${r > 0 ? '+' : '−'}${Math.abs(r).toFixed(1)}`;
+}
