@@ -138,3 +138,17 @@ export function expectedDiffTone(diff: number): ExpectedDiffTone {
   if (r <= -1.5) return 'watch';
   return 'normal';
 }
+
+/**
+ * 「試合から時間が経った順」用の2段目表示。
+ * 試合中 → `試合中`、未試合（lastPlayedAt=0）→ `未試合`、それ以外 → `前回 25分前` / `前回 1時間5分前`。
+ */
+export function formatSinceLastGame(lastPlayedAt: number, inCourt: boolean, now: number): string {
+  if (inCourt) return '試合中';
+  if (!lastPlayedAt || lastPlayedAt <= 0) return '未試合';
+  const minutes = Math.max(0, Math.floor((now - lastPlayedAt) / 60000));
+  if (minutes < 60) return `前回 ${minutes}分前`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `前回 ${h}時間前` : `前回 ${h}時間${m}分前`;
+}

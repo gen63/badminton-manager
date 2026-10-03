@@ -11,9 +11,9 @@ import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { resolveFees } from '../lib/accountingCalc';
 import { useDefaultFees } from '../hooks/useDefaultFees';
-import { sortPlayersByExpectedDiff } from '../lib/playerSort';
+import { sortPlayersByExpectedDiff, sortPlayersBySinceLastGame } from '../lib/playerSort';
 import { countByGender, formatGenderBreakdown, genderLabel } from '../lib/genderBreakdown';
-import { computeExpectedGames, computeGamesStats, computeStayStats, expectedDiffTone, formatDiff, formatExpected, formatMedian, formatStayMinutes, type ExpectedDiffTone } from '../lib/playerStats';
+import { computeExpectedGames, computeGamesStats, computeStayStats, expectedDiffTone, formatDiff, formatExpected, formatMedian, formatSinceLastGame, formatStayMinutes, type ExpectedDiffTone } from '../lib/playerStats';
 import { resolvePracticeEndTime } from '../lib/practiceEndPhase';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
@@ -42,6 +42,7 @@ const EXPECTED_DIFF_TONE_CLASS: Record<ExpectedDiffTone, string> = {
 export function PlayerSelect() {
   const players = usePlayerStore((s) => s.players);
   const matchHistory = useGameStore((s) => s.matchHistory);
+  const courts = useGameStore((s) => s.courts);
   const session = useSessionStore((s) => s.session);
   const isAdminFn = useSessionStore((s) => s.isAdmin);
   const currentUser = useSessionStore((s) => s.currentUser);
@@ -72,6 +73,8 @@ export function PlayerSelect() {
   // 未操作なら全員完了時に自動で開き、それ以外は既定で閉じる。ユーザーが一度
   // タップしたらその選択（override）を優先し、以降は allComplete の変化で
   // 上書きされない（下記 paidCollapsed の算出を参照）。
+  // ソート切替（永続化しない）。expected = 期待に届いてない順（既定）、lastGame = 待ち時間が長い順
+  const [sortMode, setSortMode] = useState<'expected' | 'lastGame'>('expected');
   const [paidCollapsedOverride, setPaidCollapsedOverride] = useState<boolean | null>(null);
   // 会費は「セッション保存値 → グローバル既定 → コード定数」の順に解決する
   const { fees: defaultFees } = useDefaultFees();
@@ -97,7 +100,14 @@ export function PlayerSelect() {
   const expectedById = computeExpectedGames(players, useStayDurationPriority ? 'stay' : 'count', stayStats.byId);
 
   // 期待との差が小さい順（足りていない人が上）。本人は常に最上部へ固定し others から除外する
-  const { self: selfPlayer, others: sortedPlayers } = sortPlayersByExpectedDiff(players, expectedById, currentUser);
+  // 現在コートに入っているプレイヤーID（空スロットは除外）
+  const inCourtIds = new Set(
+    courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((id) => id && id.trim()),
+  );
+  const { self: selfPlayer, others: sortedPlayers } =
+    sortMode === 'lastGame'
+      ? sortPlayersBySinceLastGame(players, inCourtIds, now, currentUser)
+      : sortPlayersByExpectedDiff(players, expectedById, currentUser);
 
   // 見出しに出す性別内訳（例: 13人：男8・女4・未設定1）
   const genderBreakdown = countByGender(players);
@@ -256,12 +266,14 @@ export function PlayerSelect() {
               <span className="flex-shrink-0 text-right whitespace-nowrap text-foreground">{player.gamesPlayed}試合</span>
             </div>
             <div className="flex items-center gap-2">
-              {/* 2段目左: 滞在（滞在時間モードのみ。未完了は「—（未完了）」） */}
+              {/* 2段目左: 「待ち時間が長い順」では前回の試合終了からの経過、それ以外は滞在（滞在時間モードのみ。未完了は「—（未完了）」） */}
               <span className="whitespace-nowrap text-muted-foreground">
-                {stay &&
-                  (stay.complete
-                    ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
-                    : '滞在 —（未完了）')}
+                {sortMode === 'lastGame'
+                  ? formatSinceLastGame(player.lastPlayedAt, inCourtIds.has(player.id), now)
+                  : stay &&
+                    (stay.complete
+                      ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
+                      : '滞在 —（未完了）')}
               </span>
               {/* 2段目右: 期待（差の色分け） */}
               <span
@@ -393,6 +405,25 @@ export function PlayerSelect() {
                 {useStayDurationPriority ? '滞在時間で試合数を調整' : '試合回数が少ない人を優先'}
               </span>
             </div>
+          </div>
+          {/* ソート切替（全員に表示。永続化しない） */}
+          <div className="flex gap-2 mb-3">
+            {([['expected', '期待に届いてない順'], ['lastGame', '待ち時間が長い順']] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => {
+                  setSortMode(mode);
+                  setPaidCollapsedOverride(false);
+                }}
+                aria-pressed={sortMode === mode}
+                className={`flex-1 min-h-[44px] px-2 rounded-xl text-sm font-medium transition-colors active:scale-[0.98] ${
+                  sortMode === mode ? '' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                }`}
+                style={sortMode === mode ? { backgroundColor: '#e0e7ff', color: '#3730a3' } : undefined}
+              >
+                {label}
+              </button>
+            ))}
           </div>
           {gamesStats && (
             <div className="mb-3 rounded-lg bg-muted px-3 py-1.5 text-[11px] text-muted-foreground tabular-nums flex flex-wrap gap-x-3 gap-y-0.5">
