@@ -40,11 +40,14 @@ export function computeStayStats(
   players: ReadonlyArray<Player>,
   practiceStartTime: number,
   now: number,
+  /** 練習終了日時。指定（> 0）があれば、それ以降は滞在をカウントしない。省略/0 は打ち止めなし */
+  practiceEndTime?: number,
 ): StayStats {
+  const effectiveNow = practiceEndTime && practiceEndTime > 0 ? Math.min(now, practiceEndTime) : now;
   const raw = players.map((p) => {
     const complete = p.operationStatus?.payment === true && p.operationStatus?.roster === true;
-    const start = resolveStayStart(p, practiceStartTime, now);
-    return { id: p.id, complete, minutes: Math.max(0, (now - start) / 60000) };
+    const start = resolveStayStart(p, practiceStartTime, effectiveNow);
+    return { id: p.id, complete, minutes: Math.max(0, (effectiveNow - start) / 60000) };
   });
   const maxMinutes = raw.reduce((m, r) => Math.max(m, r.minutes), 0);
   const byId = new Map<string, StayInfo>();

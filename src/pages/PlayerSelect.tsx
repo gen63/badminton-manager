@@ -14,6 +14,7 @@ import { useDefaultFees } from '../hooks/useDefaultFees';
 import { sortPlayersByExpectedDiff } from '../lib/playerSort';
 import { countByGender, formatGenderBreakdown, genderLabel } from '../lib/genderBreakdown';
 import { computeExpectedGames, computeGamesStats, computeStayStats, formatDiff, formatExpected, formatMedian, formatStayMinutes } from '../lib/playerStats';
+import { resolvePracticeEndTime } from '../lib/practiceEndPhase';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
 import { PlayerEditModal } from '../components/PlayerEditModal';
@@ -78,7 +79,12 @@ export function PlayerSelect() {
 
   // 試合数の統計と滞在時間。滞在はアルゴリズムの resolveStayStart と同じ起点
   const gamesStats = computeGamesStats(players);
-  const stayStats = computeStayStats(players, session?.config.practiceStartTime ?? 0, now);
+  const stayStats = computeStayStats(
+    players,
+    session?.config.practiceStartTime ?? 0,
+    now,
+    resolvePracticeEndTime(session?.config),
+  );
 
   // 期待試合数と実績との差。並び順（全員共通）に使い、数値の表示は管理者のみ
   const expectedById = computeExpectedGames(players, useStayDurationPriority ? 'stay' : 'count', stayStats.byId);

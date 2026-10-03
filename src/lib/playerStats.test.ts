@@ -107,3 +107,37 @@ describe('formatExpected / formatDiff', () => {
     expect(formatDiff(-0.04)).toBe('±0');
   });
 });
+
+describe('computeStayStats の練習終了頭打ち', () => {
+  const start = 1_000_000 * MIN;
+  const end = start + 180 * MIN;
+
+  it('終了前は従来どおり', () => {
+    const now = start + 100 * MIN;
+    const ps = [mk('a', 1, true, start)];
+    expect(computeStayStats(ps, start, now, end).byId.get('a')?.minutes).toBeCloseTo(100);
+  });
+
+  it('終了後は終了時刻で頭打ち（最長滞在・割合・按分にも効く）', () => {
+    const now = end + 60 * MIN;
+    const ps = [mk('a', 6, true, start), mk('b', 2, true, start + 90 * MIN)];
+    const st = computeStayStats(ps, start, now, end);
+    expect(st.byId.get('a')?.minutes).toBeCloseTo(180);
+    expect(st.byId.get('b')?.minutes).toBeCloseTo(90);
+    expect(st.maxMinutes).toBeCloseTo(180);
+    expect(st.byId.get('b')?.percent).toBe(50);
+  });
+
+  it('終了後に完了した人は 0（負にならない）', () => {
+    const now = end + 60 * MIN;
+    const ps = [mk('a', 1, true, end + 30 * MIN)];
+    expect(computeStayStats(ps, start, now, end).byId.get('a')?.minutes).toBe(0);
+  });
+
+  it('未指定・0 は打ち止めなし', () => {
+    const now = end + 60 * MIN;
+    const ps = [mk('a', 1, true, start)];
+    expect(computeStayStats(ps, start, now).byId.get('a')?.minutes).toBeCloseTo(240);
+    expect(computeStayStats(ps, start, now, 0).byId.get('a')?.minutes).toBeCloseTo(240);
+  });
+});
