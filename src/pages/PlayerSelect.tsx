@@ -368,7 +368,7 @@ export function PlayerSelect() {
               {useStayDurationPriority ? '滞在時間モード' : '回数平均モード'}
             </span>
             <span className="text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
-              {useStayDurationPriority ? '滞在時間が長い人を優先' : '試合回数が少ない人を優先'}
+              {useStayDurationPriority ? '滞在時間に応じて試合数を調整' : '試合回数が少ない人を優先'}
             </span>
           </div>
         </div>
