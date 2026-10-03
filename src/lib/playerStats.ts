@@ -40,11 +40,14 @@ export function computeStayStats(
   players: ReadonlyArray<Player>,
   practiceStartTime: number,
   now: number,
+  /** 練習終了日時。指定（> 0）があれば、それ以降は滞在をカウントしない。省略/0 は打ち止めなし */
+  practiceEndTime?: number,
 ): StayStats {
+  const effectiveNow = practiceEndTime && practiceEndTime > 0 ? Math.min(now, practiceEndTime) : now;
   const raw = players.map((p) => {
     const complete = p.operationStatus?.payment === true && p.operationStatus?.roster === true;
-    const start = resolveStayStart(p, practiceStartTime, now);
-    return { id: p.id, complete, minutes: Math.max(0, (now - start) / 60000) };
+    const start = resolveStayStart(p, practiceStartTime, effectiveNow);
+    return { id: p.id, complete, minutes: Math.max(0, (effectiveNow - start) / 60000) };
   });
   const maxMinutes = raw.reduce((m, r) => Math.max(m, r.minutes), 0);
   const byId = new Map<string, StayInfo>();
@@ -119,4 +122,19 @@ export function formatDiff(diff: number): string {
   const r = Math.round(diff * 10) / 10;
   if (r === 0) return '±0';
   return `${r > 0 ? '+' : '−'}${Math.abs(r).toFixed(1)}`;
+}
+
+/**
+ * 期待との差の注意度（管理者向けの色分け）。表示と同じ小数1桁に丸めて判定する。
+ * - normal: −1.5 より大きい（普通の揺らぎ。説明不要）
+ * - watch: −1.5〜−2.4（やや少ない。様子を見る）
+ * - alert: −2.5 以下（明らかに少ない。声かけ・調整）
+ */
+export type ExpectedDiffTone = 'normal' | 'watch' | 'alert';
+
+export function expectedDiffTone(diff: number): ExpectedDiffTone {
+  const r = Math.round(diff * 10) / 10;
+  if (r <= -2.5) return 'alert';
+  if (r <= -1.5) return 'watch';
+  return 'normal';
 }
