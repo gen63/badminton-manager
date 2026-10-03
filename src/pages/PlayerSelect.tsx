@@ -349,6 +349,22 @@ export function PlayerSelect() {
             <Users size={20} />
             <h1 className="text-lg font-bold">参加者管理</h1>
           </div>
+          {/* 現在の割り振りモード（全員に表示）。色は SessionCreate の選択状態に寄せず区別優先 */}
+          <div className="ml-auto flex flex-col items-end gap-0.5">
+            <span
+              className="px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+              style={
+                useStayDurationPriority
+                  ? { backgroundColor: '#e0e7ff', color: '#3730a3' }
+                  : { backgroundColor: '#d1fae5', color: '#065f46' }
+              }
+            >
+              {useStayDurationPriority ? '滞在時間モード' : '回数平均モード'}
+            </span>
+            <span className="text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
+              {useStayDurationPriority ? '滞在時間が長い人を優先' : '試合回数が少ない人を優先'}
+            </span>
+          </div>
         </div>
       </div>
 
