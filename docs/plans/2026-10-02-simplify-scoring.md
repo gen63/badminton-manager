@@ -264,3 +264,17 @@ smoothstep（段差なし・端点でなめらか）でつなぐ（`tripleRepeat
 bench（ENGINE=objective CONTINUOUS=1 GENDER_OFF=1 NOISE=2 SEEDS=200）master(28固定) → 新、極端%（試合数幅・待ちは 8x1〜15x3 は同一、他は +0.03 以内）:
 14x2 11.7→11.8 / 16x2 11.6→12.1 / 19x3 14.3→15.3 / 21x3 14.0→15.0（他の条件は同値）。
 21人実ロースター（sim9, 200 seeds）: 3人被り1人平均 4.91→3.72、直近3試合以内 0.94→0.30、差30以上 0。
+
+## 追記: 偏差差20超の上乗せを余り人数で 5〜7 に（2026-10-03）
+
+コート内の偏差差が `courtSpanKnee`(20) を超えた分の上乗せ `courtSpanExcess`(5) を、余り人数（候補 − 必要人数）で連続的に上げる。
+`courtSpanExcess`(5、余り5以下)〜`courtSpanExcessMax`(7、余り7以上)を、3人以上一致と同じ `tripleRampStart`(5)〜`tripleRampEnd`(7) の smoothstep でつなぐ
+（`courtSpanExcessPointsFor(surplus)`。ランプ関数 `surplusSmoothstep` は `tripleRepeatPointsFor` と共通化）。ラウンド冒頭に1回計算し `ScoreContext.courtSpanExcessPoints` で渡す。
+
+| 余り | 0〜5 | 6 | 7以上 |
+|---|---|---|---|
+| 上乗せ点数 | 5 | 6 | 7 |
+
+bench（ENGINE=objective CONTINUOUS=1 GENDER_OFF=1 NOISE=2 SEEDS=200）master → 新: 8x1〜13x2・15x3 は全指標同一。
+試合数幅 / 待ち / 極端%: 14x2 1.00→1.01 / 5.54→5.53 / 3.29→2.55、16x2 1.00→1.00 / 6.53→6.57 / 0.37→0.28、19x3 1.00→1.00 / 8.06→8.10 / 0.47→0.27、21x3 1.00→1.01 / 9.22→9.17 / 0.29→0.12。
+21人実ロースター（sim11, 200 seeds, TARGET=63/79）: 差25以上 0.84/1.16→0.51/0.74、差30以上 0 のまま、旧順位差違反 R 0.082/0.087→0.075/0.080。
