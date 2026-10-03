@@ -175,7 +175,7 @@ describe('assignRoundByObjective', () => {
     });
   });
 
-  it('1コートは窓内の全組み合わせ×チーム分けの最小点と一致する（全列挙）', () => {
+  it('1コートは窓内の全組み合わせ×チーム分け（最強＋最弱 vs 2位＋3位 固定）の最小点と一致する（全列挙）', () => {
     // 乱数で偏差・性別を振った8人から1コート。ブルートフォースの最小点と、返った解の点が一致する
     let seed = 12345;
     const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -208,10 +208,11 @@ describe('assignRoundByObjective', () => {
       for (let a = 0; a < pool.length; a++) for (let b = a + 1; b < pool.length; b++)
         for (let c = b + 1; c < pool.length; c++) for (let d = c + 1; d < pool.length; d++) {
           const four = [pool[a], pool[b], pool[c], pool[d]];
-          const [w, x, y, z] = four;
-          for (const teams of [[[w, x], [y, z]], [[w, y], [x, z]], [[w, z], [x, y]]] as [[string, string], [string, string]][]) {
-            best = Math.min(best, total(four, teams));
-          }
+          // チーム分けは最強＋最弱 vs 2位＋3位 に固定（偏差降順、同値は id 昇順）
+          const [w, x, y, z] = [...four].sort(
+            (m, n) => deviationById.get(n)! - deviationById.get(m)! || (m < n ? -1 : m > n ? 1 : 0)
+          );
+          best = Math.min(best, total(four, [[w, z], [x, y]]));
         }
       expect(got).toBeCloseTo(best, 6);
     }
@@ -381,14 +382,22 @@ describe('男女バランスとチーム分け', () => {
   const malesInA = (r: ReturnType<typeof run>) =>
     r[0].teamA.filter(id => candidates.find(p => p.id === id)!.gender === 'M').length;
 
-  it('2M2F のコートは男女戦（男男 vs 女女）にせず MIX×MIX に分ける（男女比調整 ON）', () => {
+  it('2M2F でも最強＋最弱 vs 2位＋3位 に固定する。男男 vs 女女になってもよい（男女比調整 ON）', () => {
     const result = run({ candidates, courtIds: [1], deviationById });
-    expect(malesInA(result)).toBe(1);
+    expect(result[0].teamA.slice().sort()).toEqual(['m0', 'm1']);
+    expect(result[0].teamB.slice().sort()).toEqual(['f0', 'f1']);
+    expect(malesInA(result)).toBe(2);
   });
 
-  it('男女比調整 OFF なら、実力が釣り合う男女戦を許容する（点数が小さいので釣り合いが勝つ）', () => {
+  it('最強＋最弱が MIX 側に有利でも男女点では動かない（m0,f0,f1,m1 を偏差 70/60/50/40 にしても a+d / b+c）', () => {
+    const dev = new Map([['m0', 70], ['f0', 60], ['f1', 50], ['m1', 40]]);
+    const result = run({ candidates, courtIds: [1], deviationById: dev });
+    expect(result[0].teamA.slice().sort()).toEqual(['m0', 'm1']);
+  });
+
+  it('男女比調整 OFF でも同じ分割（最強＋最弱 vs 2位＋3位）', () => {
     const result = run({ candidates, courtIds: [1], deviationById, genderBalanceMode: false });
-    expect(malesInA(result)).not.toBe(1);
+    expect(malesInA(result)).toBe(2);
   });
 
   it('3-1 が避けられるなら 2-2 / 4-0 を選ぶ（偏差が同じ6人から4人）', () => {
@@ -431,10 +440,10 @@ describe('ペア希望（normal）', () => {
     expect(areTeammates(result, 'p0', 'p7')).toBe(true); // 同コートに集めるだけでなく味方になっている
   });
 
-  it('既定の点数でも、同じコートに入った希望ペアは敵にならない（隣り合う実力）', () => {
+  it('既定の点数では、隣り合う実力の希望ペアは顔ぶれ選択で同コートに集まる。ただしチーム分けは変えない（最強＋最弱 vs 2位＋3位）', () => {
     const result = run({ candidates: eight, courtIds: [1, 2], deviationById: eightDev, affinityPairs: [{ a: 'p0', b: 'p1' }] });
     expect(courtOf(result, 'p0').courtId).toBe(courtOf(result, 'p1').courtId);
-    expect(areTeammates(result, 'p0', 'p1')).toBe(true);
+    expect(areTeammates(result, 'p0', 'p1')).toBe(false); // 最強と2位は敵
   });
 
   // 実運用バグ（2026-09-17）の系統: 同性の希望ペアが 2-2 コートで敵にされる。
@@ -462,42 +471,43 @@ describe('ペア希望（normal）', () => {
   it('同性の希望ペア（両端の実力・逃げ道が無い8人）は2-2コートで味方になる（男女戦を許容）', () => {
     const result = run({ candidates: worst, courtIds: [1, 2], deviationById: worstDev, affinityPairs: [{ a: 'p0', b: 'p3' }] });
     expect(courtOf(result, 'p0').courtId).toBe(courtOf(result, 'p3').courtId);
-    expect(areTeammates(result, 'p0', 'p3')).toBe(true);
+    expect(areTeammates(result, 'p0', 'p3')).toBe(true); // 最強＋最弱
     expect(isMixSplit(courtOf(result, 'p0'))).toBe(true); // 男女戦（男男 vs 女女）
   });
 
-  it('希望ペアを含まないコートでは男女戦にしない', () => {
+  it('希望ペアが無くても、全コートで最強＋最弱 vs 2位＋3位（男女戦になってもよい）', () => {
     const result = run({ candidates: worst, courtIds: [1, 2], deviationById: worstDev });
-    for (const court of result) expect(isMixSplit(court)).toBe(false);
+    for (const court of result) {
+      const four = [...court.teamA, ...court.teamB].sort((x, y) => worstDev.get(y)! - worstDev.get(x)!);
+      expect([...court.teamA].sort()).toContain(four[0]);
+      expect(court.teamA).toContain(four[3]);
+    }
   });
 
-  it('複数コートで希望ペアを登録しても、それを含まないコートは男女戦にしない（無関係コートへの波及なし）', () => {
+  it('複数コートで希望ペアを登録しても、それを含まないコートのチーム分けは最強＋最弱 vs 2位＋3位（無関係コートへの波及なし）', () => {
     const extra = worst.map(p => makePlayer(p.id.replace('p', 'q'), { gender: p.gender }));
     const candidates = [...worst, ...extra];
     const deviationById = devByOrder(candidates.map(p => p.id), 2);
     const result = run({ candidates, courtIds: [1, 2, 3, 4], deviationById, affinityPairs: [{ a: 'p0', b: 'p3' }] });
     const pairCourt = courtOf(result, 'p0').courtId;
-    const g = (id: string) => candidates.find(p => p.id === id)!.gender;
     for (const court of result) {
       if (court.courtId === pairCourt) continue;
-      const gs = [...court.teamA, ...court.teamB].map(g);
-      if (gs.filter(x => x === 'M').length === 2) {
-        expect(court.teamA.filter(id => g(id) === 'M').length).toBe(1);
-      }
+      const four = [...court.teamA, ...court.teamB].sort((x, y) => deviationById.get(y)! - deviationById.get(x)!);
+      expect(court.teamA).toContain(four[0]);
+      expect(court.teamA).toContain(four[3]);
     }
   });
 
-  it('比較用: 異性の希望ペアは男女戦と衝突しないので味方になる', () => {
+  it('比較用: 異性の希望ペアでも弱い希望は分割を変えない（同コートには集まる）', () => {
     const result = run({ candidates: worst, courtIds: [1, 2], deviationById: worstDev, affinityPairs: [{ a: 'p0', b: 'p1' }] });
     expect(courtOf(result, 'p0').courtId).toBe(courtOf(result, 'p1').courtId);
-    expect(areTeammates(result, 'p0', 'p1')).toBe(true);
+    expect(areTeammates(result, 'p0', 'p1')).toBe(false); // 弱い希望は分割を変えない（最強と2位は敵）
   });
 
-  it('性別未設定でも、実力が隣接する希望ペアは味方になる（チームの釣り合いに負けない）', () => {
-    // 希望ペアが下位2人 (p6,p7) だと [a,b]|[c,d] で釣り合いが最も崩れる並び
+  it('性別未設定でも、実力が隣接する希望ペアは同コートに集まるが、分割は変えない（敵）', () => {
     const result = run({ candidates: eight, courtIds: [1, 2], deviationById: eightDev, affinityPairs: [{ a: 'p6', b: 'p7' }] });
     expect(courtOf(result, 'p6').courtId).toBe(courtOf(result, 'p7').courtId);
-    expect(areTeammates(result, 'p6', 'p7')).toBe(true);
+    expect(areTeammates(result, 'p6', 'p7')).toBe(false);
   });
 });
 
@@ -521,6 +531,20 @@ describe('ペア希望「必ず」（strong）のハード制約', () => {
     );
     expect(courtOf(result, 'p0').courtId).toBe(courtOf(result, 'p3').courtId);
     expect(areTeammates(result, 'p0', 'p3')).toBe(true);
+  });
+
+  it('a+d / b+c が「必ず」違反を生むときだけ、従来どおり3分割から違反最小を選ぶ（フォールバック）', () => {
+    // 4人: p0=最強, p1=2位, p2=3位, p3=最弱。「必ず」p1&p2 は a+d/b+c だと味方（違反なし）なので固定分割のまま
+    const four = ['p0', 'p1', 'p2', 'p3'].map(id => makePlayer(id));
+    const dev = devByOrder(four.map(p => p.id), 5);
+    const ok = run({ candidates: four, courtIds: [1], deviationById: dev, strongPairs: [{ a: 'p1', b: 'p2' }] });
+    expect(areTeammates(ok, 'p0', 'p3')).toBe(true);
+    // 「必ず」p0&p1 は a+d/b+c だと敵（違反）→ 違反ゼロの a+b / c+d へフォールバック
+    const fb = run({ candidates: four, courtIds: [1], deviationById: dev, strongPairs: [{ a: 'p0', b: 'p1' }] });
+    expect(areTeammates(fb, 'p0', 'p1')).toBe(true);
+    // 「必ず」p0&p2 も a+c / b+d へ
+    const fb2 = run({ candidates: four, courtIds: [1], deviationById: dev, strongPairs: [{ a: 'p0', b: 'p2' }] });
+    expect(areTeammates(fb2, 'p0', 'p2')).toBe(true);
   });
 
   it('両方が出るなら必ず味方になる（候補=必要人数ちょうど・ベンチ0でも解が返る）', () => {

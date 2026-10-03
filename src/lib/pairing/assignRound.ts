@@ -153,7 +153,7 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
   const windowLimit =
     neededCount + Math.ceil(surplus * (lateBalanceMode ? LATE_BALANCE_WINDOW_RATIO : FAIRNESS_WINDOW_RATIO));
 
-  // コート単位の評価（4人の集合ごとにキャッシュ）。チーム分けは3通りから（違反, 点数）最小
+  // コート単位の評価（4人の集合ごとにキャッシュ）。チーム分けは a+d / b+c 固定。「必ず」ペア違反時のみ3通りから（違反, 点数）最小
   const courtCache = new Map<string, CourtEval>();
   const evalCourt = (ids: readonly string[]): CourtEval => {
     const sorted = [...ids].sort();
@@ -182,6 +182,9 @@ export function assignRoundByObjective(params: AssignRoundParams): CourtAssignme
       const points = fixedTotal + split.teamDiff + split.gender + split.pairEnemy;
       const cand: CourtEval = { slots, violations, points };
       if (!best || better(cand, best) < -EPS) best = cand;
+      // 最強＋最弱 vs 2位＋3位 は常にチーム平均差が最小。「必ず」違反が無ければ即採用し、
+      // 男女バランス等は分割の選択に使わない（点数としてだけ加算）。違反があるときのみ他の分割へ
+      if (slots === options[0] && violations === 0) break;
     }
     const result = best!;
     // 極端な実力差。分割に依らないので最後に足す（「必ず」ペア2人の間は除く）
