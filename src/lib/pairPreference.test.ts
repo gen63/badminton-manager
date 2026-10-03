@@ -33,17 +33,17 @@ describe('computeAffinityPairs', () => {
   it('対象ペアは常に含まれる（実績に関係なく最大強度）', () => {
     const players = [makePlayer('a', 4), makePlayer('b', 4)];
     const prefs = [makePref('p1', 'a', 'b')];
-    const result = computeAffinityPairs(prefs, players, 4, 2);
+    const result = computeAffinityPairs(prefs, players, new Map());
     expect(result).toEqual([{ a: 'a', b: 'b' }]);
   });
 
   it('normal / strong で対象判定は変わらない（違いはハード制約側だけ）', () => {
     const players = [makePlayer('a', 4), makePlayer('b', 4)];
     const normalResult = computeAffinityPairs(
-      [makePref('p1', 'a', 'b', 'normal')], players, 4, 2,
+      [makePref('p1', 'a', 'b', 'normal')], players, new Map(),
     );
     const strongResult = computeAffinityPairs(
-      [makePref('p1', 'a', 'b', 'strong')], players, 4, 2,
+      [makePref('p1', 'a', 'b', 'strong')], players, new Map(),
     );
     expect(normalResult).toEqual([{ a: 'a', b: 'b' }]);
     expect(strongResult).toEqual([{ a: 'a', b: 'b' }]);
@@ -52,28 +52,26 @@ describe('computeAffinityPairs', () => {
   it('片方未出場（候補プールにいない）は対象外', () => {
     const players = [makePlayer('a', 4)]; // b は候補プールにいない
     const prefs = [makePref('p1', 'a', 'b')];
-    const result = computeAffinityPairs(prefs, players, 0, 2);
+    const result = computeAffinityPairs(prefs, players, new Map());
     expect(result).toEqual([]);
   });
 
-  it('公平性ガード（3b）: 試合数が中央値+閾値以上のメンバーを含むと対象外になる', () => {
-    // 中央値 0、閾値 2 → gamesPlayed 2 以上のメンバーは保留
+  it('公平性ガード（3b）: 期待差が閾値以上のメンバーを含むと対象外になる', () => {
     const players = [makePlayer('a', 2), makePlayer('b', 0)];
     const prefs = [makePref('p1', 'a', 'b')];
-    const result = computeAffinityPairs(prefs, players, 0, 2);
-    expect(result).toEqual([]);
+    const diffs = new Map<string, number | null>([['a', 1.5], ['b', -1.5]]);
+    expect(computeAffinityPairs(prefs, players, diffs)).toEqual([]);
   });
 
-  it('公平性ガードの境界: 閾値未満なら通常どおり対象になる', () => {
-    // gamesPlayed 1 は 中央値0 + 閾値2 = 2 未満なのでガード対象外
+  it('公平性ガードの境界: 閾値未満（丸め後）なら通常どおり対象になる。null は対象外にしない', () => {
     const players = [makePlayer('a', 1), makePlayer('b', 0)];
     const prefs = [makePref('p1', 'a', 'b')];
-    const result = computeAffinityPairs(prefs, players, 0, 2);
-    expect(result).toEqual([{ a: 'a', b: 'b' }]);
+    const diffs = new Map<string, number | null>([['a', 1.44], ['b', null]]);
+    expect(computeAffinityPairs(prefs, players, diffs)).toEqual([{ a: 'a', b: 'b' }]);
   });
 
   it('希望が0件なら空配列', () => {
-    expect(computeAffinityPairs([], [], 0, 2)).toEqual([]);
+    expect(computeAffinityPairs([], [], new Map())).toEqual([]);
   });
 });
 

@@ -43,7 +43,6 @@ export function SettingsPage() {
   const practiceType = useSettingsStore((s) => s.practiceType);
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
   const genderBalanceMode = useSettingsStore((s) => s.genderBalanceMode);
-  const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
   const adminMatchCallAnnounce = useSettingsStore((s) => s.adminMatchCallAnnounce);
   const setAdminMatchCallAnnounce = useSettingsStore((s) => s.setAdminMatchCallAnnounce);
   const finishHoldToConfirm = useSettingsStore((s) => s.finishHoldToConfirm);
@@ -591,29 +590,6 @@ export function SettingsPage() {
                     ? '滞在時間あたりの試合数のバラつきを抑えます（組み合わせの質より順番を優先）'
                     : '試合数のバラつきを抑えます（組み合わせの質より順番を優先）'
                   : '練習開始から120分経過で自動的にONになります'}
-              </p>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">予約の試合数制限</label>
-              <div className="flex gap-2">
-                {[1, 2, 3].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => void writer.setReservationBlockThreshold(n)}
-                    className={`flex-1 select-button text-xs px-2 ${
-                      reservationBlockThreshold === n
-                        ? 'select-button-active'
-                        : 'select-button-inactive'
-                    }`}
-                  >
-                    {reservationBlockThreshold === n && <span className="mr-1">✓</span>}
-                    +{n}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-1">
-                予約メンバーの試合数が中央値+{reservationBlockThreshold}以上のとき、その予約を保留します（多く試合した人が予約で順番を飛ばし続けるのを防止）
               </p>
             </div>
           </div>

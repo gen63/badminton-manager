@@ -854,6 +854,24 @@ export function computeAddReservation(
   return { ...state, players, reservations: [...state.reservations, reservation] };
 }
 
+/**
+ * 予約の「優先」フラグを切り替える（作成者のみ UI から。期待差による保留をスキップする）。
+ * 存在しない予約は no-op。
+ */
+export function computeSetReservationForcePriority(
+  state: GameState,
+  reservationId: string,
+  value: boolean,
+): GameState {
+  if (!state.reservations.some((r) => r.id === reservationId)) return state;
+  return {
+    ...state,
+    reservations: state.reservations.map((r) =>
+      r.id === reservationId ? { ...r, forcePriority: value } : r,
+    ),
+  };
+}
+
 export function computeRemoveReservation(
   state: GameState,
   reservationId: string,
@@ -1179,6 +1197,10 @@ export function addReservation(sessionId: string, playerIds: string[], createdBy
   );
 }
 
+export function setReservationForcePriority(sessionId: string, reservationId: string, value: boolean) {
+  return mutateGameState(sessionId, (s) => computeSetReservationForcePriority(s, reservationId, value));
+}
+
 export function removeReservation(sessionId: string, reservationId: string) {
   return mutateGameState(sessionId, (s) => computeRemoveReservation(s, reservationId));
 }
@@ -1282,10 +1304,6 @@ export function setForceBulkAssignment(sessionId: string, value: boolean) {
   return mutateGameState(sessionId, (s) =>
     computeSetSetting(s, 'forceBulkAssignment', value),
   );
-}
-
-export function setReservationBlockThreshold(sessionId: string, value: number) {
-  return mutateGameState(sessionId, (s) => computeSetSetting(s, 'reservationBlockThreshold', value));
 }
 
 /**
@@ -1861,8 +1879,8 @@ export async function finishMatchAndContinue(
         lateBalanceMode: remoteSettings?.lateBalanceMode ?? false,
         // 旧セッション（未設定）は ON 扱い＝従来どおりの男女比重視
         genderBalanceMode: remoteSettings?.genderBalanceMode ?? true,
-        reservationBlockThreshold: remoteSettings?.reservationBlockThreshold,
         practiceStartTime: remoteConfig?.practiceStartTime,
+        practiceEndTime: resolvedEndTime,
         // 自動終了したコートには、連続モードでも次の試合を入れない。
         skipContinuous: options.skipContinuous || options.autoEnd || pastLastCall,
         finishedAt: autoEndFinishedAt,

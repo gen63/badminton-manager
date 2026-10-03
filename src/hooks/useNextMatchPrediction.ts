@@ -20,7 +20,6 @@ export interface UseNextMatchPredictionArgs {
   gameMode: 'singles' | 'doubles';
   lateBalanceMode?: boolean;
   genderBalanceMode?: boolean;
-  reservationBlockThreshold?: number;
   pairPreferences?: PairPreference[];
 }
 
@@ -57,7 +56,6 @@ export function useNextMatchPrediction(
     gameMode,
     lateBalanceMode,
     genderBalanceMode,
-    reservationBlockThreshold,
     pairPreferences,
   } = args;
 
@@ -81,12 +79,12 @@ export function useNextMatchPrediction(
           gameMode,
           lateBalanceMode,
           genderBalanceMode,
-          reservationBlockThreshold,
+          practiceEndTime,
           pairPreferences,
         }),
     [pastLastCall, players, courts, matchHistory, reservations, practiceStartTime,
       useStayDurationPriority, gameMode, lateBalanceMode, genderBalanceMode,
-      reservationBlockThreshold, pairPreferences],
+      practiceEndTime, pairPreferences],
   );
 
   return { prediction, pastLastCall };

@@ -802,7 +802,6 @@ export function HistoryPage() {
   const practiceType = useSettingsStore((s) => s.practiceType);
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
   const genderBalanceMode = useSettingsStore((s) => s.genderBalanceMode);
-  const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
   const gameMode = gameModeFromPracticeType(practiceType);
 
   const { prediction: nextMatchPrediction } = useNextMatchPrediction({
@@ -815,7 +814,6 @@ export function HistoryPage() {
     gameMode,
     lateBalanceMode,
     genderBalanceMode,
-    reservationBlockThreshold,
     pairPreferences,
   });
   const myPlayerId = useMemo(

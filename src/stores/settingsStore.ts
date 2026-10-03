@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { DEFAULT_RESERVATION_BLOCK_THRESHOLD } from '../lib/algorithm';
 
 interface SettingsState {
   gasWebAppUrl: string;
@@ -30,9 +29,6 @@ interface SettingsState {
   /** 終了20分前以降の連続モード延長（ON にした時点の終了日時。0 = なし）。Firestore 同期。 */
   continuousPastEndOverrideFor: number;
   setContinuousPastEndOverrideFor: (value: number) => void;
-  /** 予約保留の閾値（中央値+この値以上の試合数のメンバーを含む予約を保留）。Firestore 同期。 */
-  reservationBlockThreshold: number;
-  setReservationBlockThreshold: (value: number) => void;
   /** 呼び出し通知時に音・振動を鳴らすか。端末ローカル設定（Firestore 同期しない）。 */
   matchCallAlert: boolean;
   setMatchCallAlert: (value: boolean) => void;
@@ -95,8 +91,6 @@ export const useSettingsStore = create<SettingsState>()(
       setLateBalanceAutoFired: (value) => set({ lateBalanceAutoFired: value }),
       continuousPastEndOverrideFor: 0,
       setContinuousPastEndOverrideFor: (value) => set({ continuousPastEndOverrideFor: value }),
-      reservationBlockThreshold: DEFAULT_RESERVATION_BLOCK_THRESHOLD,
-      setReservationBlockThreshold: (value) => set({ reservationBlockThreshold: value }),
       matchCallAlert: true,
       setMatchCallAlert: (value) => set({ matchCallAlert: value }),
       adminMatchCallAnnounce: true,

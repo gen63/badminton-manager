@@ -267,7 +267,8 @@ export function computeFinishAndContinue(
     matchId?: string;
     lateBalanceMode?: boolean;
     genderBalanceMode?: boolean;
-    reservationBlockThreshold?: number;
+    /** 練習終了日時（予約の期待差ゲートの滞在按分の頭打ち）。未指定は打ち止めなし */
+    practiceEndTime?: number;
     /**
      * 練習開始日時（`sessions/{id}.config.practiceStartTime`）。
      *
@@ -405,7 +406,10 @@ export function computeFinishAndContinue(
       playersInCourts,
       {
         gameMode: options.gameMode,
-        reservationBlockThreshold: options.reservationBlockThreshold,
+        practiceStartTime: options.practiceStartTime,
+        practiceEndTime: options.practiceEndTime,
+        useStayDurationPriority: options.useStayDurationPriority,
+        sessionPlayers: updatedPlayers,
       },
     );
 
@@ -445,7 +449,9 @@ export function computeFinishAndContinue(
           gameMode: options.gameMode,
           lateBalanceMode: options.lateBalanceMode,
           genderBalanceMode: options.genderBalanceMode,
-          reservationBlockThreshold: options.reservationBlockThreshold,
+          // 期待差ゲートは表示と同じ母集団（全 players。+1 補正なし）で判定する
+          practiceEndTime: options.practiceEndTime,
+          sessionPlayers: updatedPlayers,
           // 予約は休憩中メンバーも呼び出せる（プレイ中でない休憩者）
           restingPlayers: effectivePlayers.filter((p) => p.isResting && !playersInCourts.has(p.id)),
           // ペア希望は reservations と同じく state（リモートの GameState）から渡す

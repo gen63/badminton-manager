@@ -53,6 +53,7 @@ import {
   computeUpdateMatchScore,
   computeAddReservation,
   computeRemoveReservation,
+  computeSetReservationForcePriority,
   computeFulfillReservation,
   computeClearReservations,
   computeAddPairPreference,
@@ -950,6 +951,20 @@ describe('sessionMutations - 「未設定」の修復（削除されたプレイ
 });
 
 describe('sessionMutations - reservations', () => {
+  it('computeSetReservationForcePriority: 優先フラグの ON/OFF。存在しない ID は no-op', () => {
+    const state = baseState({
+      players: [makePlayer('p1'), makePlayer('p2')],
+      reservations: [
+        { id: 'r1', orderNumber: 1, playerIds: ['p1', 'p2'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+      ],
+    });
+    const on = computeSetReservationForcePriority(state, 'r1', true);
+    expect(on.reservations[0].forcePriority).toBe(true);
+    const off = computeSetReservationForcePriority(on, 'r1', false);
+    expect(off.reservations[0].forcePriority).toBe(false);
+    expect(computeSetReservationForcePriority(state, 'ghost', true)).toBe(state);
+  });
+
   it('computeAddReservation: orderNumber は max+1', () => {
     const state = baseState({
       players: [makePlayer('p1'), makePlayer('p2'), makePlayer('p3')],

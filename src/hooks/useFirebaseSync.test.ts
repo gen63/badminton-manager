@@ -176,42 +176,6 @@ describe('useFirebaseSync - settings 反映の副作用', () => {
     expect(useSettingsStore.getState().forceBulkAssignment).toBe(false);
   });
 
-  it('reservationBlockThreshold をリモートからストアにミラーする', () => {
-    setSharedSession();
-    useSettingsStore.setState({ reservationBlockThreshold: 2 });
-    renderHook(() => useFirebaseSync());
-
-    act(() => {
-      emit({
-        updatedAt: NOW,
-        gameState: {
-          players: [], courts: [], matchHistory: [], reservations: [],
-          settings: { practiceType: '複', reservationBlockThreshold: 3 },
-        },
-      });
-    });
-
-    expect(useSettingsStore.getState().reservationBlockThreshold).toBe(3);
-  });
-
-  it('reservationBlockThreshold 未設定の受信ではデフォルト(2)に矯正される', () => {
-    setSharedSession();
-    useSettingsStore.setState({ reservationBlockThreshold: 3 });
-    renderHook(() => useFirebaseSync());
-
-    act(() => {
-      emit({
-        updatedAt: NOW,
-        gameState: {
-          players: [], courts: [], matchHistory: [], reservations: [],
-          settings: { practiceType: '複' },
-        },
-      });
-    });
-
-    expect(useSettingsStore.getState().reservationBlockThreshold).toBe(2);
-  });
-
   it('settings.forceBulkAssignment 未設定の受信では true（デフォルト ON）に矯正される', () => {
     // 旧セッション互換。未設定を false のまま放置すると、settingsStore の初期値 true と
     // 食い違ったまま端末に残ってしまう（docs/plans/2026-08-13-force-bulk-assignment.md）
