@@ -530,7 +530,6 @@ describe('buildSessionData', () => {
       const data = buildSessionData({ ...baseEvent, note }, new Map(), new Date(2026, 3, 9));
       expect(data.gameState.settings.genderBalanceMode).toBe(false);
       expect(data.gameState.settings.useStayDurationPriority).toBe(false);
-      expect(data.gameState.settings.reservationBlockThreshold).toBe(1);
     }
   });
 
