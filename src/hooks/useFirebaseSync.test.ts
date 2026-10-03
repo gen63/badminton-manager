@@ -644,7 +644,7 @@ describe('useFirebaseSync - 未対応強制休憩の全員通知', () => {
     );
 
     expect(useNoticeStore.getState().notices[0].message).toBe(
-      '会費の支払いがまだのため、休憩になりました。対応後に休憩を解除してください',
+      '会費の支払いがまだのため、休憩になりました。対応すると自動で休憩が解除されます',
     );
   });
 
@@ -829,7 +829,7 @@ describe('useFirebaseSync - 未対応強制休憩のまとめ通知', () => {
 
     const messages = useNoticeStore.getState().notices.map((n) => n.message);
     expect(messages).toEqual([
-      '会費の支払いがまだのため、休憩になりました。対応後に休憩を解除してください',
+      '会費の支払いがまだのため、休憩になりました。対応すると自動で休憩が解除されます',
       'Bobさんは会費の支払いが未対応のため休憩になりました',
     ]);
   });
