@@ -440,10 +440,10 @@ describe('ペア希望（normal）', () => {
     expect(areTeammates(result, 'p0', 'p7')).toBe(true); // 同コートに集めるだけでなく味方になっている
   });
 
-  it('既定の点数では、隣り合う実力の希望ペアは顔ぶれ選択で同コートに集まる。ただしチーム分けは変えない（最強＋最弱 vs 2位＋3位）', () => {
+  it('既定の点数でも、同じコートに入った希望ペアは敵にならない（隣り合う実力。平均差が T 以下なら分割を変える）', () => {
     const result = run({ candidates: eight, courtIds: [1, 2], deviationById: eightDev, affinityPairs: [{ a: 'p0', b: 'p1' }] });
     expect(courtOf(result, 'p0').courtId).toBe(courtOf(result, 'p1').courtId);
-    expect(areTeammates(result, 'p0', 'p1')).toBe(false); // 最強と2位は敵
+    expect(areTeammates(result, 'p0', 'p1')).toBe(true);
   });
 
   // 実運用バグ（2026-09-17）の系統: 同性の希望ペアが 2-2 コートで敵にされる。
@@ -498,16 +498,76 @@ describe('ペア希望（normal）', () => {
     }
   });
 
-  it('比較用: 異性の希望ペアでも弱い希望は分割を変えない（同コートには集まる）', () => {
+  it('比較用: 異性の希望ペアは男女戦と衝突しないので味方になる', () => {
     const result = run({ candidates: worst, courtIds: [1, 2], deviationById: worstDev, affinityPairs: [{ a: 'p0', b: 'p1' }] });
     expect(courtOf(result, 'p0').courtId).toBe(courtOf(result, 'p1').courtId);
-    expect(areTeammates(result, 'p0', 'p1')).toBe(false); // 弱い希望は分割を変えない（最強と2位は敵）
+    expect(areTeammates(result, 'p0', 'p1')).toBe(true);
   });
 
-  it('性別未設定でも、実力が隣接する希望ペアは同コートに集まるが、分割は変えない（敵）', () => {
+  it('性別未設定でも、実力が隣接する希望ペアは味方になる（平均差 T 以下）', () => {
     const result = run({ candidates: eight, courtIds: [1, 2], deviationById: eightDev, affinityPairs: [{ a: 'p6', b: 'p7' }] });
     expect(courtOf(result, 'p6').courtId).toBe(courtOf(result, 'p7').courtId);
-    expect(areTeammates(result, 'p6', 'p7')).toBe(false);
+    expect(areTeammates(result, 'p6', 'p7')).toBe(true);
+  });
+});
+
+describe('ペア希望と分割（平均偏差差の上限 T）', () => {
+  const four = ['p0', 'p1', 'p2', 'p3'].map(id => makePlayer(id));
+  const ids = four.map(p => p.id);
+  const pair = { affinityPairs: [{ a: 'p0', b: 'p1' }] };
+
+  it('希望なし: 常に最強＋最弱 vs 2位＋3位', () => {
+    const r = run({ candidates: four, courtIds: [1], deviationById: devByOrder(ids) });
+    expect(areTeammates(r, 'p0', 'p3')).toBe(true);
+  });
+
+  it('弱い希望で平均差が T 以下なら希望が成立する（最強と2位が味方）', () => {
+    // 80,77,74,71: a+b vs c+d の平均差 6 ≤ T(8)
+    const r = run({ candidates: four, courtIds: [1], deviationById: devByOrder(ids), ...pair });
+    expect(areTeammates(r, 'p0', 'p1')).toBe(true);
+  });
+
+  it('弱い希望でも平均差が T を超えるなら a+d / b+c のまま（希望は不成立）', () => {
+    // 80,77,74,71 の幅を広げる: 80,70,60,50 → a+b vs c+d の平均差 20 > T
+    const dev = new Map([['p0', 80], ['p1', 70], ['p2', 60], ['p3', 50]]);
+    const r = run({ candidates: four, courtIds: [1], deviationById: dev, ...pair });
+    expect(areTeammates(r, 'p0', 'p3')).toBe(true);
+    expect(areTeammates(r, 'p0', 'p1')).toBe(false);
+  });
+
+  it('T を境界で変えると結果が変わる（80,76,72,68: 平均差 8。T=7 なら不成立 / T=8 なら成立）', () => {
+    const dev = new Map([['p0', 80], ['p1', 76], ['p2', 72], ['p3', 68]]);
+    const ng = withTable({ pairSplitMaxDiff: 7 }, () => run({ candidates: four, courtIds: [1], deviationById: dev, ...pair }));
+    expect(areTeammates(ng, 'p0', 'p1')).toBe(false);
+    const ok = withTable({ pairSplitMaxDiff: 8 }, () => run({ candidates: four, courtIds: [1], deviationById: dev, ...pair }));
+    expect(areTeammates(ok, 'p0', 'p1')).toBe(true);
+  });
+
+  it('「必ず」で平均差が T を超える分割になるコートは、他に選択肢があれば顔ぶれ選択で避ける', () => {
+    // p0(80) と p1(76) を「必ず」: 4人は a+b / c+d に分かれる。p2(52) を入れると平均差16 > T
+    // 試合数がやや有利な p2 より、平均差 6.5 で済む p4(71) を選ぶ。上乗せを切ると p2 が選ばれる（対照）
+    const five = ['p0', 'p1', 'p2', 'p3', 'p4'].map(id => makePlayer(id));
+    const dev = new Map([['p0', 80], ['p1', 76], ['p2', 52], ['p3', 72], ['p4', 71]]);
+    const prio: Record<string, number> = { p0: 0, p1: 0, p2: 0, p3: 1, p4: 1 };
+    const input = {
+      candidates: five, courtIds: [1], deviationById: dev, priorityScoreOf: (p: Player) => prio[p.id],
+      affinityPairs: [{ a: 'p0', b: 'p1' }], strongPairs: [{ a: 'p0', b: 'p1' }],
+    };
+    const on = run(input);
+    expect(areTeammates(on, 'p0', 'p1')).toBe(true); // 「必ず」は守る
+    expect(idsOf(on).has('p2')).toBe(false);
+    const off = withTable({ strongSplitExcess: 0 }, () => run(input));
+    expect(areTeammates(off, 'p0', 'p1')).toBe(true);
+    expect(idsOf(off).has('p2')).toBe(true);
+  });
+
+  it('「必ず」で T 超えが避けられないときは上乗せ点が付くが、「必ず」は守る', () => {
+    const dev = new Map([['p0', 80], ['p1', 60], ['p2', 55], ['p3', 50]]);
+    const r = run({
+      candidates: four, courtIds: [1], deviationById: dev,
+      affinityPairs: [{ a: 'p0', b: 'p1' }], strongPairs: [{ a: 'p0', b: 'p1' }],
+    });
+    expect(areTeammates(r, 'p0', 'p1')).toBe(true);
   });
 });
 
