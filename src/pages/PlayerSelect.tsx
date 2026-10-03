@@ -36,7 +36,7 @@ const GENDER_BADGE_CLASS: Record<'M' | 'F' | 'unknown', string> = {
 const EXPECTED_DIFF_TONE_CLASS: Record<ExpectedDiffTone, string> = {
   normal: 'text-muted-foreground',
   watch: 'text-amber-600',
-  alert: 'text-red-600 font-medium',
+  alert: 'text-red-600',
 };
 
 export function PlayerSelect() {
@@ -250,12 +250,12 @@ export function PlayerSelect() {
           </div>
 
           {/* 右テキスト列（右揃え）: 1行目「N試合」/ 2行目（管理者のみ）「滞在 … 期待 …」（期待が右端）。390px では収まらず期待/滞在が折り返す（左の名前幅を確保するため） */}
-          <div className="min-w-0 flex flex-col items-end text-right">
-            <span className="text-xs font-medium text-foreground tabular-nums whitespace-nowrap">
+          <div className="min-w-0 flex flex-col items-end text-right text-[11px] leading-tight tabular-nums">
+            <span className="text-foreground whitespace-nowrap">
               {player.gamesPlayed}試合
             </span>
             {isAdmin && (
-              <div className="mt-0.5 flex flex-wrap justify-end gap-x-1.5 min-h-3 text-[10px] leading-tight tabular-nums">
+              <div className="mt-0.5 flex flex-wrap justify-end gap-x-1.5">
                 {stay && (
                   <span className="whitespace-nowrap text-muted-foreground">
                     {stay.complete
