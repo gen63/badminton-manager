@@ -212,64 +212,60 @@ export function PlayerSelect() {
         className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm"
       >
         <div className="flex items-center gap-2">
-          {/* 左カラム: 1行目（性別・名前・編集/削除・試合数）+ 2行目（管理者のみ） */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              {/* 性別バッジ。未設定を一目で見つけて編集モーダルで埋められるようにする */}
-              <span
-                aria-label={`性別${genderLabel(player.gender)}`}
-                className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] leading-none font-medium ${
-                  GENDER_BADGE_CLASS[player.gender ?? 'unknown']
-                }`}
-              >
-                {genderLabel(player.gender)}
-              </span>
-              <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
-              {/* 編集 / 削除（名前のすぐ右。どちらも無ければ出さない） */}
-              {(canEdit || (!hasHistory && canDelete)) && (
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  {canEdit && (
-                    <button
-                      onClick={() => handleEdit(player)}
-                      aria-label={`${player.name}を編集`}
-                      className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
-                    >
-                      <Pencil className="w-3 h-3" />
-                    </button>
-                  )}
-                  {!hasHistory && canDelete && (
-                    <button
-                      onClick={() => handleDelete(player)}
-                      aria-label={`${player.name}を削除`}
-                      className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              )}
-              <span className="flex-shrink-0 text-xs font-medium text-foreground tabular-nums whitespace-nowrap">
-                {player.gamesPlayed}試合
-              </span>
-            </div>
-
-            {/* 2行目（管理者のみ）: 期待試合数と実績との差 + 滞在時間 */}
-            {isAdmin && (
-              <div className="mt-0.5 flex items-center gap-1 min-h-3 text-[10px] leading-tight">
-                {expectedInfo && expectedInfo.expected !== null && expectedInfo.diff !== null && (
-                  <span
-                    className={`tabular-nums whitespace-nowrap ${
-                      EXPECTED_DIFF_TONE_CLASS[expectedDiffTone(expectedInfo.diff)]
-                    }`}
+          {/* 左カラム: 性別・名前・編集/削除（カードの縦方向中央。名前は残り幅で truncate） */}
+          <div className="flex-1 min-w-[9.75rem] flex items-center gap-2">
+            {/* 性別バッジ。未設定を一目で見つけて編集モーダルで埋められるようにする */}
+            <span
+              aria-label={`性別${genderLabel(player.gender)}`}
+              className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] leading-none font-medium ${
+                GENDER_BADGE_CLASS[player.gender ?? 'unknown']
+              }`}
+            >
+              {genderLabel(player.gender)}
+            </span>
+            <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
+            {/* 編集 / 削除（名前のすぐ右。どちらも無ければ出さない） */}
+            {(canEdit || (!hasHistory && canDelete)) && (
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {canEdit && (
+                  <button
+                    onClick={() => handleEdit(player)}
+                    aria-label={`${player.name}を編集`}
+                    className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
                   >
-                    期待 {formatExpected(expectedInfo.expected)} ({formatDiff(expectedInfo.diff)})
-                  </span>
+                    <Pencil className="w-3 h-3" />
+                  </button>
                 )}
+                {!hasHistory && canDelete && (
+                  <button
+                    onClick={() => handleDelete(player)}
+                    aria-label={`${player.name}を削除`}
+                    className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 右テキスト列（右揃え）: 1行目「N試合」/ 2行目（管理者のみ）「滞在 … 期待 …」（期待が右端）。390px では収まらず期待/滞在が折り返す（左の名前幅を確保するため） */}
+          <div className="min-w-0 flex flex-col items-end text-right">
+            <span className="text-xs font-medium text-foreground tabular-nums whitespace-nowrap">
+              {player.gamesPlayed}試合
+            </span>
+            {isAdmin && (
+              <div className="mt-0.5 flex flex-wrap justify-end gap-x-1.5 min-h-3 text-[10px] leading-tight tabular-nums">
                 {stay && (
-                  <span className="ml-auto text-muted-foreground tabular-nums whitespace-nowrap">
+                  <span className="whitespace-nowrap text-muted-foreground">
                     {stay.complete
                       ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
                       : '滞在 —（未完了）'}
+                  </span>
+                )}
+                {expectedInfo && expectedInfo.expected !== null && expectedInfo.diff !== null && (
+                  <span className={`whitespace-nowrap ${EXPECTED_DIFF_TONE_CLASS[expectedDiffTone(expectedInfo.diff)]}`}>
+                    期待 {formatExpected(expectedInfo.expected)} ({formatDiff(expectedInfo.diff)})
                   </span>
                 )}
               </div>
@@ -369,17 +365,17 @@ export function PlayerSelect() {
         {/* プレイヤーリスト */}
         <div className="card p-4">
           <div className="flex items-start gap-2 mb-4">
-            <h2 className="section-title">
-              参加者一覧
-              {/* 内訳は括弧内で割れないよう2行目へ丸ごと送る（右にモード表示があり1行に収まらないため） */}
-              <span className="block text-sm font-normal text-muted-foreground whitespace-nowrap">
+            {/* 左: 「参加者」と内訳は同じ行。内訳が収まらないときだけ括弧ごと次行へ送る（途中では割らない） */}
+            <div className="min-w-0 flex flex-wrap items-center gap-x-2">
+              <h2 className="section-title h-7 flex items-center">参加者</h2>
+              <span className="h-7 flex items-center text-sm font-normal text-muted-foreground whitespace-nowrap">
                 ({formatGenderBreakdown(genderBreakdown)})
               </span>
-            </h2>
-            {/* 現在の割り振りモード（全員に表示）。色は SessionCreate の選択状態に寄せず区別優先 */}
+            </div>
+            {/* 現在の割り振りモード（全員に表示）。1行目の高さを見出しと揃え、補足は右寄せの2行目 */}
             <div className="ml-auto flex-shrink-0 flex flex-col items-end gap-0.5">
               <span
-                className="px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+                className="px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap my-1.5"
                 style={
                   useStayDurationPriority
                     ? { backgroundColor: '#e0e7ff', color: '#3730a3' }
