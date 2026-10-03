@@ -6,7 +6,7 @@ import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { useGuardedAction } from '../hooks/useGuardedAction';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast';
-import { Trash2, Edit3, Users, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trash2, Pencil, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import { useSessionStore } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { resolveFees } from '../lib/accountingCalc';
@@ -205,7 +205,7 @@ export function PlayerSelect() {
         className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm"
       >
         <div className="flex items-center gap-2">
-          {/* 左カラム: 1行目（性別・名前・試合数）+ 2行目（管理者のみ） */}
+          {/* 左カラム: 1行目（性別・名前・編集/削除・試合数）+ 2行目（管理者のみ） */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               {/* 性別バッジ。未設定を一目で見つけて編集モーダルで埋められるようにする */}
@@ -218,6 +218,29 @@ export function PlayerSelect() {
                 {genderLabel(player.gender)}
               </span>
               <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
+              {/* 編集 / 削除（名前のすぐ右。どちらも無ければ出さない） */}
+              {(canEdit || (!hasHistory && canDelete)) && (
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {canEdit && (
+                    <button
+                      onClick={() => handleEdit(player)}
+                      aria-label={`${player.name}を編集`}
+                      className="w-5 h-5 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors flex-shrink-0"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  )}
+                  {!hasHistory && canDelete && (
+                    <button
+                      onClick={() => handleDelete(player)}
+                      aria-label={`${player.name}を削除`}
+                      className="w-5 h-5 rounded-full flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 transition-colors flex-shrink-0"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              )}
               <span className="flex-shrink-0 text-xs font-medium text-foreground tabular-nums whitespace-nowrap">
                 {player.gamesPlayed}試合
               </span>
@@ -247,10 +270,10 @@ export function PlayerSelect() {
           </div>
 
           {/* 右カラム: 支払 / 名簿 ボタンを縦並び */}
-          <div className="flex flex-col gap-1 flex-shrink-0 self-center">
+          <div className="flex flex-col gap-0.5 flex-shrink-0 self-center">
             <button
               onClick={() => handlePaymentClick(player.id)}
-              className="w-14 min-h-[28px] text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1"
+              className="w-12 h-4 text-[10px] leading-none rounded-md transition-colors flex items-center justify-center"
               style={{
                 backgroundColor: status.payment ? '#10b981' : '#e5e7eb',
                 color: status.payment ? '#ffffff' : '#6b7280',
@@ -261,7 +284,7 @@ export function PlayerSelect() {
             <button
               onClick={() => void rosterToggle.run(player.id)}
               disabled={rosterToggle.isPending}
-              className="w-14 min-h-[28px] text-xs py-1 px-1 rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
+              className="w-12 h-4 text-[10px] leading-none rounded-md transition-colors flex items-center justify-center disabled:opacity-50"
               style={{
                 backgroundColor: status.roster ? '#10b981' : '#e5e7eb',
                 color: status.roster ? '#ffffff' : '#6b7280',
@@ -271,29 +294,6 @@ export function PlayerSelect() {
             </button>
           </div>
 
-          {/* 編集 / 削除（最右列。どちらも無ければ列ごと出さない） */}
-          {(canEdit || (!hasHistory && canDelete)) && (
-            <div className="flex flex-col gap-0.5 flex-shrink-0 w-7 self-center">
-              {canEdit && (
-                <button
-                  onClick={() => handleEdit(player)}
-                  aria-label={`${player.name}を編集`}
-                  className="p-1 text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 active:bg-indigo-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
-                >
-                  <Edit3 size={13} />
-                </button>
-              )}
-              {!hasHistory && canDelete && (
-                <button
-                  onClick={() => handleDelete(player)}
-                  aria-label={`${player.name}を削除`}
-                  className="p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 active:bg-red-100 active:scale-[0.98] rounded-full transition-all duration-150 w-7 h-7 flex items-center justify-center"
-                >
-                  <Trash2 size={13} />
-                </button>
-              )}
-            </div>
-          )}
         </div>
       </div>
     );
