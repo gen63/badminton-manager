@@ -6,6 +6,7 @@ import { GameSortToggle } from './GameSortToggle';
 import { GameStatsRows } from './GameStatsRows';
 import { sortPlayersByExpectedDiff, sortPlayersBySinceLastGame } from '../lib/playerSort';
 import type { GameSortMode } from '../lib/playerStats';
+import { getReservationPickState, RESERVATION_EXPECTED_DIFF_LIMIT } from '../lib/reservationGate';
 
 interface PlayerPickListProps {
   players: Player[];
@@ -17,6 +18,12 @@ interface PlayerPickListProps {
    * 待機中→休憩中の中をその順で並べる（本人の最上部固定はしない）。既定 false は従来の見た目・並び。
    */
   showGameStats?: boolean;
+  /**
+   * 予約追加用の期待差ゲート（`showGameStats` と併用）。期待差 ≥ B（RESERVATION_EXPECTED_DIFF_LIMIT）のメンバーは、
+   * 作成者以外は選択不可（グレー・タップ不可）、作成者は選択できるが注意表示（保留される）を出す。
+   * 期待が算出できない人は制限しない。docs/plans/2026-10-03-reservation-expected-diff-gate.md
+   */
+  reservationGate?: { isCreator: boolean };
 }
 
 /**
@@ -25,7 +32,7 @@ interface PlayerPickListProps {
  * `ReservationAddModal` と `PairPreferenceAddModal` の共通部分を切り出したもの。
  * 選択状態の持ち方（Set / 配列）は呼び出し側に委ねるため `isSelected` / `onToggle` を props で受け取る。
  */
-export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, showGameStats = false }: PlayerPickListProps) {
+export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, showGameStats = false, reservationGate }: PlayerPickListProps) {
   const { now, expectedById, stayById, inCourtIds, useStayDurationPriority } = usePlayerGameStats(players);
   // 並び順の切替（永続化しない）。既定は期待差
   const [sortMode, setSortMode] = useState<GameSortMode>('expected');
@@ -48,6 +55,14 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, s
       {showGameStats && <GameSortToggle value={sortMode} onChange={setSortMode} />}
       {sortedPlayers.map((player) => {
         const selected = isSelected(player.id);
+        const pickState = showGameStats && reservationGate
+          ? getReservationPickState(
+              expectedById.get(player.id)?.diff,
+              reservationGate.isCreator,
+            )
+          : 'free';
+        // 選択済みなら解除だけはできるよう、未選択のときに限り不可にする
+        const blocked = pickState === 'blocked' && !selected;
         const textColor = player.gender === 'M'
           ? 'text-blue-600'
           : player.gender === 'F'
@@ -73,6 +88,16 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, s
                   休憩中
                 </span>
               )}
+              {blocked && (
+                <span className="basis-full text-[10px] font-semibold text-red-600">
+                  期待差+{RESERVATION_EXPECTED_DIFF_LIMIT}以上のため予約不可
+                </span>
+              )}
+              {pickState === 'warn' && (
+                <span className="basis-full text-[10px] font-semibold text-amber-600">
+                  期待差+{RESERVATION_EXPECTED_DIFF_LIMIT}以上（保留されます）
+                </span>
+              )}
             </div>
         );
 
@@ -80,8 +105,12 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, s
           <button
             key={player.id}
             onClick={() => onToggle(player.id)}
-            className={`relative flex items-center justify-between border-2 p-3 rounded-xl transition-all shadow-sm active:scale-95 ${
-              selected
+            disabled={blocked}
+            aria-disabled={blocked}
+            className={`relative flex items-center justify-between border-2 p-3 rounded-xl transition-all shadow-sm ${
+              blocked ? 'opacity-50 grayscale cursor-not-allowed bg-muted/40 border-border' : 'active:scale-95'
+            } ${
+              blocked ? '' : selected
                 ? 'bg-green-50 border-green-500'
                 : player.isResting
                 ? 'bg-muted/30 border-border'

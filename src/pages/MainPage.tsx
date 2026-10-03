@@ -163,7 +163,6 @@ export function MainPage() {
   const lateBalanceMode = useSettingsStore((s) => s.lateBalanceMode);
   const genderBalanceMode = useSettingsStore((s) => s.genderBalanceMode);
   const lateBalanceAutoFired = useSettingsStore((s) => s.lateBalanceAutoFired);
-  const reservationBlockThreshold = useSettingsStore((s) => s.reservationBlockThreshold);
   const matchCallAlert = useSettingsStore((s) => s.matchCallAlert);
   const setMatchCallAlert = useSettingsStore((s) => s.setMatchCallAlert);
 
@@ -527,7 +526,6 @@ export function MainPage() {
     gameMode,
     lateBalanceMode,
     genderBalanceMode,
-    reservationBlockThreshold,
     pairPreferences,
   });
 
@@ -909,7 +907,8 @@ export function MainPage() {
           gameMode,
           lateBalanceMode,
           genderBalanceMode,
-          reservationBlockThreshold,
+          practiceEndTime,
+          sessionPlayers: players,
           restingPlayers,
           pairPreferences,
           // 目的8 recency: 進行中コートの開始も「他の試合の開始」として連続判定に使う
@@ -1084,7 +1083,13 @@ export function MainPage() {
   // gate 計算にも同じ加算後の人数を使うため、gate 計算より前に算出する。
   const callableReservedCount = getCallableReservationRestingIds(
     withInProgressGames(players, courts), reservations, playersInCourts,
-    { gameMode, reservationBlockThreshold }
+    {
+      gameMode,
+      practiceStartTime: session?.config.practiceStartTime,
+      practiceEndTime,
+      useStayDurationPriority,
+      sessionPlayers: players,
+    }
   ).size;
   const assignmentGate = getAssignmentGate(
     forceBulkAssignment,

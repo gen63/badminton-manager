@@ -2450,7 +2450,7 @@ describe('assignCourts - 後半均等化モード (lateBalanceMode)', () => {
   });
 });
 
-describe('assignCourts - 予約の試合数による保留 (reservationBlockThreshold)', () => {
+describe('assignCourts - 予約の期待差による保留 (期待差 1.5)', () => {
   const NOW = Date.now();
 
   const makePlayer = (id: string, gamesPlayed: number): Player => ({
@@ -2491,93 +2491,110 @@ describe('assignCourts - 予約の試合数による保留 (reservationBlockThre
     useStayDurationPriority: false,
   };
 
-  it('予約メンバーの試合数が中央値+閾値以上だと予約が保留され、超過メンバーは割り込めない', () => {
+  // 以降は回数平均モード（useStayDurationPriority:false）。期待 = 全員の平均試合数、
+  // 差 = gamesPlayed − 平均（p1=10・他0 なら平均 1.25、p1 の差 8.75）。
+  const pickedOf = (a: ReturnType<typeof assignCourts>) =>
+    new Set([...a[0].teamA, ...a[0].teamB]);
+
+  it('期待差が閾値以上のメンバーを含む予約は保留され、超過メンバーは割り込めない', () => {
     const players = makePlayers();
     const assignments = assignCourts(players, 1, [], {
       ...baseOptions,
       allPlayers: players,
       reservations: [makeReservation(['p1', 'p2', 'p3', 'p4'])],
-      reservationBlockThreshold: 2, // p1 の gap=10 >= 2 → 保留
     });
 
-    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
+    const picked = pickedOf(assignments);
     // 予約は保留され、試合数が突出した p1 は予約で割り込めない（通常配置でも低優先で選ばれない）。
     // 共メンバー（p2-p4, 0試合）は除外されず通常配置で試合に入れる（飢餓を防ぐ）。
     expect(picked.has('p1')).toBe(false);
     expect(picked.size).toBe(4);
   });
 
-  it('閾値を上げて gap を下回らせると、その予約は通常どおり配置される', () => {
-    const players = makePlayers();
-    const assignments = assignCourts(players, 1, [], {
-      ...baseOptions,
-      allPlayers: players,
-      reservations: [makeReservation(['p1', 'p2', 'p3', 'p4'])],
-      reservationBlockThreshold: 11, // p1 の gap=10 < 11 → 保留しない
-    });
-
-    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
-    expect(picked.has('p1')).toBe(true);
-    expect(picked.size).toBe(4);
-  });
-
-  it('gap が閾値ちょうどでも保留される（>= 判定）', () => {
-    // p1=2, 他=0 → 中央値 0、gap=2、閾値 2 → 保留
+  it('期待差が閾値ちょうど（1.5）でも保留される（>= 判定）', () => {
+    // p1=p2=2, 他=0 → 平均 0.5、差 1.5 → 保留（p1 は割り込めない）
     const players = [
-      makePlayer('p1', 2),
-      makePlayer('p2', 0),
-      makePlayer('p3', 0),
-      makePlayer('p4', 0),
-      makePlayer('p5', 0),
-      makePlayer('p6', 0),
-      makePlayer('p7', 0),
-      makePlayer('p8', 0),
+      makePlayer('p1', 2), makePlayer('p2', 2),
+      ...['p3', 'p4', 'p5', 'p6', 'p7', 'p8'].map(id => makePlayer(id, 0)),
     ];
     const assignments = assignCourts(players, 1, [], {
       ...baseOptions,
       allPlayers: players,
-      reservations: [makeReservation(['p1', 'p2', 'p3', 'p4'])],
-      reservationBlockThreshold: 2,
+      reservations: [makeReservation(['p1', 'p3', 'p4', 'p5'])],
     });
-
-    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
-    expect(picked.has('p1')).toBe(false);
+    expect(pickedOf(assignments).has('p1')).toBe(false);
   });
 
-  it('gap が閾値未満なら保留されない', () => {
-    // p1=1, 他=0 → 中央値 0、gap=1 < 2 → 配置される
+  it('期待差が閾値未満なら保留されない', () => {
+    // p1=2, p2=2, p3=1, 他0 → 平均 0.625、差 1.375 < 1.5 → 配置される
     const players = [
-      makePlayer('p1', 1),
-      makePlayer('p2', 0),
-      makePlayer('p3', 0),
-      makePlayer('p4', 0),
-      makePlayer('p5', 0),
-      makePlayer('p6', 0),
-      makePlayer('p7', 0),
-      makePlayer('p8', 0),
+      makePlayer('p1', 2), makePlayer('p2', 2), makePlayer('p3', 1),
+      ...['p4', 'p5', 'p6', 'p7', 'p8'].map(id => makePlayer(id, 0)),
     ];
     const assignments = assignCourts(players, 1, [], {
       ...baseOptions,
       allPlayers: players,
-      reservations: [makeReservation(['p1', 'p2', 'p3', 'p4'])],
-      reservationBlockThreshold: 2,
+      reservations: [makeReservation(['p1', 'p3', 'p4', 'p5'])],
     });
-
-    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
-    expect(picked.has('p1')).toBe(true);
+    expect(pickedOf(assignments).has('p1')).toBe(true);
   });
 
-  it('未指定時はデフォルト閾値(2)が適用される', () => {
-    const players = makePlayers();
+  it('forcePriority の予約は期待差が超過していても保留されず優先配置される', () => {
+    const players = makePlayers(); // p1 の差 8.75
     const assignments = assignCourts(players, 1, [], {
       ...baseOptions,
       allPlayers: players,
+      reservations: [{ ...makeReservation(['p1', 'p2', 'p3', 'p4']), forcePriority: true }],
+    });
+    const picked = pickedOf(assignments);
+    expect(['p1', 'p2', 'p3', 'p4'].every(id => picked.has(id))).toBe(true);
+  });
+
+  it('期待が算出できない人（滞在時間モードで会費・名簿が未完了）は対象外で、保留されない', () => {
+    // 滞在時間モードでは未完了者の期待は null。p1 が 10 試合でも保留しない
+    const players = makePlayers();
+    const assignments = assignCourts(players, 1, [], {
+      ...baseOptions,
+      useStayDurationPriority: true,
+      allPlayers: players,
       reservations: [makeReservation(['p1', 'p2', 'p3', 'p4'])],
-      // reservationBlockThreshold 未指定 → デフォルト 2
+    });
+    expect(pickedOf(assignments).has('p1')).toBe(true);
+  });
+
+  describe('滞在時間モードの期待差', () => {
+    // 完了者（会費・名簿 OK）。滞在は opsCompletedAt から practiceStartTime で頭打ち
+    const makeStay = (id: string, gamesPlayed: number, stayMin: number): Player => ({
+      ...makePlayer(id, gamesPlayed),
+      operationStatus: { payment: true, roster: true, checkin: true },
+      opsCompletedAt: NOW - stayMin * 60 * 1000,
+    });
+    const stayOptions = {
+      ...baseOptions,
+      useStayDurationPriority: true,
+    };
+
+    it('滞在が短いのに試合数が多い人は保留される', () => {
+      // p1: 4試合/滞在30分、他7人: 0試合/滞在60分 → p1 の期待 0.27、差 3.73 >= 1.5
+      const players = [makeStay('p1', 4, 30), ...['p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'].map(id => makeStay(id, 0, 60))];
+      const assignments = assignCourts(players, 1, [], {
+        ...stayOptions,
+        allPlayers: players,
+        reservations: [makeReservation(['p1', 'p2', 'p3', 'p4'])],
+      });
+      expect(pickedOf(assignments).has('p1')).toBe(false);
     });
 
-    const picked = new Set([...assignments[0].teamA, ...assignments[0].teamB]);
-    expect(picked.has('p1')).toBe(false);
+    it('滞在が長ければ同じ試合数でも保留されない（回数平均モードなら保留される人）', () => {
+      // p1: 4試合/滞在60分、他7人: 1試合/滞在20分 → 滞在按分の期待 3.3、差 0.7 < 1.5
+      // （回数平均なら平均 1.375 で差 2.6 >= 1.5 となる人）
+      const players = [makeStay('p1', 4, 60), ...['p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'].map(id => makeStay(id, 1, 20))];
+      const common = { allPlayers: players, reservations: [makeReservation(['p1', 'p2', 'p3', 'p4'])] };
+      const stay = assignCourts(players, 1, [], { ...stayOptions, ...common });
+      expect(pickedOf(stay).has('p1')).toBe(true);
+      const count = assignCourts(players, 1, [], { ...stayOptions, ...common, useStayDurationPriority: false });
+      expect(pickedOf(count).has('p1')).toBe(false);
+    });
   });
 });
 
@@ -2696,7 +2713,6 @@ describe('assignCourts - 人数不足時の部分配置', () => {
       allPlayers: waiting,
       restingPlayers: reserved,
       reservations: [makeReservation(['r1', 'r2', 'r3', 'r4'])],
-      reservationBlockThreshold: 2,
     });
 
     expect(assignments.length).toBe(1);
@@ -2788,7 +2804,7 @@ describe('getCallableReservationRestingIds', () => {
     expect(result.size).toBe(0);
   });
 
-  it('試合数が中央値+閾値以上のメンバーを含む予約（保留対象）は数えない', () => {
+  it('期待差が閾値以上のメンバーを含む予約（保留対象）は数えない', () => {
     const players = [
       makePlayer('r1', 10, true),
       ...['r2', 'r3', 'r4'].map(id => makePlayer(id, 0, true)),
@@ -2796,9 +2812,22 @@ describe('getCallableReservationRestingIds', () => {
     ];
     const result = getCallableReservationRestingIds(
       players, [makeReservation(['r1', 'r2', 'r3', 'r4'])], new Set(),
-      { reservationBlockThreshold: 2 }
+      { useStayDurationPriority: false }
     );
     expect(result.size).toBe(0);
+  });
+
+  it('forcePriority の予約、または期待が算出できない（滞在時間モードで未完了）なら数える', () => {
+    const players = [
+      makePlayer('r1', 10, true),
+      ...['r2', 'r3', 'r4'].map(id => makePlayer(id, 0, true)),
+      ...['w1', 'w2', 'w3', 'w4', 'w5', 'w6'].map(id => makePlayer(id, 0)),
+    ];
+    const rsv = makeReservation(['r1', 'r2', 'r3', 'r4']);
+    expect(getCallableReservationRestingIds(players, [{ ...rsv, forcePriority: true }], new Set(),
+      { useStayDurationPriority: false }).size).toBe(4);
+    // 滞在時間モード（既定）では全員未完了 → 期待 null → 対象外
+    expect(getCallableReservationRestingIds(players, [rsv], new Set()).size).toBe(4);
   });
 
   it('待機者で残り枠を補充できない予約は数えない（2人予約+待機1人）', () => {

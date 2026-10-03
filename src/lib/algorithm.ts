@@ -7,7 +7,8 @@ import { assignRoundByObjective } from './pairing/assignRound';
 import { buildStreakById } from './pairing/streak';
 import { buildTripleWeights } from './pairing/repeatDecay';
 import { buildBlendedDeviationById } from './pairing/deviation';
-import { median } from './median';
+import { resolveStayStart } from './stayStart';
+import { computeExpectedDiffById, isReservationHeldByExpectedDiff } from './reservationGate';
 import type { PairPreference } from '../types/pairPreference';
 import { computeAffinityPairs, computeStrongPairs } from './pairPreference';
 
@@ -157,12 +158,6 @@ type LateBalanceCtx = {
   maxGamesPlayed: number;
 };
 const LATE_BALANCE_WEIGHT = 2.0;
-
-/**
- * 予約メンバーの試合数が「中央値 + この値」以上のとき予約全体を保留する。
- * 設定（SyncSettings.reservationBlockThreshold）未設定時のデフォルト。
- */
-export const DEFAULT_RESERVATION_BLOCK_THRESHOLD = 2;
 
 /**
  * 各プレイヤーの連勝/連敗数を算出
@@ -1125,33 +1120,6 @@ function computeOneGameDelta(
 }
 
 /**
- * 滞在時間モードでの「滞在開始時刻」を決定する。
- *
- * 会費・名簿が未対応のまま滞在時間だけが積み上がり、対応済みの人より
- * 優先されてしまう不公平を避けるため、起点は「休憩解除時刻」ではなく
- * 「会費・名簿が両方完了した時刻」を基準にする。3ケース:
- *
- * 1. 会費・名簿とも完了 & `opsCompletedAt` あり
- *    → `max(practiceStartTime, opsCompletedAt)`
- * 2. 会費・名簿とも完了 & `opsCompletedAt` なし（このフィールド追加前に
- *    完了した既存セッション互換）→ `max(practiceStartTime, activatedAt ?? now)`（従来どおり）
- * 3. 会費・名簿のどちらか未完了
- *    → `now`（＝滞在時間ゼロ扱い。下限5分ペナルティが効く）
- *
- * 詳細: docs/plans/2026-08-11-stay-start-at-ops-complete.md
- */
-export function resolveStayStart(player: Player, practiceStartTime: number, now: number): number {
-  const opsComplete = player.operationStatus?.payment === true && player.operationStatus?.roster === true;
-  if (!opsComplete) {
-    return now;
-  }
-  if (player.opsCompletedAt !== undefined) {
-    return Math.max(practiceStartTime, player.opsCompletedAt);
-  }
-  return Math.max(practiceStartTime, player.activatedAt ?? now);
-}
-
-/**
  * 滞在時間ベースの優先度を計算
  * 優先スコア = 試合回数 / max(滞在時間(分), 5)
  * スコアが低い人を優先
@@ -1908,7 +1876,7 @@ function repairLoneMinorityPairs(
  * pending 予約のうち以下を全て満たすものの休憩中メンバーを集める:
  * - 予約人数が 1〜playersPerCourt 人（singles=2, doubles=4）
  * - メンバー全員が在席し、誰もコートで試合中でない（=成立可能）
- * - 試合数が中央値+閾値以上のメンバーを含まない（assignCourts の保留判定と同じ）
+ * - 期待差が閾値以上のメンバーを含まない（assignCourts の保留判定と同じ）
  * - 待機人数で残り枠を補充できる（waiting >= playersPerCourt - 予約人数）
  *
  * UI の配置可否判定（canAutoAssign）や連続モードの最小待機人数ゲートで
@@ -1922,7 +1890,13 @@ export function getCallableReservationRestingIds(
   playersInCourts: Set<string>,
   options?: {
     gameMode?: 'singles' | 'doubles';
-    reservationBlockThreshold?: number;
+    /** 期待差の算出入力（表示と同じ定義）。省略時は practiceStartTime=now 扱いで滞在按分は null（保留なし） */
+    practiceStartTime?: number;
+    practiceEndTime?: number;
+    /** 滞在時間モードか（省略時 true。assignCourts と同じ既定） */
+    useStayDurationPriority?: boolean;
+    /** 期待差の母集団（セッションの全 players）。省略時は presentPlayers */
+    sessionPlayers?: Player[];
   }
 ): Set<string> {
   const callable = new Set<string>();
@@ -1930,16 +1904,20 @@ export function getCallableReservationRestingIds(
   if (pending.length === 0) return callable;
 
   const playersPerCourt = (options?.gameMode ?? 'doubles') === 'singles' ? 2 : 4;
-  const threshold =
-    options?.reservationBlockThreshold ?? DEFAULT_RESERVATION_BLOCK_THRESHOLD;
 
   const byId = new Map(presentPlayers.map(p => [p.id, p]));
   const waitingCount = presentPlayers.filter(
     p => !p.isResting && !playersInCourts.has(p.id)
   ).length;
 
-  // 中央値は在席全員（休憩者含む）で算出（assignCourts の保留判定と同じ母集団）
-  const medianGamesPlayed = median(presentPlayers.map(p => p.gamesPlayed));
+  // 期待差は表示と同じ母集団（セッション全員）で算出（assignCourts の保留判定と同じ）
+  const expectedDiffById = computeExpectedDiffById({
+    players: options?.sessionPlayers ?? presentPlayers,
+    useStayDuration: options?.useStayDurationPriority ?? true,
+    practiceStartTime: options?.practiceStartTime ?? Date.now(),
+    practiceEndTime: options?.practiceEndTime,
+    now: Date.now(),
+  });
 
   for (const reservation of pending) {
     const ids = reservation.playerIds;
@@ -1948,7 +1926,7 @@ export function getCallableReservationRestingIds(
     const members = ids.map(id => byId.get(id)).filter((p): p is Player => p !== undefined);
     if (members.length !== ids.length) continue;
     if (members.some(m => playersInCourts.has(m.id))) continue;
-    if (members.some(m => m.gamesPlayed - medianGamesPlayed >= threshold)) continue;
+    if (isReservationHeldByExpectedDiff(reservation, expectedDiffById)) continue;
     if (waitingCount < playersPerCourt - members.length) continue;
 
     for (const m of members) {
@@ -1996,7 +1974,10 @@ export function assignCourts(
     lateBalanceMode?: boolean; // 後半均等化モード（試合数の少ない人を強く優先）
     /** 男女比調整。false なら 3-1 や男女戦を実力の釣り合い次第で許容する */
     genderBalanceMode?: boolean;
-    reservationBlockThreshold?: number; // 予約保留の閾値（中央値+この値以上のメンバーを含む予約を保留）
+    /** 練習終了日時（期待差の滞在按分の頭打ち。表示と同じ）。省略は打ち止めなし */
+    practiceEndTime?: number;
+    /** 期待差の母集団（セッションの全 players、表示と同じ）。省略時は allPlayers/待機 + restingPlayers */
+    sessionPlayers?: Player[];
     restingPlayers?: Player[]; // 休憩中で予約により呼び出せるメンバー（通常配置の対象外）
     /**
      * ペア希望（`docs/plans/2026-08-31-pair-preference.md`）。省略時は希望なし
@@ -2057,19 +2038,19 @@ export function assignCourts(
     return { enabled: true, maxGamesPlayed: maxGames };
   })();
 
-  // 予約保留判定: 予約メンバーの試合数が「中央値 + 閾値」以上なら、その予約全体を
-  // 保留する。試合数の多い人が予約で順番を飛ばし続けるのを防ぐ。
-  // 母集団は休憩者も含む全在席プレイヤーで算出（全員休憩でも中央値が0に潰れないように）。
-  const reservationBlockThreshold =
-    options?.reservationBlockThreshold ?? DEFAULT_RESERVATION_BLOCK_THRESHOLD;
-  const medianGamesPlayed = median(
-    [...(options?.allPlayers ?? activePlayers), ...restingPlayers].map(p => p.gamesPlayed)
-  );
-  const isReservationBlocked = (playerIds: string[]): boolean =>
-    playerIds.some(id => {
-      const p = reservationPool.find(pl => pl.id === id);
-      return p !== undefined && p.gamesPlayed - medianGamesPlayed >= reservationBlockThreshold;
-    });
+  // 予約保留判定: 予約メンバーの誰かの期待差（実績 − 期待試合数）が B（1.5）以上なら、その予約
+  // 全体を保留する（作成者が forcePriority にした予約は保留しない）。期待より多く試合した人が予約で順番を飛ばし続けるのを防ぐ。
+  // 期待は表示（playerStats）と同じ定義・同じ母集団（セッションの全 players）で算出する。
+  // 期待が算出できない人（null）は対象外。
+  const expectedDiffById = computeExpectedDiffById({
+    players: options?.sessionPlayers ?? [...(options?.allPlayers ?? activePlayers), ...restingPlayers],
+    useStayDuration,
+    practiceStartTime,
+    practiceEndTime: options?.practiceEndTime,
+    now: Date.now(),
+  });
+  const isReservationBlocked = (reservation: Reservation): boolean =>
+    isReservationHeldByExpectedDiff(reservation, expectedDiffById);
 
   // シングルスモードの場合
   if (gameMode === 'singles') {
@@ -2089,8 +2070,8 @@ export function assignCourts(
 
       if (reservedPlayers.length !== reservation.playerIds.length) continue;
       if (reservation.playerIds.some(id => singlesUsedPlayers.has(id))) continue;
-      // 試合数が中央値+閾値以上のメンバーを含む予約は保留（pending のまま）
-      if (isReservationBlocked(reservation.playerIds)) continue;
+      // 期待差が閾値以上のメンバーを含む予約は保留（pending のまま）
+      if (isReservationBlocked(reservation)) continue;
 
       const rsvPlayerIds = reservation.playerIds;
 
@@ -2184,8 +2165,8 @@ export function assignCourts(
 
     if (reservedPlayers.length !== reservation.playerIds.length) continue;
     if (reservation.playerIds.some(id => reservationUsedPlayers.has(id))) continue;
-    // 試合数が中央値+閾値以上のメンバーを含む予約は保留（pending のまま）
-    if (isReservationBlocked(reservation.playerIds)) continue;
+    // 期待差が閾値以上のメンバーを含む予約は保留（pending のまま）
+    if (isReservationBlocked(reservation)) continue;
 
     const rsvPlayerIds = reservation.playerIds;
     // ダブルスでは 1〜4 人予約のみサポート。範囲外（旧データ等）は court を消費せず
@@ -2324,7 +2305,7 @@ export function assignCourts(
     // 順位・ハシゴ式は使わない（docs/plans/2026-10-02-simplify-scoring.md）
     const objectiveDeviationById = buildBlendedDeviationById(groupingPlayers, matchHistory);
     // ペア希望 → 第7目的 affinity（常に最大強度） + strong のハード制約。
-    // 中央値・reservationBlockThreshold は予約保留判定（上の isReservationBlocked）と
+    // 期待差は予約保留判定（上の isReservationBlocked）と
     // 共通のものを使い回す（新しい設定項目は増やさない。plan 3b）。
     const pairPreferences = options?.pairPreferences ?? [];
     // 目的8 recency（連続出場を嫌う）の入力。値は streakOf =「直近の連続出場数」。
@@ -2351,8 +2332,7 @@ export function assignCourts(
       affinityPairs: computeAffinityPairs(
         pairPreferences,
         normalCandidates,
-        medianGamesPlayed,
-        reservationBlockThreshold,
+        expectedDiffById,
       ),
       strongPairs: computeStrongPairs(pairPreferences, normalCandidates),
       streakById: objectiveStreakById,

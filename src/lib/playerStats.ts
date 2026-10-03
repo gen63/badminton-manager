@@ -1,5 +1,5 @@
 import type { Player } from '../types/player';
-import { resolveStayStart } from './algorithm';
+import { resolveStayStart } from './stayStart';
 
 export interface GamesStats {
   max: number;

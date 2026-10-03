@@ -15,7 +15,7 @@ export function median(values: number[]): number {
  *
  * 名簿登録だけして参加しなかった人・見学者・0試合の離脱者を含めると中央値が
  * 下振れするため除外する。該当者が0人なら undefined（一覧側で非表示）。
- * `algorithm.ts` の予約保留判定（在席全員が母集団）とは目的が異なるため、
+ * `algorithm.ts` の予約保留判定（期待差。セッション全員が母集団）とは目的が異なるため、
  * 母集団の定義は統一しない。
  */
 export function medianGamesPlayed(players: Player[]): number | undefined {

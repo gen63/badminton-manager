@@ -7,11 +7,14 @@ import { useGameStore } from '../stores/gameStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { usePairPreferenceStore } from '../stores/pairPreferenceStore';
 import { useSessionWriter } from '../hooks/useSessionWriter';
+import { usePlayerGameStats } from '../hooks/usePlayerGameStats';
 import { ReservationAddModal } from '../components/ReservationAddModal';
 import { PairPreferenceAddModal } from '../components/PairPreferenceAddModal';
 import { PairPreferenceCard } from '../components/PairPreferenceCard';
 import { BottomNav } from '../components/BottomNav';
 import { EmptyState } from '../components/EmptyState';
+import { formatDiff } from '../lib/playerStats';
+import { overExpectedMemberIds, isReservationHeldByExpectedDiff } from '../lib/reservationGate';
 import { isPlayerReady as checkPlayerReady, getReservationStatus, inferDoublesCategory, getCategoryShortLabel } from '../lib/reservationUtils';
 
 export function ReservationPage() {
@@ -23,6 +26,10 @@ export function ReservationPage() {
   const reservations = useReservationStore((s) => s.reservations);
   const pairPreferences = usePairPreferenceStore((s) => s.pairPreferences);
   const writer = useSessionWriter();
+  // 「優先」の ON/OFF は作成者（開発モード含む）のみ
+  const isCreator = useSessionStore((s) => s.isCreator());
+  // 保留表示用の期待差（画面を開いた時点の now 固定。割り振りと同じ lib 関数で判定する）
+  const { expectedById } = usePlayerGameStats(players);
   const [showAdd, setShowAdd] = useState(false);
   const [showAddPairPreference, setShowAddPairPreference] = useState(false);
   const [showFulfilled, setShowFulfilled] = useState(false);
@@ -104,6 +111,12 @@ export function ReservationPage() {
           const status = getReservationStatus(reservation.playerIds, players, playersInCourts);
           const rsvCategory = inferDoublesCategory(reservation.playerIds, players);
           const rsvCategoryLabel = getCategoryShortLabel(rsvCategory);
+          const diffById = new Map(
+            reservation.playerIds.map((id) => [id, expectedById.get(id)?.diff ?? null] as const),
+          );
+          const held = isReservationHeldByExpectedDiff(reservation, diffById);
+          const heldIds = held ? overExpectedMemberIds(reservation.playerIds, diffById) : [];
+          const forced = reservation.forcePriority === true;
           return (
             <div
               key={reservation.id}
@@ -141,17 +154,46 @@ export function ReservationPage() {
                     {status === 'ready' ? '準備完了' : 'メンバー不足'}
                   </span>
                 </div>
-                <button
-                  onClick={() => void writer.removeReservation(reservation.id)}
-                  className="w-7 h-7 rounded-full hover:bg-red-100 text-muted-foreground hover:text-red-600 flex items-center justify-center transition-colors"
-                >
-                  <Trash2 size={14} />
-                </button>
+                <div className="flex items-center gap-1">
+                  {isCreator ? (
+                    <button
+                      onClick={() => void writer.setReservationForcePriority(reservation.id, !forced)}
+                      aria-pressed={forced}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-colors ${
+                        forced
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                      }`}
+                    >
+                      優先
+                    </button>
+                  ) : (
+                    forced && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary text-primary-foreground">
+                        優先
+                      </span>
+                    )
+                  )}
+                  <button
+                    onClick={() => void writer.removeReservation(reservation.id)}
+                    className="w-7 h-7 rounded-full hover:bg-red-100 text-muted-foreground hover:text-red-600 flex items-center justify-center transition-colors"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
+              {held && (
+                <div className="mb-2 px-2 py-1 rounded-lg bg-amber-100 text-amber-800 text-[11px] font-semibold">
+                  保留中: {heldIds
+                    .map((id) => `${getPlayerName(id)} 期待差${formatDiff(diffById.get(id) ?? 0)}`)
+                    .join('、')}
+                </div>
+              )}
               <div className="flex flex-wrap gap-1.5">
                 {reservation.playerIds.map(id => {
                   const ready = isPlayerReady(id);
                   const player = players.find(p => p.id === id);
+                  const isHeldMember = heldIds.includes(id);
                   const textColor = player?.gender === 'M'
                     ? 'text-blue-700'
                     : player?.gender === 'F'
@@ -161,7 +203,9 @@ export function ReservationPage() {
                     <span
                       key={id}
                       className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold ${
-                        ready
+                        isHeldMember
+                          ? 'bg-amber-100 text-amber-800'
+                          : ready
                           ? `bg-green-100 ${textColor}`
                           : 'bg-muted text-muted-foreground'
                       }`}

@@ -16,6 +16,7 @@ import type { PairPreference } from '../types/pairPreference';
 import type { Player } from '../types/player';
 import type { AffinityPair } from './pairing/objective';
 import type { StrongPair } from './pairing/assignRound';
+import { hasOverExpectedMember } from './reservationGate';
 
 /**
  * 希望ペアのうち「対象にするもの」だけを、点数表のペア希望（`SCORE_TABLE.pairPref`）に
@@ -24,11 +25,11 @@ import type { StrongPair } from './pairing/assignRound';
  *
  * - **両者が候補プール（`players`）にいる希望ペアだけ**を返す。片方でも
  *   `players` にいないペアは対象外（plan「3. 目的関数への追加」の評価対象。点数表への移行は 2026-10-02-simplify-scoring.md）
- * - **公平性ガード（plan 3b）**: どちらかの `gamesPlayed − medianGames >=
- *   blockThreshold` なら、そのペアは対象外にする。これが無いと「ペア希望を
+ * - **公平性ガード（plan 3b）**: どちらかの期待差（実績 − 期待試合数）が
+ *   B（`RESERVATION_EXPECTED_DIFF_LIMIT`）以上なら、そのペアは対象外にする。これが無いと「ペア希望を
  *   登録すると試合数が増える」不公平が生じる。**飽和を廃止した今、これが
  *   ペア希望の出場頻度への影響を抑える唯一の仕組み**なので消さない。
- *   `medianGames` / `blockThreshold` は呼び出し側（`algorithm.ts`）が予約
+ *   `expectedDiffById` は呼び出し側（`algorithm.ts`）が予約
  *   保留判定と共通のものを渡すこと（新しい閾値は増やさない）
  * - `strength` による区別はしない（`normal` / `strong` のどちらも対象なら
  *   同じ強度で返す）。`normal` と `strong` の違いは呼び出し側で
@@ -37,8 +38,7 @@ import type { StrongPair } from './pairing/assignRound';
 export function computeAffinityPairs(
   preferences: PairPreference[],
   players: Player[],
-  medianGames: number,
-  blockThreshold: number,
+  expectedDiffById: ReadonlyMap<string, number | null>,
 ): AffinityPair[] {
   if (preferences.length === 0) return [];
 
@@ -52,8 +52,7 @@ export function computeAffinityPairs(
     if (!playerA || !playerB) continue; // 片方が候補プールにいない
 
     // 公平性ガード（3b）: どちらかが「試合数超過」なら保留（予約保留判定と同じ基準）
-    if (playerA.gamesPlayed - medianGames >= blockThreshold) continue;
-    if (playerB.gamesPlayed - medianGames >= blockThreshold) continue;
+    if (hasOverExpectedMember([a, b], expectedDiffById)) continue;
 
     result.push({ a, b });
   }
@@ -67,7 +66,7 @@ export function computeAffinityPairs(
  * (b)「2人一緒に出るか、2人とも控えるか」も判定される
  * （`docs/plans/2026-08-31-pair-preference.md` 3d、2026-09-01 に (b) を追加）。
  *
- * `computeAffinityPairs` の公平性ガード（`medianGames` / `blockThreshold`）は
+ * `computeAffinityPairs` の公平性ガード（`expectedDiffById`）は
  * **一切適用しない**。ハード制約側（`StrongPair`）にガードを掛けると
  * 「出場したのに敵同士にされる」「一緒に出られるはずが片方だけ弾かれる」と
  * いう `strong` の意味論が壊れるため、ソフト項（`affinity`）にだけ掛ける

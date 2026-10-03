@@ -69,7 +69,8 @@ export interface NextMatchPredictionOptions {
   gameMode: 'singles' | 'doubles';
   lateBalanceMode?: boolean;
   genderBalanceMode?: boolean;
-  reservationBlockThreshold?: number;
+  /** 練習終了日時（予約の期待差ゲートの滞在按分の頭打ち。表示と同じ） */
+  practiceEndTime?: number;
   /**
    * ペア希望（`docs/plans/2026-08-31-pair-preference.md`）。忘れると
    * 配置予測（`NextMatchPredictionBar` / 呼び出し通知 / 操作担当ガイド）が
@@ -126,7 +127,9 @@ function runScenario(
       gameMode: options.gameMode,
       lateBalanceMode: options.lateBalanceMode,
       genderBalanceMode: options.genderBalanceMode,
-      reservationBlockThreshold: options.reservationBlockThreshold,
+      // 期待差ゲートは表示と同じ母集団（セッションの全 players。+1 補正なし）で判定する
+      practiceEndTime: options.practiceEndTime,
+      sessionPlayers: players,
       restingPlayers,
       pairPreferences: options.pairPreferences,
       // 目的8 recency: 実配置と同じく進行中コートの開始を連続判定に渡す

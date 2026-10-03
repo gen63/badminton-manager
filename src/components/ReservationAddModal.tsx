@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import type { Player } from '../types/player';
 import { inferDoublesCategory, getCategoryShortLabel } from '../lib/reservationUtils';
 import { PlayerPickList } from './PlayerPickList';
+import { useSessionStore } from '../stores/sessionStore';
 
 interface ReservationAddModalProps {
   players: Player[];
@@ -19,6 +20,8 @@ export function ReservationAddModal({
 }: ReservationAddModalProps) {
   const maxPlayers = 4; // ダブルス専用
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // 期待差ゲート: 作成者以外は期待差 ≥ 閾値のメンバーを選べない（作成者は選べるが保留される）
+  const isCreator = useSessionStore((s) => s.isCreator());
 
   const handleToggle = (id: string) => {
     const next = new Set(selectedIds);
@@ -79,6 +82,7 @@ export function ReservationAddModal({
           isSelected={(id) => selectedIds.has(id)}
           onToggle={handleToggle}
           showGameStats
+          reservationGate={{ isCreator }}
         />
 
         {/* Footer */}

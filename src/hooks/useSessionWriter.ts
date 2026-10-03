@@ -224,6 +224,12 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  const setReservationForcePriority = useCallback(
+    (reservationId: string, value: boolean) =>
+      handle('setReservationForcePriority', (sid) => sm.setReservationForcePriority(sid, reservationId, value)),
+    [handle],
+  );
+
   const removeReservation = useCallback(
     (reservationId: string) =>
       handle('removeReservation', (sid) => sm.removeReservation(sid, reservationId)),
@@ -306,12 +312,6 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
-  const setReservationBlockThreshold = useCallback(
-    (value: number) =>
-      handle('setReservationBlockThreshold', (sid) => sm.setReservationBlockThreshold(sid, value)),
-    [handle],
-  );
-
   return useMemo(
     () => ({
       sessionId,
@@ -346,6 +346,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       assignOrphanPlayer,
       // reservations
       addReservation,
+      setReservationForcePriority,
       removeReservation,
       fulfillReservation,
       clearReservations,
@@ -361,7 +362,6 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setGenderBalanceMode,
       setForceBulkAssignment,
       markLateBalanceAutoFired,
-      setReservationBlockThreshold,
     }),
     [
       sessionId,
@@ -392,6 +392,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       updateMatch,
       assignOrphanPlayer,
       addReservation,
+      setReservationForcePriority,
       removeReservation,
       fulfillReservation,
       clearReservations,
@@ -405,7 +406,6 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       setGenderBalanceMode,
       setForceBulkAssignment,
       markLateBalanceAutoFired,
-      setReservationBlockThreshold,
     ],
   );
 }
