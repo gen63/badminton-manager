@@ -78,6 +78,7 @@ export function ReservationAddModal({
           getPlayerName={getPlayerName}
           isSelected={(id) => selectedIds.has(id)}
           onToggle={handleToggle}
+          showGameStats
         />
 
         {/* Footer */}

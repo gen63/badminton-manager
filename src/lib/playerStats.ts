@@ -152,3 +152,13 @@ export function formatSinceLastGame(lastPlayedAt: number, inCourt: boolean, now:
   const m = minutes % 60;
   return m === 0 ? `前回 ${h}時間前` : `前回 ${h}時間${m}分前`;
 }
+
+/** 期待との差の色分け（normal=揺らぎ / watch=様子見 / alert=声かけ・調整）。参加者管理と予約追加で共用 */
+export const EXPECTED_DIFF_TONE_CLASS: Record<ExpectedDiffTone, string> = {
+  normal: 'text-muted-foreground',
+  watch: 'text-amber-600',
+  alert: 'text-red-600',
+};
+
+/** 並び順の種別。expected = 期待差、lastGame = 経過時間 */
+export type GameSortMode = 'expected' | 'lastGame';
