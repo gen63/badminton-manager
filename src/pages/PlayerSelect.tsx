@@ -49,6 +49,8 @@ export function PlayerSelect() {
   const isAdminFn = useSessionStore((s) => s.isAdmin);
   const currentUser = useSessionStore((s) => s.currentUser);
   const practiceType = useSettingsStore((s) => s.practiceType);
+  // 滞在表示は滞在時間優先モードのときだけ（回数平均モードでは出さない）
+  const useStayDurationPriority = useSettingsStore((s) => s.useStayDurationPriority);
   const isAdmin = isAdminFn();
   const lastSeen = usePresenceStore((s) => s.lastSeen);
   // 相対時間の再評価用 tick。非管理者では interval 自体を張らない（無駄な再レンダー回避）。
@@ -205,7 +207,7 @@ export function PlayerSelect() {
     // カード内の2行目に表示してレイアウト崩れ・シフトを避ける。
     const lastSeenAt = isAdmin ? lastSeen[player.name] : undefined;
     const view = formatLastSeen(lastSeenAt, now);
-    const stay = isAdmin ? stayStats.byId.get(player.id) : undefined;
+    const stay = isAdmin && useStayDurationPriority ? stayStats.byId.get(player.id) : undefined;
     return (
       <div
         key={player.id}
@@ -225,33 +227,31 @@ export function PlayerSelect() {
                 {genderLabel(player.gender)}
               </span>
               <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
-              {/* 試合数（1行目の右端） */}
-              <span className="ml-auto pl-1 text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 tabular-nums">
-                {player.gamesPlayed}
-              </span>
             </div>
 
-            {/* 最終画面参照からの経過時間・滞在時間（2行目・管理者のみ） */}
-            {isAdmin && (
-              <div className={`mt-0.5 flex items-center gap-1 min-h-3 text-[10px] leading-tight ${LAST_SEEN_TONE_CLASS[view.tone]}`}>
-                {/* 「試合数が多い順」では参照時間は不要なので滞在表示だけにする */}
-                {sortMode === 'lastSeen' && (
-                  <>
-                    <Clock className="w-3 h-3 shrink-0" aria-hidden />
-                    <span title={typeof lastSeenAt === 'number' ? formatTime(lastSeenAt) : undefined}>
-                      {view.label}
-                    </span>
-                  </>
-                )}
-                {stay && (
-                  <span className="ml-auto text-muted-foreground tabular-nums whitespace-nowrap">
-                    {stay.complete
-                      ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
-                      : '滞在 —（未完了）'}
+            {/* 2行目: 試合数（全員）+ 最終画面参照・滞在時間（管理者のみ） */}
+            <div className="mt-0.5 flex items-center gap-1 min-h-3 text-[10px] leading-tight">
+              <span className="font-medium text-foreground tabular-nums whitespace-nowrap">
+                {player.gamesPlayed}試合
+              </span>
+              {/* 「試合数が多い順」では参照時間は不要なので滞在表示だけにする */}
+              {isAdmin && sortMode === 'lastSeen' && (
+                <span className={`flex items-center gap-1 ${LAST_SEEN_TONE_CLASS[view.tone]}`}>
+                  <span aria-hidden>·</span>
+                  <Clock className="w-3 h-3 shrink-0" aria-hidden />
+                  <span title={typeof lastSeenAt === 'number' ? formatTime(lastSeenAt) : undefined}>
+                    {view.label}
                   </span>
-                )}
-              </div>
-            )}
+                </span>
+              )}
+              {stay && (
+                <span className="ml-auto text-muted-foreground tabular-nums whitespace-nowrap">
+                  {stay.complete
+                    ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
+                    : '滞在 —（未完了）'}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* 右カラム: 支払 / 名簿 ボタンを縦並び */}
@@ -398,7 +398,7 @@ export function PlayerSelect() {
               <span>最大 {gamesStats.max}試合</span>
               <span>最小 {gamesStats.min}試合</span>
               <span>中央値 {formatMedian(gamesStats.median)}試合</span>
-              {stayStats.maxMinutes > 0 && <span>最長滞在 {formatStayMinutes(stayStats.maxMinutes)}</span>}
+              {useStayDurationPriority && stayStats.maxMinutes > 0 && <span>最長滞在 {formatStayMinutes(stayStats.maxMinutes)}</span>}
             </div>
           )}
           {renderPlayerList()}
