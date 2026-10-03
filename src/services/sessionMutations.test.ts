@@ -1596,6 +1596,164 @@ describe('unresolvedOpsOf', () => {
   });
 });
 
+describe('強制休憩の自動復帰（forcedRestActive）', () => {
+  const NOW = 10_000_000_000;
+  const FIRST_FINISHED = NOW - FORCED_REST_GRACE_MS - 60_000;
+  const forced = (id: string, ops: { payment: boolean; roster: boolean }, o: Partial<Player> = {}) =>
+    makePlayer(id, {
+      isResting: true,
+      forcedRestAt: NOW - 1000,
+      forcedRestActive: true,
+      activatedAt: 0,
+      operationStatus: { ...ops, checkin: true },
+      ...o,
+    });
+
+  it('会費・名簿の強制休憩は forcedRestActive: true をセットする', () => {
+    const state = baseState({
+      players: [
+        makePlayer('p1', {
+          gamesPlayed: 1,
+          operationStatus: { payment: false, roster: true, checkin: true },
+        }),
+      ],
+      matchHistory: [
+        makeMatch('m1', { teamA: ['p1', 'x1'], teamB: ['x2', 'x3'], finishedAt: FIRST_FINISHED }),
+      ],
+    });
+    const { state: next } = computeEnforceForcedRest(state, NOW);
+    expect(next.players[0].forcedRestActive).toBe(true);
+  });
+
+  it('既に自主休憩中のメンバーは enforce されても完了後に休憩のまま', () => {
+    const state = baseState({
+      players: [
+        makePlayer('p1', {
+          gamesPlayed: 1,
+          isResting: true,
+          activatedAt: 1000,
+          operationStatus: { payment: false, roster: false, checkin: true },
+        }),
+      ],
+      matchHistory: [
+        makeMatch('m1', { teamA: ['p1', 'x1'], teamB: ['x2', 'x3'], finishedAt: FIRST_FINISHED }),
+      ],
+    });
+    const { state: enforced } = computeEnforceForcedRest(state, NOW);
+    expect(enforced.players[0]).toMatchObject({ isResting: true, forcedRestAt: NOW });
+    expect(enforced.players[0].forcedRestActive).toBe(false);
+    const a = computeApplyPayment(enforced, 'p1', 1000, 5000);
+    const b = computeToggleOperationStatus(a, 'p1', 'roster', 6000);
+    expect(b.players[0].isResting).toBe(true);
+  });
+
+  describe('到着時の自動復帰（activatedAt === 0）', () => {
+    const arriving = (ops: { payment: boolean; roster: boolean }, o: Partial<Player> = {}) =>
+      makePlayer('a', {
+        isResting: true,
+        activatedAt: 0,
+        operationStatus: { ...ops, checkin: false },
+        ...o,
+      });
+
+    it('未到着の休憩者は最後の項目完了（toggle）で待機になり activatedAt=now', () => {
+      const state = baseState({ players: [arriving({ payment: true, roster: false })] });
+      const next = computeToggleOperationStatus(state, 'a', 'roster', 5000);
+      expect(next.players[0]).toMatchObject({ isResting: false, activatedAt: 5000 });
+      expect('forcedRestActive' in next.players[0]).toBe(false);
+    });
+
+    it('未到着の休憩者は最後の項目完了（applyPayment）で待機になる', () => {
+      const state = baseState({ players: [arriving({ payment: false, roster: true })] });
+      const next = computeApplyPayment(state, 'a', 1000, 5000);
+      expect(next.players[0]).toMatchObject({ isResting: false, activatedAt: 5000 });
+    });
+
+    it('片方だけでは休憩のまま', () => {
+      const state = baseState({ players: [arriving({ payment: false, roster: false })] });
+      const next = computeApplyPayment(state, 'a', 1000, 5000);
+      expect(next.players[0]).toMatchObject({ isResting: true, activatedAt: 0 });
+    });
+
+    it('到着済み（activatedAt>0）の自主休憩は完了しても休憩のまま', () => {
+      const state = baseState({
+        players: [arriving({ payment: true, roster: false }, { activatedAt: 1000 })],
+      });
+      const next = computeToggleOperationStatus(state, 'a', 'roster', 5000);
+      expect(next.players[0].isResting).toBe(true);
+    });
+  });
+
+  it('toggleOperationStatus で最後の項目を完了すると自動復帰する', () => {
+    const state = baseState({ players: [forced('a', { payment: true, roster: false })] });
+    const next = computeToggleOperationStatus(state, 'a', 'roster', 5000);
+    expect(next.players[0]).toMatchObject({
+      isResting: false,
+      forcedRestActive: false,
+      activatedAt: 5000,
+      forcedRestAt: NOW - 1000,
+    });
+  });
+
+  it('applyPayment で最後の項目を完了すると自動復帰する', () => {
+    const state = baseState({ players: [forced('a', { payment: false, roster: true })] });
+    const next = computeApplyPayment(state, 'a', 1000, 5000);
+    expect(next.players[0]).toMatchObject({ isResting: false, forcedRestActive: false });
+  });
+
+  it('片方だけ完了では復帰しない', () => {
+    const state = baseState({ players: [forced('a', { payment: false, roster: false })] });
+    const next = computeApplyPayment(state, 'a', 1000, 5000);
+    expect(next.players[0]).toMatchObject({ isResting: true, forcedRestActive: true });
+    const next2 = computeToggleOperationStatus(state, 'a', 'roster', 5000);
+    expect(next2.players[0].isResting).toBe(true);
+  });
+
+  it('自主休憩（forcedRestActive なし）は完了しても休憩のまま', () => {
+    const state = baseState({
+      players: [
+        forced('a', { payment: true, roster: false }, { forcedRestActive: undefined, activatedAt: 1000 }),
+      ],
+    });
+    const next = computeToggleOperationStatus(state, 'a', 'roster', 5000);
+    expect(next.players[0].isResting).toBe(true);
+  });
+
+  it('手動の toggleRest は forcedRestActive を降ろし forcedRestAt は残す', () => {
+    const state = baseState({ players: [forced('a', { payment: false, roster: false })] });
+    const resumed = computeToggleRest(state, 'a', 5000);
+    expect(resumed.players[0]).toMatchObject({ isResting: false, forcedRestActive: false });
+    expect(resumed.players[0].forcedRestAt).toBe(NOW - 1000);
+    const rested = computeToggleRest(resumed, 'a', 6000);
+    expect(rested.players[0]).toMatchObject({ isResting: true, forcedRestActive: false });
+    // 自主休憩のまま完了しても復帰しない
+    const done = computeToggleOperationStatus(rested, 'a', 'payment', 7000);
+    const done2 = computeToggleOperationStatus(done, 'a', 'roster', 8000);
+    expect(done2.players[0].isResting).toBe(true);
+  });
+
+  it('結果未登録休憩は forcedRestActive をセットせず自動復帰しない', () => {
+    const state = baseState({
+      settings: { ...baseState().settings, recordScores: true },
+      players: [
+        makePlayer('a', {
+          activatedAt: 1000,
+          operationStatus: { payment: true, roster: false, checkin: true },
+        }),
+      ],
+      matchHistory: [
+        makeMatch('m1', { teamA: ['a', 'x1'], teamB: ['x2', 'x3'], finishedAt: 1000 }),
+        makeMatch('m2', { teamA: ['a', 'x1'], teamB: ['x2', 'x3'], finishedAt: 2000 }),
+      ],
+    });
+    const { state: rested } = computeEnforceUnrecordedRest(state, NOW);
+    expect(rested.players[0].isResting).toBe(true);
+    expect(rested.players[0].forcedRestActive).toBeUndefined();
+    const next = computeToggleOperationStatus(rested, 'a', 'roster', 5000);
+    expect(next.players[0].isResting).toBe(true);
+  });
+});
+
 describe('computeEnforceUnrecordedRest', () => {
   const NOW = 10_000_000_000;
   // 猶予時間を十分過ぎた試合終了時刻

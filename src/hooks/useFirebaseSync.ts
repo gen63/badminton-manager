@@ -378,7 +378,7 @@ function checkForcedRestNotifications(newPlayers: Player[]) {
   const others = targets.filter((p) => p !== self);
 
   if (self) {
-    const message = `${unresolvedLabelsOf(self).join('と')}がまだのため、休憩になりました。対応後に休憩を解除してください`;
+    const message = `${unresolvedLabelsOf(self).join('と')}がまだのため、休憩になりました。対応すると自動で休憩が解除されます`;
     useNoticeStore.getState().show(message, 'warning', 8000);
     notifyForcedRest(self.name, message);
   }

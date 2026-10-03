@@ -130,6 +130,27 @@ function withOpsCompletedAt(
   return { opsCompletedAt: now };
 }
 
+/**
+ * 会費・名簿が両方完了した休憩中プレイヤーを自動で休憩解除する。対象は次のいずれか:
+ *   - 会費・名簿の強制休憩中（`forcedRestActive`）
+ *   - 未到着（`activatedAt === 0`＝一度もチェックインしていない。練習開始時は全員この状態）
+ * 一度到着後に自主休憩した人（activatedAt > 0 かつ forcedRestActive なし）や
+ * 結果未登録休憩は対象外。activatedAt は 0 のときのみ now を入れる（computeToggleRest と同じ）。
+ * `forcedRestActive` は立っていたときだけ false に降ろす（Firestore は undefined 不可）。
+ */
+function withAutoResume(p: Player, now: number): Player {
+  const ops = p.operationStatus;
+  if (!ops?.payment || !ops?.roster) return p;
+  if (!p.isResting) return p;
+  if (!p.forcedRestActive && p.activatedAt !== 0) return p;
+  return {
+    ...p,
+    isResting: false,
+    ...(p.forcedRestActive ? { forcedRestActive: false } : {}),
+    activatedAt: p.activatedAt === 0 ? now : p.activatedAt,
+  };
+}
+
 export function computeAddPlayers(
   state: GameState,
   inputs: PlayerInput[],
@@ -240,7 +261,13 @@ export function computeToggleRest(
       if (p.id !== playerId) return p;
       const newIsResting = !p.isResting;
       const newActivatedAt = !newIsResting && p.activatedAt === 0 ? now : p.activatedAt;
-      return { ...p, isResting: newIsResting, activatedAt: newActivatedAt };
+      // 手動操作は自主休憩扱い（強制休憩の自動解除対象から外す）。forcedRestAt は残す。
+      return {
+        ...p,
+        isResting: newIsResting,
+        activatedAt: newActivatedAt,
+        ...(p.forcedRestActive ? { forcedRestActive: false } : {}),
+      };
     }),
   };
 }
@@ -270,7 +297,7 @@ export function computeToggleOperationStatus(
         updates.paymentTimestamp = now;
         updates.paymentOperatorName = operatorName;
       }
-      return { ...p, ...updates };
+      return withAutoResume({ ...p, ...updates }, now);
     }),
   };
 }
@@ -306,7 +333,7 @@ export function computeApplyPayment(
         updates.paymentTimestamp = now;
         updates.paymentOperatorName = operatorName;
       }
-      return { ...p, ...updates };
+      return withAutoResume({ ...p, ...updates }, now);
     }),
   };
 }
@@ -338,7 +365,9 @@ export function unresolvedOpsOf(p: Player): ('payment' | 'roster')[] {
  *     休憩にするため猶予は課さない。発火時に `forcedRestAt` を now へ更新する
  *     ことで、その試合は次回チェックでは「前回休憩より前」になり毎分連打を防ぐ。
  *
- * 対象者は `isResting: true` + `forcedRestAt: now`。既に休憩中でもマーカーを
+ * 対象者は `isResting: true` + `forcedRestAt: now` + `forcedRestActive`
+ * （会費・名簿が両方完了すると自動で休憩解除される目印。強制休憩で休ませた場合のみ true。
+ * 既に自主休憩中だった人は false のまま＝自動復帰しない。結果未登録休憩は対象外）。既に休憩中でもマーカーを
  * セットして `enforced` に含める（元々休憩でも全員通知は行う仕様のため）。
  */
 export function computeEnforceForcedRest(
@@ -375,7 +404,13 @@ export function computeEnforceForcedRest(
       const baseline = firstFinishedAt.get(p.id);
       if (baseline === undefined || now - baseline < FORCED_REST_GRACE_MS) return p;
     }
-    const next = { ...p, isResting: true, forcedRestAt: now };
+    // 既に自主休憩中のメンバーは自動復帰の対象にしない（本人の意思で休んでいるため）
+    const next = {
+      ...p,
+      isResting: true,
+      forcedRestAt: now,
+      forcedRestActive: !p.isResting || !!p.forcedRestActive,
+    };
     enforced.push(next);
     return next;
   });
@@ -472,7 +507,11 @@ export function computeIncrementGamesPlayed(
 export function computeSetAllPlayersResting(state: GameState): GameState {
   return {
     ...state,
-    players: state.players.map((p) => ({ ...p, isResting: true })),
+    players: state.players.map((p) => ({
+      ...p,
+      isResting: true,
+      ...(p.forcedRestActive ? { forcedRestActive: false } : {}),
+    })),
   };
 }
 
