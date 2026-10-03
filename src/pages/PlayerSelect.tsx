@@ -199,7 +199,7 @@ export function PlayerSelect() {
         className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm"
       >
         <div className="flex items-center gap-2">
-          {/* 左カラム: 1行目（性別・名前・編集/削除・試合数）+ 2行目（管理者のみ） */}
+          {/* 左カラム: 1行目（性別・名前・試合数）+ 2行目（管理者のみ） */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               {/* 性別バッジ。未設定を一目で見つけて編集モーダルで埋められるようにする */}
@@ -212,30 +212,32 @@ export function PlayerSelect() {
                 {genderLabel(player.gender)}
               </span>
               <span className="text-sm font-semibold text-foreground truncate">{player.name}</span>
-            </div>
-
-            {/* 2行目: 試合数（全員）+ 期待・滞在時間（管理者のみ） */}
-            <div className="mt-0.5 flex items-center gap-1 min-h-3 text-[10px] leading-tight">
-              <span className="font-medium text-foreground tabular-nums whitespace-nowrap">
+              <span className="flex-shrink-0 text-xs font-medium text-foreground tabular-nums whitespace-nowrap">
                 {player.gamesPlayed}試合
               </span>
-              {expectedInfo && expectedInfo.expected !== null && expectedInfo.diff !== null && (
-                <span
-                  className={`tabular-nums whitespace-nowrap ${
-                    Math.round(expectedInfo.diff * 10) / 10 <= -1 ? 'text-amber-600' : 'text-muted-foreground'
-                  }`}
-                >
-                  期待 {formatExpected(expectedInfo.expected)} ({formatDiff(expectedInfo.diff)})
-                </span>
-              )}
-              {stay && (
-                <span className="ml-auto text-muted-foreground tabular-nums whitespace-nowrap">
-                  {stay.complete
-                    ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
-                    : '滞在 —（未完了）'}
-                </span>
-              )}
             </div>
+
+            {/* 2行目（管理者のみ）: 期待試合数と実績との差 + 滞在時間 */}
+            {isAdmin && (
+              <div className="mt-0.5 flex items-center gap-1 min-h-3 text-[10px] leading-tight">
+                {expectedInfo && expectedInfo.expected !== null && expectedInfo.diff !== null && (
+                  <span
+                    className={`tabular-nums whitespace-nowrap ${
+                      Math.round(expectedInfo.diff * 10) / 10 <= -1 ? 'text-amber-600' : 'text-muted-foreground'
+                    }`}
+                  >
+                    期待 {formatExpected(expectedInfo.expected)} ({formatDiff(expectedInfo.diff)})
+                  </span>
+                )}
+                {stay && (
+                  <span className="ml-auto text-muted-foreground tabular-nums whitespace-nowrap">
+                    {stay.complete
+                      ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
+                      : '滞在 —（未完了）'}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 右カラム: 支払 / 名簿 ボタンを縦並び */}
