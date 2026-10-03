@@ -165,13 +165,14 @@ describe('formatSinceLastGame', () => {
     expect(formatSinceLastGame(now - 5 * MIN, true, now)).toBe('試合中');
     expect(formatSinceLastGame(0, false, now)).toBe('未試合');
   });
-  it('60分未満は分', () => {
+  it('30分未満は分', () => {
     expect(formatSinceLastGame(now - 25 * MIN, false, now)).toBe('前回 25分前');
-    expect(formatSinceLastGame(now - 59 * MIN - 59000, false, now)).toBe('前回 59分前');
+    expect(formatSinceLastGame(now - 29 * MIN - 59000, false, now)).toBe('前回 29分前');
     expect(formatSinceLastGame(now, false, now)).toBe('前回 0分前');
   });
-  it('60分以上は時間+分', () => {
-    expect(formatSinceLastGame(now - 65 * MIN, false, now)).toBe('前回 1時間5分前');
-    expect(formatSinceLastGame(now - 120 * MIN, false, now)).toBe('前回 2時間前');
+  it('30分以上は 30分+ にまとめる', () => {
+    expect(formatSinceLastGame(now - 30 * MIN, false, now)).toBe('前回 30分+前');
+    expect(formatSinceLastGame(now - 65 * MIN, false, now)).toBe('前回 30分+前');
+    expect(formatSinceLastGame(now - 120 * MIN, false, now)).toBe('前回 30分+前');
   });
 });
