@@ -396,7 +396,7 @@ export function SessionCreate() {
               </button>
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">
-              {useStayDurationPriority ? '滞在時間に応じて試合数を調整' : '試合回数が少ない人を優先'}
+              {useStayDurationPriority ? '滞在時間で試合数を調整' : '試合回数が少ない人を優先'}
             </p>
           </div>
 

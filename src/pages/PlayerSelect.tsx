@@ -362,34 +362,37 @@ export function PlayerSelect() {
             <Users size={20} />
             <h1 className="text-lg font-bold">参加者管理</h1>
           </div>
-          {/* 現在の割り振りモード（全員に表示）。色は SessionCreate の選択状態に寄せず区別優先 */}
-          <div className="ml-auto flex flex-col items-end gap-0.5">
-            <span
-              className="px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
-              style={
-                useStayDurationPriority
-                  ? { backgroundColor: '#e0e7ff', color: '#3730a3' }
-                  : { backgroundColor: '#d1fae5', color: '#065f46' }
-              }
-            >
-              {useStayDurationPriority ? '滞在時間モード' : '回数平均モード'}
-            </span>
-            <span className="text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
-              {useStayDurationPriority ? '滞在時間に応じて試合数を調整' : '試合回数が少ない人を優先'}
-            </span>
-          </div>
         </div>
       </div>
 
       <div className="max-w-md mx-auto p-3 space-y-3">
         {/* プレイヤーリスト */}
         <div className="card p-4">
-          <h2 className="section-title mb-4">
-            参加者一覧
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
-              ({formatGenderBreakdown(genderBreakdown)})
-            </span>
-          </h2>
+          <div className="flex items-start gap-2 mb-4">
+            <h2 className="section-title">
+              参加者一覧
+              {/* 内訳は括弧内で割れないよう2行目へ丸ごと送る（右にモード表示があり1行に収まらないため） */}
+              <span className="block text-sm font-normal text-muted-foreground whitespace-nowrap">
+                ({formatGenderBreakdown(genderBreakdown)})
+              </span>
+            </h2>
+            {/* 現在の割り振りモード（全員に表示）。色は SessionCreate の選択状態に寄せず区別優先 */}
+            <div className="ml-auto flex-shrink-0 flex flex-col items-end gap-0.5">
+              <span
+                className="px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+                style={
+                  useStayDurationPriority
+                    ? { backgroundColor: '#e0e7ff', color: '#3730a3' }
+                    : { backgroundColor: '#d1fae5', color: '#065f46' }
+                }
+              >
+                {useStayDurationPriority ? '滞在時間モード' : '回数平均モード'}
+              </span>
+              <span className="text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
+                {useStayDurationPriority ? '滞在時間で試合数を調整' : '試合回数が少ない人を優先'}
+              </span>
+            </div>
+          </div>
           {isAdmin && gamesStats && (
             <div className="mb-3 rounded-lg bg-muted px-3 py-1.5 text-[11px] text-muted-foreground tabular-nums flex flex-wrap gap-x-3 gap-y-0.5">
               <span>最大 {gamesStats.max}試合</span>
