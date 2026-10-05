@@ -837,14 +837,8 @@ export function computeClearHistory(state: GameState): GameState {
 // Reservations: pure compute
 // =============================================================================
 
-export function computeAddReservation(
-  state: GameState,
-  playerIds: string[],
-  id: string,
-  now: number,
-  createdBy?: string,
-): GameState {
-  // DATA4 fix: 重複 ID を除き、存在しない / 空文字 ID も除く。空になったら no-op。
+/** DATA4 fix: 重複 ID を除き、存在しない / 空文字 ID も除く（予約の追加・編集で共用） */
+function sanitizeReservationPlayerIds(state: GameState, playerIds: string[]): string[] {
   const validIds = new Set(state.players.map((p) => p.id));
   const dedup: string[] = [];
   const seen = new Set<string>();
@@ -853,6 +847,57 @@ export function computeAddReservation(
     seen.add(pid);
     dedup.push(pid);
   }
+  return dedup;
+}
+
+function playingPlayerIds(state: GameState): Set<string> {
+  return new Set(
+    state.courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((pid) => pid),
+  );
+}
+
+/** 予約に入れたメンバーを休憩にする（自動配置の対象外にし、予約成立時のみ呼び出す）。プレイ中は据え置き */
+function restReservedPlayers(state: GameState, ids: Iterable<string>): GameState['players'] {
+  const playingIds = playingPlayerIds(state);
+  const reservedSet = new Set(ids);
+  return state.players.map((p) =>
+    reservedSet.has(p.id) && !playingIds.has(p.id) && !p.isResting
+      ? { ...p, isResting: true }
+      : p,
+  );
+}
+
+/**
+ * 予約から外れたメンバーで、残りの未成立予約に含まれず・プレイ中でなく・現在休憩中の者を
+ * 待機に戻す（予約に入れたとき自動で休憩にした分を解除する）。
+ */
+function releaseUnreservedPlayers(
+  state: GameState,
+  players: GameState['players'],
+  reservations: Reservation[],
+  releasedIds: Iterable<string>,
+  now: number,
+): GameState['players'] {
+  const stillReserved = new Set(
+    reservations.filter((r) => r.status === 'pending').flatMap((r) => r.playerIds),
+  );
+  const playingIds = playingPlayerIds(state);
+  const releasedSet = new Set(releasedIds);
+  return players.map((p) => {
+    if (!releasedSet.has(p.id) || !p.isResting) return p;
+    if (stillReserved.has(p.id) || playingIds.has(p.id)) return p;
+    return { ...p, isResting: false, activatedAt: p.activatedAt === 0 ? now : p.activatedAt };
+  });
+}
+
+export function computeAddReservation(
+  state: GameState,
+  playerIds: string[],
+  id: string,
+  now: number,
+  createdBy?: string,
+): GameState {
+  const dedup = sanitizeReservationPlayerIds(state, playerIds);
   if (dedup.length === 0) return state;
 
   const maxOrder = state.reservations.reduce(
@@ -869,19 +914,46 @@ export function computeAddReservation(
     createdBy,
   };
 
-  // 予約に入れたメンバーは休憩にする（自動配置の対象外にし、予約成立時のみ呼び出す）。
   // 現在プレイ中のメンバーはそのまま（試合後に computeFinishAndContinue が休憩へ）。
-  const playingIds = new Set(
-    state.courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((pid) => pid),
-  );
-  const reservedSet = new Set(dedup);
-  const players = state.players.map((p) =>
-    reservedSet.has(p.id) && !playingIds.has(p.id) && !p.isResting
-      ? { ...p, isResting: true }
-      : p,
-  );
+  const players = restReservedPlayers(state, dedup);
 
   return { ...state, players, reservations: [...state.reservations, reservation] };
+}
+
+/**
+ * 未消化（pending）の予約のメンバーを差し替える（予約者・作成者のみ UI から）。
+ * 番号・追加者・優先フラグは維持する。追加されたメンバーは追加時と同じく休憩にし、
+ * 外れたメンバーは削除時と同じく（他の未成立予約に無ければ）待機へ戻す。
+ * 存在しない / 消化済みの予約、有効なメンバーが0人、変更なしは no-op。
+ */
+export function computeUpdateReservation(
+  state: GameState,
+  reservationId: string,
+  playerIds: string[],
+  now: number = Date.now(),
+): GameState {
+  const target = state.reservations.find((r) => r.id === reservationId);
+  if (!target || target.status !== 'pending') return state;
+  const dedup = sanitizeReservationPlayerIds(state, playerIds);
+  if (dedup.length === 0) return state;
+  if (dedup.length === target.playerIds.length && dedup.every((id, i) => id === target.playerIds[i])) {
+    return state;
+  }
+
+  const reservations = state.reservations.map((r) =>
+    r.id === reservationId ? { ...r, playerIds: dedup } : r,
+  );
+  const nextSet = new Set(dedup);
+  const prevSet = new Set(target.playerIds);
+  const restedPlayers = restReservedPlayers(state, dedup.filter((id) => !prevSet.has(id)));
+  const players = releaseUnreservedPlayers(
+    state,
+    restedPlayers,
+    reservations,
+    target.playerIds.filter((id) => !nextSet.has(id)),
+    now,
+  );
+  return { ...state, players, reservations };
 }
 
 /**
@@ -912,20 +984,7 @@ export function computeRemoveReservation(
 
   if (!removed) return { ...state, reservations };
 
-  // 削除した予約のメンバーで、他の未成立予約に含まれず・プレイ中でなく・現在休憩中の者を
-  // 待機に戻す（予約に入れたとき自動で休憩にした分を解除する）。
-  const stillReserved = new Set(
-    reservations.filter((r) => r.status === 'pending').flatMap((r) => r.playerIds),
-  );
-  const playingIds = new Set(
-    state.courts.flatMap((c) => [...c.teamA, ...c.teamB]).filter((pid) => pid),
-  );
-  const removedSet = new Set(removed.playerIds);
-  const players = state.players.map((p) => {
-    if (!removedSet.has(p.id) || !p.isResting) return p;
-    if (stillReserved.has(p.id) || playingIds.has(p.id)) return p;
-    return { ...p, isResting: false, activatedAt: p.activatedAt === 0 ? now : p.activatedAt };
-  });
+  const players = releaseUnreservedPlayers(state, state.players, reservations, removed.playerIds, now);
 
   return { ...state, players, reservations };
 }
@@ -1229,6 +1288,11 @@ export function addReservation(sessionId: string, playerIds: string[], createdBy
 
 export function setReservationForcePriority(sessionId: string, reservationId: string, value: boolean) {
   return mutateGameState(sessionId, (s) => computeSetReservationForcePriority(s, reservationId, value));
+}
+
+export function updateReservation(sessionId: string, reservationId: string, playerIds: string[]) {
+  const now = Date.now();
+  return mutateGameState(sessionId, (s) => computeUpdateReservation(s, reservationId, playerIds, now));
 }
 
 export function removeReservation(sessionId: string, reservationId: string) {

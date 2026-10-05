@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inferDoublesCategory, getCategoryShortLabel } from './reservationUtils';
+import { inferDoublesCategory, getCategoryShortLabel, canEditReservation } from './reservationUtils';
 import type { Player } from '../types/player';
 
 function makePlayer(id: string, gender?: 'M' | 'F'): Player {
@@ -111,5 +111,23 @@ describe('getCategoryShortLabel', () => {
 
   it('null → null', () => {
     expect(getCategoryShortLabel(null)).toBeNull();
+  });
+});
+
+describe('canEditReservation', () => {
+  const pending = { status: 'pending' as const, createdBy: 'たろう' };
+  it('予約者本人は編集できる', () => {
+    expect(canEditReservation(pending, 'たろう', false)).toBe(true);
+  });
+  it('作成者以上は他人の予約も編集できる', () => {
+    expect(canEditReservation(pending, 'はなこ', true)).toBe(true);
+  });
+  it('それ以外・未ログイン・追加者不明は編集できない', () => {
+    expect(canEditReservation(pending, 'はなこ', false)).toBe(false);
+    expect(canEditReservation(pending, null, false)).toBe(false);
+    expect(canEditReservation({ status: 'pending' }, 'はなこ', false)).toBe(false);
+  });
+  it('消化済みは作成者でも編集できない', () => {
+    expect(canEditReservation({ ...pending, status: 'fulfilled' }, 'たろう', true)).toBe(false);
   });
 });

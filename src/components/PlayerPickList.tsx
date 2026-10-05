@@ -28,7 +28,7 @@ interface PlayerPickListProps {
 
 /**
  * モーダル内のプレイヤー選択リスト。
- * 名前・性別バッジ・休憩中バッジ・選択時のスタイルと、待機中→休憩中の並び替えを担う。
+ * 名前・性別バッジ・試合中/休憩中バッジ・選択時のスタイルと、待機中→休憩中の並び替えを担う。
  * `ReservationAddModal` と `PairPreferenceAddModal` の共通部分を切り出したもの。
  * 選択状態の持ち方（Set / 配列）は呼び出し側に委ねるため `isSelected` / `onToggle` を props で受け取る。
  */
@@ -83,7 +83,11 @@ export function PlayerPickList({ players, getPlayerName, isSelected, onToggle, s
               }`}>
                 {player.gender === 'M' ? '男' : player.gender === 'F' ? '女' : '-'}
               </span>
-              {player.isResting && (
+              {inCourtIds.has(player.id) ? (
+                <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700">
+                  試合中
+                </span>
+              ) : player.isResting && (
                 <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700">
                   休憩中
                 </span>

@@ -10,6 +10,8 @@ interface ReservationAddModalProps {
   getPlayerName: (id: string) => string;
   onConfirm: (playerIds: string[]) => void;
   onCancel: () => void;
+  /** 編集時の初期メンバー（指定すると見出しが「予約編集」になる） */
+  initialPlayerIds?: string[];
 }
 
 export function ReservationAddModal({
@@ -17,9 +19,10 @@ export function ReservationAddModal({
   getPlayerName,
   onConfirm,
   onCancel,
+  initialPlayerIds,
 }: ReservationAddModalProps) {
   const maxPlayers = 4; // ダブルス専用
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(initialPlayerIds));
   // 期待差ゲート: 作成者以外は期待差 ≥ 閾値のメンバーを選べない（作成者は選べるが保留される）
   const isCreator = useSessionStore((s) => s.isCreator());
 
@@ -48,7 +51,7 @@ export function ReservationAddModal({
         {/* Header */}
         <div className="sticky top-0 bg-background border-b border-border px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-foreground">予約追加</h2>
+            <h2 className="text-lg font-bold text-foreground">{initialPlayerIds ? '予約編集' : '予約追加'}</h2>
             <div className="flex items-center gap-2 mt-1">
               <p className="text-xs text-muted-foreground">
                 メンバーを選択 ({selectedIds.size}/{maxPlayers}人)

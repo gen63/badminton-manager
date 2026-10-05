@@ -229,6 +229,12 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  const updateReservation = useCallback(
+    (reservationId: string, playerIds: string[]) =>
+      handle('updateReservation', (sid) => sm.updateReservation(sid, reservationId, playerIds)),
+    [handle],
+  );
+
   const removeReservation = useCallback(
     (reservationId: string) =>
       handle('removeReservation', (sid) => sm.removeReservation(sid, reservationId)),
@@ -346,6 +352,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       // reservations
       addReservation,
       setReservationForcePriority,
+      updateReservation,
       removeReservation,
       fulfillReservation,
       clearReservations,
@@ -392,6 +399,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       assignOrphanPlayer,
       addReservation,
       setReservationForcePriority,
+      updateReservation,
       removeReservation,
       fulfillReservation,
       clearReservations,

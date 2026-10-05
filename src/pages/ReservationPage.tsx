@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Plus, Trash2, ChevronDown, Users, Clock, CheckCircle2, CalendarCheck } from 'lucide-react';
+import { Plus, Trash2, Pencil, ChevronDown, Users, Clock, CheckCircle2, CalendarCheck } from 'lucide-react';
 import { useReservationStore } from '../stores/reservationStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useGameStore } from '../stores/gameStore';
@@ -15,7 +15,7 @@ import { BottomNav } from '../components/BottomNav';
 import { EmptyState } from '../components/EmptyState';
 import { formatDiff } from '../lib/playerStats';
 import { overExpectedMemberIds, isReservationHeldByExpectedDiff } from '../lib/reservationGate';
-import { isPlayerReady as checkPlayerReady, getReservationStatus, inferDoublesCategory, getCategoryShortLabel } from '../lib/reservationUtils';
+import { isPlayerReady as checkPlayerReady, getReservationStatus, inferDoublesCategory, getCategoryShortLabel, canEditReservation } from '../lib/reservationUtils';
 
 export function ReservationPage() {
   const session = useSessionStore((s) => s.session);
@@ -31,6 +31,8 @@ export function ReservationPage() {
   // 保留表示用の期待差（画面を開いた時点の now 固定。割り振りと同じ lib 関数で判定する）
   const { expectedById } = usePlayerGameStats(players);
   const [showAdd, setShowAdd] = useState(false);
+  // 編集中の予約 ID（未消化の予約のみ。予約者本人か作成者以上）
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [showAddPairPreference, setShowAddPairPreference] = useState(false);
   const [showFulfilled, setShowFulfilled] = useState(false);
   const isSingles = session?.config.gameMode === 'singles';
@@ -62,6 +64,24 @@ export function ReservationPage() {
           setShowAdd(false);
         }}
         onCancel={() => setShowAdd(false)}
+      />
+    );
+  }
+
+  const editingReservation = editingId
+    ? reservations.find((r) => r.id === editingId && r.status === 'pending')
+    : undefined;
+  if (editingReservation) {
+    return (
+      <ReservationAddModal
+        players={players}
+        getPlayerName={getPlayerName}
+        initialPlayerIds={editingReservation.playerIds}
+        onConfirm={async (playerIds) => {
+          await writer.updateReservation(editingReservation.id, playerIds);
+          setEditingId(null);
+        }}
+        onCancel={() => setEditingId(null)}
       />
     );
   }
@@ -173,6 +193,15 @@ export function ReservationPage() {
                         優先
                       </span>
                     )
+                  )}
+                  {canEditReservation(reservation, currentUser, isCreator) && (
+                    <button
+                      onClick={() => setEditingId(reservation.id)}
+                      aria-label="予約を編集"
+                      className="w-7 h-7 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
+                    >
+                      <Pencil size={14} />
+                    </button>
                   )}
                   <button
                     onClick={() => void writer.removeReservation(reservation.id)}
