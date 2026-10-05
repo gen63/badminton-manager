@@ -53,6 +53,8 @@ export function GameStatsRows({
           : '滞在 —（未完了）');
   // 管理者の到着調整が実際に効いている人は、滞在表示の横に小さな目印を出す（全員に表示）
   const showOverrideMark = sortMode !== 'lastGame' && !!stay?.overridden && stay.complete;
+  // 未到着で遅刻救済の倍率を予約している人には「遅刻連絡」の目印（受付完了で到着調整に切り替わる）
+  const showReliefReservedMark = sortMode !== 'lastGame' && !!stay?.reliefReserved && !stay.complete;
   const hasExpected = !!expected && expected.expected !== null && expected.diff !== null;
 
   return (
@@ -70,6 +72,14 @@ export function GameStatsRows({
             className="shrink-0 px-1 py-0.5 rounded text-[10px] leading-none bg-primary/10 text-primary"
           >
             到着調整
+          </span>
+        )}
+        {showReliefReservedMark && (
+          <span
+            title="遅刻連絡あり（受付完了時に遅刻幅の救済を自動で適用します）"
+            className="shrink-0 px-1 py-0.5 rounded text-[10px] leading-none bg-primary/10 text-primary"
+          >
+            遅刻連絡
           </span>
         )}
         <span

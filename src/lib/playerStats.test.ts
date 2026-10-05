@@ -95,6 +95,16 @@ describe('computeExpectedGames', () => {
     expect(stay.byId.get('b')).toEqual({ complete: true, minutes: 30, percent: 100 });
   });
 
+  it('未到着で救済の倍率を予約している人は reliefReserved、到着後に効けば overridden', () => {
+    const pending = { ...mk('p', 0, false), lateReliefRatio: 0.5 };
+    const arrived = { ...mk('q', 1, true, now - 60 * MIN), lateReliefRatio: 0.5 };
+    const stay = computeStayStats([pending, arrived], start, now);
+    expect(stay.byId.get('p')?.reliefReserved).toBe(true);
+    expect(stay.byId.get('p')?.overridden).toBeUndefined();
+    // q: 実際は60分遅刻 → 30分遅刻扱い（滞在 90分）
+    expect(stay.byId.get('q')).toEqual({ complete: true, minutes: 90, percent: 100, overridden: true });
+  });
+
   it('到着調整が期待試合数に反映され、overridden 目印が付く', () => {
     // a: 実際120分、b: 実際30分だが 到着調整で練習開始+30分（＝90分前）開始 → 滞在 120:90
     const ps = [

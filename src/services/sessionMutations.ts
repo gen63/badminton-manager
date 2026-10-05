@@ -31,6 +31,7 @@ import {
   type RevertFinishError,
 } from '../lib/gameOperations';
 import { sanitizePlayerName } from '../lib/inputValidation';
+import { isValidLateReliefRatio } from '../lib/stayStart';
 import { getPracticeEndPhase, isPastEndOverrideActive, isPastLastCall, resolvePracticeEndTime } from '../lib/practiceEndPhase';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import { defaultExcludeFromOperator } from '../lib/operatorExclusion';
@@ -225,11 +226,14 @@ export function computeRemovePlayer(state: GameState, playerId: string): GameSta
 }
 
 /**
- * `updatePlayer` に渡せる更新内容。`stayStartOffsetMin`（到着調整）だけは `null` で解除（フィールド削除）できる。
+ * `updatePlayer` に渡せる更新内容。到着調整の2フィールド（`stayStartOffsetMin` / `lateReliefRatio`）だけは
+ * `null` で解除（フィールド削除）できる。2つは排他で、片方を数値で設定するともう片方は削除される。
  */
-export type PlayerUpdates = Omit<Partial<Player>, 'id' | 'stayStartOffsetMin'> & {
+export type PlayerUpdates = Omit<Partial<Player>, 'id' | 'stayStartOffsetMin' | 'lateReliefRatio'> & {
   /** 数値＝設定（練習開始からの分数。四捨五入して整数・0 未満は 0）、null＝解除、undefined/省略＝変更なし */
   stayStartOffsetMin?: number | null;
+  /** 数値＝設定（遅刻救済の倍率、有限で 0〜1）、null＝解除、undefined/省略＝変更なし */
+  lateReliefRatio?: number | null;
 };
 
 export function computeUpdatePlayer(
@@ -237,13 +241,21 @@ export function computeUpdatePlayer(
   playerId: string,
   updates: PlayerUpdates,
 ): GameState {
-  const { stayStartOffsetMin: offset, ...rest } = updates;
+  const { stayStartOffsetMin: offset, lateReliefRatio: ratio, ...rest } = updates;
   // 到着調整は有限の数値か null のみ受け付ける（NaN/Infinity/文字列はエラー）
   if (offset !== undefined && offset !== null && (typeof offset !== 'number' || !Number.isFinite(offset))) {
     throw new SessionError('到着調整の値が不正です', 'invalid-argument');
   }
+  // 救済の倍率は有限で 0〜1 のみ
+  if (ratio !== undefined && ratio !== null && !isValidLateReliefRatio(ratio)) {
+    throw new SessionError('遅刻救済の倍率が不正です', 'invalid-argument');
+  }
+  // 排他なので同時に数値で設定することはできない
+  if (typeof offset === 'number' && typeof ratio === 'number') {
+    throw new SessionError('到着調整の時刻と救済の倍率は同時に設定できません', 'invalid-argument');
+  }
   // SEC2: name が含まれる場合 sanitize（rename 経由で攻撃文字列が入るのを防ぐ）
-  let safeUpdates: Omit<Partial<Player>, 'id' | 'stayStartOffsetMin'> = rest;
+  let safeUpdates: typeof rest = rest;
   if (typeof rest.name === 'string') {
     const cleaned = sanitizePlayerName(rest.name);
     if (cleaned === null) {
@@ -259,17 +271,28 @@ export function computeUpdatePlayer(
     ...state,
     players: state.players.map((p) => {
       if (p.id !== playerId) return p;
-      const merged: Player = { ...p, ...safeUpdates, id: p.id };
-      if (offset === null) {
-        // 解除はフィールドごと削除して従来ルール（resolveStayStart）に戻す
-        const { stayStartOffsetMin: _removed, ...withoutOffset } = merged;
-        void _removed;
-        return withoutOffset;
+      const {
+        stayStartOffsetMin: currentOffset,
+        lateReliefRatio: currentRatio,
+        ...base
+      } = { ...p, ...safeUpdates, id: p.id } as Player;
+      // 解除（null）・排他による削除はフィールドごと消す（undefined を残さない）
+      let nextOffset: number | undefined = currentOffset;
+      let nextRatio: number | undefined = currentRatio;
+      if (offset === null) nextOffset = undefined;
+      if (ratio === null) nextRatio = undefined;
+      if (typeof offset === 'number') {
+        nextOffset = Math.max(0, Math.round(offset));
+        nextRatio = undefined;
       }
-      if (offset !== undefined) {
-        merged.stayStartOffsetMin = Math.max(0, Math.round(offset));
+      if (typeof ratio === 'number') {
+        nextRatio = ratio;
+        nextOffset = undefined;
       }
-      return merged;
+      const next: Player = { ...base };
+      if (nextOffset !== undefined) next.stayStartOffsetMin = nextOffset;
+      if (nextRatio !== undefined) next.lateReliefRatio = nextRatio;
+      return next;
     }),
   };
 }

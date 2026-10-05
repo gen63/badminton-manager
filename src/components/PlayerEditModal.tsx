@@ -11,22 +11,23 @@ import {
   showReliefOptions,
   lateMinutes,
   parseStayOffsetTime,
-  reliefOffsetMin,
+  applyLateRelief,
+  buildArrivalAdjustmentUpdate,
+  RELIEF_RATIOS,
+  reliefReservationNote,
   type ActualStayStart,
 } from '../lib/stayStart';
-
-/** 遅刻救済のクイックボタン（実際の遅刻幅に掛ける比率） */
-const RELIEF_OPTIONS: { label: string; ratio: number }[] = [
-  { label: '1/2', ratio: 1 / 2 },
-  { label: '1/3', ratio: 1 / 3 },
-  { label: '0', ratio: 0 },
-];
 
 /** 控えめのクイックボタン（実際の遅刻分に足す分数） */
 const RESTRAIN_OPTIONS = [15, 30, 60];
 
 const QUICK_BUTTON_CLASS =
   'px-2.5 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50 disabled:hover:bg-muted';
+/** 選択中のクイックボタン（DESIGN.md の選択状態） */
+const QUICK_BUTTON_SELECTED_CLASS =
+  'px-2.5 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground ring-2 ring-primary/30 transition-colors';
+
+const sameRatio = (a: number | null, b: number) => a !== null && Math.abs(a - b) < 1e-9;
 
 /** 保存時に呼び出し側へ渡す値 */
 export interface PlayerEditSaveValues {
@@ -40,6 +41,8 @@ export interface PlayerEditSaveValues {
    * null ＝解除、数値 ＝設定。変更の有無はモーダル側だけで判定する（呼び出し側は比較しない）
    */
   stayStartOffsetMin?: number | null;
+  /** 遅刻救済の倍率。約束は stayStartOffsetMin と同じ（undefined＝変更なし / null＝解除 / 数値＝設定） */
+  lateReliefRatio?: number | null;
 }
 
 interface PlayerEditModalProps {
@@ -49,6 +52,8 @@ interface PlayerEditModalProps {
   playerExcludeFromOperator?: boolean;
   /** 現在の到着調整（練習開始からの分数。未設定は undefined） */
   playerStayStartOffsetMin?: number;
+  /** 現在の遅刻救済の倍率（未設定は undefined） */
+  playerLateReliefRatio?: number;
   /** 練習開始日時。分数⇔時刻の変換と遅刻幅の基準。0/未定義なら欄を無効化する */
   practiceStartTime?: number;
   /** 練習終了日時（resolvePracticeEndTime）。控えめボタンで終了以降になるものは無効化する */
@@ -69,6 +74,7 @@ export function PlayerEditModal({
   playerGender,
   playerExcludeFromOperator,
   playerStayStartOffsetMin,
+  playerLateReliefRatio,
   practiceStartTime = 0,
   practiceEndTime,
   actualStayStart = { status: 'notArrived' },
@@ -84,25 +90,50 @@ export function PlayerEditModal({
   const [isOperator, setIsOperator] = useState(playerExcludeFromOperator !== true);
   // 練習開始時刻が無い古いセッションでは到着調整は効かない（resolveStayStart も無視する）ので欄を無効化
   const hasPracticeStart = practiceStartTime > 0;
-  // みなし開始時刻（HH:MM）。空文字＝未設定。表示は練習開始＋分数
+  // 到着調整は「時刻（offset、HH:MM）」か「救済の倍率（ratio）」のどちらか一方（排他）。
+  // overrideTime は時刻方式の入力値（空文字＝なし）。倍率を選んでいる間は空にしておく
   const initialOverrideTime = formatStayOffsetTime(playerStayStartOffsetMin, practiceStartTime);
+  const initialRatio = playerLateReliefRatio ?? null;
   const [overrideTime, setOverrideTime] = useState(initialOverrideTime);
+  const [ratio, setRatio] = useState<number | null>(initialRatio);
   const [error, setError] = useState('');
 
+  const notArrived = actualStayStart.status === 'notArrived';
   // 遅刻幅の推移（入力中にリアルタイム更新）。受付完了時刻が分かる人だけ「現状」を出す
   const actualLate =
     hasPracticeStart && actualStayStart.status === 'known'
       ? lateMinutes(actualStayStart.start, practiceStartTime)
       : null;
-  const overrideLate = overrideTime === '' ? null : parseStayOffsetTime(overrideTime, practiceStartTime);
-  const lateText = hasPracticeStart ? describeLateChange(actualLate, overrideLate) : '';
-  // 救済ボタンは受付完了時刻が分かり、実際の遅刻が猶予（10分）を超える人だけ
-  const showRelief = showReliefOptions(actualLate);
+  // 到着済みで倍率を選んでいれば、その結果の起点（時刻欄には表示だけする）
+  const ratioStart =
+    hasPracticeStart && ratio !== null && actualStayStart.status !== 'notArrived'
+      ? applyLateRelief(actualStayStart.start, practiceStartTime, ratio)
+      : null;
+  const displayTime = ratioStart !== null ? formatHHMM(ratioStart) : overrideTime;
+  const adjustedLate =
+    ratioStart !== null
+      ? lateMinutes(ratioStart, practiceStartTime)
+      : overrideTime === ''
+        ? null
+        : parseStayOffsetTime(overrideTime, practiceStartTime);
+  const lateText = hasPracticeStart
+    ? describeLateChange(actualLate, adjustedLate, ratioStart !== null && ratio !== null ? ratio : undefined)
+    : '';
+  // 救済ボタン: 未到着・倍率設定済みは常に、それ以外は実際の遅刻が猶予（10分）を超える人だけ
+  const showRelief = hasPracticeStart && showReliefOptions(actualStayStart.status, actualLate, ratio !== null);
   // 控えめボタンは受付完了時刻が分かる人なら遅刻の有無にかかわらず出す
   const showRestrain = actualLate !== null;
-  const effect = lateChangeEffect(actualLate, overrideLate);
+  // 未到着の人は時刻欄を出さない（既に時刻が設定されている場合だけ、解除できるよう出す）
+  const showTimeInput = !notArrived || initialOverrideTime !== '';
+  const effect = lateChangeEffect(actualLate, adjustedLate);
   const pickOffset = (offsetMin: number) => {
+    setRatio(null);
     setOverrideTime(formatStayOffsetTime(offsetMin, practiceStartTime));
+    setError('');
+  };
+  const toggleRatio = (r: number) => {
+    setRatio((cur) => (sameRatio(cur, r) ? null : r));
+    setOverrideTime('');
     setError('');
   };
   const arrivalText =
@@ -126,18 +157,18 @@ export function PlayerEditModal({
     const values: PlayerEditSaveValues = { name: parsedName, gender: parsedGender ?? gender, rating };
     if (isAdmin) {
       values.excludeFromOperator = !isOperator;
-      // 変更の有無はここだけで判定する（表示上の時刻が変わっていなければ undefined＝触らない）
-      if (hasPracticeStart && overrideTime !== initialOverrideTime) {
-        if (overrideTime === '') {
-          values.stayStartOffsetMin = null;
-        } else {
-          const offset = parseStayOffsetTime(overrideTime, practiceStartTime);
-          if (offset === null) {
-            setError('到着調整の時刻の形式が正しくありません');
-            return;
-          }
-          values.stayStartOffsetMin = offset;
+      // 変更の有無はここだけで判定する（変わっていなければ undefined＝触らない）
+      if (hasPracticeStart) {
+        const adjustment = buildArrivalAdjustmentUpdate(
+          { ratio: initialRatio, offsetText: initialOverrideTime },
+          { ratio, offsetText: overrideTime },
+          (t) => parseStayOffsetTime(t, practiceStartTime),
+        );
+        if (adjustment === 'invalid') {
+          setError('到着調整の時刻の形式が正しくありません');
+          return;
         }
+        Object.assign(values, adjustment);
       }
     }
     onSave(values);
@@ -242,28 +273,30 @@ export function PlayerEditModal({
                   {arrivalText}
                 </span>
               </div>
-              <div className="flex gap-2">
-                <input
-                  id="stay-start-override"
-                  type="time"
-                  value={overrideTime}
-                  onChange={(e) => { setOverrideTime(e.target.value); setError(''); }}
-                  disabled={!hasPracticeStart}
-                  className="input-field flex-1 min-w-0 disabled:opacity-50"
-                />
-                <button
-                  type="button"
-                  onClick={() => { setOverrideTime(''); setError(''); }}
-                  disabled={!hasPracticeStart || overrideTime === ''}
-                  className="btn-secondary px-4 disabled:opacity-50"
-                >
-                  解除
-                </button>
-              </div>
+              {showTimeInput && (
+                <div className="flex gap-2">
+                  <input
+                    id="stay-start-override"
+                    type="time"
+                    value={displayTime}
+                    onChange={(e) => { setRatio(null); setOverrideTime(e.target.value); setError(''); }}
+                    disabled={!hasPracticeStart}
+                    className="input-field flex-1 min-w-0 disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { setRatio(null); setOverrideTime(''); setError(''); }}
+                    disabled={!hasPracticeStart || (overrideTime === '' && ratio === null)}
+                    className="btn-secondary px-4 disabled:opacity-50"
+                  >
+                    解除
+                  </button>
+                </div>
+              )}
               {lateText && (
                 <p className="text-xs text-foreground mt-1 tabular-nums">
                   {lateText}
-                  {actualStayStart.status === 'notArrived' && (
+                  {notArrived && overrideTime !== '' && (
                     <span className="text-muted-foreground">（到着（会費・名簿完了）後に有効）</span>
                   )}
                 </p>
@@ -273,21 +306,30 @@ export function PlayerEditModal({
                   {LATE_CHANGE_EFFECT_TEXT[effect]}
                 </p>
               )}
-              {showRelief && actualLate !== null && (
+              {showRelief && (
                 <div className="mt-2">
-                  <p className="text-xs text-muted-foreground mb-1">救済（遅刻幅を縮める）</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    {notArrived ? '遅刻連絡あり（到着時に適用）' : '救済（遅刻幅を縮める）'}
+                  </p>
                   <div className="flex flex-wrap gap-1.5">
-                    {RELIEF_OPTIONS.map(({ label, ratio }) => (
-                      <button
-                        key={label}
-                        type="button"
-                        onClick={() => pickOffset(reliefOffsetMin(actualLate, ratio))}
-                        className={QUICK_BUTTON_CLASS}
-                      >
-                        {label}
-                      </button>
-                    ))}
+                    {RELIEF_RATIOS.map(({ label, ratio: r }) => {
+                      const selected = sameRatio(ratio, r);
+                      return (
+                        <button
+                          key={label}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => toggleRatio(r)}
+                          className={selected ? QUICK_BUTTON_SELECTED_CLASS : QUICK_BUTTON_CLASS}
+                        >
+                          {selected ? `✓ ${label}` : label}
+                        </button>
+                      );
+                    })}
                   </div>
+                  {notArrived && ratio !== null && (
+                    <p className="text-xs text-primary mt-1">{reliefReservationNote(ratio)}</p>
+                  )}
                 </div>
               )}
               {showRestrain && (
@@ -318,7 +360,7 @@ export function PlayerEditModal({
                 </div>
               )}
               <p className="text-xs text-muted-foreground mt-2">
-                遅刻連絡のあった人は早めに（救済）、体調不良などで控えめにしたい人は遅めに設定します。滞在時間モードの公平計算にだけ使います。
+                遅刻連絡のあった人は早めに（救済。到着前でも倍率を予約できます）、体調不良などで控えめにしたい人は遅めに設定します。滞在時間モードの公平計算にだけ使います。
               </p>
               {!hasPracticeStart && (
                 <p className="text-xs text-muted-foreground mt-1">

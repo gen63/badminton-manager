@@ -1,5 +1,5 @@
 import type { Player } from '../types/player';
-import { isStayStartAdjusted, resolveStayStart } from './stayStart';
+import { isLateReliefReserved, isStayStartAdjusted, resolveStayStart } from './stayStart';
 
 export interface GamesStats {
   max: number;
@@ -30,6 +30,8 @@ export interface StayInfo {
   percent: number | null;
   /** 管理者の到着調整（`stayStartOffsetMin`）が実際に起点を変えているなら true（効いていなければ undefined） */
   overridden?: boolean;
+  /** 未到着で遅刻救済の倍率（`lateReliefRatio`）が予約されているなら true（それ以外は undefined） */
+  reliefReserved?: boolean;
 }
 
 export interface StayStats {
@@ -54,6 +56,7 @@ export function computeStayStats(
       complete,
       minutes: Math.max(0, (effectiveNow - start) / 60000),
       overridden: isStayStartAdjusted(p, practiceStartTime, effectiveNow),
+      reliefReserved: isLateReliefReserved(p, practiceStartTime, effectiveNow),
     };
   });
   const maxMinutes = raw.reduce((m, r) => Math.max(m, r.minutes), 0);
@@ -64,6 +67,7 @@ export function computeStayStats(
       minutes: r.minutes,
       percent: maxMinutes > 0 ? Math.round((r.minutes / maxMinutes) * 100) : null,
       ...(r.overridden ? { overridden: true } : {}),
+      ...(r.reliefReserved ? { reliefReserved: true } : {}),
     });
   }
   return { maxMinutes, byId };

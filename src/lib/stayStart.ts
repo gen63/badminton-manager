@@ -17,6 +17,10 @@ import { formatHHMM, timeOnSameDay } from './practiceEndPhase';
  *    → `min(now, practiceStartTime + max(0, stayStartOffsetMin) 分)`
  *    遅刻連絡があった人は実際より早く、体調不良などで控えめにしたい人は遅く設定する。
  *    練習開始時刻からの分数で持つので、練習の日付・開始時刻を変えても遅刻幅が保たれる。
+ * 2b. 会費・名簿とも完了 & 遅刻救済の倍率 `lateReliefRatio` あり & 練習開始時刻あり（> 0）
+ *    → `min(now, practiceStartTime + round((従来の起点 - practiceStartTime) × ratio))`
+ *    到着前に予約しておき、受付完了時に自動で効く（従来の起点は known/unknown どちらでも 3・4 の値）。
+ *    `stayStartOffsetMin` とは排他（両方ある場合は offset を優先）。
  * 3. 会費・名簿とも完了 & `opsCompletedAt` あり
  *    → `max(practiceStartTime, opsCompletedAt)`
  * 4. 会費・名簿とも完了 & `opsCompletedAt` なし（このフィールド追加前に
@@ -34,7 +38,27 @@ export function resolveStayStart(player: Player, practiceStartTime: number, now:
   if (offset !== undefined && Number.isFinite(offset) && practiceStartTime > 0) {
     return Math.min(now, practiceStartTime + Math.max(0, offset) * 60000);
   }
+  const ratio = player.lateReliefRatio;
+  if (ratio !== undefined && Number.isFinite(ratio) && practiceStartTime > 0) {
+    return Math.min(now, applyLateRelief(actual.start, practiceStartTime, ratio));
+  }
   return actual.start;
+}
+
+/**
+ * 遅刻救済の倍率を当てた起点: `practiceStartTime + round((actualStart - practiceStartTime) × ratio)`。
+ * 実際の遅刻が 0 以下なら練習開始のまま。ratio は 0〜1 に丸める。
+ */
+export function applyLateRelief(actualStart: number, practiceStartTime: number, ratio: number): number {
+  const late = actualStart - practiceStartTime;
+  if (late <= 0) return practiceStartTime;
+  const r = Math.min(1, Math.max(0, ratio));
+  return practiceStartTime + Math.round(late * r);
+}
+
+/** 救済の倍率が有効な値か（有限で 0〜1） */
+export function isValidLateReliefRatio(ratio: unknown): ratio is number {
+  return typeof ratio === 'number' && Number.isFinite(ratio) && ratio >= 0 && ratio <= 1;
 }
 
 /**
@@ -66,10 +90,19 @@ export function resolveActualStayStart(player: Player, practiceStartTime: number
  * 練習開始時刻が無い・未完了・頭打ちで結果が変わらない場合は false。参加者一覧の「到着調整」バッジ用。
  */
 export function isStayStartAdjusted(player: Player, practiceStartTime: number, now: number): boolean {
-  if (player.stayStartOffsetMin === undefined) return false;
+  if (player.stayStartOffsetMin === undefined && player.lateReliefRatio === undefined) return false;
   const actual = resolveActualStayStart(player, practiceStartTime, now);
   if (actual.status === 'notArrived') return false;
   return resolveStayStart(player, practiceStartTime, now) !== actual.start;
+}
+
+/**
+ * 未到着（会費・名簿未完了）で遅刻救済の倍率が予約されているか。参加者一覧の「遅刻連絡」バッジ用。
+ * 練習開始時刻が無いセッションでは倍率が効かないので false。
+ */
+export function isLateReliefReserved(player: Player, practiceStartTime: number, now: number): boolean {
+  if (player.lateReliefRatio === undefined || !(practiceStartTime > 0)) return false;
+  return resolveActualStayStart(player, practiceStartTime, now).status === 'notArrived';
 }
 
 /** 練習開始からの遅刻分（分単位で四捨五入、0 以上） */
@@ -77,12 +110,22 @@ export function lateMinutes(start: number, practiceStartTime: number): number {
   return Math.max(0, Math.round((start - practiceStartTime) / 60000));
 }
 
-/**
- * 遅刻救済のクイックボタン用。実際の遅刻分に比率を掛けた到着調整（練習開始からの分数）を返す
- * （`round(遅刻分 × ratio)`）。例: ratio=1/2 で遅刻幅を半分、0 で遅刻なしとみなす。
- */
-export function reliefOffsetMin(actualLateMin: number, ratio: number): number {
-  return Math.round(Math.max(0, actualLateMin) * ratio);
+/** 救済ボタン（遅刻幅に掛ける倍率） */
+export const RELIEF_RATIOS: ReadonlyArray<{ label: string; ratio: number }> = [
+  { label: '1/2', ratio: 1 / 2 },
+  { label: '1/3', ratio: 1 / 3 },
+  { label: '0', ratio: 0 },
+];
+
+/** 倍率の表示（1/2・1/3・0。それ以外は %） */
+export function formatReliefRatio(ratio: number): string {
+  const hit = RELIEF_RATIOS.find((o) => Math.abs(o.ratio - ratio) < 1e-9);
+  return hit ? hit.label : `${Math.round(ratio * 100)}%`;
+}
+
+/** 未到着で倍率を選んだときの注記 */
+export function reliefReservationNote(ratio: number): string {
+  return `受付完了時に遅刻幅を ${formatReliefRatio(ratio)} にします`;
 }
 
 /** 到着調整（練習開始からの分数）→ `<input type="time">` 用の `HH:MM`（練習開始時刻＋分数）。未設定は空文字 */
@@ -114,16 +157,24 @@ export function parseStayOffsetTime(hhmm: string, practiceStartTime: number): nu
 /**
  * 編集モーダルに出す遅刻幅の推移の文言（`actualLate` は受付完了時刻が分からなければ null）。
  * - 実際のみ: `遅刻 40分` / `遅刻なし`
- * - 両方: `遅刻 40分 → 20分（-20分）`（調整後の方が遅ければ `+`、同じなら `±0分`）
+ * - 両方: `遅刻 40分 → 20分（-20分）`（調整後の方が遅ければ `+`、同じなら `±0分`）。倍率指定時は `（1/2）`
  * - 調整のみ（受付完了時刻なし）: `調整後の遅刻 20分`
  * - どちらもなし: 空文字
  */
-export function describeLateChange(actualLate: number | null, overrideLate: number | null): string {
+export function describeLateChange(
+  actualLate: number | null,
+  overrideLate: number | null,
+  /** 救済の倍率で調整しているとき。両方あれば差分の代わりに `（1/2）` と出す */
+  ratio?: number,
+): string {
   if (actualLate === null) {
     return overrideLate === null ? '' : `調整後の遅刻 ${overrideLate}分`;
   }
   if (overrideLate === null) {
     return actualLate > 0 ? `遅刻 ${actualLate}分` : '遅刻なし';
+  }
+  if (ratio !== undefined) {
+    return `遅刻 ${actualLate}分 → ${overrideLate}分（${formatReliefRatio(ratio)}）`;
   }
   const diff = overrideLate - actualLate;
   const diffText = diff === 0 ? '±0分' : `${diff > 0 ? '+' : '-'}${Math.abs(diff)}分`;
@@ -166,9 +217,50 @@ export const LATE_CHANGE_EFFECT_TEXT: Record<Exclude<LateChangeEffect, null>, st
 export const RELIEF_GRACE_MIN = 10;
 
 /**
- * 救済グループ（遅刻幅 1/2・1/3・0）を出すか。実際の遅刻が猶予（`RELIEF_GRACE_MIN`）を超える場合だけ true。
- * 受付完了時刻が分からない（null）なら false。UI の表示条件のみで、公平計算（resolveStayStart）には影響しない。
+ * 救済グループ（遅刻幅 1/2・1/3・0）を出すか。UI の表示条件のみで、公平計算（resolveStayStart）には影響しない。
+ * - 未到着（notArrived）: 常に出す（遅刻連絡を受けた時点で予約できるように。猶予は適用しない）
+ * - 倍率が設定済み: 常に出す（選択状態を見せるため）
+ * - それ以外: 実際の遅刻が猶予（`RELIEF_GRACE_MIN`）を超える場合だけ。受付完了時刻が分からない（null）なら出さない
  */
-export function showReliefOptions(actualLateMin: number | null): boolean {
+export function showReliefOptions(
+  status: ActualStayStart['status'],
+  actualLateMin: number | null,
+  hasRatio: boolean,
+): boolean {
+  if (status === 'notArrived' || hasRatio) return true;
   return actualLateMin !== null && actualLateMin > RELIEF_GRACE_MIN;
+}
+
+/** 到着調整の保存内容（undefined＝変更なし / null＝解除 / 値＝設定） */
+export interface ArrivalAdjustmentUpdate {
+  stayStartOffsetMin?: number | null;
+  lateReliefRatio?: number | null;
+}
+
+/**
+ * 編集モーダルの初期値と現在値から、到着調整の保存内容を決める（変更の有無はここだけで判定する）。
+ * 倍率（ratio）と時刻（offsetText＝HH:MM、空文字＝なし）は排他で、倍率を選んでいる間は時刻を使わない。
+ * 時刻の形式が不正なら 'invalid'。
+ */
+export function buildArrivalAdjustmentUpdate(
+  initial: { ratio: number | null; offsetText: string },
+  current: { ratio: number | null; offsetText: string },
+  parseOffset: (hhmm: string) => number | null,
+): ArrivalAdjustmentUpdate | 'invalid' {
+  if (current.ratio !== null) {
+    // 倍率を選んでいる（offset は computeUpdatePlayer が削除する）
+    return current.ratio === initial.ratio ? {} : { lateReliefRatio: current.ratio };
+  }
+  const offsetChanged = current.offsetText !== initial.offsetText || initial.ratio !== null;
+  if (current.offsetText !== '' && offsetChanged) {
+    const offset = parseOffset(current.offsetText);
+    if (offset === null) return 'invalid';
+    // 時刻を設定（倍率は computeUpdatePlayer が削除する）
+    return { stayStartOffsetMin: offset };
+  }
+  if (current.offsetText === '') {
+    if (initial.ratio !== null) return { lateReliefRatio: null };
+    if (initial.offsetText !== '') return { stayStartOffsetMin: null };
+  }
+  return {};
 }

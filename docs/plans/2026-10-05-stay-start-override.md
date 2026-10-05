@@ -107,6 +107,39 @@ stayStartOffsetMin?: number; // 到着調整（みなし開始時刻）を「練
   形式エラー「到着調整の時刻の形式が正しくありません」、不正値の SessionError「到着調整の値が不正です」）。
   本文中の「みなし開始時刻」は同じ機能の旧称。コード上の識別子と本ファイル名はそのまま。
 
+### 8. 追記: 到着前の救済倍率の予約（`lateReliefRatio`）
+
+遅刻連絡は到着前に来るので、受付完了を待たずに救済の倍率を予約し、受付完了時に自動で効くようにする。
+
+- データ: `Player.lateReliefRatio?: number`（0〜1。1/2=0.5、1/3、0＝全救済）。`stayStartOffsetMin` と**排他**。
+  - `computeUpdatePlayer` が保証: 片方を数値で設定するともう片方を削除。null で削除。
+    有限で 0〜1 以外、または両方を同時に数値指定は `SessionError('invalid-argument')`。
+- 計算（`resolveStayStart`。§2 の表の「offset あり」の次に判定）:
+
+| プレイヤーの状態 | 滞在開始時刻 |
+| --- | --- |
+| 会費・名簿とも完了 & `lateReliefRatio` あり & `practiceStartTime > 0` | `min(now, practiceStartTime + round((従来の起点 - practiceStartTime) × ratio))` |
+
+  - 従来の起点は `resolveActualStayStart` の start（known/unknown どちらでも）。遅刻 0 以下は練習開始のまま（`applyLateRelief`）。
+  - 未完了は従来どおり now。練習開始時刻なしは無視。両方ある不整合データは offset を優先。
+  - `isStayStartAdjusted` は ratio にも対応（到着後に効いていれば「到着調整」バッジ）。
+- UI（`PlayerEditModal`）:
+  - 救済ボタン（1/2・1/3・0、`RELIEF_RATIOS`）は offset ではなく ratio を設定する。選択中は
+    `bg-primary text-primary-foreground ring-2 ring-primary/30`＋「✓」で強調し、もう一度押すと解除。
+  - 到着後に ratio を選ぶと、時刻欄には計算結果の時刻を表示するだけ。手で時刻を書き換える・控えめボタン・
+    「解除」を使うと ratio は解除され offset 方式になる。推移は `遅刻 40分 → 20分（1/2）`。
+  - 未到着（notArrived）: 救済グループを「遅刻連絡あり（到着時に適用）」のラベルで常に出す（10分猶予は適用しない）。
+    選択中は「受付完了時に遅刻幅を 1/2 にします」と注記。時刻欄と控えめグループは出さない
+    （既に時刻が設定されている場合だけ、解除できるよう時刻欄を出す）。
+  - 到着済みで ratio 設定済み: 10分猶予にかかわらず救済グループを出す（選択状態を見せる。`showReliefOptions(status, late, hasRatio)`）。
+  - 返り値 `PlayerEditSaveValues.lateReliefRatio` も「undefined＝変更なし / null＝解除 / 数値＝設定」。
+    変更判定は `buildArrivalAdjustmentUpdate`（純粋関数）に集約。保存は従来どおり `updatePlayer` の1 transaction。
+- 参加者一覧: 未到着で ratio を予約している人に小さな「遅刻連絡」バッジ（`StayInfo.reliefReserved` ＝ `isLateReliefReserved`）。
+  受付完了後に効いていれば「到着調整」バッジ。
+- テスト: `stayStart.test.ts`（ratio の各ケース・`applyLateRelief`・検証・表示文言・`showReliefOptions`・
+  `buildArrivalAdjustmentUpdate`）、`sessionMutations.test.ts`（排他・解除・検証）、`playerStats.test.ts`（バッジ判定）。
+  旧 `reliefOffsetMin` は不要になったので削除。
+
 ## 変更ファイル
 
 - `src/types/player.ts` — `stayStartOffsetMin` 追加

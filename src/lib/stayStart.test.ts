@@ -11,7 +11,12 @@ import {
   showReliefOptions,
   lateMinutes,
   parseStayOffsetTime,
-  reliefOffsetMin,
+  applyLateRelief,
+  buildArrivalAdjustmentUpdate,
+  formatReliefRatio,
+  isLateReliefReserved,
+  isValidLateReliefRatio,
+  reliefReservationNote,
   resolveActualStayStart,
   resolveStayStart,
 } from './stayStart';
@@ -135,13 +140,16 @@ describe('lateMinutes', () => {
   });
 });
 
-describe('reliefOffsetMin', () => {
-  it('1/2 なら遅刻幅半分', () => expect(reliefOffsetMin(40, 1 / 2)).toBe(20));
-  it('1/3 は分単位で四捨五入', () => {
-    expect(reliefOffsetMin(40, 1 / 3)).toBe(13);
-    expect(reliefOffsetMin(50, 1 / 3)).toBe(17);
+describe('applyLateRelief', () => {
+  it('遅刻幅に倍率を掛ける', () => {
+    expect(applyLateRelief(START + 40 * MIN, START, 1 / 2)).toBe(START + 20 * MIN);
+    expect(applyLateRelief(START + 30 * MIN, START, 1 / 3)).toBe(START + 10 * MIN);
+    expect(applyLateRelief(START + 40 * MIN, START, 0)).toBe(START);
   });
-  it('0 なら遅刻なしとみなす', () => expect(reliefOffsetMin(40, 0)).toBe(0));
+  it('遅刻なし（0 以下）は練習開始のまま', () => {
+    expect(applyLateRelief(START, START, 0.5)).toBe(START);
+    expect(applyLateRelief(START - 10 * MIN, START, 0.5)).toBe(START);
+  });
 });
 
 describe('formatStayOffsetTime / parseStayOffsetTime', () => {
@@ -232,11 +240,111 @@ describe('lateChangeEffect / LATE_CHANGE_EFFECT_TEXT', () => {
 describe('showReliefOptions（救済グループの表示条件）', () => {
   it('猶予は10分', () => expect(RELIEF_GRACE_MIN).toBe(10));
   it('10分以内は出さず、11分から出す', () => {
-    expect(showReliefOptions(0)).toBe(false);
-    expect(showReliefOptions(10)).toBe(false);
-    expect(showReliefOptions(11)).toBe(true);
+    expect(showReliefOptions('known', 0, false)).toBe(false);
+    expect(showReliefOptions('known', 10, false)).toBe(false);
+    expect(showReliefOptions('known', 11, false)).toBe(true);
   });
   it('受付完了時刻が分からない（null）なら出さない', () => {
-    expect(showReliefOptions(null)).toBe(false);
+    expect(showReliefOptions('unknown', null, false)).toBe(false);
+  });
+  it('未到着は猶予にかかわらず常に出す（到着前の予約用）', () => {
+    expect(showReliefOptions('notArrived', null, false)).toBe(true);
+  });
+  it('倍率が設定済みなら猶予にかかわらず出す（選択状態を見せる）', () => {
+    expect(showReliefOptions('known', 5, true)).toBe(true);
+    expect(showReliefOptions('unknown', null, true)).toBe(true);
+  });
+});
+
+describe('resolveStayStart - 遅刻救済の倍率（lateReliefRatio）', () => {
+  // mk() の受付完了は練習開始＋120分
+  it('会費・名簿が未完了なら倍率があっても now', () => {
+    const p = mk({ operationStatus: { payment: false, roster: true, checkin: false }, opsCompletedAt: undefined, lateReliefRatio: 0.5 });
+    expect(resolveStayStart(p, START, NOW)).toBe(NOW);
+  });
+  it('0.5 なら遅刻幅半分', () => {
+    expect(resolveStayStart(mk({ lateReliefRatio: 0.5 }), START, NOW)).toBe(START + 60 * MIN);
+  });
+  it('1/3 なら遅刻幅 1/3', () => {
+    expect(resolveStayStart(mk({ lateReliefRatio: 1 / 3 }), START, NOW)).toBe(START + 40 * MIN);
+  });
+  it('0 なら練習開始（遅刻なしとみなす）', () => {
+    expect(resolveStayStart(mk({ lateReliefRatio: 0 }), START, NOW)).toBe(START);
+  });
+  it('遅刻していなければ練習開始のまま', () => {
+    expect(resolveStayStart(mk({ opsCompletedAt: START - 5 * MIN, lateReliefRatio: 0.5 }), START, NOW)).toBe(START);
+  });
+  it('now で頭打ち', () => {
+    // 受付完了が now より後（端末時刻ずれ等）でも now を超えない
+    const p = mk({ opsCompletedAt: NOW + 60 * MIN, lateReliefRatio: 1 });
+    expect(resolveStayStart(p, START, NOW)).toBe(NOW);
+  });
+  it('練習開始時刻が無い（0）なら倍率を無視', () => {
+    expect(resolveStayStart(mk({ lateReliefRatio: 0 }), 0, NOW)).toBe(START + 120 * MIN);
+  });
+  it('受付完了時刻が unknown でも従来の起点に倍率を当てる', () => {
+    const p = mk({ opsCompletedAt: undefined, activatedAt: 0, lateReliefRatio: 0.5 });
+    // unknown の起点は練習開始（遅刻0）→ 練習開始のまま
+    expect(resolveStayStart(p, START, NOW)).toBe(START);
+  });
+  it('到着調整バッジ・遅刻連絡バッジの判定', () => {
+    expect(isStayStartAdjusted(mk({ lateReliefRatio: 0.5 }), START, NOW)).toBe(true);
+    expect(isStayStartAdjusted(mk({ opsCompletedAt: START, lateReliefRatio: 0.5 }), START, NOW)).toBe(false);
+    const pending = mk({ operationStatus: { payment: false, roster: false, checkin: false }, lateReliefRatio: 0.5 });
+    expect(isLateReliefReserved(pending, START, NOW)).toBe(true);
+    expect(isLateReliefReserved(pending, 0, NOW)).toBe(false);
+    expect(isLateReliefReserved(mk({ lateReliefRatio: 0.5 }), START, NOW)).toBe(false);
+  });
+});
+
+describe('isValidLateReliefRatio', () => {
+  it('有限で 0〜1 のみ', () => {
+    expect(isValidLateReliefRatio(0)).toBe(true);
+    expect(isValidLateReliefRatio(1 / 3)).toBe(true);
+    expect(isValidLateReliefRatio(1)).toBe(true);
+    expect(isValidLateReliefRatio(-0.1)).toBe(false);
+    expect(isValidLateReliefRatio(1.5)).toBe(false);
+    expect(isValidLateReliefRatio(NaN)).toBe(false);
+    expect(isValidLateReliefRatio('0.5')).toBe(false);
+  });
+});
+
+describe('倍率の表示（formatReliefRatio / reliefReservationNote / describeLateChange）', () => {
+  it('ラベル', () => {
+    expect(formatReliefRatio(0.5)).toBe('1/2');
+    expect(formatReliefRatio(1 / 3)).toBe('1/3');
+    expect(formatReliefRatio(0)).toBe('0');
+    expect(formatReliefRatio(0.25)).toBe('25%');
+  });
+  it('予約の注記', () => {
+    expect(reliefReservationNote(0.5)).toBe('受付完了時に遅刻幅を 1/2 にします');
+  });
+  it('倍率指定時の推移は（1/2）表記', () => {
+    expect(describeLateChange(40, 20, 0.5)).toBe('遅刻 40分 → 20分（1/2）');
+  });
+});
+
+describe('buildArrivalAdjustmentUpdate（モーダルの保存内容）', () => {
+  const parse = (t: string) => parseStayOffsetTime(t, START);
+  const none = { ratio: null, offsetText: '' };
+  it('変更なしは空', () => {
+    expect(buildArrivalAdjustmentUpdate(none, none, parse)).toEqual({});
+    expect(buildArrivalAdjustmentUpdate({ ratio: 0.5, offsetText: '' }, { ratio: 0.5, offsetText: '' }, parse)).toEqual({});
+    expect(buildArrivalAdjustmentUpdate({ ratio: null, offsetText: '19:30' }, { ratio: null, offsetText: '19:30' }, parse)).toEqual({});
+  });
+  it('倍率を選ぶ／変える', () => {
+    expect(buildArrivalAdjustmentUpdate(none, { ratio: 0.5, offsetText: '' }, parse)).toEqual({ lateReliefRatio: 0.5 });
+    expect(buildArrivalAdjustmentUpdate({ ratio: null, offsetText: '19:30' }, { ratio: 0, offsetText: '' }, parse)).toEqual({ lateReliefRatio: 0 });
+  });
+  it('倍率を解除', () => {
+    expect(buildArrivalAdjustmentUpdate({ ratio: 0.5, offsetText: '' }, none, parse)).toEqual({ lateReliefRatio: null });
+  });
+  it('倍率から手入力の時刻へ切り替え', () => {
+    expect(buildArrivalAdjustmentUpdate({ ratio: 0.5, offsetText: '' }, { ratio: null, offsetText: '19:20' }, parse)).toEqual({ stayStartOffsetMin: 20 });
+  });
+  it('時刻の設定・解除・不正', () => {
+    expect(buildArrivalAdjustmentUpdate(none, { ratio: null, offsetText: '19:45' }, parse)).toEqual({ stayStartOffsetMin: 45 });
+    expect(buildArrivalAdjustmentUpdate({ ratio: null, offsetText: '19:45' }, none, parse)).toEqual({ stayStartOffsetMin: null });
+    expect(buildArrivalAdjustmentUpdate(none, { ratio: null, offsetText: 'xx' }, parse)).toBe('invalid');
   });
 });

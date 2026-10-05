@@ -278,6 +278,43 @@ describe('sessionMutations - players', () => {
     });
   });
 
+  describe('computeUpdatePlayer: 遅刻救済の倍率（lateReliefRatio）', () => {
+    it('倍率を設定すると到着調整の時刻（offset）は削除される（排他）', () => {
+      const state = baseState({ players: [makePlayer('a', { name: 'Alice', stayStartOffsetMin: 30 })] });
+      const next = computeUpdatePlayer(state, 'a', { name: 'Alice', lateReliefRatio: 0.5 });
+      expect(next.players[0].lateReliefRatio).toBe(0.5);
+      expect('stayStartOffsetMin' in next.players[0]).toBe(false);
+      expect(next.players[0].name).toBe('Alice');
+    });
+
+    it('時刻（offset）を設定すると倍率は削除される（排他）', () => {
+      const state = baseState({ players: [makePlayer('a', { lateReliefRatio: 1 / 3 })] });
+      const next = computeUpdatePlayer(state, 'a', { stayStartOffsetMin: 20 });
+      expect(next.players[0].stayStartOffsetMin).toBe(20);
+      expect('lateReliefRatio' in next.players[0]).toBe(false);
+    });
+
+    it('null で解除（他のフィールドは保持）', () => {
+      const state = baseState({ players: [makePlayer('a', { gamesPlayed: 4, lateReliefRatio: 0 })] });
+      const next = computeUpdatePlayer(state, 'a', { lateReliefRatio: null });
+      expect('lateReliefRatio' in next.players[0]).toBe(false);
+      expect(next.players[0].gamesPlayed).toBe(4);
+    });
+
+    it('省略なら既存の倍率を変えない', () => {
+      const state = baseState({ players: [makePlayer('a', { lateReliefRatio: 0.5 })] });
+      expect(computeUpdatePlayer(state, 'a', { gender: 'F' }).players[0].lateReliefRatio).toBe(0.5);
+    });
+
+    it('範囲外・非有限は SessionError、同時に数値で両方指定も SessionError', () => {
+      const state = baseState({ players: [makePlayer('a')] });
+      expect(() => computeUpdatePlayer(state, 'a', { lateReliefRatio: 1.5 })).toThrow(SessionError);
+      expect(() => computeUpdatePlayer(state, 'a', { lateReliefRatio: -0.1 })).toThrow(SessionError);
+      expect(() => computeUpdatePlayer(state, 'a', { lateReliefRatio: NaN })).toThrow(SessionError);
+      expect(() => computeUpdatePlayer(state, 'a', { lateReliefRatio: 0.5, stayStartOffsetMin: 10 })).toThrow(SessionError);
+    });
+  });
+
   describe('computeToggleRest', () => {
     it('isResting:true → false かつ activatedAt が 0 なら now を入れる', () => {
       const state = baseState({
