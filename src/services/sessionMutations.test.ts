@@ -218,6 +218,18 @@ describe('sessionMutations - players', () => {
     expect(next.players[0]).toMatchObject({ name: 'Alice2', gender: 'F' });
   });
 
+  it('computeAddPlayers: 名前に「外部」を含む人だけ到着調整「遅刻救済 0」を付ける', () => {
+    const state = baseState({ players: [] });
+    const r = computeAddPlayers(
+      state,
+      [{ name: '【外部】はなこ' }, { name: '太郎（外部）' }, { name: '太郎' }],
+      ['x', 'y', 'z'],
+    );
+    expect(r.state.players[0].arrivalAdjustment).toEqual({ kind: 'ratio', ratio: 0 });
+    expect(r.state.players[1].arrivalAdjustment).toEqual({ kind: 'ratio', ratio: 0 });
+    expect('arrivalAdjustment' in r.state.players[2]).toBe(false);
+  });
+
   it('computeAddPlayers: 名前に「外部」を含む人だけ excludeFromOperator: true で作る', () => {
     const state = baseState({ players: [] });
     const r = computeAddPlayers(state, [{ name: '【外部】はなこ' }, { name: '太郎' }], ['x', 'y']);

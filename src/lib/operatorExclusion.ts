@@ -1,7 +1,9 @@
 /**
  * 名前に「外部」を含むメンバー（外部参加者）向けの作成時の初期値。
  * - 終了操作の担当外（`defaultExcludeFromOperator`）
- * - 到着調整「遅刻救済 0」（`defaultArrivalAdjustment`。オートセッション作成で使用）
+ * - 到着調整「遅刻救済 0」（`defaultArrivalAdjustment`）
+ * どちらもオートセッション作成・セッション作成画面・参加者追加（`computeAddPlayers`）で付ける。
+ * 参加登録（`joinSession`）はどちらも付けない（既存の扱いに合わせる）。
  *
  * 依存を持たない純粋関数。`scripts/auto-create-session.ts`（Node/tsx 直実行で
  * Firebase 初期化を import できない）からも安全に参照できるよう独立させている。

@@ -16,7 +16,7 @@ import {
   buildOperatorAssignedMessage,
   type FinishOperationGuide,
 } from './finishOperationGuide';
-import { defaultExcludeFromOperator } from './operatorExclusion';
+import { defaultArrivalAdjustment, defaultExcludeFromOperator } from './operatorExclusion';
 import { MATCH_CALL_THRESHOLD_MS } from './gameOperations';
 import type { Court } from '../types/court';
 import type { Player } from '../types/player';
@@ -471,6 +471,19 @@ describe('defaultExcludeFromOperator', () => {
 
   it('含まなければ undefined（担当）', () => {
     expect(defaultExcludeFromOperator('太郎')).toBeUndefined();
+  });
+});
+
+describe('defaultArrivalAdjustment', () => {
+  it('名前に「外部」を含めば遅刻救済 0（defaultExcludeFromOperator と同じ判定）', () => {
+    for (const name of ['外部はなこ', '【外部】はなこ', '太郎（外部）']) {
+      expect(defaultArrivalAdjustment(name)).toEqual({ kind: 'ratio', ratio: 0 });
+      expect(defaultExcludeFromOperator(name)).toBe(true);
+    }
+  });
+
+  it('含まなければ undefined', () => {
+    expect(defaultArrivalAdjustment('太郎')).toBeUndefined();
   });
 });
 

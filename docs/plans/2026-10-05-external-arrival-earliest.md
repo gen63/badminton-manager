@@ -43,18 +43,28 @@
   既存の外部向け扱い: `excludeFromOperator`（終了操作の担当外の初期値。auto-create と `computeAddPlayers` の両方）、
   読み上げで「外部」接頭辞を読まない（`nextMatchCall.ts`）。
 
-## 非対象・提案
+## 追記: アプリ上で作成・追加した外部の人にも付ける
 
-- アプリ上で手動追加した人（`computeAddPlayers`）には付けない。`computeAddPlayers` は既に
-  `defaultExcludeFromOperator` を使っているので、同じ1行で `defaultArrivalAdjustment` も付けられる（提案のみ）。
+- `defaultExcludeFromOperator` を使っている箇所すべてで、同じく `defaultArrivalAdjustment(name)` を付ける
+  （外部の判定を既存の扱いと一貫させる。外部以外の人にはフィールドを付けない）:
+  - `computeAddPlayers`（`src/services/sessionMutations.ts`。参加者管理画面などからの手動追加）
+  - `SessionCreate.tsx`（セッション作成画面の初期プレイヤー）
+- 参加登録（`sessionService.joinSession` で名簿に無い人が入室したときの追加）は `defaultExcludeFromOperator` を
+  使っていないので、こちらも付けない（既存の扱いに合わせる）。
 
 ## 変更ファイル
 
 - `src/lib/operatorExclusion.ts` — `defaultArrivalAdjustment`
 - `scripts/auto-create-session.ts` — `buildSessionData` / `computeRosterSync` で付与
 - `scripts/auto-create-session.test.ts` — 付与のテスト
+- `src/services/sessionMutations.ts` — `computeAddPlayers` で付与（追記）
+- `src/pages/SessionCreate.tsx` — 初期プレイヤーに付与（追記）
+- `src/services/sessionMutations.test.ts` / `src/lib/finishOperationGuide.test.ts` — テスト（追記）
 
 ## テスト
 
 - `buildSessionData`: `外部はなこ` / `【外部】たろう` / `太郎（外部）` / `外部ゲスト1名参加` に付き、外部以外には付かない（フィールド自体なし）。
 - `computeRosterSync`: 追加される外部の人に付き、追加される外部以外・既存の人には付かない。
+- `computeAddPlayers`: `【外部】はなこ` / `太郎（外部）` に付き、`太郎` には付かない（追記）。
+- `defaultArrivalAdjustment`: `defaultExcludeFromOperator` と同じ名前で付き、外部以外は undefined（追記）。
+- `SessionCreate.tsx` はページ単位のテストが無いため、共通関数のテストでカバーする。
