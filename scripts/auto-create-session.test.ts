@@ -704,6 +704,39 @@ describe('hasSessionStarted', () => {
   });
 });
 
+describe('外部メンバーの到着調整（遅刻救済 0）', () => {
+  const event = {
+    eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,
+    startTime: '18:30', endTime: '21:30', venue: '千川館', note: '複',
+    participantCount: 0, capacity: null, waitlistCount: 0,
+    location: '', genders: {},
+  };
+  const externalNames = ['外部はなこ', '【外部】たろう', '太郎（外部）', '外部ゲスト1名参加'];
+
+  it('buildSessionData: 名前に「外部」を含む人だけ arrivalAdjustment: ratio 0 を付ける', () => {
+    const data = buildSessionData({ ...event, participants: [...externalNames, '田中太郎'] }, new Map(), new Date(2026, 3, 9));
+    for (const name of externalNames) {
+      expect(data.gameState.players.find((p) => p.name === name)?.arrivalAdjustment).toEqual({ kind: 'ratio', ratio: 0 });
+    }
+    const member = data.gameState.players.find((p) => p.name === '田中太郎');
+    expect(member).toBeDefined();
+    expect('arrivalAdjustment' in member!).toBe(false);
+  });
+
+  it('computeRosterSync: 追加される外部の人にも付け、既存・外部以外には付けない', () => {
+    const state = {
+      players: [{ id: 'p1', name: '佐藤', isResting: true, gamesPlayed: 0, lastPlayedAt: 0, activatedAt: 0 }],
+      courts: [],
+      matchHistory: [],
+      reservations: [],
+    };
+    const { state: next } = computeRosterSync(state, { ...event, participants: ['佐藤', '外部はなこ', '鈴木'] }, new Map());
+    expect(next.players.find((p) => p.name === '外部はなこ')?.arrivalAdjustment).toEqual({ kind: 'ratio', ratio: 0 });
+    expect(next.players.find((p) => p.name === '鈴木')?.arrivalAdjustment).toBeUndefined();
+    expect(next.players.find((p) => p.name === '佐藤')?.arrivalAdjustment).toBeUndefined();
+  });
+});
+
 describe('computeRosterSync', () => {
   const baseEvent = {
     eventId: '1', title: 'test', dateMonth: 4, dateDay: 9,

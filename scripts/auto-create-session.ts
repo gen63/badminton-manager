@@ -31,7 +31,7 @@ import iconv from 'iconv-lite';
 import type { GameState } from '../src/services/sessionService';
 import { AUTO_SESSION_BOT_CREATOR } from '../src/constants/autoSession';
 import { buildPracticeEndTime } from '../src/lib/practiceEndPhase';
-import { defaultExcludeFromOperator } from '../src/lib/operatorExclusion';
+import { defaultArrivalAdjustment, defaultExcludeFromOperator } from '../src/lib/operatorExclusion';
 import { NEW_SESSION_DEFAULTS } from '../src/lib/sessionDefaults';
 import type { Player } from '../src/types/player';
 
@@ -612,6 +612,12 @@ const AUTO_SESSION_ADMINS = [
   'あら',
 ];
 
+/** 名前に応じた到着調整の初期値（外部の人だけ）。無ければフィールド自体を付けない */
+function withDefaultArrivalAdjustment(name: string): Pick<Player, 'arrivalAdjustment'> {
+  const arrivalAdjustment = defaultArrivalAdjustment(name);
+  return arrivalAdjustment ? { arrivalAdjustment } : {};
+}
+
 function buildSessionData(
   event: EtomoEventDetail,
   memberMap: Map<string, MemberData>,
@@ -635,6 +641,8 @@ function buildSessionData(
       ...(gender && { gender }),
       // 名前に「外部」を含む人は終了操作の担当外を初期値にする（管理者が後から変更可）
       ...(defaultExcludeFromOperator(name) && { excludeFromOperator: true }),
+      // 名前に「外部」を含む人は到着調整「遅刻救済 0」を初期値にする（受付の遅れで滞在が短くならないように。管理者が後から変更可）
+      ...withDefaultArrivalAdjustment(name),
       isResting: true,
       gamesPlayed: 0,
       lastPlayedAt: 0,
@@ -804,6 +812,8 @@ function computeRosterSync(
       ...(gender && { gender }),
       // 名前に「外部」を含む人は終了操作の担当外を初期値にする（管理者が後から変更可）
       ...(defaultExcludeFromOperator(name) && { excludeFromOperator: true }),
+      // 名前に「外部」を含む人は到着調整「遅刻救済 0」を初期値にする（受付の遅れで滞在が短くならないように。管理者が後から変更可）
+      ...withDefaultArrivalAdjustment(name),
       isResting: true,
       gamesPlayed: 0,
       lastPlayedAt: 0,
