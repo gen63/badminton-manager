@@ -1,6 +1,7 @@
 import type { Match } from '../types/match';
 import type { Player } from '../types/player';
 import { getMatchResultForPlayer } from './matchFilter';
+import { isWinnerOnlyScore } from './winnerOnlyScore';
 
 /**
  * その日のセッション内での「強さ」を、対戦相手・味方の強さを加味して推定する。
@@ -17,10 +18,56 @@ export const BASE_RATING = 1500;
 const RATING_SCALE = 400 / Math.LN10;
 
 /**
- * 事前分布の強さ（L2 正則化係数）。正則化が無いと全勝者の強さが発散するため
- * 必須。試合数が少ない人ほど平均（θ=0）へ引き戻される。
+ * 登録レートが無い人の事前分布の強さ（L2 正則化係数）。正則化が無いと全勝者の強さが
+ * 発散するため必須。試合数が少ない人ほど事前平均（レート無しは θ=0）へ引き戻される。
  */
 const PRIOR_STRENGTH = 0.5;
+
+/**
+ * 登録レートがある人の事前分布の強さ。約4試合分の勝敗情報（1試合の曲率は最大 0.25 程度）に
+ * 相当し、1日 5〜8 試合では事前（登録レート）の影響が残る一方、試合数が増えれば
+ * その日の結果が上回る。レート無し（0.5）の2倍にして「登録レートは信頼できる情報」として扱う。
+ */
+const RATED_PRIOR_STRENGTH = 1.0;
+
+/**
+ * 登録レートを事前平均に変換するときの幅（θ 単位）。参加者内で z 化した値に掛ける。
+ * 0.6 θ ≒ 約104 レート差（RATING_SCALE ≒ 173.7）で、登録レートが 1SD 違う人同士の
+ * 勝率が約 65% になる程度。1日分の推定誤差（±5.5 偏差値）より強く出し過ぎないための控えめな値。
+ */
+const PRIOR_SPREAD = 0.6;
+
+/**
+ * スコア差を結果（目的変数）に混ぜる割合。勝敗 70% + 得点率 30%。
+ * 21-19 勝ち → 0.86、21-5 勝ち → 0.95 と、僅差と圧勝を軽く区別する。
+ * 勝敗そのものを覆さない（勝ちは常に 0.5 超）ように 0.3 に留める。
+ */
+const SCORE_WEIGHT = 0.3;
+
+/** 登録レートを z 化するのに必要な最小人数と、sd がこれ未満なら差なしとみなす閾値。 */
+const MIN_RATED_PLAYERS = 2;
+const MIN_RATING_SD = 1e-9;
+
+/**
+ * z 化の分母（sd）の下限を「登録レート平均 × この比率」で与える。
+ * 当日の登録者の sd だけで割ると、19人が 1500・1人が 1510 のような微小差が
+ * ±数SD に拡大されて過大な事前平均になる。レートの尺度はセッションごとに違う
+ * （30台も 1500台もある）ので絶対値ではなく平均比とし、5%（1500 なら 75、
+ * 約 0.43θ 相当の差が 1SD）未満のばらつきは「ほぼ差なし」として弱めに扱う。
+ */
+const MIN_RATING_SD_RATIO = 0.05;
+
+/**
+ * z のクランプ幅。下限を設けても外れ値が極端な事前平均にならないよう ±2.5SD で頭打ちにする
+ * （PRIOR_SPREAD=0.6 なら事前平均は最大 ±1.5θ ≒ ±260 レート）。
+ */
+const MAX_PRIOR_Z = 2.5;
+
+/** 人ごとの事前分布（平均と強さ）。 */
+interface Prior {
+  mean: number;
+  strength: number;
+}
 
 const MAX_ITERATIONS = 500;
 const CONVERGENCE_TOLERANCE = 1e-10;
@@ -161,6 +208,8 @@ interface RatedMatch {
   teamA: string[];
   teamB: string[];
   winnerIsA: boolean;
+  /** チームAの結果（0〜1）。勝敗とスコア比のブレンド。推定の残差にのみ使う。 */
+  outcomeA: number;
 }
 
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
@@ -197,29 +246,89 @@ function toRatedMatches(matches: Match[], players: Player[]): RatedMatch[] {
     const teamA = resolve(match.teamA);
     const teamB = resolve(match.teamB);
     if (teamA.length === 0 || teamB.length === 0) continue;
-    rated.push({ matchId: match.id, teamA, teamB, winnerIsA: match.winner === 'A' });
+    rated.push({
+      matchId: match.id,
+      teamA,
+      teamB,
+      winnerIsA: match.winner === 'A',
+      outcomeA: blendOutcome(match.winner === 'A', match.scoreA, match.scoreB),
+    });
   }
   return rated;
 }
 
-const teamStrength = (team: string[], theta: Map<string, number>): number => {
+/**
+ * 勝敗とスコア比を混ぜた結果（チームA視点、0〜1）。スコア合計が 0 以下（未入力）、
+ * または勝者のみ入力のダミースコア（100-99 / 99-100）なら勝敗のみ。
+ */
+function blendOutcome(winnerIsA: boolean, scoreA: number, scoreB: number): number {
+  const win = winnerIsA ? 1 : 0;
+  const total = scoreA + scoreB;
+  if (!(total > 0) || isWinnerOnlyScore(scoreA, scoreB)) return win;
+  return (1 - SCORE_WEIGHT) * win + SCORE_WEIGHT * (scoreA / total);
+}
+
+/**
+ * 登録レート → 事前分布。参加者（names）のうち rating > 0 の人で z 化し、
+ * 平均 = PRIOR_SPREAD · z（分母は max(sd, 平均×MIN_RATING_SD_RATIO)、z は ±MAX_PRIOR_Z）。未レートは平均 0・弱い正則化。
+ * レート登録者が2人未満、または sd≈0 なら全員レート無し扱い（従来と同じ挙動）。
+ */
+function buildPriors(
+  names: string[],
+  registeredRating: ReadonlyMap<string, number>
+): Map<string, Prior> {
+  const priors = new Map<string, Prior>();
+  const none: Prior = { mean: 0, strength: PRIOR_STRENGTH };
+  const rated = names.filter((n) => (registeredRating.get(n) ?? 0) > 0);
+  let m = 0;
+  let sd = 0;
+  if (rated.length >= MIN_RATED_PLAYERS) {
+    const values = rated.map((n) => registeredRating.get(n)!);
+    m = values.reduce((a, b) => a + b, 0) / values.length;
+    sd = Math.sqrt(values.reduce((sum, v) => sum + (v - m) ** 2, 0) / values.length);
+  }
+  const usable = rated.length >= MIN_RATED_PLAYERS && sd >= MIN_RATING_SD;
+  const sdEff = Math.max(sd, MIN_RATING_SD_RATIO * m);
+  for (const n of names) {
+    const r = registeredRating.get(n) ?? 0;
+    priors.set(
+      n,
+      usable && r > 0
+        ? {
+            mean: PRIOR_SPREAD * Math.max(-MAX_PRIOR_Z, Math.min(MAX_PRIOR_Z, (r - m) / sdEff)),
+            strength: RATED_PRIOR_STRENGTH,
+          }
+        : { ...none }
+    );
+  }
+  return priors;
+}
+
+/** θ が無い（その推定に現れない）選手は事前平均（無ければ 0）で代用する。 */
+const teamStrength = (
+  team: string[],
+  theta: Map<string, number>,
+  priors?: ReadonlyMap<string, Prior>
+): number => {
   let sum = 0;
-  for (const name of team) sum += theta.get(name) ?? 0;
+  for (const name of team) sum += theta.get(name) ?? priors?.get(name)?.mean ?? 0;
   return sum / team.length;
 };
 
 /**
  * 正則化付き Bradley-Terry の最尤（MAP）推定。対角ニュートン法で解く。
  *
- * 目的関数: Σ log P(観測) − (λ/2)Σθ²
- * P(A 勝) = sigmoid(mean(θ_A) − mean(θ_B))
+ * 目的関数: Σ log P(観測) − Σ(λ_i/2)(θ_i − μ_i)²
+ * P(A 勝) = sigmoid(mean(θ_A) − mean(θ_B))、観測は outcomeA（勝敗＋スコア比）
  *
- * 全 θ に定数を足しても尤度は変わらないが、L2 項が中心を 0 に固定するため
+ * 全 θ に定数を足しても尤度は変わらないが、L2 項が中心を μ に固定するため
  * 解は一意。オンライン Elo と違い試合順に依存しない。
+ * priors が無い（または該当なし）の人は μ=0・λ=PRIOR_STRENGTH。
  */
 function solveStrengths(
   ratedMatches: RatedMatch[],
   names: string[],
+  priors?: ReadonlyMap<string, Prior>,
   initialTheta?: ReadonlyMap<string, number>
 ): Map<string, number> {
   const result = new Map<string, number>();
@@ -228,7 +337,15 @@ function solveStrengths(
   // 名前を添字に引き直して配列演算にする（LOO で n 回呼ぶため高速化が必要）。
   // initialTheta はウォームスタート用（収束先は同じで、反復回数だけが減る）。
   const indexOf = new Map<string, number>(names.map((n, i) => [n, i]));
-  const theta = Float64Array.from(names, (n) => initialTheta?.get(n) ?? 0);
+  const priorMean = Float64Array.from(names, (n) => priors?.get(n)?.mean ?? 0);
+  const priorStrength = Float64Array.from(
+    names,
+    (n) => priors?.get(n)?.strength ?? PRIOR_STRENGTH
+  );
+  const theta = Float64Array.from(
+    names,
+    (n, i) => initialTheta?.get(n) ?? priorMean[i]
+  );
   const teamsA = ratedMatches.map((m) => m.teamA.map((n) => indexOf.get(n)!));
   const teamsB = ratedMatches.map((m) => m.teamB.map((n) => indexOf.get(n)!));
   const gradient = new Float64Array(names.length);
@@ -247,7 +364,7 @@ function solveStrengths(
       const a = teamsA[k];
       const b = teamsB[k];
       const predicted = sigmoid(mean(a) - mean(b));
-      const residual = (match.winnerIsA ? 1 : 0) - predicted;
+      const residual = match.outcomeA - predicted;
       const weight = predicted * (1 - predicted);
 
       for (const i of a) {
@@ -262,8 +379,8 @@ function solveStrengths(
 
     let maxStep = 0;
     for (let i = 0; i < names.length; i++) {
-      const g = gradient[i] - PRIOR_STRENGTH * theta[i];
-      const h = curvature[i] + PRIOR_STRENGTH;
+      const g = gradient[i] - priorStrength[i] * (theta[i] - priorMean[i]);
+      const h = curvature[i] + priorStrength[i];
       const step = clamp(g / h, -MAX_STEP, MAX_STEP);
       theta[i] += step;
       maxStep = Math.max(maxStep, Math.abs(step));
@@ -294,7 +411,14 @@ export function estimateStrengthsById(
     const teamA = resolve(match.teamA);
     const teamB = resolve(match.teamB);
     if (teamA.length === 0 || teamB.length === 0) continue;
-    rated.push({ matchId: match.id, teamA, teamB, winnerIsA: match.winner === 'A' });
+    rated.push({
+      matchId: match.id,
+      teamA,
+      teamB,
+      winnerIsA: match.winner === 'A',
+      // 自動配置の補正は従来どおり勝敗のみ（スコア・登録レートは使わない）
+      outcomeA: match.winner === 'A' ? 1 : 0,
+    });
     for (const id of [...teamA, ...teamB]) {
       if (!games.has(id)) ids.push(id);
       games.set(id, (games.get(id) ?? 0) + 1);
@@ -324,7 +448,14 @@ export function computePerformanceRatings(
     }
   }
 
-  const theta = solveStrengths(ratedMatches, names);
+  // 登録レート（名前ベース。同名が複数いる場合は後ろの人が優先＝並べ替えの扱いと同じ）
+  const registeredRating = new Map<string, number>();
+  for (const p of players) {
+    if (p.name) registeredRating.set(p.name, p.rating ?? 0);
+  }
+  const priors = buildPriors(names, registeredRating);
+
+  const theta = solveStrengths(ratedMatches, names, priors);
   const ratingOf = (name: string) =>
     BASE_RATING + (theta.get(name) ?? 0) * RATING_SCALE;
 
@@ -339,7 +470,7 @@ export function computePerformanceRatings(
   // 平均偏差の物差し（mean / sd）は全体推定の θ のものを使う（結果集計の偏差値と
   // 同じ物差しに載せるため。LOO ごとに正規化し直さない）。θ 自体は呼び出し側が渡す。
   const toTeamDeviation = (team: string[], t: Map<string, number>): number =>
-    Math.round(sd > 1e-9 ? 50 + (10 * (teamStrength(team, t) - mean)) / sd : 50);
+    Math.round(sd > 1e-9 ? 50 + (10 * (teamStrength(team, t, priors) - mean)) / sd : 50);
   // 予想勝率も平均偏差も LOO（その試合を除いて解き直した θ）＝試合前の見込み。
   const matchInsights = new Map<string, MatchInsight>();
   ratedMatches.forEach((match, index) => {
@@ -347,13 +478,14 @@ export function computePerformanceRatings(
     const restNames = names.filter((n) =>
       rest.some((m) => m.teamA.includes(n) || m.teamB.includes(n))
     );
-    // 除外後の推定に現れない選手は theta に無く、teamStrength が 0 として扱う
-    const looTheta = solveStrengths(rest, restNames, theta);
+    // 除外後の推定に現れない選手は theta に無く、teamStrength が事前平均（無ければ 0）として扱う
+    const looTheta = solveStrengths(rest, restNames, priors, theta);
     matchInsights.set(match.matchId, {
       teamADeviation: toTeamDeviation(match.teamA, looTheta),
       teamBDeviation: toTeamDeviation(match.teamB, looTheta),
       winProbabilityA: sigmoid(
-        teamStrength(match.teamA, looTheta) - teamStrength(match.teamB, looTheta)
+        teamStrength(match.teamA, looTheta, priors) -
+          teamStrength(match.teamB, looTheta, priors)
       ),
     });
   });
@@ -397,6 +529,9 @@ export function computePerformanceRatings(
     ])
   );
 
+  // 期待勝利数の「平均的な選手」は θ の全体平均（事前平均の導入で中心が 0 から動くため）
+  const averageTheta = mean;
+
   const averageRating = (team: string[]) =>
     team.reduce((sum, n) => sum + ratingOf(n), 0) / team.length;
 
@@ -418,9 +553,10 @@ export function computePerformanceRatings(
           stat.partnerRatingSum += ratingOf(partner);
           stat.partnerCount++;
         }
-        // その枠に平均的な選手（θ=0）が入った場合の勝利期待値。
-        // チーム強さは平均なので、本人の θ を抜いた分だけ下がる（or 上がる）。
-        const withoutSelf = ownStrength - (theta.get(name) ?? 0) / team.length;
+        // その枠に平均的な選手（θ=全体平均）が入った場合の勝利期待値。
+        // チーム強さは平均なので、本人の θ を平均選手に置き換えた分だけ変わる。
+        const withoutSelf =
+          ownStrength + (averageTheta - (theta.get(name) ?? 0)) / team.length;
         stat.expectedWins += sigmoid(withoutSelf - opponentStrength);
       }
     };
@@ -485,10 +621,6 @@ export function computePerformanceRatings(
   // 表示は偏差値（整数）順。同じ偏差値のときは**登録レートが高い方**を上にする。
   // 日次の推定は誤差 ±5.5 と粗く、同値なら事前情報（登録レート）に従うのが
   // 納得感が高いため。登録レートが無い/同値なら勝ち数 → 五十音。
-  const registeredRating = new Map<string, number>();
-  for (const p of players) {
-    if (p.name) registeredRating.set(p.name, p.rating ?? 0);
-  }
   result.sort((a, b) => {
     if (b.deviation !== a.deviation) return b.deviation - a.deviation;
     const ra = registeredRating.get(a.name) ?? 0;

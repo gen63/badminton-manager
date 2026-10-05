@@ -8,6 +8,7 @@ import { GameStatsRows } from '../components/GameStatsRows';
 import { useSessionWriterWithToast } from '../hooks/useSessionWriterToast';
 import { useGuardedAction } from '../hooks/useGuardedAction';
 import { useToast } from '../hooks/useToast';
+import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
 import { Trash2, Pencil, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import { useSessionStore } from '../stores/sessionStore';
@@ -43,6 +44,7 @@ export function PlayerSelect() {
   const currentUser = useSessionStore((s) => s.currentUser);
   const practiceType = useSettingsStore((s) => s.practiceType);
   const isAdmin = isAdminFn();
+  const devMode = useDevMode();
   const toast = useToast();
   const writer = useSessionWriterWithToast(toast);
   const rosterToggle = useGuardedAction(async (playerId: string) => {
@@ -55,7 +57,7 @@ export function PlayerSelect() {
     await writer.toggleOperationStatus(playerId, 'payment');
   });
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number; isPaid: boolean } | null>(null);
-  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean; arrivalAdjustment?: ArrivalAdjustment; actualStayStart: ActualStayStart } | null>(null);
+  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F'; rating?: number; excludeFromOperator?: boolean; arrivalAdjustment?: ArrivalAdjustment; actualStayStart: ActualStayStart } | null>(null);
   // アコーディオンの開閉。null = ユーザー未操作（自動判定に委ねる）。
   // 未操作なら全員完了時に自動で開き、それ以外は既定で閉じる。ユーザーが一度
   // タップしたらその選択（override）を優先し、以降は allComplete の変化で
@@ -113,6 +115,7 @@ export function PlayerSelect() {
       id: player.id,
       name: player.name,
       gender: player.gender,
+      rating: player.rating,
       excludeFromOperator: player.excludeFromOperator,
       arrivalAdjustment: player.arrivalAdjustment,
       // 到着調整を無視した従来の起点（モーダルの「受付完了」と遅刻幅の表示用）。
@@ -414,6 +417,8 @@ export function PlayerSelect() {
         <PlayerEditModal
           playerName={editModalPlayer.name}
           playerGender={editModalPlayer.gender}
+          playerRating={editModalPlayer.rating}
+          showRating={devMode}
           playerExcludeFromOperator={editModalPlayer.excludeFromOperator}
           playerArrivalAdjustment={editModalPlayer.arrivalAdjustment}
           actualStayStart={editModalPlayer.actualStayStart}

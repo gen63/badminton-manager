@@ -18,6 +18,8 @@
 | スコア反映 | 勝敗のみ（得点差は使わない） |
 | 表示権限 | **開発モードのみ**（`useDevMode()`。勝率の `isCreator()` とは別条件） |
 
+> 後継: スコア差の軽い反映と登録レートの事前分布化は [2026-10-05-performance-rating-prior-and-score.md](2026-10-05-performance-rating-prior-and-score.md) で変更済み。
+
 ## 算出方式: 正則化付き Bradley-Terry
 
 その日の全試合を連立で解き、各メンバーの強さ `θ`（自然対数オッズ単位）を

@@ -46,6 +46,10 @@ export interface PlayerEditSaveValues {
 interface PlayerEditModalProps {
   playerName: string;
   playerGender?: 'M' | 'F';
+  /** 登録済みの初期レート（未設定・0 は「未設定」表示）。showRating のときだけ読み取り専用で出す */
+  playerRating?: number;
+  /** 初期レートを表示するか（開発モード用） */
+  showRating?: boolean;
   /** 「終了操作の担当外」の現在値（管理者が設定。未設定＝担当） */
   playerExcludeFromOperator?: boolean;
   /** 現在の到着調整（未設定は undefined） */
@@ -68,6 +72,8 @@ interface PlayerEditModalProps {
 export function PlayerEditModal({
   playerName,
   playerGender,
+  playerRating,
+  showRating = false,
   playerExcludeFromOperator,
   playerArrivalAdjustment,
   practiceStartTime = 0,
@@ -199,6 +205,11 @@ export function PlayerEditModal({
                 if (e.key === 'Enter') handleSave();
               }}
             />
+            {showRating && (
+              <p className="text-xs text-muted-foreground mt-1">
+                初期レート: {playerRating && playerRating > 0 ? playerRating : '未設定'}
+              </p>
+            )}
           </div>
 
           {/* 性別選択 */}
