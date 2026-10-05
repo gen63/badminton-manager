@@ -7,6 +7,8 @@ import {
   LATE_CHANGE_EFFECT_TEXT,
   lateChangeEffect,
   restrainOffsetOption,
+  RELIEF_GRACE_MIN,
+  showReliefOptions,
   lateMinutes,
   parseStayOffsetTime,
   reliefOffsetMin,
@@ -189,7 +191,7 @@ describe('describeLateChange', () => {
     expect(describeLateChange(15, 15)).toBe('遅刻 15分 → 15分（±0分）');
   });
   it('受付完了時刻が無い場合は調整側だけ / どちらもなければ空', () => {
-    expect(describeLateChange(null, 20)).toBe('みなし遅刻 20分');
+    expect(describeLateChange(null, 20)).toBe('調整後の遅刻 20分');
     expect(describeLateChange(null, null)).toBe('');
   });
 });
@@ -224,5 +226,17 @@ describe('lateChangeEffect / LATE_CHANGE_EFFECT_TEXT', () => {
     expect(lateChangeEffect(15, 15)).toBeNull();
     expect(lateChangeEffect(15, null)).toBeNull();
     expect(lateChangeEffect(null, 20)).toBeNull();
+  });
+});
+
+describe('showReliefOptions（救済グループの表示条件）', () => {
+  it('猶予は10分', () => expect(RELIEF_GRACE_MIN).toBe(10));
+  it('10分以内は出さず、11分から出す', () => {
+    expect(showReliefOptions(0)).toBe(false);
+    expect(showReliefOptions(10)).toBe(false);
+    expect(showReliefOptions(11)).toBe(true);
+  });
+  it('受付完了時刻が分からない（null）なら出さない', () => {
+    expect(showReliefOptions(null)).toBe(false);
   });
 });

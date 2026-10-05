@@ -115,12 +115,12 @@ export function parseStayOffsetTime(hhmm: string, practiceStartTime: number): nu
  * 編集モーダルに出す遅刻幅の推移の文言（`actualLate` は受付完了時刻が分からなければ null）。
  * - 実際のみ: `遅刻 40分` / `遅刻なし`
  * - 両方: `遅刻 40分 → 20分（-20分）`（調整後の方が遅ければ `+`、同じなら `±0分`）
- * - みなしのみ（未到着）: `みなし遅刻 20分`
+ * - 調整のみ（受付完了時刻なし）: `調整後の遅刻 20分`
  * - どちらもなし: 空文字
  */
 export function describeLateChange(actualLate: number | null, overrideLate: number | null): string {
   if (actualLate === null) {
-    return overrideLate === null ? '' : `みなし遅刻 ${overrideLate}分`;
+    return overrideLate === null ? '' : `調整後の遅刻 ${overrideLate}分`;
   }
   if (overrideLate === null) {
     return actualLate > 0 ? `遅刻 ${actualLate}分` : '遅刻なし';
@@ -161,3 +161,14 @@ export const LATE_CHANGE_EFFECT_TEXT: Record<Exclude<LateChangeEffect, null>, st
   easier: '→ 試合に入りやすくなります',
   restrained: '→ 試合数が控えめになります',
 };
+
+/** 救済ボタンを出さない遅刻の猶予（分）。開始から10分以内の受付完了は「概ね時間どおり」とみなす */
+export const RELIEF_GRACE_MIN = 10;
+
+/**
+ * 救済グループ（遅刻幅 1/2・1/3・0）を出すか。実際の遅刻が猶予（`RELIEF_GRACE_MIN`）を超える場合だけ true。
+ * 受付完了時刻が分からない（null）なら false。UI の表示条件のみで、公平計算（resolveStayStart）には影響しない。
+ */
+export function showReliefOptions(actualLateMin: number | null): boolean {
+  return actualLateMin !== null && actualLateMin > RELIEF_GRACE_MIN;
+}

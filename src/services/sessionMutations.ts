@@ -240,7 +240,7 @@ export function computeUpdatePlayer(
   const { stayStartOffsetMin: offset, ...rest } = updates;
   // 到着調整は有限の数値か null のみ受け付ける（NaN/Infinity/文字列はエラー）
   if (offset !== undefined && offset !== null && (typeof offset !== 'number' || !Number.isFinite(offset))) {
-    throw new SessionError('到着調整（みなし開始時刻）の値が不正です', 'invalid-argument');
+    throw new SessionError('到着調整の値が不正です', 'invalid-argument');
   }
   // SEC2: name が含まれる場合 sanitize（rename 経由で攻撃文字列が入るのを防ぐ）
   let safeUpdates: Omit<Partial<Player>, 'id' | 'stayStartOffsetMin'> = rest;

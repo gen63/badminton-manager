@@ -8,6 +8,7 @@ import {
   LATE_CHANGE_EFFECT_TEXT,
   lateChangeEffect,
   restrainOffsetOption,
+  showReliefOptions,
   lateMinutes,
   parseStayOffsetTime,
   reliefOffsetMin,
@@ -56,7 +57,7 @@ interface PlayerEditModalProps {
   actualStayStart?: ActualStayStart;
   /** 滞在時間モードが ON か（OFF なら「現在は効かない」注記を出す） */
   useStayDurationPriority?: boolean;
-  /** 管理者のみ担当トグル・みなし開始時刻を出す */
+  /** 管理者のみ担当トグル・到着調整を出す */
   isAdmin?: boolean;
   existingNames: string[];
   onSave: (values: PlayerEditSaveValues) => void;
@@ -95,8 +96,8 @@ export function PlayerEditModal({
       : null;
   const overrideLate = overrideTime === '' ? null : parseStayOffsetTime(overrideTime, practiceStartTime);
   const lateText = hasPracticeStart ? describeLateChange(actualLate, overrideLate) : '';
-  // 救済ボタンは受付完了時刻が分かり、実際に遅刻している人だけ
-  const showRelief = actualLate !== null && actualLate > 0;
+  // 救済ボタンは受付完了時刻が分かり、実際の遅刻が猶予（10分）を超える人だけ
+  const showRelief = showReliefOptions(actualLate);
   // 控えめボタンは受付完了時刻が分かる人なら遅刻の有無にかかわらず出す
   const showRestrain = actualLate !== null;
   const effect = lateChangeEffect(actualLate, overrideLate);
@@ -132,7 +133,7 @@ export function PlayerEditModal({
         } else {
           const offset = parseStayOffsetTime(overrideTime, practiceStartTime);
           if (offset === null) {
-            setError('みなし開始時刻の形式が正しくありません');
+            setError('到着調整の時刻の形式が正しくありません');
             return;
           }
           values.stayStartOffsetMin = offset;
@@ -232,11 +233,11 @@ export function PlayerEditModal({
             </div>
           )}
 
-          {/* みなし開始時刻（管理者のみ）。滞在時間モードの公平計算の起点を上書きする */}
+          {/* 到着調整（管理者のみ。旧称: みなし開始時刻）。滞在時間モードの公平計算の起点を上書きする */}
           {isAdmin && (
             <div>
               <div className="flex items-baseline justify-between gap-2">
-                <label className="label" htmlFor="stay-start-override">みなし開始時刻</label>
+                <label className="label" htmlFor="stay-start-override">到着調整</label>
                 <span className="text-xs text-muted-foreground tabular-nums" title="会費・名簿が両方完了した時刻">
                   {arrivalText}
                 </span>
@@ -272,7 +273,7 @@ export function PlayerEditModal({
                   {LATE_CHANGE_EFFECT_TEXT[effect]}
                 </p>
               )}
-              {showRelief && (
+              {showRelief && actualLate !== null && (
                 <div className="mt-2">
                   <p className="text-xs text-muted-foreground mb-1">救済（遅刻幅を縮める）</p>
                   <div className="flex flex-wrap gap-1.5">
