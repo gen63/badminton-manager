@@ -224,56 +224,52 @@ export function computeRemovePlayer(state: GameState, playerId: string): GameSta
   };
 }
 
+/**
+ * `updatePlayer` に渡せる更新内容。`stayStartOffsetMin`（到着調整）だけは `null` で解除（フィールド削除）できる。
+ */
+export type PlayerUpdates = Omit<Partial<Player>, 'id' | 'stayStartOffsetMin'> & {
+  /** 数値＝設定（練習開始からの分数。四捨五入して整数・0 未満は 0）、null＝解除、undefined/省略＝変更なし */
+  stayStartOffsetMin?: number | null;
+};
+
 export function computeUpdatePlayer(
   state: GameState,
   playerId: string,
-  updates: Omit<Partial<Player>, 'id'>,
+  updates: PlayerUpdates,
 ): GameState {
+  const { stayStartOffsetMin: offset, ...rest } = updates;
+  // 到着調整は有限の数値か null のみ受け付ける（NaN/Infinity/文字列はエラー）
+  if (offset !== undefined && offset !== null && (typeof offset !== 'number' || !Number.isFinite(offset))) {
+    throw new SessionError('到着調整（みなし開始時刻）の値が不正です', 'invalid-argument');
+  }
   // SEC2: name が含まれる場合 sanitize（rename 経由で攻撃文字列が入るのを防ぐ）
-  let safeUpdates = updates;
-  if (typeof updates.name === 'string') {
-    const cleaned = sanitizePlayerName(updates.name);
+  let safeUpdates: Omit<Partial<Player>, 'id' | 'stayStartOffsetMin'> = rest;
+  if (typeof rest.name === 'string') {
+    const cleaned = sanitizePlayerName(rest.name);
     if (cleaned === null) {
       // 不正な name は更新しない
-      const { name: _name, ...rest } = updates;
+      const { name: _name, ...withoutName } = rest;
       void _name;
-      safeUpdates = rest;
+      safeUpdates = withoutName;
     } else {
-      safeUpdates = { ...updates, name: cleaned };
+      safeUpdates = { ...rest, name: cleaned };
     }
-  }
-  return {
-    ...state,
-    players: state.players.map((p) =>
-      p.id === playerId ? { ...p, ...safeUpdates, id: p.id } : p,
-    ),
-  };
-}
-
-/**
- * 滞在時間モードの「みなし開始時刻」(`stayStartOverrideAt`) を設定・解除する。
- * - `value` が数値ならその時刻（epoch ms）をセット。有限でない値は SessionError を投げる。
- * - `null` ならフィールドごと削除して従来ルール（`resolveStayStart`）に戻す。
- * 他のフィールドは変更しない。存在しない playerId は no-op。
- */
-export function computeSetStayStartOverride(
-  state: GameState,
-  playerId: string,
-  value: number | null,
-): GameState {
-  if (value !== null && (typeof value !== 'number' || !Number.isFinite(value))) {
-    throw new SessionError('みなし開始時刻が不正です', 'invalid-argument');
   }
   return {
     ...state,
     players: state.players.map((p) => {
       if (p.id !== playerId) return p;
-      if (value === null) {
-        const { stayStartOverrideAt: _removed, ...rest } = p;
+      const merged: Player = { ...p, ...safeUpdates, id: p.id };
+      if (offset === null) {
+        // 解除はフィールドごと削除して従来ルール（resolveStayStart）に戻す
+        const { stayStartOffsetMin: _removed, ...withoutOffset } = merged;
         void _removed;
-        return rest;
+        return withoutOffset;
       }
-      return { ...p, stayStartOverrideAt: value };
+      if (offset !== undefined) {
+        merged.stayStartOffsetMin = Math.max(0, Math.round(offset));
+      }
+      return merged;
     }),
   };
 }
@@ -1065,7 +1061,7 @@ export function removePlayer(sessionId: string, playerId: string) {
 export async function updatePlayer(
   sessionId: string,
   playerId: string,
-  updates: Omit<Partial<Player>, 'id'>,
+  updates: PlayerUpdates,
 ): Promise<GameState> {
   const _db = requireDb();
   const ref = doc(_db, 'sessions', sessionId);
@@ -1326,11 +1322,6 @@ export function setGenderBalanceMode(sessionId: string, value: boolean) {
   return mutateGameState(sessionId, (s) =>
     computeSetSetting(s, 'genderBalanceMode', value),
   );
-}
-
-/** みなし開始時刻を設定（数値）・解除（null）する。詳細は computeSetStayStartOverride。 */
-export function setStayStartOverride(sessionId: string, playerId: string, value: number | null) {
-  return mutateGameState(sessionId, (s) => computeSetStayStartOverride(s, playerId, value));
 }
 
 export function setForceBulkAssignment(sessionId: string, value: boolean) {

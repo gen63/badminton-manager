@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { parsePlayerInput } from '../lib/utils';
+import { formatHHMM } from '../lib/practiceEndPhase';
 import {
   describeLateChange,
-  formatStayOverrideTime,
+  formatStayOffsetTime,
   lateMinutes,
-  parseStayOverrideTime,
-  reliefOverrideAt,
+  parseStayOffsetTime,
+  reliefOffsetMin,
+  type ActualStayStart,
 } from '../lib/stayStart';
 
 /** 遅刻救済のクイックボタン（実際の遅刻幅に掛ける比率） */
@@ -24,9 +26,10 @@ export interface PlayerEditSaveValues {
   /** 管理者のときだけ入る（非管理者は undefined ＝触らない） */
   excludeFromOperator?: boolean;
   /**
-   * みなし開始時刻。undefined ＝変更なし（非管理者・未編集）、null ＝解除、数値 ＝設定（epoch ms）
+   * 到着調整（みなし開始時刻を練習開始からの分数で）。undefined ＝変更なし（非管理者・未編集）、
+   * null ＝解除、数値 ＝設定。変更の有無はモーダル側だけで判定する（呼び出し側は比較しない）
    */
-  stayStartOverrideAt?: number | null;
+  stayStartOffsetMin?: number | null;
 }
 
 interface PlayerEditModalProps {
@@ -34,12 +37,12 @@ interface PlayerEditModalProps {
   playerGender?: 'M' | 'F';
   /** 「終了操作の担当外」の現在値（管理者が設定。未設定＝担当） */
   playerExcludeFromOperator?: boolean;
-  /** 現在のみなし開始時刻（epoch ms。未設定は undefined） */
-  playerStayStartOverrideAt?: number;
-  /** 練習開始日時。みなし開始時刻の日付部分と遅刻幅の基準に使う */
+  /** 現在の到着調整（練習開始からの分数。未設定は undefined） */
+  playerStayStartOffsetMin?: number;
+  /** 練習開始日時。分数⇔時刻の変換と遅刻幅の基準。0/未定義なら欄を無効化する */
   practiceStartTime?: number;
-  /** みなしを無視した実際の滞在起点（resolveActualStayStart）。未到着（会費・名簿未完了）は null */
-  actualStayStart?: number | null;
+  /** 到着調整を無視した従来の起点（resolveActualStayStart）。受付完了時刻の表示と遅刻幅に使う */
+  actualStayStart?: ActualStayStart;
   /** 滞在時間モードが ON か（OFF なら「現在は効かない」注記を出す） */
   useStayDurationPriority?: boolean;
   /** 管理者のみ担当トグル・みなし開始時刻を出す */
@@ -53,9 +56,9 @@ export function PlayerEditModal({
   playerName,
   playerGender,
   playerExcludeFromOperator,
-  playerStayStartOverrideAt,
-  practiceStartTime,
-  actualStayStart = null,
+  playerStayStartOffsetMin,
+  practiceStartTime = 0,
+  actualStayStart = { status: 'notArrived' },
   useStayDurationPriority = false,
   isAdmin = false,
   existingNames,
@@ -66,20 +69,28 @@ export function PlayerEditModal({
   const [gender, setGender] = useState<'M' | 'F' | undefined>(playerGender);
   // 画面上は肯定形（ON＝担当）。保存時に excludeFromOperator（OFF→true）へ反転する
   const [isOperator, setIsOperator] = useState(playerExcludeFromOperator !== true);
-  // みなし開始時刻（HH:MM）。空文字＝未設定
-  const initialOverrideTime = formatStayOverrideTime(playerStayStartOverrideAt);
+  // 練習開始時刻が無い古いセッションでは到着調整は効かない（resolveStayStart も無視する）ので欄を無効化
+  const hasPracticeStart = practiceStartTime > 0;
+  // みなし開始時刻（HH:MM）。空文字＝未設定。表示は練習開始＋分数
+  const initialOverrideTime = formatStayOffsetTime(playerStayStartOffsetMin, practiceStartTime);
   const [overrideTime, setOverrideTime] = useState(initialOverrideTime);
   const [error, setError] = useState('');
 
-  // 遅刻幅の推移（入力中にリアルタイム更新）。練習開始時刻が無いセッションでは出さない
-  const hasPracticeStart = practiceStartTime !== undefined && practiceStartTime > 0;
+  // 遅刻幅の推移（入力中にリアルタイム更新）。受付完了時刻が分かる人だけ「現状」を出す
   const actualLate =
-    hasPracticeStart && actualStayStart !== null ? lateMinutes(actualStayStart, practiceStartTime) : null;
-  const overrideMs = overrideTime === '' ? null : parseStayOverrideTime(overrideTime, practiceStartTime);
-  const overrideLate = hasPracticeStart && overrideMs !== null ? lateMinutes(overrideMs, practiceStartTime) : null;
+    hasPracticeStart && actualStayStart.status === 'known'
+      ? lateMinutes(actualStayStart.start, practiceStartTime)
+      : null;
+  const overrideLate = overrideTime === '' ? null : parseStayOffsetTime(overrideTime, practiceStartTime);
   const lateText = hasPracticeStart ? describeLateChange(actualLate, overrideLate) : '';
-  // 救済ボタンは実際に遅刻して到着済みの人だけ
-  const showRelief = hasPracticeStart && actualStayStart !== null && actualLate !== null && actualLate > 0;
+  // 救済ボタンは受付完了時刻が分かり、実際に遅刻している人だけ
+  const showRelief = actualLate !== null && actualLate > 0;
+  const arrivalText =
+    actualStayStart.status === 'notArrived'
+      ? '未到着'
+      : actualStayStart.status === 'unknown'
+        ? '受付完了 不明'
+        : `受付完了 ${formatHHMM(actualStayStart.start)}`;
 
   const handleSave = () => {
     const parsed = parsePlayerInput(name);
@@ -95,17 +106,17 @@ export function PlayerEditModal({
     const values: PlayerEditSaveValues = { name: parsedName, gender: parsedGender ?? gender, rating };
     if (isAdmin) {
       values.excludeFromOperator = !isOperator;
-      // 表示上の時刻が変わっていなければ触らない（秒単位の元の値を保つ）
-      if (overrideTime !== initialOverrideTime) {
+      // 変更の有無はここだけで判定する（表示上の時刻が変わっていなければ undefined＝触らない）
+      if (hasPracticeStart && overrideTime !== initialOverrideTime) {
         if (overrideTime === '') {
-          values.stayStartOverrideAt = null;
+          values.stayStartOffsetMin = null;
         } else {
-          const ms = parseStayOverrideTime(overrideTime, practiceStartTime);
-          if (ms === null) {
+          const offset = parseStayOffsetTime(overrideTime, practiceStartTime);
+          if (offset === null) {
             setError('みなし開始時刻の形式が正しくありません');
             return;
           }
-          values.stayStartOverrideAt = ms;
+          values.stayStartOffsetMin = offset;
         }
       }
     }
@@ -207,8 +218,8 @@ export function PlayerEditModal({
             <div>
               <div className="flex items-baseline justify-between gap-2">
                 <label className="label" htmlFor="stay-start-override">みなし開始時刻</label>
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {actualStayStart !== null ? `実際の到着 ${formatStayOverrideTime(actualStayStart)}` : '未到着'}
+                <span className="text-xs text-muted-foreground tabular-nums" title="会費・名簿が両方完了した時刻">
+                  {arrivalText}
                 </span>
               </div>
               <div className="flex gap-2">
@@ -217,12 +228,13 @@ export function PlayerEditModal({
                   type="time"
                   value={overrideTime}
                   onChange={(e) => { setOverrideTime(e.target.value); setError(''); }}
-                  className="input-field flex-1 min-w-0"
+                  disabled={!hasPracticeStart}
+                  className="input-field flex-1 min-w-0 disabled:opacity-50"
                 />
                 <button
                   type="button"
                   onClick={() => { setOverrideTime(''); setError(''); }}
-                  disabled={overrideTime === ''}
+                  disabled={!hasPracticeStart || overrideTime === ''}
                   className="btn-secondary px-4 disabled:opacity-50"
                 >
                   解除
@@ -231,7 +243,7 @@ export function PlayerEditModal({
               {lateText && (
                 <p className="text-xs text-foreground mt-1 tabular-nums">
                   {lateText}
-                  {actualStayStart === null && (
+                  {actualStayStart.status === 'notArrived' && (
                     <span className="text-muted-foreground">（到着（会費・名簿完了）後に有効）</span>
                   )}
                 </p>
@@ -243,7 +255,7 @@ export function PlayerEditModal({
                       key={label}
                       type="button"
                       onClick={() => {
-                        setOverrideTime(formatStayOverrideTime(reliefOverrideAt(actualStayStart, practiceStartTime, ratio)));
+                        setOverrideTime(formatStayOffsetTime(reliefOffsetMin(actualLate, ratio), practiceStartTime));
                         setError('');
                       }}
                       className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
@@ -256,7 +268,12 @@ export function PlayerEditModal({
               <p className="text-xs text-muted-foreground mt-1">
                 滞在時間モードの公平計算で、この時刻から参加していたとみなします（遅刻連絡ありは早く、体調不良などは遅く）
               </p>
-              {!useStayDurationPriority && (
+              {!hasPracticeStart && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  ※練習開始時刻が未設定のため使えません
+                </p>
+              )}
+              {hasPracticeStart && !useStayDurationPriority && (
                 <p className="text-xs text-muted-foreground mt-1">
                   ※現在は回数平均モードのため効きません（滞在時間モードで有効）
                 </p>

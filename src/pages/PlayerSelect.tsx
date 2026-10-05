@@ -20,7 +20,8 @@ import { computeGamesStats, formatMedian, formatStayMinutes, type GameSortMode }
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
 import { PlayerEditModal, type PlayerEditSaveValues } from '../components/PlayerEditModal';
-import { resolveActualStayStart } from '../lib/stayStart';
+import { resolveActualStayStart, type ActualStayStart } from '../lib/stayStart';
+import type { PlayerUpdates } from '../services/sessionMutations';
 import type { Player } from '../types/player';
 
 /**
@@ -53,7 +54,7 @@ export function PlayerSelect() {
     await writer.toggleOperationStatus(playerId, 'payment');
   });
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number; isPaid: boolean } | null>(null);
-  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean; stayStartOverrideAt?: number; actualStayStart: number | null } | null>(null);
+  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean; stayStartOffsetMin?: number; actualStayStart: ActualStayStart } | null>(null);
   // アコーディオンの開閉。null = ユーザー未操作（自動判定に委ねる）。
   // 未操作なら全員完了時に自動で開き、それ以外は既定で閉じる。ユーザーが一度
   // タップしたらその選択（override）を優先し、以降は allComplete の変化で
@@ -112,8 +113,8 @@ export function PlayerSelect() {
       name: player.name,
       gender: player.gender,
       excludeFromOperator: player.excludeFromOperator,
-      stayStartOverrideAt: player.stayStartOverrideAt,
-      // みなしを無視した実際の起点（モーダルの「実際の到着」と遅刻幅の表示用）。
+      stayStartOffsetMin: player.stayStartOffsetMin,
+      // 到着調整を無視した従来の起点（モーダルの「受付完了」と遅刻幅の表示用）。
       // now は画面表示時に固定した値（usePlayerGameStats）。activatedAt 欠損時のフォールバックにしか効かない
       actualStayStart: resolveActualStayStart(player, session?.config?.practiceStartTime ?? 0, now),
     });
@@ -124,26 +125,19 @@ export function PlayerSelect() {
     gender,
     rating,
     excludeFromOperator,
-    stayStartOverrideAt,
+    stayStartOffsetMin,
   }: PlayerEditSaveValues) => {
     if (!editModalPlayer) return;
     const oldName = editModalPlayer.name;
-    const updates: { name: string; gender?: 'M' | 'F'; rating?: number; excludeFromOperator?: boolean } = { name, gender };
+    const updates: PlayerUpdates = { name, gender };
     if (rating !== undefined) updates.rating = rating;
     // 担当外は管理者だけが変えられる（非管理者にはトグルが出ないので値を触らない）。
     // OFF は false を書く（undefined は sanitize で落ちて更新されないため）
     if (isAdmin && excludeFromOperator !== undefined) updates.excludeFromOperator = excludeFromOperator;
+    // 到着調整も管理者だけ。変更の有無はモーダルが判定済み（undefined＝変更なし / null＝解除 / 数値＝設定）。
+    // 名前などと同じ1回の transaction で書き込む
+    if (isAdmin && stayStartOffsetMin !== undefined) updates.stayStartOffsetMin = stayStartOffsetMin;
     const result = await writer.updatePlayer(editModalPlayer.id, updates);
-    // みなし開始時刻も管理者だけ。値が変わったときだけ、検証付きの専用 mutation で設定・解除する
-    // （null ＝フィールド削除）。名前等の更新が失敗したときは書かない
-    if (
-      result &&
-      isAdmin &&
-      stayStartOverrideAt !== undefined &&
-      (stayStartOverrideAt ?? undefined) !== editModalPlayer.stayStartOverrideAt
-    ) {
-      await writer.setStayStartOverride(editModalPlayer.id, stayStartOverrideAt);
-    }
     // 自己 rename の場合は localStorage の currentUser を新名へ追従させる。
     // sessionMutations.updatePlayer は createdBy / admins / participants を新名に
     // 書き換えるため、currentUser だけ旧名のまま残ると isCreator/isAdmin /
@@ -420,7 +414,7 @@ export function PlayerSelect() {
           playerName={editModalPlayer.name}
           playerGender={editModalPlayer.gender}
           playerExcludeFromOperator={editModalPlayer.excludeFromOperator}
-          playerStayStartOverrideAt={editModalPlayer.stayStartOverrideAt}
+          playerStayStartOffsetMin={editModalPlayer.stayStartOffsetMin}
           actualStayStart={editModalPlayer.actualStayStart}
           practiceStartTime={session?.config?.practiceStartTime}
           useStayDurationPriority={useStayDurationPriority}

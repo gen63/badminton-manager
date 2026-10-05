@@ -89,11 +89,17 @@ describe('computeExpectedGames', () => {
     expect(r.get('c')).toEqual({ expected: null, diff: null });
   });
 
-  it('みなし開始時刻が期待試合数に反映され、overridden 目印が付く', () => {
-    // a: 実際120分、b: 実際30分だが みなし 90分前開始 → 滞在 120:90
+  it('練習開始時刻が無い（0）セッションでは到着調整を無視し、目印も付かない', () => {
+    const ps = [{ ...mk('b', 3, true, now - 30 * MIN), stayStartOffsetMin: 0 }];
+    const stay = computeStayStats(ps, 0, now);
+    expect(stay.byId.get('b')).toEqual({ complete: true, minutes: 30, percent: 100 });
+  });
+
+  it('到着調整が期待試合数に反映され、overridden 目印が付く', () => {
+    // a: 実際120分、b: 実際30分だが 到着調整で練習開始+30分（＝90分前）開始 → 滞在 120:90
     const ps = [
       mk('a', 4, true, start),
-      { ...mk('b', 3, true, now - 30 * MIN), stayStartOverrideAt: now - 90 * MIN },
+      { ...mk('b', 3, true, now - 30 * MIN), stayStartOffsetMin: 30 },
     ];
     const stay = computeStayStats(ps, start, now);
     expect(stay.byId.get('b')).toEqual({ complete: true, minutes: 90, percent: 75, overridden: true });

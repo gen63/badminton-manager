@@ -30,7 +30,6 @@ import {
   computeAddPlayers,
   computeRemovePlayer,
   computeUpdatePlayer,
-  computeSetStayStartOverride,
   computeToggleRest,
   computeToggleOperationStatus,
   computeApplyPayment,
@@ -234,45 +233,48 @@ describe('sessionMutations - players', () => {
     expect(off.players[0].excludeFromOperator).toBe(false);
   });
 
-  describe('computeSetStayStartOverride', () => {
+  describe('computeUpdatePlayer: 到着調整（stayStartOffsetMin）', () => {
     const opsDone = { payment: true, roster: true, checkin: false };
 
-    it('数値を設定し、他のフィールドと他のプレイヤーは保持する', () => {
+    it('名前などと同時に設定でき、他のフィールドと他のプレイヤーは保持する', () => {
       const state = baseState({
         players: [
           makePlayer('a', { name: 'Alice', gamesPlayed: 3, operationStatus: opsDone, opsCompletedAt: 500 }),
           makePlayer('b', { name: 'Bob' }),
         ],
       });
-      const next = computeSetStayStartOverride(state, 'a', 1234);
-      expect(next.players[0]).toEqual({ ...state.players[0], stayStartOverrideAt: 1234 });
+      const next = computeUpdatePlayer(state, 'a', { name: 'Alice2', stayStartOffsetMin: 20 });
+      expect(next.players[0]).toEqual({ ...state.players[0], name: 'Alice2', stayStartOffsetMin: 20 });
       expect(next.players[1]).toBe(state.players[1]);
     });
 
     it('null で解除するとフィールド自体が消える（他のフィールドは保持）', () => {
       const state = baseState({
-        players: [makePlayer('a', { name: 'Alice', gamesPlayed: 2, stayStartOverrideAt: 1234 })],
+        players: [makePlayer('a', { name: 'Alice', gamesPlayed: 2, stayStartOffsetMin: 15 })],
       });
-      const next = computeSetStayStartOverride(state, 'a', null);
-      expect('stayStartOverrideAt' in next.players[0]).toBe(false);
+      const next = computeUpdatePlayer(state, 'a', { name: 'Alice', stayStartOffsetMin: null });
+      expect('stayStartOffsetMin' in next.players[0]).toBe(false);
       expect(next.players[0]).toMatchObject({ name: 'Alice', gamesPlayed: 2 });
     });
 
-    it('既存の値を上書きできる', () => {
-      const state = baseState({ players: [makePlayer('a', { stayStartOverrideAt: 1 })] });
-      expect(computeSetStayStartOverride(state, 'a', 2).players[0].stayStartOverrideAt).toBe(2);
+    it('省略（undefined）なら既存の値を変えない', () => {
+      const state = baseState({ players: [makePlayer('a', { stayStartOffsetMin: 15 })] });
+      expect(computeUpdatePlayer(state, 'a', { gender: 'M' }).players[0].stayStartOffsetMin).toBe(15);
+    });
+
+    it('上書きでき、整数に丸め・負の値は 0 にする', () => {
+      const state = baseState({ players: [makePlayer('a', { stayStartOffsetMin: 1 })] });
+      expect(computeUpdatePlayer(state, 'a', { stayStartOffsetMin: 12.6 }).players[0].stayStartOffsetMin).toBe(13);
+      expect(computeUpdatePlayer(state, 'a', { stayStartOffsetMin: -5 }).players[0].stayStartOffsetMin).toBe(0);
     });
 
     it('有限でない値は SessionError を投げる', () => {
       const state = baseState({ players: [makePlayer('a')] });
-      expect(() => computeSetStayStartOverride(state, 'a', NaN)).toThrow(SessionError);
-      expect(() => computeSetStayStartOverride(state, 'a', Infinity)).toThrow(SessionError);
-      expect(() => computeSetStayStartOverride(state, 'a', '100' as unknown as number)).toThrow(SessionError);
-    });
-
-    it('存在しない playerId は何も変えない', () => {
-      const state = baseState({ players: [makePlayer('a')] });
-      expect(computeSetStayStartOverride(state, 'zzz', 100).players).toEqual(state.players);
+      expect(() => computeUpdatePlayer(state, 'a', { stayStartOffsetMin: NaN })).toThrow(SessionError);
+      expect(() => computeUpdatePlayer(state, 'a', { stayStartOffsetMin: Infinity })).toThrow(SessionError);
+      expect(() =>
+        computeUpdatePlayer(state, 'a', { stayStartOffsetMin: '10' as unknown as number }),
+      ).toThrow(SessionError);
     });
   });
 
@@ -2174,6 +2176,24 @@ describe('sessionMutations - updatePlayer wrapper (rename sync)', () => {
     expect(updateArgs.admins).toEqual(['Alice2']);
     expect(updateArgs.createdBy).toBe('Alice2');
     expect(updateArgs.gameState.players[0].name).toBe('Alice2');
+  });
+
+  it('名前変更と到着調整の解除を1回の transaction で書き込む', async () => {
+    const state = baseState({ players: [makePlayer('p1', { name: 'Alice', stayStartOffsetMin: 20 })] });
+    mockTransactionGet.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ gameState: state, participants: ['Alice'] }),
+      ref: { __docRef: true },
+    });
+
+    await updatePlayer('s', 'p1', { name: 'Alice2', stayStartOffsetMin: null });
+
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
+    const updateArgs = mockTransactionUpdate.mock.calls[0][1];
+    expect(updateArgs.participants).toEqual(['Alice2']);
+    expect(updateArgs.gameState.players[0].name).toBe('Alice2');
+    expect('stayStartOffsetMin' in updateArgs.gameState.players[0]).toBe(false);
   });
 
   it('名前未変更時: session レベルのフィールドを書き換えない', async () => {

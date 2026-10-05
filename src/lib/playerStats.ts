@@ -1,5 +1,5 @@
 import type { Player } from '../types/player';
-import { resolveStayStart } from './stayStart';
+import { isStayStartAdjusted, resolveStayStart } from './stayStart';
 
 export interface GamesStats {
   max: number;
@@ -28,7 +28,7 @@ export interface StayInfo {
   minutes: number;
   /** 最長滞在者を100%とした割合（整数%）。最大滞在が0なら null */
   percent: number | null;
-  /** 管理者が「みなし開始時刻」(`stayStartOverrideAt`) を設定しているなら true（未設定は undefined） */
+  /** 管理者の到着調整（`stayStartOffsetMin`）が実際に起点を変えているなら true（効いていなければ undefined） */
   overridden?: boolean;
 }
 
@@ -53,7 +53,7 @@ export function computeStayStats(
       id: p.id,
       complete,
       minutes: Math.max(0, (effectiveNow - start) / 60000),
-      overridden: p.stayStartOverrideAt !== undefined,
+      overridden: isStayStartAdjusted(p, practiceStartTime, effectiveNow),
     };
   });
   const maxMinutes = raw.reduce((m, r) => Math.max(m, r.minutes), 0);
