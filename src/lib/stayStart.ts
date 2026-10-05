@@ -129,3 +129,35 @@ export function describeLateChange(actualLate: number | null, overrideLate: numb
   const diffText = diff === 0 ? '±0分' : `${diff > 0 ? '+' : '-'}${Math.abs(diff)}分`;
   return `遅刻 ${actualLate}分 → ${overrideLate}分（${diffText}）`;
 }
+
+/**
+ * 控えめ（遅れて来たとみなす）クイックボタン用。到着調整 = 実際の遅刻分 + `addMin` 分。
+ * 実際の起点を基準に計算するので、何度押しても累積しない。
+ * 調整後の開始が練習終了時刻（`practiceEndTime`、> 0 のとき）以降になる場合は滞在が 0 になり
+ * 意味がないため `disabled: true`（ボタンを無効化する）。
+ */
+export function restrainOffsetOption(
+  actualLateMin: number,
+  addMin: number,
+  practiceStartTime: number,
+  practiceEndTime?: number,
+): { offsetMin: number; disabled: boolean } {
+  const offsetMin = Math.max(0, actualLateMin) + addMin;
+  const disabled =
+    practiceEndTime !== undefined && practiceEndTime > 0 && practiceStartTime + offsetMin * 60000 >= practiceEndTime;
+  return { offsetMin, disabled };
+}
+
+/** 遅刻幅の変化の効果（縮んだ＝救済 / 増えた＝控えめ / 変化なし・未入力は null） */
+export type LateChangeEffect = 'easier' | 'restrained' | null;
+
+export function lateChangeEffect(actualLate: number | null, overrideLate: number | null): LateChangeEffect {
+  if (actualLate === null || overrideLate === null || actualLate === overrideLate) return null;
+  return overrideLate < actualLate ? 'easier' : 'restrained';
+}
+
+/** 効果の一言注記（null は出さない） */
+export const LATE_CHANGE_EFFECT_TEXT: Record<Exclude<LateChangeEffect, null>, string> = {
+  easier: '→ 試合に入りやすくなります',
+  restrained: '→ 試合数が控えめになります',
+};

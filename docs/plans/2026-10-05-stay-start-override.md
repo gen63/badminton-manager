@@ -75,6 +75,24 @@ stayStartOffsetMin?: number; // 到着調整（みなし開始時刻）を「練
   到着調整が**実際に効いている**人（`StayInfo.overridden` ＝ `isStayStartAdjusted`）に
   小さな「到着調整」バッジ（`bg-primary/10 text-primary`）を全員向けに出す。
 
+### 5. 追記: 控えめ（遅れて来たとみなす）パターンの UI
+
+時間どおりに来た人にも「遅く来たことにする」操作を時刻計算なしでできるようにする。
+
+- クイックボタンを2グループに分け、それぞれ text-xs のラベルを付ける:
+  - **救済（遅刻幅を縮める）** `1/2` / `1/3` / `0`: 受付完了が known で実際に遅刻している人だけ。
+  - **控えめ（遅れて来たとみなす）** `+15分` / `+30分` / `+60分`: 受付完了が known の人なら遅刻の有無にかかわらず。
+    到着調整 = 実際の遅刻分 + N分（`restrainOffsetOption`。実際の起点基準なので押し直しても累積しない）。
+    調整後の開始が練習終了時刻（`resolvePracticeEndTime`）以降になるボタンは**無効化**する
+    （頭打ちにすると +30 と +60 が同じ値になって紛らわしく、滞在0は「控えめ」の範囲を超えるため）。
+- 遅刻幅の推移の下に効果の一言（`lateChangeEffect` / `LATE_CHANGE_EFFECT_TEXT`）:
+  縮んだ `→ 試合に入りやすくなります`（`text-primary`）、増えた `→ 試合数が控えめになります`（`text-muted-foreground`）。
+  変化なし・未入力・受付完了時刻なしは出さない。
+- 説明文:「遅刻連絡のあった人は早めに（救済）、体調不良などで控えめにしたい人は遅めに設定します。
+  滞在時間モードの公平計算にだけ使います。」
+- テスト: `stayStart.test.ts` に `restrainOffsetOption`（加算・非累積・終了時刻で無効・終了なし）と
+  `lateChangeEffect` / 文言。
+
 ## 変更ファイル
 
 - `src/types/player.ts` — `stayStartOffsetMin` 追加

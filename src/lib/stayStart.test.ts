@@ -4,6 +4,9 @@ import {
   describeLateChange,
   formatStayOffsetTime,
   isStayStartAdjusted,
+  LATE_CHANGE_EFFECT_TEXT,
+  lateChangeEffect,
+  restrainOffsetOption,
   lateMinutes,
   parseStayOffsetTime,
   reliefOffsetMin,
@@ -188,5 +191,38 @@ describe('describeLateChange', () => {
   it('受付完了時刻が無い場合は調整側だけ / どちらもなければ空', () => {
     expect(describeLateChange(null, 20)).toBe('みなし遅刻 20分');
     expect(describeLateChange(null, null)).toBe('');
+  });
+});
+
+describe('restrainOffsetOption（控えめボタン）', () => {
+  const END = START + 180 * MIN; // 22:00 終了
+  it('実際の遅刻分 + N分（定刻の人は N分）', () => {
+    expect(restrainOffsetOption(0, 30, START, END)).toEqual({ offsetMin: 30, disabled: false });
+    expect(restrainOffsetOption(20, 15, START, END)).toEqual({ offsetMin: 35, disabled: false });
+  });
+  it('実際の起点基準なので何度計算しても累積しない', () => {
+    const first = restrainOffsetOption(10, 30, START, END);
+    expect(restrainOffsetOption(10, 30, START, END)).toEqual(first);
+  });
+  it('練習終了時刻以降になるなら無効', () => {
+    expect(restrainOffsetOption(150, 30, START, END)).toEqual({ offsetMin: 180, disabled: true });
+    expect(restrainOffsetOption(150, 15, START, END).disabled).toBe(false);
+  });
+  it('練習終了時刻が無ければ無効にしない', () => {
+    expect(restrainOffsetOption(500, 60, START, undefined).disabled).toBe(false);
+  });
+});
+
+describe('lateChangeEffect / LATE_CHANGE_EFFECT_TEXT', () => {
+  it('縮んだら easier、増えたら restrained', () => {
+    expect(lateChangeEffect(40, 20)).toBe('easier');
+    expect(lateChangeEffect(0, 30)).toBe('restrained');
+    expect(LATE_CHANGE_EFFECT_TEXT.easier).toBe('→ 試合に入りやすくなります');
+    expect(LATE_CHANGE_EFFECT_TEXT.restrained).toBe('→ 試合数が控えめになります');
+  });
+  it('変化なし・未入力・受付完了時刻なしは null', () => {
+    expect(lateChangeEffect(15, 15)).toBeNull();
+    expect(lateChangeEffect(15, null)).toBeNull();
+    expect(lateChangeEffect(null, 20)).toBeNull();
   });
 });

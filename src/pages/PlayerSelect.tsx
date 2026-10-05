@@ -21,6 +21,7 @@ import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
 import { PlayerEditModal, type PlayerEditSaveValues } from '../components/PlayerEditModal';
 import { resolveActualStayStart, type ActualStayStart } from '../lib/stayStart';
+import { resolvePracticeEndTime } from '../lib/practiceEndPhase';
 import type { PlayerUpdates } from '../services/sessionMutations';
 import type { Player } from '../types/player';
 
@@ -417,6 +418,7 @@ export function PlayerSelect() {
           playerStayStartOffsetMin={editModalPlayer.stayStartOffsetMin}
           actualStayStart={editModalPlayer.actualStayStart}
           practiceStartTime={session?.config?.practiceStartTime}
+          practiceEndTime={resolvePracticeEndTime(session?.config)}
           useStayDurationPriority={useStayDurationPriority}
           isAdmin={isAdmin}
           existingNames={players.filter(p => p.id !== editModalPlayer.id).map(p => p.name)}

@@ -5,6 +5,9 @@ import { formatHHMM } from '../lib/practiceEndPhase';
 import {
   describeLateChange,
   formatStayOffsetTime,
+  LATE_CHANGE_EFFECT_TEXT,
+  lateChangeEffect,
+  restrainOffsetOption,
   lateMinutes,
   parseStayOffsetTime,
   reliefOffsetMin,
@@ -13,10 +16,16 @@ import {
 
 /** 遅刻救済のクイックボタン（実際の遅刻幅に掛ける比率） */
 const RELIEF_OPTIONS: { label: string; ratio: number }[] = [
-  { label: '遅刻幅 1/2', ratio: 1 / 2 },
+  { label: '1/2', ratio: 1 / 2 },
   { label: '1/3', ratio: 1 / 3 },
-  { label: '0（遅刻なしとみなす）', ratio: 0 },
+  { label: '0', ratio: 0 },
 ];
+
+/** 控えめのクイックボタン（実際の遅刻分に足す分数） */
+const RESTRAIN_OPTIONS = [15, 30, 60];
+
+const QUICK_BUTTON_CLASS =
+  'px-2.5 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50 disabled:hover:bg-muted';
 
 /** 保存時に呼び出し側へ渡す値 */
 export interface PlayerEditSaveValues {
@@ -41,6 +50,8 @@ interface PlayerEditModalProps {
   playerStayStartOffsetMin?: number;
   /** 練習開始日時。分数⇔時刻の変換と遅刻幅の基準。0/未定義なら欄を無効化する */
   practiceStartTime?: number;
+  /** 練習終了日時（resolvePracticeEndTime）。控えめボタンで終了以降になるものは無効化する */
+  practiceEndTime?: number;
   /** 到着調整を無視した従来の起点（resolveActualStayStart）。受付完了時刻の表示と遅刻幅に使う */
   actualStayStart?: ActualStayStart;
   /** 滞在時間モードが ON か（OFF なら「現在は効かない」注記を出す） */
@@ -58,6 +69,7 @@ export function PlayerEditModal({
   playerExcludeFromOperator,
   playerStayStartOffsetMin,
   practiceStartTime = 0,
+  practiceEndTime,
   actualStayStart = { status: 'notArrived' },
   useStayDurationPriority = false,
   isAdmin = false,
@@ -85,6 +97,13 @@ export function PlayerEditModal({
   const lateText = hasPracticeStart ? describeLateChange(actualLate, overrideLate) : '';
   // 救済ボタンは受付完了時刻が分かり、実際に遅刻している人だけ
   const showRelief = actualLate !== null && actualLate > 0;
+  // 控えめボタンは受付完了時刻が分かる人なら遅刻の有無にかかわらず出す
+  const showRestrain = actualLate !== null;
+  const effect = lateChangeEffect(actualLate, overrideLate);
+  const pickOffset = (offsetMin: number) => {
+    setOverrideTime(formatStayOffsetTime(offsetMin, practiceStartTime));
+    setError('');
+  };
   const arrivalText =
     actualStayStart.status === 'notArrived'
       ? '未到着'
@@ -248,25 +267,57 @@ export function PlayerEditModal({
                   )}
                 </p>
               )}
+              {effect && (
+                <p className={`text-xs mt-0.5 ${effect === 'easier' ? 'text-primary' : 'text-muted-foreground'}`}>
+                  {LATE_CHANGE_EFFECT_TEXT[effect]}
+                </p>
+              )}
               {showRelief && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {RELIEF_OPTIONS.map(({ label, ratio }) => (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => {
-                        setOverrideTime(formatStayOffsetTime(reliefOffsetMin(actualLate, ratio), practiceStartTime));
-                        setError('');
-                      }}
-                      className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <div className="mt-2">
+                  <p className="text-xs text-muted-foreground mb-1">救済（遅刻幅を縮める）</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {RELIEF_OPTIONS.map(({ label, ratio }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => pickOffset(reliefOffsetMin(actualLate, ratio))}
+                        className={QUICK_BUTTON_CLASS}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
-              <p className="text-xs text-muted-foreground mt-1">
-                滞在時間モードの公平計算で、この時刻から参加していたとみなします（遅刻連絡ありは早く、体調不良などは遅く）
+              {showRestrain && (
+                <div className="mt-2">
+                  <p className="text-xs text-muted-foreground mb-1">控えめ（遅れて来たとみなす）</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {RESTRAIN_OPTIONS.map((addMin) => {
+                      const { offsetMin, disabled } = restrainOffsetOption(
+                        actualLate,
+                        addMin,
+                        practiceStartTime,
+                        practiceEndTime,
+                      );
+                      return (
+                        <button
+                          key={addMin}
+                          type="button"
+                          disabled={disabled}
+                          title={disabled ? '練習終了時刻を超えるため選べません' : undefined}
+                          onClick={() => pickOffset(offsetMin)}
+                          className={QUICK_BUTTON_CLASS}
+                        >
+                          +{addMin}分
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                遅刻連絡のあった人は早めに（救済）、体調不良などで控えめにしたい人は遅めに設定します。滞在時間モードの公平計算にだけ使います。
               </p>
               {!hasPracticeStart && (
                 <p className="text-xs text-muted-foreground mt-1">
