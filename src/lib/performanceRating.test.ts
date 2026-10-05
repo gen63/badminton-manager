@@ -705,3 +705,148 @@ describe('estimateStrengthsById', () => {
     expect(estimateStrengthsById(ms)).toEqual(r);
   });
 });
+
+// --- 登録レートを事前分布に使う／スコア差を軽く反映する（docs/plans/2026-10-05-performance-rating-prior-and-score.md） ---
+
+const rated = (name: string, rating?: number): Player => ({ ...makePlayer(name), rating });
+const withRatings = (ratings: Record<string, number | undefined>): Player[] =>
+  Object.entries(ratings).map(([n, r]) => rated(n, r));
+const noRatings = (ratings: Record<string, number | undefined>): Player[] =>
+  Object.keys(ratings).map(makePlayer);
+const scored = (
+  teamA: string[],
+  teamB: string[],
+  scoreA: number,
+  scoreB: number
+): Match => ({
+  ...match(teamA, teamB, scoreA >= scoreB ? 'A' : 'B'),
+  scoreA,
+  scoreB,
+});
+const devOf = (result: ReturnType<typeof computePerformanceRatings>, name: string) =>
+  findPerformance(result, name)!.deviation;
+
+describe('登録レートの事前分布', () => {
+  const ratings = { H: 1800, X: 1400, L1: 1000, L2: 1100, M1: 1300, M2: 1500 };
+  // X は高レートの H と組み、低レートの相手にだけ勝つ（その他は互角の試合）
+  const matches = () => [
+    match(['H', 'X'], ['L1', 'L2'], 'A'),
+    match(['H', 'X'], ['L1', 'L2'], 'A'),
+    match(['H', 'X'], ['L1', 'L2'], 'A'),
+    match(['H', 'M1'], ['M2', 'L1'], 'A'),
+    match(['M2', 'L2'], ['M1', 'L1'], 'A'),
+    match(['M1', 'L2'], ['M2', 'L1'], 'B'),
+  ];
+
+  it('高レートの味方と組み低レートの相手に勝った人は、レート情報なしより偏差値が低い', () => {
+    const ms = matches();
+    const withPrior = computePerformanceRatings(ms, withRatings(ratings));
+    const without = computePerformanceRatings(ms, noRatings(ratings));
+    expect(devOf(withPrior, 'X')).toBeLessThan(devOf(without, 'X'));
+  });
+
+  it('少数試合の人ほど登録レート順に寄る（試合が無いほど差がレート順）', () => {
+    // 1試合だけ同じ結果の2人: 登録レートが高い方が高く推定される
+    const players = withRatings({ A: 1600, B: 1200, C: 1400, D: 1400 });
+    const result = computePerformanceRatings([match(['A', 'B'], ['C', 'D'], 'A')], players);
+    expect(ratingOf(result, 'A')).toBeGreaterThan(ratingOf(result, 'B'));
+  });
+
+  it('全員同レートなら登録レートなしと同じ結果', () => {
+    const r = { A: 1500, B: 1500, C: 1500, D: 1500, E: 1500 };
+    const ms = [
+      match(['A', 'B'], ['C', 'D'], 'A'),
+      match(['A', 'E'], ['C', 'D'], 'A'),
+      match(['B', 'E'], ['A', 'C'], 'B'),
+    ];
+    const a = computePerformanceRatings(ms, withRatings(r));
+    const b = computePerformanceRatings(ms, noRatings(r));
+    expect(a.players.map((p) => [p.name, p.rating])).toEqual(
+      b.players.map((p) => [p.name, p.rating])
+    );
+  });
+
+  it('レート登録者が1人だけ・0 や未設定のみなら登録レートなしと同じ結果', () => {
+    const r = { A: 1800, B: undefined, C: 0, D: undefined };
+    const ms = [match(['A', 'B'], ['C', 'D'], 'A'), match(['A', 'C'], ['B', 'D'], 'B')];
+    const a = computePerformanceRatings(ms, withRatings(r));
+    const b = computePerformanceRatings(ms, noRatings(r));
+    expect(a.players.map((p) => [p.name, p.rating])).toEqual(
+      b.players.map((p) => [p.name, p.rating])
+    );
+  });
+
+  it('レートの尺度（30〜40 と 1500 台）が違っても、順位関係が同じなら同じ結果になる', () => {
+    const small = { H: 40, X: 34, L1: 30, L2: 31, M1: 33, M2: 36 };
+    const a = computePerformanceRatings(matches(), withRatings(ratings));
+    const b = computePerformanceRatings(matches(), withRatings(small));
+    // 線形変換ではないので厳密一致はしないが、強さの順序は保たれる
+    expect(devOf(b, 'H')).toBeGreaterThan(devOf(b, 'L1'));
+    expect(devOf(a, 'H')).toBeGreaterThan(devOf(a, 'L1'));
+  });
+
+  it('レート差を入れても試合順に依存しない', () => {
+    const ms = matches();
+    const a = computePerformanceRatings(ms, withRatings(ratings));
+    const b = computePerformanceRatings([...ms].reverse(), withRatings(ratings));
+    for (const p of a.players) expect(ratingOf(b, p.name)).toBe(p.rating);
+  });
+
+  it('レート差を入れても偏差値は平均≒50 / 標準偏差≒10', () => {
+    const result = computePerformanceRatings(matches(), withRatings(ratings));
+    const devs = result.players.map((p) => p.deviation);
+    const m = devs.reduce((x, y) => x + y, 0) / devs.length;
+    const sd = Math.sqrt(devs.reduce((s, d) => s + (d - m) ** 2, 0) / devs.length);
+    expect(m).toBeGreaterThan(48);
+    expect(m).toBeLessThan(52);
+    expect(sd).toBeGreaterThan(8);
+    expect(sd).toBeLessThan(12);
+  });
+
+  it('LOO の予想勝率も登録レートを反映する（高レート側が有利）', () => {
+    const ms = [match(['H', 'X'], ['L1', 'L2'], 'B'), match(['M1', 'M2'], ['L1', 'X'], 'A')];
+    const result = computePerformanceRatings(ms, withRatings(ratings));
+    // 1試合目: 高レート側(A)が負けているが、除外して解くと H の事前が効いて A が有利
+    expect(result.matchInsights.get(ms[0].id)!.winProbabilityA).toBeGreaterThan(0.5);
+  });
+});
+
+describe('スコア差の軽い反映', () => {
+  const players = playersOf('A', 'B', 'C', 'D', 'E', 'F');
+  const base = (scoreA: number, scoreB: number) => [
+    scored(['A', 'B'], ['C', 'D'], scoreA, scoreB),
+    match(['E', 'F'], ['C', 'D'], 'A'),
+    match(['A', 'E'], ['B', 'F'], 'B'),
+  ];
+
+  it('21-5 の勝ちは 21-19 の勝ちより偏差値が高い', () => {
+    const big = computePerformanceRatings(base(21, 5), players);
+    const close = computePerformanceRatings(base(21, 19), players);
+    expect(findPerformance(big, 'A')!.rating).toBeGreaterThan(
+      findPerformance(close, 'A')!.rating
+    );
+  });
+
+  it('スコア 0-0 は勝敗のみと同じ（スコア未入力でも勝者がいる場合）', () => {
+    const zero = computePerformanceRatings(
+      [{ ...match(['A', 'B'], ['C', 'D'], 'A'), scoreA: 0, scoreB: 0 }],
+      players
+    );
+    // 勝敗のみ = outcome が 1/0 の従来推定。estimateStrengthsById（勝敗のみ）と同じ向き・大きさ
+    const byId = estimateStrengthsById([
+      { ...match(['A', 'B'], ['C', 'D'], 'A'), scoreA: 0, scoreB: 0 },
+    ]);
+    expect(ratingOf(zero, 'A')).toBe(
+      Math.round(BASE_RATING + byId.get('id-A')!.theta * (400 / Math.LN10))
+    );
+  });
+
+  it('スコアが大差でも勝敗は覆らない（勝者の方が高い）', () => {
+    const result = computePerformanceRatings(
+      [scored(['A', 'B'], ['C', 'D'], 21, 20)],
+      players
+    );
+    expect(ratingOf(result, 'A')).toBeGreaterThan(ratingOf(result, 'C'));
+    expect(findPerformance(result, 'A')!.wins).toBe(1);
+  });
+});
