@@ -27,17 +27,45 @@ import type { Player } from '../types/player';
  *       docs/plans/2026-10-05-stay-start-override.md
  */
 export function resolveStayStart(player: Player, practiceStartTime: number, now: number): number {
-  const opsComplete = player.operationStatus?.payment === true && player.operationStatus?.roster === true;
-  if (!opsComplete) {
+  const actual = resolveActualStayStart(player, practiceStartTime, now);
+  if (actual === null) {
     return now;
   }
   if (player.stayStartOverrideAt !== undefined) {
     return Math.min(now, Math.max(practiceStartTime, player.stayStartOverrideAt));
   }
+  return actual;
+}
+
+/**
+ * みなし開始時刻を無視した、従来ルールでの「実際の」滞在開始時刻（＝実際の到着扱い）。
+ * 会費・名簿のどちらかが未完了なら null（未到着）。
+ * - `opsCompletedAt` あり → `max(practiceStartTime, opsCompletedAt)`
+ * - なし（既存セッション互換）→ `max(practiceStartTime, activatedAt ?? now)`
+ */
+export function resolveActualStayStart(player: Player, practiceStartTime: number, now: number): number | null {
+  const opsComplete = player.operationStatus?.payment === true && player.operationStatus?.roster === true;
+  if (!opsComplete) {
+    return null;
+  }
   if (player.opsCompletedAt !== undefined) {
     return Math.max(practiceStartTime, player.opsCompletedAt);
   }
   return Math.max(practiceStartTime, player.activatedAt ?? now);
+}
+
+/** 練習開始からの遅刻分（分単位で四捨五入、0 以上） */
+export function lateMinutes(start: number, practiceStartTime: number): number {
+  return Math.max(0, Math.round((start - practiceStartTime) / 60000));
+}
+
+/**
+ * 遅刻救済のクイックボタン用。実際の遅刻分に比率を掛けた「みなし開始時刻」を返す
+ * （練習開始 + round(遅刻分 × ratio) 分）。例: ratio=1/2 で遅刻幅を半分、0 で遅刻なしとみなす。
+ */
+export function reliefOverrideAt(actualStart: number, practiceStartTime: number, ratio: number): number {
+  const late = lateMinutes(actualStart, practiceStartTime);
+  return practiceStartTime + Math.round(late * ratio) * 60000;
 }
 
 /** epoch ms → `<input type="time">` 用の `HH:MM`（端末ローカル時刻）。未設定は空文字 */
@@ -64,4 +92,23 @@ export function parseStayOverrideTime(
   const base = new Date(practiceStartTime && practiceStartTime > 0 ? practiceStartTime : fallbackNow);
   base.setHours(h, min, 0, 0);
   return base.getTime();
+}
+
+/**
+ * 編集モーダルに出す遅刻幅の推移の文言。
+ * - 実際のみ: `遅刻 40分` / `遅刻なし`
+ * - 両方: `遅刻 40分 → 20分（-20分）`（みなしの方が遅ければ `+`、同じなら `±0分`）
+ * - みなしのみ（未到着）: `みなし遅刻 20分`
+ * - どちらもなし: 空文字
+ */
+export function describeLateChange(actualLate: number | null, overrideLate: number | null): string {
+  if (actualLate === null) {
+    return overrideLate === null ? '' : `みなし遅刻 ${overrideLate}分`;
+  }
+  if (overrideLate === null) {
+    return actualLate > 0 ? `遅刻 ${actualLate}分` : '遅刻なし';
+  }
+  const diff = overrideLate - actualLate;
+  const diffText = diff === 0 ? '±0分' : `${diff > 0 ? '+' : '-'}${Math.abs(diff)}分`;
+  return `遅刻 ${actualLate}分 → ${overrideLate}分（${diffText}）`;
 }

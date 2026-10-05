@@ -1,7 +1,20 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { parsePlayerInput } from '../lib/utils';
-import { formatStayOverrideTime, parseStayOverrideTime } from '../lib/stayStart';
+import {
+  describeLateChange,
+  formatStayOverrideTime,
+  lateMinutes,
+  parseStayOverrideTime,
+  reliefOverrideAt,
+} from '../lib/stayStart';
+
+/** 遅刻救済のクイックボタン（実際の遅刻幅に掛ける比率） */
+const RELIEF_OPTIONS: { label: string; ratio: number }[] = [
+  { label: '遅刻幅 1/2', ratio: 1 / 2 },
+  { label: '1/3', ratio: 1 / 3 },
+  { label: '0（遅刻なしとみなす）', ratio: 0 },
+];
 
 /** 保存時に呼び出し側へ渡す値 */
 export interface PlayerEditSaveValues {
@@ -23,8 +36,10 @@ interface PlayerEditModalProps {
   playerExcludeFromOperator?: boolean;
   /** 現在のみなし開始時刻（epoch ms。未設定は undefined） */
   playerStayStartOverrideAt?: number;
-  /** 練習開始日時。みなし開始時刻の日付部分に使う */
+  /** 練習開始日時。みなし開始時刻の日付部分と遅刻幅の基準に使う */
   practiceStartTime?: number;
+  /** みなしを無視した実際の滞在起点（resolveActualStayStart）。未到着（会費・名簿未完了）は null */
+  actualStayStart?: number | null;
   /** 滞在時間モードが ON か（OFF なら「現在は効かない」注記を出す） */
   useStayDurationPriority?: boolean;
   /** 管理者のみ担当トグル・みなし開始時刻を出す */
@@ -40,6 +55,7 @@ export function PlayerEditModal({
   playerExcludeFromOperator,
   playerStayStartOverrideAt,
   practiceStartTime,
+  actualStayStart = null,
   useStayDurationPriority = false,
   isAdmin = false,
   existingNames,
@@ -54,6 +70,16 @@ export function PlayerEditModal({
   const initialOverrideTime = formatStayOverrideTime(playerStayStartOverrideAt);
   const [overrideTime, setOverrideTime] = useState(initialOverrideTime);
   const [error, setError] = useState('');
+
+  // 遅刻幅の推移（入力中にリアルタイム更新）。練習開始時刻が無いセッションでは出さない
+  const hasPracticeStart = practiceStartTime !== undefined && practiceStartTime > 0;
+  const actualLate =
+    hasPracticeStart && actualStayStart !== null ? lateMinutes(actualStayStart, practiceStartTime) : null;
+  const overrideMs = overrideTime === '' ? null : parseStayOverrideTime(overrideTime, practiceStartTime);
+  const overrideLate = hasPracticeStart && overrideMs !== null ? lateMinutes(overrideMs, practiceStartTime) : null;
+  const lateText = hasPracticeStart ? describeLateChange(actualLate, overrideLate) : '';
+  // 救済ボタンは実際に遅刻して到着済みの人だけ
+  const showRelief = hasPracticeStart && actualStayStart !== null && actualLate !== null && actualLate > 0;
 
   const handleSave = () => {
     const parsed = parsePlayerInput(name);
@@ -179,7 +205,12 @@ export function PlayerEditModal({
           {/* みなし開始時刻（管理者のみ）。滞在時間モードの公平計算の起点を上書きする */}
           {isAdmin && (
             <div>
-              <label className="label" htmlFor="stay-start-override">みなし開始時刻</label>
+              <div className="flex items-baseline justify-between gap-2">
+                <label className="label" htmlFor="stay-start-override">みなし開始時刻</label>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {actualStayStart !== null ? `実際の到着 ${formatStayOverrideTime(actualStayStart)}` : '未到着'}
+                </span>
+              </div>
               <div className="flex gap-2">
                 <input
                   id="stay-start-override"
@@ -197,8 +228,33 @@ export function PlayerEditModal({
                   解除
                 </button>
               </div>
+              {lateText && (
+                <p className="text-xs text-foreground mt-1 tabular-nums">
+                  {lateText}
+                  {actualStayStart === null && (
+                    <span className="text-muted-foreground">（到着（会費・名簿完了）後に有効）</span>
+                  )}
+                </p>
+              )}
+              {showRelief && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {RELIEF_OPTIONS.map(({ label, ratio }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => {
+                        setOverrideTime(formatStayOverrideTime(reliefOverrideAt(actualStayStart, practiceStartTime, ratio)));
+                        setError('');
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground mt-1">
-                滞在時間モードの公平計算で、この時刻から参加していたとみなします。遅刻連絡があった人は早く、体調不良などで控えめにしたい人は遅く設定
+                滞在時間モードの公平計算で、この時刻から参加していたとみなします（遅刻連絡ありは早く、体調不良などは遅く）
               </p>
               {!useStayDurationPriority && (
                 <p className="text-xs text-muted-foreground mt-1">

@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { Player } from '../types/player';
-import { formatStayOverrideTime, parseStayOverrideTime, resolveStayStart } from './stayStart';
+import {
+  describeLateChange,
+  formatStayOverrideTime,
+  lateMinutes,
+  parseStayOverrideTime,
+  reliefOverrideAt,
+  resolveActualStayStart,
+  resolveStayStart,
+} from './stayStart';
 
 // docs/plans/2026-10-05-stay-start-override.md
 const MIN = 60_000;
@@ -77,5 +85,70 @@ describe('formatStayOverrideTime / parseStayOverrideTime', () => {
     expect(parseStayOverrideTime('', practiceStart)).toBeNull();
     expect(parseStayOverrideTime('25:00', practiceStart)).toBeNull();
     expect(parseStayOverrideTime('abc', practiceStart)).toBeNull();
+  });
+});
+
+describe('resolveActualStayStart', () => {
+  it('みなし開始時刻を無視して従来ルールの起点を返す', () => {
+    expect(resolveActualStayStart(mk({ stayStartOverrideAt: NOW - 150 * MIN }), START, NOW)).toBe(NOW - 60 * MIN);
+  });
+  it('練習開始より前の完了は練習開始で頭打ち', () => {
+    expect(resolveActualStayStart(mk({ opsCompletedAt: START - 10 * MIN }), START, NOW)).toBe(START);
+  });
+  it('opsCompletedAt がなければ activatedAt', () => {
+    expect(resolveActualStayStart(mk({ opsCompletedAt: undefined, activatedAt: NOW - 30 * MIN }), START, NOW)).toBe(NOW - 30 * MIN);
+  });
+  it('会費・名簿が未完了なら null（未到着）', () => {
+    const p = mk({ operationStatus: { payment: false, roster: true, checkin: false } });
+    expect(resolveActualStayStart(p, START, NOW)).toBeNull();
+  });
+});
+
+describe('lateMinutes', () => {
+  it('練習開始からの分（四捨五入）', () => {
+    expect(lateMinutes(START + 40 * MIN, START)).toBe(40);
+    expect(lateMinutes(START + 40 * MIN + 31_000, START)).toBe(41);
+    expect(lateMinutes(START + 40 * MIN + 29_000, START)).toBe(40);
+  });
+  it('開始前・定刻は 0', () => {
+    expect(lateMinutes(START, START)).toBe(0);
+    expect(lateMinutes(START - 10 * MIN, START)).toBe(0);
+  });
+});
+
+describe('reliefOverrideAt', () => {
+  const actual = START + 40 * MIN; // 40分遅刻
+  it('1/2 なら遅刻20分のみなし時刻', () => {
+    expect(reliefOverrideAt(actual, START, 1 / 2)).toBe(START + 20 * MIN);
+  });
+  it('1/3 は分単位で四捨五入（40/3=13.3 → 13分）', () => {
+    expect(reliefOverrideAt(actual, START, 1 / 3)).toBe(START + 13 * MIN);
+    expect(reliefOverrideAt(START + 50 * MIN, START, 1 / 3)).toBe(START + 17 * MIN);
+  });
+  it('0 なら練習開始（遅刻なしとみなす）', () => {
+    expect(reliefOverrideAt(actual, START, 0)).toBe(START);
+  });
+  it('遅刻していなければ練習開始', () => {
+    expect(reliefOverrideAt(START, START, 1 / 2)).toBe(START);
+  });
+});
+
+describe('describeLateChange', () => {
+  it('実際のみ', () => {
+    expect(describeLateChange(40, null)).toBe('遅刻 40分');
+    expect(describeLateChange(0, null)).toBe('遅刻なし');
+  });
+  it('救済で短くなる', () => {
+    expect(describeLateChange(40, 20)).toBe('遅刻 40分 → 20分（-20分）');
+  });
+  it('みなしの方が遅い（体調不良など）', () => {
+    expect(describeLateChange(0, 30)).toBe('遅刻 0分 → 30分（+30分）');
+  });
+  it('変化なし', () => {
+    expect(describeLateChange(15, 15)).toBe('遅刻 15分 → 15分（±0分）');
+  });
+  it('未到着はみなし側だけ / どちらもなければ空', () => {
+    expect(describeLateChange(null, 20)).toBe('みなし遅刻 20分');
+    expect(describeLateChange(null, null)).toBe('');
   });
 });

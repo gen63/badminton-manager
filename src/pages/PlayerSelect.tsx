@@ -20,6 +20,8 @@ import { computeGamesStats, formatMedian, formatStayMinutes, type GameSortMode }
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
 import { PlayerEditModal, type PlayerEditSaveValues } from '../components/PlayerEditModal';
+import { resolveActualStayStart } from '../lib/stayStart';
+import type { Player } from '../types/player';
 
 /**
  * 性別バッジの表示色。男=青 / 女=ピンクは `PlayerEditModal`・`ReservationPage` と揃える。
@@ -51,7 +53,7 @@ export function PlayerSelect() {
     await writer.toggleOperationStatus(playerId, 'payment');
   });
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number; isPaid: boolean } | null>(null);
-  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean; stayStartOverrideAt?: number } | null>(null);
+  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean; stayStartOverrideAt?: number; actualStayStart: number | null } | null>(null);
   // アコーディオンの開閉。null = ユーザー未操作（自動判定に委ねる）。
   // 未操作なら全員完了時に自動で開き、それ以外は既定で閉じる。ユーザーが一度
   // タップしたらその選択（override）を優先し、以降は allComplete の変化で
@@ -104,13 +106,16 @@ export function PlayerSelect() {
     await writer.removePlayer(player.id);
   };
 
-  const handleEdit = (player: { id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean; stayStartOverrideAt?: number }) => {
+  const handleEdit = (player: Player) => {
     setEditModalPlayer({
       id: player.id,
       name: player.name,
       gender: player.gender,
       excludeFromOperator: player.excludeFromOperator,
       stayStartOverrideAt: player.stayStartOverrideAt,
+      // みなしを無視した実際の起点（モーダルの「実際の到着」と遅刻幅の表示用）。
+      // now は画面表示時に固定した値（usePlayerGameStats）。activatedAt 欠損時のフォールバックにしか効かない
+      actualStayStart: resolveActualStayStart(player, session?.config?.practiceStartTime ?? 0, now),
     });
   };
 
@@ -416,6 +421,7 @@ export function PlayerSelect() {
           playerGender={editModalPlayer.gender}
           playerExcludeFromOperator={editModalPlayer.excludeFromOperator}
           playerStayStartOverrideAt={editModalPlayer.stayStartOverrideAt}
+          actualStayStart={editModalPlayer.actualStayStart}
           practiceStartTime={session?.config?.practiceStartTime}
           useStayDurationPriority={useStayDurationPriority}
           isAdmin={isAdmin}

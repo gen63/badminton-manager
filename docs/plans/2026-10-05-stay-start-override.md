@@ -60,6 +60,29 @@ stayStartOverrideAt?: number; // 公平計算（滞在時間モード）用の�
   設定済みかつ会費・名簿完了の人に小さな「みなし」バッジ（`bg-primary/10 text-primary`）を出す。
   `StayInfo.overridden` で判定。
 
+### 5. 追記: 実際の到着時刻と遅刻幅の推移の表示・救済ボタン
+
+意図: 事前連絡のうえで遅刻した人を救済する（遅刻幅を 1/2・1/3 にする運用）。
+時間どおりに来た人が一番多く試合に入れる点は変えない。
+
+- `src/lib/stayStart.ts` に純粋関数を追加:
+  - `resolveActualStayStart(player, practiceStartTime, now)` — みなしを無視した従来ルールの起点。
+    会費・名簿未完了は null（未到着）。`resolveStayStart` はこれを使う形にリファクタ（挙動不変）。
+  - `lateMinutes(start, practiceStartTime)` = `max(0, round((start - practiceStartTime) / 60000))`
+  - `reliefOverrideAt(actualStart, practiceStartTime, ratio)` = 練習開始 + `round(実際の遅刻分 × ratio)` 分
+  - `describeLateChange(actualLate, overrideLate)` — 遅刻幅の推移の文言
+- `PlayerEditModal` の「みなし開始時刻」欄:
+  - 見出し行の右端に `実際の到着 19:40`（未完了は `未到着`）。
+  - 入力欄の下に遅刻幅の推移（入力中にリアルタイム更新）:
+    未設定 `遅刻 40分` / `遅刻なし`、入力あり `遅刻 40分 → 20分（-20分）`、
+    みなしの方が遅い `遅刻 0分 → 30分（+30分）`、未到着 `みなし遅刻 20分（到着（会費・名簿完了）後に有効）`。
+  - クイックボタン `遅刻幅 1/2` / `1/3` / `0（遅刻なしとみなす）`。押すと計算したみなし時刻が入力欄に入る（保存は「保存」で）。
+    実際に遅刻していない人・未到着の人には出さない。
+  - 練習開始時刻が無い（0）セッションでは遅刻幅とボタンを出さない。
+- 実際の起点は `PlayerSelect.handleEdit` で `resolveActualStayStart` を計算して props で渡す
+  （now は画面表示時に固定した値。`activatedAt` 欠損時のフォールバックにしか効かない）。
+- テスト: `stayStart.test.ts` に `resolveActualStayStart` / `lateMinutes` / `reliefOverrideAt` / `describeLateChange`。
+
 ## 変更ファイル
 
 - `src/types/player.ts` — `stayStartOverrideAt` 追加
