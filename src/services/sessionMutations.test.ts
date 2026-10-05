@@ -53,6 +53,7 @@ import {
   computeUpdateMatchScore,
   computeAddReservation,
   computeRemoveReservation,
+  computeUpdateReservation,
   computeSetReservationForcePriority,
   computeFulfillReservation,
   computeClearReservations,
@@ -1106,6 +1107,48 @@ describe('sessionMutations - reservations', () => {
     expect(next.players.find((p) => p.id === 'p1')?.activatedAt).toBe(5000);
     // p2 はまだ r2 に居る → 休憩のまま
     expect(next.players.find((p) => p.id === 'p2')?.isResting).toBe(true);
+  });
+
+  it('computeUpdateReservation: メンバー差し替え。追加分は休憩、外した分は待機へ（他予約・プレイ中は据え置き）', () => {
+    const state = baseState({
+      players: [
+        makePlayer('p1', { isResting: true, activatedAt: 0 }),
+        makePlayer('p2', { isResting: true }),
+        makePlayer('p3', { isResting: true }),
+        makePlayer('p4'),
+        makePlayer('p5'),
+      ],
+      courts: [makeCourt(1, { teamA: ['p5', ''], isPlaying: true })],
+      reservations: [
+        { id: 'r1', orderNumber: 3, playerIds: ['p1', 'p2', 'p3'], status: 'pending', createdAt: 0, fulfilledAt: 0, createdBy: 'a', forcePriority: true },
+        { id: 'r2', orderNumber: 4, playerIds: ['p2'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+      ],
+    });
+    const next = computeUpdateReservation(state, 'r1', ['p3', 'p4', 'p5', 'p4'], 5000);
+    expect(next.reservations[0]).toMatchObject({
+      id: 'r1', orderNumber: 3, playerIds: ['p3', 'p4', 'p5'], createdBy: 'a', forcePriority: true, status: 'pending',
+    });
+    const byId = (id: string) => next.players.find((p) => p.id === id);
+    // 外した p1 は待機へ（activatedAt 0 は now で埋める）、p2 は r2 に残るので休憩のまま
+    expect(byId('p1')).toMatchObject({ isResting: false, activatedAt: 5000 });
+    expect(byId('p2')?.isResting).toBe(true);
+    // 追加した p4 は休憩へ、プレイ中の p5 は据え置き
+    expect(byId('p4')?.isResting).toBe(true);
+    expect(byId('p5')?.isResting).toBe(false);
+  });
+
+  it('computeUpdateReservation: 消化済み・存在しない・全無効・変更なしは no-op', () => {
+    const state = baseState({
+      players: [makePlayer('p1'), makePlayer('p2')],
+      reservations: [
+        { id: 'r1', orderNumber: 1, playerIds: ['p1', 'p2'], status: 'pending', createdAt: 0, fulfilledAt: 0 },
+        { id: 'r2', orderNumber: 2, playerIds: ['p1'], status: 'fulfilled', createdAt: 0, fulfilledAt: 1 },
+      ],
+    });
+    expect(computeUpdateReservation(state, 'r2', ['p2'])).toBe(state);
+    expect(computeUpdateReservation(state, 'ghost', ['p2'])).toBe(state);
+    expect(computeUpdateReservation(state, 'r1', ['ghost', ''])).toBe(state);
+    expect(computeUpdateReservation(state, 'r1', ['p1', 'p2'])).toBe(state);
   });
 
   it('computeRemoveReservation', () => {

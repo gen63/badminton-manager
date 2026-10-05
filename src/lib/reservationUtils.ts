@@ -1,4 +1,5 @@
 import type { Player } from '../types/player';
+import type { Reservation } from '../types/reservation';
 
 export type DoublesCategory = '男子ダブルス' | '女子ダブルス' | 'ミックスダブルス' | null;
 
@@ -49,4 +50,18 @@ export function getReservationStatus(
   playersInCourts: Set<string>,
 ): 'ready' | 'waiting' {
   return playerIds.every(id => isPlayerReady(id, players, playersInCourts)) ? 'ready' : 'waiting';
+}
+
+/**
+ * 未消化の予約を編集できるか。予約者本人（createdBy が現在のユーザー名）か、
+ * セッション作成者以上（作成者・開発モード。`isCreator()` の結果）のみ。
+ */
+export function canEditReservation(
+  reservation: Pick<Reservation, 'status' | 'createdBy'>,
+  currentUser: string | null,
+  isCreator: boolean,
+): boolean {
+  if (reservation.status !== 'pending') return false;
+  if (isCreator) return true;
+  return !!currentUser && reservation.createdBy === currentUser;
 }
