@@ -841,6 +841,19 @@ describe('スコア差の軽い反映', () => {
     );
   });
 
+  it('勝者のみ入力のダミースコア（100-99 / 99-100）は勝敗のみ（0-0）と同じ結果', () => {
+    const zero = computePerformanceRatings(base(0, 0), players);
+    const winA = computePerformanceRatings(base(100, 99), players);
+    const dummyB = computePerformanceRatings(
+      [scored(['C', 'D'], ['A', 'B'], 99, 100), ...base(0, 0).slice(1)],
+      players
+    );
+    for (const name of ['A', 'B', 'C', 'D', 'E', 'F']) {
+      expect(ratingOf(winA, name)).toBe(ratingOf(zero, name));
+      expect(ratingOf(dummyB, name)).toBe(ratingOf(zero, name));
+    }
+  });
+
   it('スコアが大差でも勝敗は覆らない（勝者の方が高い）', () => {
     const result = computePerformanceRatings(
       [scored(['A', 'B'], ['C', 'D'], 21, 20)],
@@ -848,5 +861,45 @@ describe('スコア差の軽い反映', () => {
     );
     expect(ratingOf(result, 'A')).toBeGreaterThan(ratingOf(result, 'C'));
     expect(findPerformance(result, 'A')!.wins).toBe(1);
+  });
+});
+
+describe('登録レートの事前分布: ばらつきが小さい／外れ値のとき', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `P${i}`);
+  // 全員が同じ勝敗データ（P0 と P1 が組んで P2,P3 に勝つ。他は互角）
+  const ms = () => [
+    match(['P0', 'P4'], ['P2', 'P3'], 'A'),
+    match(['P1', 'P5'], ['P6', 'P7'], 'A'),
+    match(['P8', 'P9'], ['P10', 'P11'], 'A'),
+    match(['P12', 'P13'], ['P14', 'P15'], 'A'),
+    match(['P16', 'P17'], ['P18', 'P19'], 'A'),
+  ];
+
+  it('1500 が多数＋1510 が1人でも、1510 の人の事前の影響は小さい', () => {
+    // P8 だけ 1510、他は 1500。P8 はデータ上は他の勝者と同じ扱い
+    const r: Record<string, number> = {};
+    for (const n of names) r[n] = n === 'P8' ? 1510 : 1500;
+    const result = computePerformanceRatings(ms(), withRatings(r));
+    const flat = computePerformanceRatings(ms(), noRatings(r));
+    // 同じ勝敗データの 1500 のペア（P9）との差は数十レート以内（下限なしだと +450 級に拡大されていた）。
+    // 偏差値はこの日の差が小さいため数ポイントに見えるが、レート差で見ると十数点。
+    expect(Math.abs(ratingOf(result, 'P8') - ratingOf(result, 'P9'))).toBeLessThan(30);
+    expect(Math.abs(devOf(result, 'P8') - devOf(result, 'P9'))).toBeLessThanOrEqual(8);
+    expect(Math.abs(ratingOf(result, 'P8') - ratingOf(flat, 'P8'))).toBeLessThan(40);
+  });
+
+  it('外れ値は z が ±2.5 で頭打ちになり、極端な値でも結果が変わらない', () => {
+    // 平均・sd が違っても、外れ値が2.5SD を超えるなら事前平均は同じ（クランプ）
+    const make = (outlier: number) => {
+      const r: Record<string, number> = {};
+      for (const n of names) r[n] = 1500;
+      r.P8 = outlier;
+      r.P9 = outlier;
+      return computePerformanceRatings(ms(), withRatings(r));
+    };
+    // 2人が外れ値（20人中）: z = (x-m)/sd = 3 > 2.5。外れ値が 3000 でも 30000 でも同じ
+    const a = make(3000);
+    const b = make(30000);
+    for (const n of names) expect(ratingOf(b, n)).toBe(ratingOf(a, n));
   });
 });

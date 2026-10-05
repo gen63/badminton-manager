@@ -1,6 +1,7 @@
 import type { Match } from '../types/match';
 import type { Player } from '../types/player';
 import { getMatchResultForPlayer } from './matchFilter';
+import { isWinnerOnlyScore } from './winnerOnlyScore';
 
 /**
  * その日のセッション内での「強さ」を、対戦相手・味方の強さを加味して推定する。
@@ -46,6 +47,21 @@ const SCORE_WEIGHT = 0.3;
 /** 登録レートを z 化するのに必要な最小人数と、sd がこれ未満なら差なしとみなす閾値。 */
 const MIN_RATED_PLAYERS = 2;
 const MIN_RATING_SD = 1e-9;
+
+/**
+ * z 化の分母（sd）の下限を「登録レート平均 × この比率」で与える。
+ * 当日の登録者の sd だけで割ると、19人が 1500・1人が 1510 のような微小差が
+ * ±数SD に拡大されて過大な事前平均になる。レートの尺度はセッションごとに違う
+ * （30台も 1500台もある）ので絶対値ではなく平均比とし、5%（1500 なら 75、
+ * 約 0.43θ 相当の差が 1SD）未満のばらつきは「ほぼ差なし」として弱めに扱う。
+ */
+const MIN_RATING_SD_RATIO = 0.05;
+
+/**
+ * z のクランプ幅。下限を設けても外れ値が極端な事前平均にならないよう ±2.5SD で頭打ちにする
+ * （PRIOR_SPREAD=0.6 なら事前平均は最大 ±1.5θ ≒ ±260 レート）。
+ */
+const MAX_PRIOR_Z = 2.5;
 
 /** 人ごとの事前分布（平均と強さ）。 */
 interface Prior {
@@ -242,18 +258,19 @@ function toRatedMatches(matches: Match[], players: Player[]): RatedMatch[] {
 }
 
 /**
- * 勝敗とスコア比を混ぜた結果（チームA視点、0〜1）。スコア合計が 0 以下（未入力）なら勝敗のみ。
+ * 勝敗とスコア比を混ぜた結果（チームA視点、0〜1）。スコア合計が 0 以下（未入力）、
+ * または勝者のみ入力のダミースコア（100-99 / 99-100）なら勝敗のみ。
  */
 function blendOutcome(winnerIsA: boolean, scoreA: number, scoreB: number): number {
   const win = winnerIsA ? 1 : 0;
   const total = scoreA + scoreB;
-  if (!(total > 0)) return win;
+  if (!(total > 0) || isWinnerOnlyScore(scoreA, scoreB)) return win;
   return (1 - SCORE_WEIGHT) * win + SCORE_WEIGHT * (scoreA / total);
 }
 
 /**
  * 登録レート → 事前分布。参加者（names）のうち rating > 0 の人で z 化し、
- * 平均 = PRIOR_SPREAD · z。未レートは平均 0・弱い正則化。
+ * 平均 = PRIOR_SPREAD · z（分母は max(sd, 平均×MIN_RATING_SD_RATIO)、z は ±MAX_PRIOR_Z）。未レートは平均 0・弱い正則化。
  * レート登録者が2人未満、または sd≈0 なら全員レート無し扱い（従来と同じ挙動）。
  */
 function buildPriors(
@@ -271,12 +288,16 @@ function buildPriors(
     sd = Math.sqrt(values.reduce((sum, v) => sum + (v - m) ** 2, 0) / values.length);
   }
   const usable = rated.length >= MIN_RATED_PLAYERS && sd >= MIN_RATING_SD;
+  const sdEff = Math.max(sd, MIN_RATING_SD_RATIO * m);
   for (const n of names) {
     const r = registeredRating.get(n) ?? 0;
     priors.set(
       n,
       usable && r > 0
-        ? { mean: (PRIOR_SPREAD * (r - m)) / sd, strength: RATED_PRIOR_STRENGTH }
+        ? {
+            mean: PRIOR_SPREAD * Math.max(-MAX_PRIOR_Z, Math.min(MAX_PRIOR_Z, (r - m) / sdEff)),
+            strength: RATED_PRIOR_STRENGTH,
+          }
         : { ...none }
     );
   }

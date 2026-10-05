@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { WinnerSelectModal } from './WinnerSelectModal';
+import { WINNER_ONLY_SCORE } from '../lib/winnerOnlyScore';
 import { useGameStore } from '../stores/gameStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSessionStore } from '../stores/sessionStore';
@@ -97,9 +98,19 @@ export function UnrecordedMatchPrompt() {
         const allInA = winnerIds.every((id) => teamASet.has(id));
         const allInB = winnerIds.every((id) => teamBSet.has(id));
         if (allInA) {
-          await writer.updateMatchScore(target.id, 100, 99, 'A');
+          await writer.updateMatchScore(
+            target.id,
+            WINNER_ONLY_SCORE.winner,
+            WINNER_ONLY_SCORE.loser,
+            'A'
+          );
         } else if (allInB) {
-          await writer.updateMatchScore(target.id, 99, 100, 'B');
+          await writer.updateMatchScore(
+            target.id,
+            WINNER_ONLY_SCORE.loser,
+            WINNER_ONLY_SCORE.winner,
+            'B'
+          );
         } else {
           // クロスチームペアが勝者: teamA=勝者ペア, teamB=敗者ペアに組み直し
           const allPlayers = [...target.teamA, ...target.teamB].filter(Boolean);
@@ -108,8 +119,8 @@ export function UnrecordedMatchPrompt() {
             teamA: [winnerIds[0], winnerIds[1]] as [string, string],
             teamB: [loserIds[0], loserIds[1]] as [string, string],
             winner: 'A',
-            scoreA: 100,
-            scoreB: 99,
+            scoreA: WINNER_ONLY_SCORE.winner,
+            scoreB: WINNER_ONLY_SCORE.loser,
           });
         }
       }}
