@@ -2960,6 +2960,30 @@ describe('sortWaitingPlayers - 滞在時間モードの起点（opsCompletedAt�
     expect(sorted.map(p => p.id)).toEqual(['resolved', 'unresolved']);
   });
 
+  it('同じ gamesPlayed なら、到着調整で開始が早い（遅刻連絡あり）人が実際の受付完了より優先される', () => {
+    // docs/plans/2026-10-05-stay-start-override.md
+    const players = [
+      // 実際の起点は60分前
+      makeOpsPlayer('onTime', 4, { opsCompletedAt: NOW - 60 * 60 * 1000 }),
+      // 実際の起点は10分前だが、遅刻連絡ありで 90分前から参加していたとみなす
+      makeOpsPlayer('late', 4, {
+        opsCompletedAt: NOW - 10 * 60 * 1000,
+        arrivalAdjustment: { kind: 'offset', min: 30 }, // 練習開始（2時間前）+30分 ＝ 90分前
+      }),
+    ];
+    // この describe 共通の practiceStartTime は負の値（＝練習開始時刻なし扱いで到着調整は無視）なので、
+    // 正の練習開始時刻（2時間前）で並べる
+    const sorted = sortWaitingPlayers(players, {
+      emptyCourtIds: [],
+      totalCourtCount: 1,
+      matchHistory: [],
+      allActivePlayers: players,
+      practiceStartTime: NOW - 2 * 60 * 60 * 1000,
+      useStayDuration: true,
+    });
+    expect(sorted.map(p => p.id)).toEqual(['late', 'onTime']);
+  });
+
   it('opsCompletedAt 未設定 & 両方完了（既存セッション互換）は従来どおり activatedAt 起点で動く', () => {
     const players = [
       makeOpsPlayer('a', 2, { activatedAt: NOW - 50 * 60 * 1000 }), // opsCompletedAt なし

@@ -2,7 +2,6 @@ import { useCallback, useMemo } from 'react';
 import { useSessionStore } from '../stores/sessionStore';
 import * as sm from '../services/sessionMutations';
 import { SessionError } from '../lib/errorHandler';
-import type { Player } from '../types/player';
 import type { Court } from '../types/court';
 import type { Match } from '../types/match';
 import type { PairPreference } from '../types/pairPreference';
@@ -62,7 +61,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
   );
 
   const updatePlayer = useCallback(
-    (id: string, updates: Omit<Partial<Player>, 'id'>) =>
+    (id: string, updates: sm.PlayerUpdates) =>
       handle('updatePlayer', (sid) => sm.updatePlayer(sid, id, updates)),
     [handle],
   );

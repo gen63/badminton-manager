@@ -1,3 +1,11 @@
+/**
+ * 到着調整（滞在時間モードの公平計算で使う起点の上書き）。
+ * - `offset`: 練習開始から `min` 分後（整数、0 以上）から参加していたとみなす（手入力・控えめボタン）
+ * - `ratio`: 実際の遅刻幅に `ratio`（0〜1。1/2・1/3・0）を掛ける（救済。受付前に予約でき、受付完了時に適用）
+ * 詳細: docs/plans/2026-10-05-stay-start-override.md
+ */
+export type ArrivalAdjustment = { kind: 'offset'; min: number } | { kind: 'ratio'; ratio: number };
+
 export interface Player {
   id: string;
   name: string;
@@ -19,4 +27,5 @@ export interface Player {
   forcedRestAt?: number; // 会費・名簿未対応による強制休憩を実施・通知した時刻（Unix timestamp、未実施は undefined）
   forcedRestActive?: boolean; // 現在の休憩が会費・名簿の強制休憩によるものなら true（両方完了で自動解除。手動で休憩を切り替えたら false。未到着 activatedAt=0 の休憩は本フラグなしでも両方完了で自動解除）
   opsCompletedAt?: number; // 会費・名簿が両方完了になった時刻（Unix timestamp、未完了は undefined、一度セットしたら不変）
+  arrivalAdjustment?: ArrivalAdjustment; // 公平計算（滞在時間モード）用の到着調整。未設定時は従来ルール。管理者が設定・解除する
 }

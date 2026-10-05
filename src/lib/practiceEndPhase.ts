@@ -77,16 +77,25 @@ export function isPastLastCall(phase: PracticeEndPhase): boolean {
  * 場合（日付をまたぐ練習）は翌日扱いにする。形式不正は `null`。
  */
 export function buildPracticeEndTime(practiceStartTime: number, hhmm: string): number | null {
+  let end = timeOnSameDay(practiceStartTime, hhmm);
+  if (end === null) return null;
+  if (end <= practiceStartTime) end += 24 * 60 * 60 * 1000;
+  return end;
+}
+
+/**
+ * `HH:MM`（`H:MM` 可）を `base` と同じ日付（ローカル時刻）の epoch ms にする。
+ * 空・不正な形式・範囲外（24時以降・60分以降）は null。日付またぎの解釈は呼び出し側で行う。
+ */
+export function timeOnSameDay(base: number, hhmm: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
   if (!m) return null;
   const hours = Number(m[1]);
   const minutes = Number(m[2]);
   if (hours > 23 || minutes > 59) return null;
-  const date = new Date(practiceStartTime);
+  const date = new Date(base);
   date.setHours(hours, minutes, 0, 0);
-  let end = date.getTime();
-  if (end <= practiceStartTime) end += 24 * 60 * 60 * 1000;
-  return end;
+  return date.getTime();
 }
 
 /** 表示用 `HH:MM`（ローカル時刻）。 */

@@ -31,10 +31,11 @@ import {
   type RevertFinishError,
 } from '../lib/gameOperations';
 import { sanitizePlayerName } from '../lib/inputValidation';
+import { normalizeArrivalAdjustment } from '../lib/stayStart';
 import { getPracticeEndPhase, isPastEndOverrideActive, isPastLastCall, resolvePracticeEndTime } from '../lib/practiceEndPhase';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
 import { defaultExcludeFromOperator } from '../lib/operatorExclusion';
-import type { Player } from '../types/player';
+import type { ArrivalAdjustment, Player } from '../types/player';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
 import type { PairPreference } from '../types/pairPreference';
@@ -224,29 +225,55 @@ export function computeRemovePlayer(state: GameState, playerId: string): GameSta
   };
 }
 
+/**
+ * `updatePlayer` に渡せる更新内容。到着調整（`arrivalAdjustment`）だけは `null` で解除（フィールド削除）できる。
+ */
+export type PlayerUpdates = Omit<Partial<Player>, 'id' | 'arrivalAdjustment'> & {
+  /** 値＝設定（kind ごとに検証・正規化）、null＝解除、undefined/省略＝変更なし */
+  arrivalAdjustment?: ArrivalAdjustment | null;
+};
+
 export function computeUpdatePlayer(
   state: GameState,
   playerId: string,
-  updates: Omit<Partial<Player>, 'id'>,
+  updates: PlayerUpdates,
 ): GameState {
+  const { arrivalAdjustment: rawAdjustment, ...rest } = updates;
+  // 到着調整は kind ごとに検証（offset: 有限の分数 / ratio: 有限で 0〜1）。不正ならエラー
+  let adjustment: ArrivalAdjustment | null | undefined = rawAdjustment;
+  if (rawAdjustment !== undefined && rawAdjustment !== null) {
+    adjustment = normalizeArrivalAdjustment(rawAdjustment);
+    if (adjustment === null) {
+      throw new SessionError('到着調整の値が不正です', 'invalid-argument');
+    }
+  }
   // SEC2: name が含まれる場合 sanitize（rename 経由で攻撃文字列が入るのを防ぐ）
-  let safeUpdates = updates;
-  if (typeof updates.name === 'string') {
-    const cleaned = sanitizePlayerName(updates.name);
+  let safeUpdates: typeof rest = rest;
+  if (typeof rest.name === 'string') {
+    const cleaned = sanitizePlayerName(rest.name);
     if (cleaned === null) {
       // 不正な name は更新しない
-      const { name: _name, ...rest } = updates;
+      const { name: _name, ...withoutName } = rest;
       void _name;
-      safeUpdates = rest;
+      safeUpdates = withoutName;
     } else {
-      safeUpdates = { ...updates, name: cleaned };
+      safeUpdates = { ...rest, name: cleaned };
     }
   }
   return {
     ...state,
-    players: state.players.map((p) =>
-      p.id === playerId ? { ...p, ...safeUpdates, id: p.id } : p,
-    ),
+    players: state.players.map((p) => {
+      if (p.id !== playerId) return p;
+      const merged: Player = { ...p, ...safeUpdates, id: p.id };
+      if (adjustment === null) {
+        // 解除はフィールドごと削除して従来ルール（resolveStayStart）に戻す
+        const { arrivalAdjustment: _removed, ...withoutAdjustment } = merged;
+        void _removed;
+        return withoutAdjustment;
+      }
+      if (adjustment !== undefined) merged.arrivalAdjustment = adjustment;
+      return merged;
+    }),
   };
 }
 
@@ -1037,7 +1064,7 @@ export function removePlayer(sessionId: string, playerId: string) {
 export async function updatePlayer(
   sessionId: string,
   playerId: string,
-  updates: Omit<Partial<Player>, 'id'>,
+  updates: PlayerUpdates,
 ): Promise<GameState> {
   const _db = requireDb();
   const ref = doc(_db, 'sessions', sessionId);

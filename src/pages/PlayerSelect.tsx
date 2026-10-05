@@ -19,7 +19,11 @@ import { countByGender, formatGenderBreakdown, genderLabel } from '../lib/gender
 import { computeGamesStats, formatMedian, formatStayMinutes, type GameSortMode } from '../lib/playerStats';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
-import { PlayerEditModal } from '../components/PlayerEditModal';
+import { PlayerEditModal, type PlayerEditSaveValues } from '../components/PlayerEditModal';
+import { resolveActualStayStart, type ActualStayStart } from '../lib/stayStart';
+import { resolvePracticeEndTime } from '../lib/practiceEndPhase';
+import type { PlayerUpdates } from '../services/sessionMutations';
+import type { ArrivalAdjustment, Player } from '../types/player';
 
 /**
  * 性別バッジの表示色。男=青 / 女=ピンクは `PlayerEditModal`・`ReservationPage` と揃える。
@@ -51,7 +55,7 @@ export function PlayerSelect() {
     await writer.toggleOperationStatus(playerId, 'payment');
   });
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number; isPaid: boolean } | null>(null);
-  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean } | null>(null);
+  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean; arrivalAdjustment?: ArrivalAdjustment; actualStayStart: ActualStayStart } | null>(null);
   // アコーディオンの開閉。null = ユーザー未操作（自動判定に委ねる）。
   // 未操作なら全員完了時に自動で開き、それ以外は既定で閉じる。ユーザーが一度
   // タップしたらその選択（override）を優先し、以降は allComplete の変化で
@@ -104,28 +108,36 @@ export function PlayerSelect() {
     await writer.removePlayer(player.id);
   };
 
-  const handleEdit = (player: { id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean }) => {
+  const handleEdit = (player: Player) => {
     setEditModalPlayer({
       id: player.id,
       name: player.name,
       gender: player.gender,
       excludeFromOperator: player.excludeFromOperator,
+      arrivalAdjustment: player.arrivalAdjustment,
+      // 到着調整を無視した従来の起点（モーダルの「受付完了」と遅刻幅の表示用）。
+      // now は画面表示時に固定した値（usePlayerGameStats）。activatedAt 欠損時のフォールバックにしか効かない
+      actualStayStart: resolveActualStayStart(player, session?.config?.practiceStartTime ?? 0, now),
     });
   };
 
-  const handleEditSave = async (
-    name: string,
-    gender?: 'M' | 'F',
-    rating?: number,
-    excludeFromOperator?: boolean,
-  ) => {
+  const handleEditSave = async ({
+    name,
+    gender,
+    rating,
+    excludeFromOperator,
+    arrivalAdjustment,
+  }: PlayerEditSaveValues) => {
     if (!editModalPlayer) return;
     const oldName = editModalPlayer.name;
-    const updates: { name: string; gender?: 'M' | 'F'; rating?: number; excludeFromOperator?: boolean } = { name, gender };
+    const updates: PlayerUpdates = { name, gender };
     if (rating !== undefined) updates.rating = rating;
     // 担当外は管理者だけが変えられる（非管理者にはトグルが出ないので値を触らない）。
     // OFF は false を書く（undefined は sanitize で落ちて更新されないため）
     if (isAdmin && excludeFromOperator !== undefined) updates.excludeFromOperator = excludeFromOperator;
+    // 到着調整も管理者だけ。変更の有無はモーダルが判定済み（undefined＝変更なし / null＝解除 / 数値＝設定）。
+    // 名前などと同じ1回の transaction で書き込む
+    if (isAdmin && arrivalAdjustment !== undefined) updates.arrivalAdjustment = arrivalAdjustment;
     const result = await writer.updatePlayer(editModalPlayer.id, updates);
     // 自己 rename の場合は localStorage の currentUser を新名へ追従させる。
     // sessionMutations.updatePlayer は createdBy / admins / participants を新名に
@@ -403,6 +415,11 @@ export function PlayerSelect() {
           playerName={editModalPlayer.name}
           playerGender={editModalPlayer.gender}
           playerExcludeFromOperator={editModalPlayer.excludeFromOperator}
+          playerArrivalAdjustment={editModalPlayer.arrivalAdjustment}
+          actualStayStart={editModalPlayer.actualStayStart}
+          practiceStartTime={session?.config?.practiceStartTime}
+          practiceEndTime={resolvePracticeEndTime(session?.config)}
+          useStayDurationPriority={useStayDurationPriority}
           isAdmin={isAdmin}
           existingNames={players.filter(p => p.id !== editModalPlayer.id).map(p => p.name)}
           onSave={handleEditSave}

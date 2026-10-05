@@ -1,5 +1,5 @@
 import type { Player } from '../types/player';
-import { resolveStayStart } from './stayStart';
+import { describeStayStart } from './stayStart';
 
 export interface GamesStats {
   max: number;
@@ -28,6 +28,10 @@ export interface StayInfo {
   minutes: number;
   /** 最長滞在者を100%とした割合（整数%）。最大滞在が0なら null */
   percent: number | null;
+  /** 管理者の到着調整（`arrivalAdjustment`）が実際に起点を変えているなら true（効いていなければ undefined） */
+  overridden?: boolean;
+  /** 受付未完了で遅刻救済の倍率が予約されているなら true（それ以外は undefined） */
+  reliefReserved?: boolean;
 }
 
 export interface StayStats {
@@ -45,9 +49,15 @@ export function computeStayStats(
 ): StayStats {
   const effectiveNow = practiceEndTime && practiceEndTime > 0 ? Math.min(now, practiceEndTime) : now;
   const raw = players.map((p) => {
-    const complete = p.operationStatus?.payment === true && p.operationStatus?.roster === true;
-    const start = resolveStayStart(p, practiceStartTime, effectiveNow);
-    return { id: p.id, complete, minutes: Math.max(0, (effectiveNow - start) / 60000) };
+    // 起点・従来の起点・目印を1回の計算で求める（resolveStayStart と同じ起点）
+    const { start, actual, adjusted, reliefReserved } = describeStayStart(p, practiceStartTime, effectiveNow);
+    return {
+      id: p.id,
+      complete: actual.status !== 'opsIncomplete',
+      minutes: Math.max(0, (effectiveNow - start) / 60000),
+      overridden: adjusted,
+      reliefReserved,
+    };
   });
   const maxMinutes = raw.reduce((m, r) => Math.max(m, r.minutes), 0);
   const byId = new Map<string, StayInfo>();
@@ -56,6 +66,8 @@ export function computeStayStats(
       complete: r.complete,
       minutes: r.minutes,
       percent: maxMinutes > 0 ? Math.round((r.minutes / maxMinutes) * 100) : null,
+      ...(r.overridden ? { overridden: true } : {}),
+      ...(r.reliefReserved ? { reliefReserved: true } : {}),
     });
   }
   return { maxMinutes, byId };

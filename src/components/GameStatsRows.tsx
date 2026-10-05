@@ -11,6 +11,9 @@ import {
   type StayInfo,
 } from '../lib/playerStats';
 
+/** 滞在表示の横の小さな目印（到着調整・遅刻連絡）の共通スタイル */
+const MARK_CLASS = 'shrink-0 px-1 py-0.5 rounded text-[10px] leading-none bg-primary/10 text-primary';
+
 interface GameStatsRowsProps {
   /** 1段目の左（性別・名前など）。残り幅を使う */
   children: ReactNode;
@@ -30,7 +33,7 @@ interface GameStatsRowsProps {
  * 参加者の2段表示（参加者管理カードと予約追加の行で共用。表記と配置をここで一元化する）。
  * - 1段目: 左 = children / 右端 = 「N試合」
  * - 2段目: 左 = 経過時間ソート時「前回 25分前（30分以上は 30分+前） / 試合中 / 未試合」、期待差ソート時は滞在時間モードなら
- *   「滞在 2:40 (94%) / 滞在 —（未完了）」（回数平均モードは空）/ 右 = 「期待 x.x (±y.y)」（差の色分け、常に表示）
+ *   「滞在 2:40 (94%) / 滞在 —（未完了）」（回数平均モードは空。到着調整が効いている人は「到着調整」目印を添える）/ 右 = 「期待 x.x (±y.y)」（差の色分け、常に表示）
  * 文字は 11px・同じ太さ・tabular-nums。
  */
 export function GameStatsRows({
@@ -51,6 +54,9 @@ export function GameStatsRows({
         (stay.complete
           ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
           : '滞在 —（未完了）');
+  // 到着調整が実際に効いている人／受付前に救済の倍率を予約済みの人には小さな目印（全員に表示）
+  const showOverrideMark = sortMode !== 'lastGame' && !!stay?.overridden;
+  const showReliefReservedMark = sortMode !== 'lastGame' && !!stay?.reliefReserved;
   const hasExpected = !!expected && expected.expected !== null && expected.diff !== null;
 
   return (
@@ -62,6 +68,22 @@ export function GameStatsRows({
       <div className="flex items-center gap-2">
         {note}
         {left && <span className="whitespace-nowrap text-muted-foreground">{left}</span>}
+        {showOverrideMark && (
+          <span
+            className={MARK_CLASS}
+            title="到着調整中（滞在時間モードの公平計算で、受付完了時刻の代わりに管理者が設定した開始時刻を使っています）"
+          >
+            到着調整
+          </span>
+        )}
+        {showReliefReservedMark && (
+          <span
+            className={MARK_CLASS}
+            title="遅刻連絡あり（受付完了時に遅刻幅の救済を自動で適用します）"
+          >
+            遅刻連絡
+          </span>
+        )}
         <span
           className={`ml-auto shrink-0 text-right whitespace-nowrap ${
             hasExpected ? EXPECTED_DIFF_TONE_CLASS[expectedDiffTone(expected!.diff!)] : ''
