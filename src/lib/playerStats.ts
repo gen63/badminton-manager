@@ -28,6 +28,8 @@ export interface StayInfo {
   minutes: number;
   /** 最長滞在者を100%とした割合（整数%）。最大滞在が0なら null */
   percent: number | null;
+  /** 管理者が「みなし開始時刻」(`stayStartOverrideAt`) を設定しているなら true（未設定は undefined） */
+  overridden?: boolean;
 }
 
 export interface StayStats {
@@ -47,7 +49,12 @@ export function computeStayStats(
   const raw = players.map((p) => {
     const complete = p.operationStatus?.payment === true && p.operationStatus?.roster === true;
     const start = resolveStayStart(p, practiceStartTime, effectiveNow);
-    return { id: p.id, complete, minutes: Math.max(0, (effectiveNow - start) / 60000) };
+    return {
+      id: p.id,
+      complete,
+      minutes: Math.max(0, (effectiveNow - start) / 60000),
+      overridden: p.stayStartOverrideAt !== undefined,
+    };
   });
   const maxMinutes = raw.reduce((m, r) => Math.max(m, r.minutes), 0);
   const byId = new Map<string, StayInfo>();
@@ -56,6 +63,7 @@ export function computeStayStats(
       complete: r.complete,
       minutes: r.minutes,
       percent: maxMinutes > 0 ? Math.round((r.minutes / maxMinutes) * 100) : null,
+      ...(r.overridden ? { overridden: true } : {}),
     });
   }
   return { maxMinutes, byId };

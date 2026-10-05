@@ -19,7 +19,7 @@ import { countByGender, formatGenderBreakdown, genderLabel } from '../lib/gender
 import { computeGamesStats, formatMedian, formatStayMinutes, type GameSortMode } from '../lib/playerStats';
 import { BottomNav } from '../components/BottomNav';
 import { PaymentModal } from '../components/PaymentModal';
-import { PlayerEditModal } from '../components/PlayerEditModal';
+import { PlayerEditModal, type PlayerEditSaveValues } from '../components/PlayerEditModal';
 
 /**
  * 性別バッジの表示色。男=青 / 女=ピンクは `PlayerEditModal`・`ReservationPage` と揃える。
@@ -51,7 +51,7 @@ export function PlayerSelect() {
     await writer.toggleOperationStatus(playerId, 'payment');
   });
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number; isPaid: boolean } | null>(null);
-  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean } | null>(null);
+  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean; stayStartOverrideAt?: number } | null>(null);
   // アコーディオンの開閉。null = ユーザー未操作（自動判定に委ねる）。
   // 未操作なら全員完了時に自動で開き、それ以外は既定で閉じる。ユーザーが一度
   // タップしたらその選択（override）を優先し、以降は allComplete の変化で
@@ -104,21 +104,23 @@ export function PlayerSelect() {
     await writer.removePlayer(player.id);
   };
 
-  const handleEdit = (player: { id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean }) => {
+  const handleEdit = (player: { id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean; stayStartOverrideAt?: number }) => {
     setEditModalPlayer({
       id: player.id,
       name: player.name,
       gender: player.gender,
       excludeFromOperator: player.excludeFromOperator,
+      stayStartOverrideAt: player.stayStartOverrideAt,
     });
   };
 
-  const handleEditSave = async (
-    name: string,
-    gender?: 'M' | 'F',
-    rating?: number,
-    excludeFromOperator?: boolean,
-  ) => {
+  const handleEditSave = async ({
+    name,
+    gender,
+    rating,
+    excludeFromOperator,
+    stayStartOverrideAt,
+  }: PlayerEditSaveValues) => {
     if (!editModalPlayer) return;
     const oldName = editModalPlayer.name;
     const updates: { name: string; gender?: 'M' | 'F'; rating?: number; excludeFromOperator?: boolean } = { name, gender };
@@ -127,6 +129,16 @@ export function PlayerSelect() {
     // OFF は false を書く（undefined は sanitize で落ちて更新されないため）
     if (isAdmin && excludeFromOperator !== undefined) updates.excludeFromOperator = excludeFromOperator;
     const result = await writer.updatePlayer(editModalPlayer.id, updates);
+    // みなし開始時刻も管理者だけ。値が変わったときだけ、検証付きの専用 mutation で設定・解除する
+    // （null ＝フィールド削除）。名前等の更新が失敗したときは書かない
+    if (
+      result &&
+      isAdmin &&
+      stayStartOverrideAt !== undefined &&
+      (stayStartOverrideAt ?? undefined) !== editModalPlayer.stayStartOverrideAt
+    ) {
+      await writer.setStayStartOverride(editModalPlayer.id, stayStartOverrideAt);
+    }
     // 自己 rename の場合は localStorage の currentUser を新名へ追従させる。
     // sessionMutations.updatePlayer は createdBy / admins / participants を新名に
     // 書き換えるため、currentUser だけ旧名のまま残ると isCreator/isAdmin /
@@ -403,6 +415,9 @@ export function PlayerSelect() {
           playerName={editModalPlayer.name}
           playerGender={editModalPlayer.gender}
           playerExcludeFromOperator={editModalPlayer.excludeFromOperator}
+          playerStayStartOverrideAt={editModalPlayer.stayStartOverrideAt}
+          practiceStartTime={session?.config?.practiceStartTime}
+          useStayDurationPriority={useStayDurationPriority}
           isAdmin={isAdmin}
           existingNames={players.filter(p => p.id !== editModalPlayer.id).map(p => p.name)}
           onSave={handleEditSave}

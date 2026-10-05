@@ -30,6 +30,7 @@ import {
   computeAddPlayers,
   computeRemovePlayer,
   computeUpdatePlayer,
+  computeSetStayStartOverride,
   computeToggleRest,
   computeToggleOperationStatus,
   computeApplyPayment,
@@ -231,6 +232,48 @@ describe('sessionMutations - players', () => {
     expect(on.players[0].excludeFromOperator).toBe(true);
     const off = computeUpdatePlayer(on, 'a', { excludeFromOperator: false });
     expect(off.players[0].excludeFromOperator).toBe(false);
+  });
+
+  describe('computeSetStayStartOverride', () => {
+    const opsDone = { payment: true, roster: true, checkin: false };
+
+    it('数値を設定し、他のフィールドと他のプレイヤーは保持する', () => {
+      const state = baseState({
+        players: [
+          makePlayer('a', { name: 'Alice', gamesPlayed: 3, operationStatus: opsDone, opsCompletedAt: 500 }),
+          makePlayer('b', { name: 'Bob' }),
+        ],
+      });
+      const next = computeSetStayStartOverride(state, 'a', 1234);
+      expect(next.players[0]).toEqual({ ...state.players[0], stayStartOverrideAt: 1234 });
+      expect(next.players[1]).toBe(state.players[1]);
+    });
+
+    it('null で解除するとフィールド自体が消える（他のフィールドは保持）', () => {
+      const state = baseState({
+        players: [makePlayer('a', { name: 'Alice', gamesPlayed: 2, stayStartOverrideAt: 1234 })],
+      });
+      const next = computeSetStayStartOverride(state, 'a', null);
+      expect('stayStartOverrideAt' in next.players[0]).toBe(false);
+      expect(next.players[0]).toMatchObject({ name: 'Alice', gamesPlayed: 2 });
+    });
+
+    it('既存の値を上書きできる', () => {
+      const state = baseState({ players: [makePlayer('a', { stayStartOverrideAt: 1 })] });
+      expect(computeSetStayStartOverride(state, 'a', 2).players[0].stayStartOverrideAt).toBe(2);
+    });
+
+    it('有限でない値は SessionError を投げる', () => {
+      const state = baseState({ players: [makePlayer('a')] });
+      expect(() => computeSetStayStartOverride(state, 'a', NaN)).toThrow(SessionError);
+      expect(() => computeSetStayStartOverride(state, 'a', Infinity)).toThrow(SessionError);
+      expect(() => computeSetStayStartOverride(state, 'a', '100' as unknown as number)).toThrow(SessionError);
+    });
+
+    it('存在しない playerId は何も変えない', () => {
+      const state = baseState({ players: [makePlayer('a')] });
+      expect(computeSetStayStartOverride(state, 'zzz', 100).players).toEqual(state.players);
+    });
   });
 
   describe('computeToggleRest', () => {

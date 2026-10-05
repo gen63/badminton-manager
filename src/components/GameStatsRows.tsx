@@ -30,7 +30,7 @@ interface GameStatsRowsProps {
  * 参加者の2段表示（参加者管理カードと予約追加の行で共用。表記と配置をここで一元化する）。
  * - 1段目: 左 = children / 右端 = 「N試合」
  * - 2段目: 左 = 経過時間ソート時「前回 25分前（30分以上は 30分+前） / 試合中 / 未試合」、期待差ソート時は滞在時間モードなら
- *   「滞在 2:40 (94%) / 滞在 —（未完了）」（回数平均モードは空）/ 右 = 「期待 x.x (±y.y)」（差の色分け、常に表示）
+ *   「滞在 2:40 (94%) / 滞在 —（未完了）」（回数平均モードは空。みなし開始時刻の設定者は「みなし」目印を添える）/ 右 = 「期待 x.x (±y.y)」（差の色分け、常に表示）
  * 文字は 11px・同じ太さ・tabular-nums。
  */
 export function GameStatsRows({
@@ -51,6 +51,8 @@ export function GameStatsRows({
         (stay.complete
           ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
           : '滞在 —（未完了）');
+  // 管理者がみなし開始時刻を設定している人は、滞在表示の横に小さな目印を出す
+  const showOverrideMark = sortMode !== 'lastGame' && !!stay?.overridden && stay.complete;
   const hasExpected = !!expected && expected.expected !== null && expected.diff !== null;
 
   return (
@@ -62,6 +64,14 @@ export function GameStatsRows({
       <div className="flex items-center gap-2">
         {note}
         {left && <span className="whitespace-nowrap text-muted-foreground">{left}</span>}
+        {showOverrideMark && (
+          <span
+            title="みなし開始時刻を設定中（滞在時間モードの公平計算用）"
+            className="shrink-0 px-1 py-0.5 rounded text-[10px] leading-none bg-primary/10 text-primary"
+          >
+            みなし
+          </span>
+        )}
         <span
           className={`ml-auto shrink-0 text-right whitespace-nowrap ${
             hasExpected ? EXPECTED_DIFF_TONE_CLASS[expectedDiffTone(expected!.diff!)] : ''

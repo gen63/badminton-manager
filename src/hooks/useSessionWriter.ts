@@ -67,6 +67,12 @@ export function useSessionWriter(options?: SessionWriterOptions) {
     [handle],
   );
 
+  const setStayStartOverride = useCallback(
+    (id: string, value: number | null) =>
+      handle('setStayStartOverride', (sid) => sm.setStayStartOverride(sid, id, value)),
+    [handle],
+  );
+
   const toggleRest = useCallback(
     (id: string) => handle('toggleRest', (sid) => sm.toggleRest(sid, id)),
     [handle],
@@ -319,6 +325,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       addPlayers,
       removePlayer,
       updatePlayer,
+      setStayStartOverride,
       toggleRest,
       toggleOperationStatus,
       applyPayment,
@@ -368,6 +375,7 @@ export function useSessionWriter(options?: SessionWriterOptions) {
       addPlayers,
       removePlayer,
       updatePlayer,
+      setStayStartOverride,
       toggleRest,
       toggleOperationStatus,
       applyPayment,

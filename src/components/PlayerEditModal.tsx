@@ -1,16 +1,36 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { parsePlayerInput } from '../lib/utils';
+import { formatStayOverrideTime, parseStayOverrideTime } from '../lib/stayStart';
+
+/** 保存時に呼び出し側へ渡す値 */
+export interface PlayerEditSaveValues {
+  name: string;
+  gender?: 'M' | 'F';
+  rating?: number;
+  /** 管理者のときだけ入る（非管理者は undefined ＝触らない） */
+  excludeFromOperator?: boolean;
+  /**
+   * みなし開始時刻。undefined ＝変更なし（非管理者・未編集）、null ＝解除、数値 ＝設定（epoch ms）
+   */
+  stayStartOverrideAt?: number | null;
+}
 
 interface PlayerEditModalProps {
   playerName: string;
   playerGender?: 'M' | 'F';
   /** 「終了操作の担当外」の現在値（管理者が設定。未設定＝担当） */
   playerExcludeFromOperator?: boolean;
-  /** 管理者のみ担当トグルを出す */
+  /** 現在のみなし開始時刻（epoch ms。未設定は undefined） */
+  playerStayStartOverrideAt?: number;
+  /** 練習開始日時。みなし開始時刻の日付部分に使う */
+  practiceStartTime?: number;
+  /** 滞在時間モードが ON か（OFF なら「現在は効かない」注記を出す） */
+  useStayDurationPriority?: boolean;
+  /** 管理者のみ担当トグル・みなし開始時刻を出す */
   isAdmin?: boolean;
   existingNames: string[];
-  onSave: (name: string, gender?: 'M' | 'F', rating?: number, excludeFromOperator?: boolean) => void;
+  onSave: (values: PlayerEditSaveValues) => void;
   onCancel: () => void;
 }
 
@@ -18,6 +38,9 @@ export function PlayerEditModal({
   playerName,
   playerGender,
   playerExcludeFromOperator,
+  playerStayStartOverrideAt,
+  practiceStartTime,
+  useStayDurationPriority = false,
   isAdmin = false,
   existingNames,
   onSave,
@@ -27,6 +50,9 @@ export function PlayerEditModal({
   const [gender, setGender] = useState<'M' | 'F' | undefined>(playerGender);
   // 画面上は肯定形（ON＝担当）。保存時に excludeFromOperator（OFF→true）へ反転する
   const [isOperator, setIsOperator] = useState(playerExcludeFromOperator !== true);
+  // みなし開始時刻（HH:MM）。空文字＝未設定
+  const initialOverrideTime = formatStayOverrideTime(playerStayStartOverrideAt);
+  const [overrideTime, setOverrideTime] = useState(initialOverrideTime);
   const [error, setError] = useState('');
 
   const handleSave = () => {
@@ -40,7 +66,24 @@ export function PlayerEditModal({
       setError('同じ名前の参加者が既に存在します');
       return;
     }
-    onSave(parsedName, parsedGender ?? gender, rating, !isOperator);
+    const values: PlayerEditSaveValues = { name: parsedName, gender: parsedGender ?? gender, rating };
+    if (isAdmin) {
+      values.excludeFromOperator = !isOperator;
+      // 表示上の時刻が変わっていなければ触らない（秒単位の元の値を保つ）
+      if (overrideTime !== initialOverrideTime) {
+        if (overrideTime === '') {
+          values.stayStartOverrideAt = null;
+        } else {
+          const ms = parseStayOverrideTime(overrideTime, practiceStartTime);
+          if (ms === null) {
+            setError('みなし開始時刻の形式が正しくありません');
+            return;
+          }
+          values.stayStartOverrideAt = ms;
+        }
+      }
+    }
+    onSave(values);
   };
 
   return (
@@ -130,6 +173,38 @@ export function PlayerEditModal({
               <p className="text-xs text-muted-foreground mt-1">
                 OFFにすると次の試合に入る予測でも終了操作の担当になりません（外部の方・端末不調の方など）
               </p>
+            </div>
+          )}
+
+          {/* みなし開始時刻（管理者のみ）。滞在時間モードの公平計算の起点を上書きする */}
+          {isAdmin && (
+            <div>
+              <label className="label" htmlFor="stay-start-override">みなし開始時刻</label>
+              <div className="flex gap-2">
+                <input
+                  id="stay-start-override"
+                  type="time"
+                  value={overrideTime}
+                  onChange={(e) => { setOverrideTime(e.target.value); setError(''); }}
+                  className="input-field flex-1 min-w-0"
+                />
+                <button
+                  type="button"
+                  onClick={() => { setOverrideTime(''); setError(''); }}
+                  disabled={overrideTime === ''}
+                  className="btn-secondary px-4 disabled:opacity-50"
+                >
+                  解除
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                滞在時間モードの公平計算で、この時刻から参加していたとみなします。遅刻連絡があった人は早く、体調不良などで控えめにしたい人は遅く設定
+              </p>
+              {!useStayDurationPriority && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  ※現在は回数平均モードのため効きません（滞在時間モードで有効）
+                </p>
+              )}
             </div>
           )}
 

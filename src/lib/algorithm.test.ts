@@ -2960,6 +2960,20 @@ describe('sortWaitingPlayers - 滞在時間モードの起点（opsCompletedAt�
     expect(sorted.map(p => p.id)).toEqual(['resolved', 'unresolved']);
   });
 
+  it('同じ gamesPlayed なら、みなし開始時刻が早い（遅刻連絡あり）人が実際の到着より優先される', () => {
+    // docs/plans/2026-10-05-stay-start-override.md
+    const players = [
+      // 実際の起点は60分前
+      makeOpsPlayer('onTime', 4, { opsCompletedAt: NOW - 60 * 60 * 1000 }),
+      // 実際の起点は10分前だが、遅刻連絡ありで 90分前から参加していたとみなす
+      makeOpsPlayer('late', 4, {
+        opsCompletedAt: NOW - 10 * 60 * 1000,
+        stayStartOverrideAt: NOW - 90 * 60 * 1000,
+      }),
+    ];
+    expect(sort(players).map(p => p.id)).toEqual(['late', 'onTime']);
+  });
+
   it('opsCompletedAt 未設定 & 両方完了（既存セッション互換）は従来どおり activatedAt 起点で動く', () => {
     const players = [
       makeOpsPlayer('a', 2, { activatedAt: NOW - 50 * 60 * 1000 }), // opsCompletedAt なし

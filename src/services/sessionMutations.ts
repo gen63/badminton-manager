@@ -250,6 +250,34 @@ export function computeUpdatePlayer(
   };
 }
 
+/**
+ * 滞在時間モードの「みなし開始時刻」(`stayStartOverrideAt`) を設定・解除する。
+ * - `value` が数値ならその時刻（epoch ms）をセット。有限でない値は SessionError を投げる。
+ * - `null` ならフィールドごと削除して従来ルール（`resolveStayStart`）に戻す。
+ * 他のフィールドは変更しない。存在しない playerId は no-op。
+ */
+export function computeSetStayStartOverride(
+  state: GameState,
+  playerId: string,
+  value: number | null,
+): GameState {
+  if (value !== null && (typeof value !== 'number' || !Number.isFinite(value))) {
+    throw new SessionError('みなし開始時刻が不正です', 'invalid-argument');
+  }
+  return {
+    ...state,
+    players: state.players.map((p) => {
+      if (p.id !== playerId) return p;
+      if (value === null) {
+        const { stayStartOverrideAt: _removed, ...rest } = p;
+        void _removed;
+        return rest;
+      }
+      return { ...p, stayStartOverrideAt: value };
+    }),
+  };
+}
+
 export function computeToggleRest(
   state: GameState,
   playerId: string,
@@ -1298,6 +1326,11 @@ export function setGenderBalanceMode(sessionId: string, value: boolean) {
   return mutateGameState(sessionId, (s) =>
     computeSetSetting(s, 'genderBalanceMode', value),
   );
+}
+
+/** みなし開始時刻を設定（数値）・解除（null）する。詳細は computeSetStayStartOverride。 */
+export function setStayStartOverride(sessionId: string, playerId: string, value: number | null) {
+  return mutateGameState(sessionId, (s) => computeSetStayStartOverride(s, playerId, value));
 }
 
 export function setForceBulkAssignment(sessionId: string, value: boolean) {

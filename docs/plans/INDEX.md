@@ -207,3 +207,4 @@
 - `2026-10-03-player-list-game-stats.md` — 参加者一覧に管理者向けの試合数統計（最大/最小/中央値・最長滞在）と各人の滞在時間（最長比%）を表示。ソートボタンで完了済みを展開。滞在起点は algorithm の `resolveStayStart` を export して共用（`lib/playerStats.ts`）。
 - `2026-10-03-reservation-expected-diff-gate.md` — 予約の保留判定を「在席中央値+閾値」から「期待差（実績−期待試合数）≥ 1.5（固定）」へ置換（回数平均/滞在時間の両モード、表示と同じ定義・母集団）。予約追加は作成者以外が差≥1.5のメンバーを選べない（作成者は選べるが保留）。作成者だけが予約一覧で「優先」(`forcePriority`)を ON/OFF でき、ON は保留をスキップ。予約一覧に保留中バッジ。設定「予約の試合数制限」は撤去。`resolveStayStart` を `lib/stayStart.ts` へ移し循環 import 解消。
 - `2026-10-03-late-balance-auto-on-before-end.md` — 後半均等化の自動ONを「開始+120分」から「練習終了の60分前」へ変更（終了時刻なしの旧セッションは従来通り）。発火時刻は `lib/lateBalanceAutoOn.ts` の純粋関数。
+- `2026-10-05-stay-start-override.md` — 滞在時間モードに管理者が設定する「みなし開始時刻」(`Player.stayStartOverrideAt`) を追加。会費・名簿完了済みなら `min(now, max(practiceStartTime, override))` を起点にする（遅刻連絡ありは早く、体調不良は遅く）。未完了は従来どおり now。`setStayStartOverride` mutation（null で解除）、編集モーダルに時刻入力＋解除、参加者一覧に「みなし」目印。

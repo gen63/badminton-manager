@@ -19,4 +19,5 @@ export interface Player {
   forcedRestAt?: number; // 会費・名簿未対応による強制休憩を実施・通知した時刻（Unix timestamp、未実施は undefined）
   forcedRestActive?: boolean; // 現在の休憩が会費・名簿の強制休憩によるものなら true（両方完了で自動解除。手動で休憩を切り替えたら false。未到着 activatedAt=0 の休憩は本フラグなしでも両方完了で自動解除）
   opsCompletedAt?: number; // 会費・名簿が両方完了になった時刻（Unix timestamp、未完了は undefined、一度セットしたら不変）
+  stayStartOverrideAt?: number; // 公平計算（滞在時間モード）用のみなし開始時刻（Unix timestamp ms）。未設定時は従来ルール。管理者が設定・解除する
 }
