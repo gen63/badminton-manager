@@ -34,7 +34,7 @@ import { sanitizePlayerName } from '../lib/inputValidation';
 import { normalizeArrivalAdjustment } from '../lib/stayStart';
 import { getPracticeEndPhase, isPastEndOverrideActive, isPastLastCall, resolvePracticeEndTime } from '../lib/practiceEndPhase';
 import { EMPTY_COURT_STATE, type Court } from '../types/court';
-import { defaultExcludeFromOperator } from '../lib/operatorExclusion';
+import { defaultArrivalAdjustment, defaultExcludeFromOperator } from '../lib/operatorExclusion';
 import type { ArrivalAdjustment, Player } from '../types/player';
 import type { Match } from '../types/match';
 import type { Reservation } from '../types/reservation';
@@ -173,12 +173,15 @@ export function computeAddPlayers(
     seen.add(name);
     // 名前に「外部」を含む人は終了操作の担当外を初期値にする（管理者が後から変更可）
     const excludeFromOperator = defaultExcludeFromOperator(name);
+    // 外部の人は受付（名簿・支払い）が遅れがちなので、到着調整「遅刻救済 0」を初期値にする（管理者が後から変更可）
+    const arrivalAdjustment = defaultArrivalAdjustment(name);
     additions.push({
       id: newIds[idx] ?? crypto.randomUUID(),
       name,
       rating: input.rating,
       gender: input.gender,
       ...(excludeFromOperator && { excludeFromOperator }),
+      ...(arrivalAdjustment && { arrivalAdjustment }),
       isResting: true,
       gamesPlayed: 0,
       lastPlayedAt: 0,

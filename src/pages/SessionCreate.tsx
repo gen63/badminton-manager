@@ -10,7 +10,7 @@ import { useAccountingStore } from '../stores/accountingStore';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { EMPTY_COURT_STATE } from '../types/court';
 import { parsePlayerInput } from '../lib/utils';
-import { defaultExcludeFromOperator } from '../lib/operatorExclusion';
+import { defaultArrivalAdjustment, defaultExcludeFromOperator } from '../lib/operatorExclusion';
 import { clearPresence, createSession, leaveSession } from '../services/sessionService';
 import { fetchDefaultAnnouncementTextSafe } from '../services/appConfigService';
 import { NEW_SESSION_DEFAULTS } from '../lib/sessionDefaults';
@@ -130,18 +130,23 @@ export function SessionCreate() {
       const registeredPlayers = playerInputs.map((p) => p.name);
 
       // 初期 gameState を構築
-      const initialPlayers = playerInputs.map((input) => ({
-        id: crypto.randomUUID(),
-        name: input.name,
-        rating: input.rating,
-        gender: input.gender,
-        // 名前に「外部」を含む人は終了操作の担当外を初期値にする（管理者が後から変更可）
-        ...(defaultExcludeFromOperator(input.name) && { excludeFromOperator: true }),
-        isResting: true,
-        gamesPlayed: 0,
-        lastPlayedAt: 0,
-        activatedAt: 0,
-      }));
+      const initialPlayers = playerInputs.map((input) => {
+        const arrivalAdjustment = defaultArrivalAdjustment(input.name);
+        return {
+          id: crypto.randomUUID(),
+          name: input.name,
+          rating: input.rating,
+          gender: input.gender,
+          // 名前に「外部」を含む人は終了操作の担当外を初期値にする（管理者が後から変更可）
+          ...(defaultExcludeFromOperator(input.name) && { excludeFromOperator: true }),
+          // 外部の人は到着調整「遅刻救済 0」を初期値にする（受付の遅れで滞在が短くならないように。管理者が後から変更可）
+          ...(arrivalAdjustment && { arrivalAdjustment }),
+          isResting: true,
+          gamesPlayed: 0,
+          lastPlayedAt: 0,
+          activatedAt: 0,
+        };
+      });
       const initialCourts = Array.from({ length: adjustedCourtCount }, (_, i) => ({
         id: i + 1,
         ...EMPTY_COURT_STATE,
