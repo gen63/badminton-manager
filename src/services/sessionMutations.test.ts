@@ -233,7 +233,7 @@ describe('sessionMutations - players', () => {
     expect(off.players[0].excludeFromOperator).toBe(false);
   });
 
-  describe('computeUpdatePlayer: 到着調整（stayStartOffsetMin）', () => {
+  describe('computeUpdatePlayer: 到着調整（arrivalAdjustment）', () => {
     const opsDone = { payment: true, roster: true, checkin: false };
 
     it('名前などと同時に設定でき、他のフィールドと他のプレイヤーは保持する', () => {
@@ -243,75 +243,52 @@ describe('sessionMutations - players', () => {
           makePlayer('b', { name: 'Bob' }),
         ],
       });
-      const next = computeUpdatePlayer(state, 'a', { name: 'Alice2', stayStartOffsetMin: 20 });
-      expect(next.players[0]).toEqual({ ...state.players[0], name: 'Alice2', stayStartOffsetMin: 20 });
+      const next = computeUpdatePlayer(state, 'a', { name: 'Alice2', arrivalAdjustment: { kind: 'offset', min: 20 } });
+      expect(next.players[0]).toEqual({
+        ...state.players[0],
+        name: 'Alice2',
+        arrivalAdjustment: { kind: 'offset', min: 20 },
+      });
       expect(next.players[1]).toBe(state.players[1]);
+    });
+
+    it('kind を切り替えると置き換わる（offset → ratio → offset）', () => {
+      const state = baseState({ players: [makePlayer('a', { arrivalAdjustment: { kind: 'offset', min: 30 } })] });
+      const ratio = computeUpdatePlayer(state, 'a', { arrivalAdjustment: { kind: 'ratio', ratio: 0.5 } });
+      expect(ratio.players[0].arrivalAdjustment).toEqual({ kind: 'ratio', ratio: 0.5 });
+      const offset = computeUpdatePlayer(ratio, 'a', { arrivalAdjustment: { kind: 'offset', min: 10 } });
+      expect(offset.players[0].arrivalAdjustment).toEqual({ kind: 'offset', min: 10 });
     });
 
     it('null で解除するとフィールド自体が消える（他のフィールドは保持）', () => {
       const state = baseState({
-        players: [makePlayer('a', { name: 'Alice', gamesPlayed: 2, stayStartOffsetMin: 15 })],
+        players: [makePlayer('a', { name: 'Alice', gamesPlayed: 2, arrivalAdjustment: { kind: 'ratio', ratio: 0 } })],
       });
-      const next = computeUpdatePlayer(state, 'a', { name: 'Alice', stayStartOffsetMin: null });
-      expect('stayStartOffsetMin' in next.players[0]).toBe(false);
+      const next = computeUpdatePlayer(state, 'a', { name: 'Alice', arrivalAdjustment: null });
+      expect('arrivalAdjustment' in next.players[0]).toBe(false);
       expect(next.players[0]).toMatchObject({ name: 'Alice', gamesPlayed: 2 });
     });
 
     it('省略（undefined）なら既存の値を変えない', () => {
-      const state = baseState({ players: [makePlayer('a', { stayStartOffsetMin: 15 })] });
-      expect(computeUpdatePlayer(state, 'a', { gender: 'M' }).players[0].stayStartOffsetMin).toBe(15);
+      const state = baseState({ players: [makePlayer('a', { arrivalAdjustment: { kind: 'offset', min: 15 } })] });
+      expect(computeUpdatePlayer(state, 'a', { gender: 'M' }).players[0].arrivalAdjustment).toEqual({ kind: 'offset', min: 15 });
     });
 
-    it('上書きでき、整数に丸め・負の値は 0 にする', () => {
-      const state = baseState({ players: [makePlayer('a', { stayStartOffsetMin: 1 })] });
-      expect(computeUpdatePlayer(state, 'a', { stayStartOffsetMin: 12.6 }).players[0].stayStartOffsetMin).toBe(13);
-      expect(computeUpdatePlayer(state, 'a', { stayStartOffsetMin: -5 }).players[0].stayStartOffsetMin).toBe(0);
-    });
-
-    it('有限でない値は SessionError を投げる', () => {
+    it('offset は整数に丸め・負の値は 0 にする', () => {
       const state = baseState({ players: [makePlayer('a')] });
-      expect(() => computeUpdatePlayer(state, 'a', { stayStartOffsetMin: NaN })).toThrow(SessionError);
-      expect(() => computeUpdatePlayer(state, 'a', { stayStartOffsetMin: Infinity })).toThrow(SessionError);
-      expect(() =>
-        computeUpdatePlayer(state, 'a', { stayStartOffsetMin: '10' as unknown as number }),
-      ).toThrow(SessionError);
-    });
-  });
-
-  describe('computeUpdatePlayer: 遅刻救済の倍率（lateReliefRatio）', () => {
-    it('倍率を設定すると到着調整の時刻（offset）は削除される（排他）', () => {
-      const state = baseState({ players: [makePlayer('a', { name: 'Alice', stayStartOffsetMin: 30 })] });
-      const next = computeUpdatePlayer(state, 'a', { name: 'Alice', lateReliefRatio: 0.5 });
-      expect(next.players[0].lateReliefRatio).toBe(0.5);
-      expect('stayStartOffsetMin' in next.players[0]).toBe(false);
-      expect(next.players[0].name).toBe('Alice');
+      expect(computeUpdatePlayer(state, 'a', { arrivalAdjustment: { kind: 'offset', min: 12.6 } }).players[0].arrivalAdjustment).toEqual({ kind: 'offset', min: 13 });
+      expect(computeUpdatePlayer(state, 'a', { arrivalAdjustment: { kind: 'offset', min: -5 } }).players[0].arrivalAdjustment).toEqual({ kind: 'offset', min: 0 });
     });
 
-    it('時刻（offset）を設定すると倍率は削除される（排他）', () => {
-      const state = baseState({ players: [makePlayer('a', { lateReliefRatio: 1 / 3 })] });
-      const next = computeUpdatePlayer(state, 'a', { stayStartOffsetMin: 20 });
-      expect(next.players[0].stayStartOffsetMin).toBe(20);
-      expect('lateReliefRatio' in next.players[0]).toBe(false);
-    });
-
-    it('null で解除（他のフィールドは保持）', () => {
-      const state = baseState({ players: [makePlayer('a', { gamesPlayed: 4, lateReliefRatio: 0 })] });
-      const next = computeUpdatePlayer(state, 'a', { lateReliefRatio: null });
-      expect('lateReliefRatio' in next.players[0]).toBe(false);
-      expect(next.players[0].gamesPlayed).toBe(4);
-    });
-
-    it('省略なら既存の倍率を変えない', () => {
-      const state = baseState({ players: [makePlayer('a', { lateReliefRatio: 0.5 })] });
-      expect(computeUpdatePlayer(state, 'a', { gender: 'F' }).players[0].lateReliefRatio).toBe(0.5);
-    });
-
-    it('範囲外・非有限は SessionError、同時に数値で両方指定も SessionError', () => {
+    it('kind ごとの検証に通らない値は SessionError', () => {
       const state = baseState({ players: [makePlayer('a')] });
-      expect(() => computeUpdatePlayer(state, 'a', { lateReliefRatio: 1.5 })).toThrow(SessionError);
-      expect(() => computeUpdatePlayer(state, 'a', { lateReliefRatio: -0.1 })).toThrow(SessionError);
-      expect(() => computeUpdatePlayer(state, 'a', { lateReliefRatio: NaN })).toThrow(SessionError);
-      expect(() => computeUpdatePlayer(state, 'a', { lateReliefRatio: 0.5, stayStartOffsetMin: 10 })).toThrow(SessionError);
+      const bad = (v: unknown) => () => computeUpdatePlayer(state, 'a', { arrivalAdjustment: v as never });
+      expect(bad({ kind: 'offset', min: NaN })).toThrow(SessionError);
+      expect(bad({ kind: 'offset', min: '10' })).toThrow(SessionError);
+      expect(bad({ kind: 'ratio', ratio: 1.5 })).toThrow(SessionError);
+      expect(bad({ kind: 'ratio', ratio: -0.1 })).toThrow(SessionError);
+      expect(bad({ kind: 'ratio', ratio: Infinity })).toThrow(SessionError);
+      expect(bad({ kind: 'other' })).toThrow(SessionError);
     });
   });
 
@@ -2216,21 +2193,21 @@ describe('sessionMutations - updatePlayer wrapper (rename sync)', () => {
   });
 
   it('名前変更と到着調整の解除を1回の transaction で書き込む', async () => {
-    const state = baseState({ players: [makePlayer('p1', { name: 'Alice', stayStartOffsetMin: 20 })] });
+    const state = baseState({ players: [makePlayer('p1', { name: 'Alice', arrivalAdjustment: { kind: 'offset', min: 20 } })] });
     mockTransactionGet.mockResolvedValueOnce({
       exists: () => true,
       data: () => ({ gameState: state, participants: ['Alice'] }),
       ref: { __docRef: true },
     });
 
-    await updatePlayer('s', 'p1', { name: 'Alice2', stayStartOffsetMin: null });
+    await updatePlayer('s', 'p1', { name: 'Alice2', arrivalAdjustment: null });
 
     expect(mockRunTransaction).toHaveBeenCalledTimes(1);
     expect(mockTransactionUpdate).toHaveBeenCalledTimes(1);
     const updateArgs = mockTransactionUpdate.mock.calls[0][1];
     expect(updateArgs.participants).toEqual(['Alice2']);
     expect(updateArgs.gameState.players[0].name).toBe('Alice2');
-    expect('stayStartOffsetMin' in updateArgs.gameState.players[0]).toBe(false);
+    expect('arrivalAdjustment' in updateArgs.gameState.players[0]).toBe(false);
   });
 
   it('名前未変更時: session レベルのフィールドを書き換えない', async () => {

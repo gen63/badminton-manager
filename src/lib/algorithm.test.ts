@@ -2968,7 +2968,7 @@ describe('sortWaitingPlayers - 滞在時間モードの起点（opsCompletedAt�
       // 実際の起点は10分前だが、遅刻連絡ありで 90分前から参加していたとみなす
       makeOpsPlayer('late', 4, {
         opsCompletedAt: NOW - 10 * 60 * 1000,
-        stayStartOffsetMin: 30, // 練習開始（2時間前）+30分 ＝ 90分前
+        arrivalAdjustment: { kind: 'offset', min: 30 }, // 練習開始（2時間前）+30分 ＝ 90分前
       }),
     ];
     // この describe 共通の practiceStartTime は負の値（＝練習開始時刻なし扱いで到着調整は無視）なので、

@@ -23,7 +23,7 @@ import { PlayerEditModal, type PlayerEditSaveValues } from '../components/Player
 import { resolveActualStayStart, type ActualStayStart } from '../lib/stayStart';
 import { resolvePracticeEndTime } from '../lib/practiceEndPhase';
 import type { PlayerUpdates } from '../services/sessionMutations';
-import type { Player } from '../types/player';
+import type { ArrivalAdjustment, Player } from '../types/player';
 
 /**
  * 性別バッジの表示色。男=青 / 女=ピンクは `PlayerEditModal`・`ReservationPage` と揃える。
@@ -55,7 +55,7 @@ export function PlayerSelect() {
     await writer.toggleOperationStatus(playerId, 'payment');
   });
   const [paymentModalPlayer, setPaymentModalPlayer] = useState<{ id: string; name: string; defaultAmount: number; isPaid: boolean } | null>(null);
-  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean; stayStartOffsetMin?: number; lateReliefRatio?: number; actualStayStart: ActualStayStart } | null>(null);
+  const [editModalPlayer, setEditModalPlayer] = useState<{ id: string; name: string; gender?: 'M' | 'F'; excludeFromOperator?: boolean; arrivalAdjustment?: ArrivalAdjustment; actualStayStart: ActualStayStart } | null>(null);
   // アコーディオンの開閉。null = ユーザー未操作（自動判定に委ねる）。
   // 未操作なら全員完了時に自動で開き、それ以外は既定で閉じる。ユーザーが一度
   // タップしたらその選択（override）を優先し、以降は allComplete の変化で
@@ -114,8 +114,7 @@ export function PlayerSelect() {
       name: player.name,
       gender: player.gender,
       excludeFromOperator: player.excludeFromOperator,
-      stayStartOffsetMin: player.stayStartOffsetMin,
-      lateReliefRatio: player.lateReliefRatio,
+      arrivalAdjustment: player.arrivalAdjustment,
       // 到着調整を無視した従来の起点（モーダルの「受付完了」と遅刻幅の表示用）。
       // now は画面表示時に固定した値（usePlayerGameStats）。activatedAt 欠損時のフォールバックにしか効かない
       actualStayStart: resolveActualStayStart(player, session?.config?.practiceStartTime ?? 0, now),
@@ -127,8 +126,7 @@ export function PlayerSelect() {
     gender,
     rating,
     excludeFromOperator,
-    stayStartOffsetMin,
-    lateReliefRatio,
+    arrivalAdjustment,
   }: PlayerEditSaveValues) => {
     if (!editModalPlayer) return;
     const oldName = editModalPlayer.name;
@@ -139,8 +137,7 @@ export function PlayerSelect() {
     if (isAdmin && excludeFromOperator !== undefined) updates.excludeFromOperator = excludeFromOperator;
     // 到着調整も管理者だけ。変更の有無はモーダルが判定済み（undefined＝変更なし / null＝解除 / 数値＝設定）。
     // 名前などと同じ1回の transaction で書き込む
-    if (isAdmin && stayStartOffsetMin !== undefined) updates.stayStartOffsetMin = stayStartOffsetMin;
-    if (isAdmin && lateReliefRatio !== undefined) updates.lateReliefRatio = lateReliefRatio;
+    if (isAdmin && arrivalAdjustment !== undefined) updates.arrivalAdjustment = arrivalAdjustment;
     const result = await writer.updatePlayer(editModalPlayer.id, updates);
     // 自己 rename の場合は localStorage の currentUser を新名へ追従させる。
     // sessionMutations.updatePlayer は createdBy / admins / participants を新名に
@@ -418,8 +415,7 @@ export function PlayerSelect() {
           playerName={editModalPlayer.name}
           playerGender={editModalPlayer.gender}
           playerExcludeFromOperator={editModalPlayer.excludeFromOperator}
-          playerStayStartOffsetMin={editModalPlayer.stayStartOffsetMin}
-          playerLateReliefRatio={editModalPlayer.lateReliefRatio}
+          playerArrivalAdjustment={editModalPlayer.arrivalAdjustment}
           actualStayStart={editModalPlayer.actualStayStart}
           practiceStartTime={session?.config?.practiceStartTime}
           practiceEndTime={resolvePracticeEndTime(session?.config)}

@@ -90,14 +90,14 @@ describe('computeExpectedGames', () => {
   });
 
   it('練習開始時刻が無い（0）セッションでは到着調整を無視し、目印も付かない', () => {
-    const ps = [{ ...mk('b', 3, true, now - 30 * MIN), stayStartOffsetMin: 0 }];
+    const ps = [{ ...mk('b', 3, true, now - 30 * MIN), arrivalAdjustment: { kind: 'offset' as const, min: 0 } }];
     const stay = computeStayStats(ps, 0, now);
     expect(stay.byId.get('b')).toEqual({ complete: true, minutes: 30, percent: 100 });
   });
 
   it('未到着で救済の倍率を予約している人は reliefReserved、到着後に効けば overridden', () => {
-    const pending = { ...mk('p', 0, false), lateReliefRatio: 0.5 };
-    const arrived = { ...mk('q', 1, true, now - 60 * MIN), lateReliefRatio: 0.5 };
+    const pending = { ...mk('p', 0, false), arrivalAdjustment: { kind: 'ratio' as const, ratio: 0.5 } };
+    const arrived = { ...mk('q', 1, true, now - 60 * MIN), arrivalAdjustment: { kind: 'ratio' as const, ratio: 0.5 } };
     const stay = computeStayStats([pending, arrived], start, now);
     expect(stay.byId.get('p')?.reliefReserved).toBe(true);
     expect(stay.byId.get('p')?.overridden).toBeUndefined();
@@ -109,7 +109,7 @@ describe('computeExpectedGames', () => {
     // a: 実際120分、b: 実際30分だが 到着調整で練習開始+30分（＝90分前）開始 → 滞在 120:90
     const ps = [
       mk('a', 4, true, start),
-      { ...mk('b', 3, true, now - 30 * MIN), stayStartOffsetMin: 30 },
+      { ...mk('b', 3, true, now - 30 * MIN), arrivalAdjustment: { kind: 'offset' as const, min: 30 } },
     ];
     const stay = computeStayStats(ps, start, now);
     expect(stay.byId.get('b')).toEqual({ complete: true, minutes: 90, percent: 75, overridden: true });

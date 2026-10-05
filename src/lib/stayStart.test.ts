@@ -3,7 +3,7 @@ import type { Player } from '../types/player';
 import {
   describeLateChange,
   formatStayOffsetTime,
-  isStayStartAdjusted,
+  describeStayStart,
   LATE_CHANGE_EFFECT_TEXT,
   lateChangeEffect,
   restrainOffsetOption,
@@ -14,8 +14,7 @@ import {
   applyLateRelief,
   buildArrivalAdjustmentUpdate,
   formatReliefRatio,
-  isLateReliefReserved,
-  isValidLateReliefRatio,
+  normalizeArrivalAdjustment,
   reliefReservationNote,
   resolveActualStayStart,
   resolveStayStart,
@@ -38,47 +37,47 @@ const mk = (overrides: Partial<Player> = {}): Player => ({
   ...overrides,
 });
 
-describe('resolveStayStart - 到着調整（stayStartOffsetMin）', () => {
+describe('resolveStayStart - 到着調整（arrivalAdjustment kind=offset）', () => {
   it('未設定なら従来ルール（opsCompletedAt）', () => {
     expect(resolveStayStart(mk(), START, NOW)).toBe(START + 120 * MIN);
   });
 
   it('実際より早い設定（遅刻連絡あり）: 練習開始＋分数が起点', () => {
-    expect(resolveStayStart(mk({ stayStartOffsetMin: 30 }), START, NOW)).toBe(START + 30 * MIN);
+    expect(resolveStayStart(mk({ arrivalAdjustment: { kind: 'offset', min: 30 } }), START, NOW)).toBe(START + 30 * MIN);
   });
 
   it('実際より遅い設定（体調不良など）も効く', () => {
-    expect(resolveStayStart(mk({ opsCompletedAt: START, stayStartOffsetMin: 90 }), START, NOW)).toBe(START + 90 * MIN);
+    expect(resolveStayStart(mk({ opsCompletedAt: START, arrivalAdjustment: { kind: 'offset', min: 90 } }), START, NOW)).toBe(START + 90 * MIN);
   });
 
   it('負の値は 0（練習開始）で頭打ち', () => {
-    expect(resolveStayStart(mk({ stayStartOffsetMin: -30 }), START, NOW)).toBe(START);
+    expect(resolveStayStart(mk({ arrivalAdjustment: { kind: 'offset', min: -30 } }), START, NOW)).toBe(START);
   });
 
   it('未来になる値は now で頭打ち（滞在0）', () => {
-    expect(resolveStayStart(mk({ stayStartOffsetMin: 240 }), START, NOW)).toBe(NOW);
+    expect(resolveStayStart(mk({ arrivalAdjustment: { kind: 'offset', min: 240 } }), START, NOW)).toBe(NOW);
   });
 
   it('会費・名簿が未完了なら設定があっても now（滞在0）', () => {
     const p = mk({
       operationStatus: { payment: true, roster: false, checkin: false },
       opsCompletedAt: undefined,
-      stayStartOffsetMin: 0,
+      arrivalAdjustment: { kind: 'offset', min: 0 },
     });
     expect(resolveStayStart(p, START, NOW)).toBe(NOW);
   });
 
   it('opsCompletedAt がない既存データでも設定が優先される', () => {
-    expect(resolveStayStart(mk({ opsCompletedAt: undefined, stayStartOffsetMin: 10 }), START, NOW)).toBe(START + 10 * MIN);
+    expect(resolveStayStart(mk({ opsCompletedAt: undefined, arrivalAdjustment: { kind: 'offset', min: 10 } }), START, NOW)).toBe(START + 10 * MIN);
   });
 
   it('練習開始時刻が無い（0）セッションでは設定を無視する', () => {
-    const p = mk({ stayStartOffsetMin: 10 });
+    const p = mk({ arrivalAdjustment: { kind: 'offset', min: 10 } });
     expect(resolveStayStart(p, 0, NOW)).toBe(START + 120 * MIN);
   });
 
   it('練習開始時刻を動かしても遅刻幅（分数）が保たれる', () => {
-    const p = mk({ opsCompletedAt: undefined, activatedAt: 1, stayStartOffsetMin: 20 });
+    const p = mk({ opsCompletedAt: undefined, activatedAt: 1, arrivalAdjustment: { kind: 'offset', min: 20 } });
     const otherStart = START + 24 * 60 * MIN;
     expect(resolveStayStart(p, otherStart, otherStart + 60 * MIN) - otherStart).toBe(20 * MIN);
   });
@@ -86,7 +85,7 @@ describe('resolveStayStart - 到着調整（stayStartOffsetMin）', () => {
 
 describe('resolveActualStayStart', () => {
   it('到着調整を無視して従来ルールの起点を返す（known）', () => {
-    expect(resolveActualStayStart(mk({ stayStartOffsetMin: 0 }), START, NOW)).toEqual({ status: 'known', start: START + 120 * MIN });
+    expect(resolveActualStayStart(mk({ arrivalAdjustment: { kind: 'offset', min: 0 } }), START, NOW)).toEqual({ status: 'known', start: START + 120 * MIN });
   });
   it('練習開始より前の完了は練習開始で頭打ち', () => {
     expect(resolveActualStayStart(mk({ opsCompletedAt: START - 10 * MIN }), START, NOW)).toEqual({ status: 'known', start: START });
@@ -102,29 +101,36 @@ describe('resolveActualStayStart', () => {
     const legacy = mk({ opsCompletedAt: undefined, activatedAt: undefined as unknown as number });
     expect(resolveActualStayStart(legacy, START, NOW)).toEqual({ status: 'unknown', start: NOW });
   });
-  it('会費・名簿が未完了なら notArrived', () => {
+  it('会費・名簿が未完了なら opsIncomplete（受付未完了）', () => {
     const p = mk({ operationStatus: { payment: false, roster: true, checkin: false } });
-    expect(resolveActualStayStart(p, START, NOW)).toEqual({ status: 'notArrived' });
+    expect(resolveActualStayStart(p, START, NOW)).toEqual({ status: 'opsIncomplete' });
   });
 });
 
-describe('isStayStartAdjusted（「到着調整」バッジの条件）', () => {
+describe('describeStayStart.adjusted（「到着調整」バッジの条件）', () => {
+  it('受付完了 19:40:23 に 19:40（40分）を入れても秒の差なので効いていない扱い', () => {
+    const p = mk({ opsCompletedAt: START + 40 * MIN + 23_000, arrivalAdjustment: { kind: 'offset', min: 40 } });
+    expect(describeStayStart(p, START, NOW).adjusted).toBe(false);
+    // 起点自体は 19:40:00 になる
+    expect(describeStayStart(p, START, NOW).start).toBe(START + 40 * MIN);
+  });
+
   it('起点が変わるなら true', () => {
-    expect(isStayStartAdjusted(mk({ stayStartOffsetMin: 60 }), START, NOW)).toBe(true);
+    expect(describeStayStart(mk({ arrivalAdjustment: { kind: 'offset', min: 60 } }), START, NOW).adjusted).toBe(true);
   });
   it('未設定は false', () => {
-    expect(isStayStartAdjusted(mk(), START, NOW)).toBe(false);
+    expect(describeStayStart(mk(), START, NOW).adjusted).toBe(false);
   });
   it('頭打ちで結果が変わらない（定刻の人に負の値）なら false', () => {
-    expect(isStayStartAdjusted(mk({ opsCompletedAt: START - 5 * MIN, stayStartOffsetMin: -10 }), START, NOW)).toBe(false);
+    expect(describeStayStart(mk({ opsCompletedAt: START - 5 * MIN, arrivalAdjustment: { kind: 'offset', min: -10 } }), START, NOW).adjusted).toBe(false);
   });
   it('実際と同じ分数なら false', () => {
-    expect(isStayStartAdjusted(mk({ stayStartOffsetMin: 120 }), START, NOW)).toBe(false);
+    expect(describeStayStart(mk({ arrivalAdjustment: { kind: 'offset', min: 120 } }), START, NOW).adjusted).toBe(false);
   });
   it('未完了・練習開始時刻なしは false', () => {
-    const p = mk({ operationStatus: { payment: false, roster: false, checkin: false }, stayStartOffsetMin: 10 });
-    expect(isStayStartAdjusted(p, START, NOW)).toBe(false);
-    expect(isStayStartAdjusted(mk({ stayStartOffsetMin: 10 }), 0, NOW)).toBe(false);
+    const p = mk({ operationStatus: { payment: false, roster: false, checkin: false }, arrivalAdjustment: { kind: 'offset', min: 10 } });
+    expect(describeStayStart(p, START, NOW).adjusted).toBe(false);
+    expect(describeStayStart(mk({ arrivalAdjustment: { kind: 'offset', min: 10 } }), 0, NOW).adjusted).toBe(false);
   });
 });
 
@@ -247,65 +253,79 @@ describe('showReliefOptions（救済グループの表示条件）', () => {
   it('受付完了時刻が分からない（null）なら出さない', () => {
     expect(showReliefOptions('unknown', null, false)).toBe(false);
   });
-  it('未到着は猶予にかかわらず常に出す（到着前の予約用）', () => {
-    expect(showReliefOptions('notArrived', null, false)).toBe(true);
+  it('受付未完了は猶予にかかわらず常に出す（受付前の予約用）', () => {
+    expect(showReliefOptions('opsIncomplete', null, false)).toBe(true);
   });
   it('倍率が設定済みなら猶予にかかわらず出す（選択状態を見せる）', () => {
     expect(showReliefOptions('known', 5, true)).toBe(true);
-    expect(showReliefOptions('unknown', null, true)).toBe(true);
+    expect(showReliefOptions('known', 0, true)).toBe(true);
+  });
+  it('受付完了時刻が不明（unknown）なら倍率設定済みでも出さない（倍率を適用しないため）', () => {
+    expect(showReliefOptions('unknown', null, true)).toBe(false);
   });
 });
 
-describe('resolveStayStart - 遅刻救済の倍率（lateReliefRatio）', () => {
+describe('resolveStayStart - 遅刻救済の倍率（arrivalAdjustment kind=ratio）', () => {
   // mk() の受付完了は練習開始＋120分
   it('会費・名簿が未完了なら倍率があっても now', () => {
-    const p = mk({ operationStatus: { payment: false, roster: true, checkin: false }, opsCompletedAt: undefined, lateReliefRatio: 0.5 });
+    const p = mk({ operationStatus: { payment: false, roster: true, checkin: false }, opsCompletedAt: undefined, arrivalAdjustment: { kind: 'ratio', ratio: 0.5 } });
     expect(resolveStayStart(p, START, NOW)).toBe(NOW);
   });
   it('0.5 なら遅刻幅半分', () => {
-    expect(resolveStayStart(mk({ lateReliefRatio: 0.5 }), START, NOW)).toBe(START + 60 * MIN);
+    expect(resolveStayStart(mk({ arrivalAdjustment: { kind: 'ratio', ratio: 0.5 } }), START, NOW)).toBe(START + 60 * MIN);
   });
   it('1/3 なら遅刻幅 1/3', () => {
-    expect(resolveStayStart(mk({ lateReliefRatio: 1 / 3 }), START, NOW)).toBe(START + 40 * MIN);
+    expect(resolveStayStart(mk({ arrivalAdjustment: { kind: 'ratio', ratio: 1 / 3 } }), START, NOW)).toBe(START + 40 * MIN);
   });
   it('0 なら練習開始（遅刻なしとみなす）', () => {
-    expect(resolveStayStart(mk({ lateReliefRatio: 0 }), START, NOW)).toBe(START);
+    expect(resolveStayStart(mk({ arrivalAdjustment: { kind: 'ratio', ratio: 0 } }), START, NOW)).toBe(START);
   });
   it('遅刻していなければ練習開始のまま', () => {
-    expect(resolveStayStart(mk({ opsCompletedAt: START - 5 * MIN, lateReliefRatio: 0.5 }), START, NOW)).toBe(START);
+    expect(resolveStayStart(mk({ opsCompletedAt: START - 5 * MIN, arrivalAdjustment: { kind: 'ratio', ratio: 0.5 } }), START, NOW)).toBe(START);
   });
   it('now で頭打ち', () => {
     // 受付完了が now より後（端末時刻ずれ等）でも now を超えない
-    const p = mk({ opsCompletedAt: NOW + 60 * MIN, lateReliefRatio: 1 });
+    const p = mk({ opsCompletedAt: NOW + 60 * MIN, arrivalAdjustment: { kind: 'ratio', ratio: 1 } });
     expect(resolveStayStart(p, START, NOW)).toBe(NOW);
   });
   it('練習開始時刻が無い（0）なら倍率を無視', () => {
-    expect(resolveStayStart(mk({ lateReliefRatio: 0 }), 0, NOW)).toBe(START + 120 * MIN);
+    expect(resolveStayStart(mk({ arrivalAdjustment: { kind: 'ratio', ratio: 0 } }), 0, NOW)).toBe(START + 120 * MIN);
   });
-  it('受付完了時刻が unknown でも従来の起点に倍率を当てる', () => {
-    const p = mk({ opsCompletedAt: undefined, activatedAt: 0, lateReliefRatio: 0.5 });
-    // unknown の起点は練習開始（遅刻0）→ 練習開始のまま
-    expect(resolveStayStart(p, START, NOW)).toBe(START);
+  it('受付完了時刻が不明（unknown）なら倍率を適用せず従来の起点のまま', () => {
+    // activatedAt も無い既存データ → 従来の起点は now
+    const legacy = mk({ opsCompletedAt: undefined, activatedAt: undefined as unknown as number, arrivalAdjustment: { kind: 'ratio', ratio: 0 } });
+    expect(resolveStayStart(legacy, START, NOW)).toBe(NOW);
+    expect(describeStayStart(legacy, START, NOW).adjusted).toBe(false);
   });
   it('到着調整バッジ・遅刻連絡バッジの判定', () => {
-    expect(isStayStartAdjusted(mk({ lateReliefRatio: 0.5 }), START, NOW)).toBe(true);
-    expect(isStayStartAdjusted(mk({ opsCompletedAt: START, lateReliefRatio: 0.5 }), START, NOW)).toBe(false);
-    const pending = mk({ operationStatus: { payment: false, roster: false, checkin: false }, lateReliefRatio: 0.5 });
-    expect(isLateReliefReserved(pending, START, NOW)).toBe(true);
-    expect(isLateReliefReserved(pending, 0, NOW)).toBe(false);
-    expect(isLateReliefReserved(mk({ lateReliefRatio: 0.5 }), START, NOW)).toBe(false);
+    expect(describeStayStart(mk({ arrivalAdjustment: { kind: 'ratio', ratio: 0.5 } }), START, NOW).adjusted).toBe(true);
+    expect(describeStayStart(mk({ opsCompletedAt: START, arrivalAdjustment: { kind: 'ratio', ratio: 0.5 } }), START, NOW).adjusted).toBe(false);
+    const pending = mk({ operationStatus: { payment: false, roster: false, checkin: false }, arrivalAdjustment: { kind: 'ratio', ratio: 0.5 } });
+    expect(describeStayStart(pending, START, NOW).reliefReserved).toBe(true);
+    expect(describeStayStart(pending, 0, NOW).reliefReserved).toBe(false);
+    expect(describeStayStart(mk({ arrivalAdjustment: { kind: 'ratio', ratio: 0.5 } }), START, NOW).reliefReserved).toBe(false);
   });
 });
 
-describe('isValidLateReliefRatio', () => {
-  it('有限で 0〜1 のみ', () => {
-    expect(isValidLateReliefRatio(0)).toBe(true);
-    expect(isValidLateReliefRatio(1 / 3)).toBe(true);
-    expect(isValidLateReliefRatio(1)).toBe(true);
-    expect(isValidLateReliefRatio(-0.1)).toBe(false);
-    expect(isValidLateReliefRatio(1.5)).toBe(false);
-    expect(isValidLateReliefRatio(NaN)).toBe(false);
-    expect(isValidLateReliefRatio('0.5')).toBe(false);
+describe('normalizeArrivalAdjustment（kind ごとの検証）', () => {
+  it('offset: 有限の数値を整数・0 以上に', () => {
+    expect(normalizeArrivalAdjustment({ kind: 'offset', min: 12.6 })).toEqual({ kind: 'offset', min: 13 });
+    expect(normalizeArrivalAdjustment({ kind: 'offset', min: -5 })).toEqual({ kind: 'offset', min: 0 });
+    expect(normalizeArrivalAdjustment({ kind: 'offset', min: NaN })).toBeNull();
+    expect(normalizeArrivalAdjustment({ kind: 'offset', min: '10' })).toBeNull();
+  });
+  it('ratio: 有限で 0〜1 のみ', () => {
+    expect(normalizeArrivalAdjustment({ kind: 'ratio', ratio: 0 })).toEqual({ kind: 'ratio', ratio: 0 });
+    expect(normalizeArrivalAdjustment({ kind: 'ratio', ratio: 1 / 3 })).toEqual({ kind: 'ratio', ratio: 1 / 3 });
+    expect(normalizeArrivalAdjustment({ kind: 'ratio', ratio: 1 })).toEqual({ kind: 'ratio', ratio: 1 });
+    expect(normalizeArrivalAdjustment({ kind: 'ratio', ratio: -0.1 })).toBeNull();
+    expect(normalizeArrivalAdjustment({ kind: 'ratio', ratio: 1.5 })).toBeNull();
+    expect(normalizeArrivalAdjustment({ kind: 'ratio', ratio: Infinity })).toBeNull();
+  });
+  it('kind 不明・オブジェクト以外は null', () => {
+    expect(normalizeArrivalAdjustment({ kind: 'other', min: 1 })).toBeNull();
+    expect(normalizeArrivalAdjustment(null)).toBeNull();
+    expect(normalizeArrivalAdjustment(5)).toBeNull();
   });
 });
 
@@ -328,23 +348,23 @@ describe('buildArrivalAdjustmentUpdate（モーダルの保存内容）', () => 
   const parse = (t: string) => parseStayOffsetTime(t, START);
   const none = { ratio: null, offsetText: '' };
   it('変更なしは空', () => {
-    expect(buildArrivalAdjustmentUpdate(none, none, parse)).toEqual({});
-    expect(buildArrivalAdjustmentUpdate({ ratio: 0.5, offsetText: '' }, { ratio: 0.5, offsetText: '' }, parse)).toEqual({});
-    expect(buildArrivalAdjustmentUpdate({ ratio: null, offsetText: '19:30' }, { ratio: null, offsetText: '19:30' }, parse)).toEqual({});
+    expect(buildArrivalAdjustmentUpdate(none, none, parse)).toBeUndefined();
+    expect(buildArrivalAdjustmentUpdate({ ratio: 0.5, offsetText: '' }, { ratio: 0.5, offsetText: '' }, parse)).toBeUndefined();
+    expect(buildArrivalAdjustmentUpdate({ ratio: null, offsetText: '19:30' }, { ratio: null, offsetText: '19:30' }, parse)).toBeUndefined();
   });
   it('倍率を選ぶ／変える', () => {
-    expect(buildArrivalAdjustmentUpdate(none, { ratio: 0.5, offsetText: '' }, parse)).toEqual({ lateReliefRatio: 0.5 });
-    expect(buildArrivalAdjustmentUpdate({ ratio: null, offsetText: '19:30' }, { ratio: 0, offsetText: '' }, parse)).toEqual({ lateReliefRatio: 0 });
+    expect(buildArrivalAdjustmentUpdate(none, { ratio: 0.5, offsetText: '' }, parse)).toEqual({ kind: 'ratio', ratio: 0.5 });
+    expect(buildArrivalAdjustmentUpdate({ ratio: null, offsetText: '19:30' }, { ratio: 0, offsetText: '' }, parse)).toEqual({ kind: 'ratio', ratio: 0 });
   });
   it('倍率を解除', () => {
-    expect(buildArrivalAdjustmentUpdate({ ratio: 0.5, offsetText: '' }, none, parse)).toEqual({ lateReliefRatio: null });
+    expect(buildArrivalAdjustmentUpdate({ ratio: 0.5, offsetText: '' }, none, parse)).toBeNull();
   });
   it('倍率から手入力の時刻へ切り替え', () => {
-    expect(buildArrivalAdjustmentUpdate({ ratio: 0.5, offsetText: '' }, { ratio: null, offsetText: '19:20' }, parse)).toEqual({ stayStartOffsetMin: 20 });
+    expect(buildArrivalAdjustmentUpdate({ ratio: 0.5, offsetText: '' }, { ratio: null, offsetText: '19:20' }, parse)).toEqual({ kind: 'offset', min: 20 });
   });
   it('時刻の設定・解除・不正', () => {
-    expect(buildArrivalAdjustmentUpdate(none, { ratio: null, offsetText: '19:45' }, parse)).toEqual({ stayStartOffsetMin: 45 });
-    expect(buildArrivalAdjustmentUpdate({ ratio: null, offsetText: '19:45' }, none, parse)).toEqual({ stayStartOffsetMin: null });
+    expect(buildArrivalAdjustmentUpdate(none, { ratio: null, offsetText: '19:45' }, parse)).toEqual({ kind: 'offset', min: 45 });
+    expect(buildArrivalAdjustmentUpdate({ ratio: null, offsetText: '19:45' }, none, parse)).toBeNull();
     expect(buildArrivalAdjustmentUpdate(none, { ratio: null, offsetText: 'xx' }, parse)).toBe('invalid');
   });
 });

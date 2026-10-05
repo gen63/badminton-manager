@@ -11,6 +11,9 @@ import {
   type StayInfo,
 } from '../lib/playerStats';
 
+/** 滞在表示の横の小さな目印（到着調整・遅刻連絡）の共通スタイル */
+const MARK_CLASS = 'shrink-0 px-1 py-0.5 rounded text-[10px] leading-none bg-primary/10 text-primary';
+
 interface GameStatsRowsProps {
   /** 1段目の左（性別・名前など）。残り幅を使う */
   children: ReactNode;
@@ -51,10 +54,9 @@ export function GameStatsRows({
         (stay.complete
           ? `滞在 ${formatStayMinutes(stay.minutes)}${stay.percent !== null ? ` (${stay.percent}%)` : ''}`
           : '滞在 —（未完了）');
-  // 管理者の到着調整が実際に効いている人は、滞在表示の横に小さな目印を出す（全員に表示）
-  const showOverrideMark = sortMode !== 'lastGame' && !!stay?.overridden && stay.complete;
-  // 未到着で遅刻救済の倍率を予約している人には「遅刻連絡」の目印（受付完了で到着調整に切り替わる）
-  const showReliefReservedMark = sortMode !== 'lastGame' && !!stay?.reliefReserved && !stay.complete;
+  // 到着調整が実際に効いている人／受付前に救済の倍率を予約済みの人には小さな目印（全員に表示）
+  const showOverrideMark = sortMode !== 'lastGame' && !!stay?.overridden;
+  const showReliefReservedMark = sortMode !== 'lastGame' && !!stay?.reliefReserved;
   const hasExpected = !!expected && expected.expected !== null && expected.diff !== null;
 
   return (
@@ -68,16 +70,16 @@ export function GameStatsRows({
         {left && <span className="whitespace-nowrap text-muted-foreground">{left}</span>}
         {showOverrideMark && (
           <span
+            className={MARK_CLASS}
             title="到着調整中（滞在時間モードの公平計算で、受付完了時刻の代わりに管理者が設定した開始時刻を使っています）"
-            className="shrink-0 px-1 py-0.5 rounded text-[10px] leading-none bg-primary/10 text-primary"
           >
             到着調整
           </span>
         )}
         {showReliefReservedMark && (
           <span
+            className={MARK_CLASS}
             title="遅刻連絡あり（受付完了時に遅刻幅の救済を自動で適用します）"
-            className="shrink-0 px-1 py-0.5 rounded text-[10px] leading-none bg-primary/10 text-primary"
           >
             遅刻連絡
           </span>

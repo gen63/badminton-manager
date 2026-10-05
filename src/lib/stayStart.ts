@@ -1,4 +1,4 @@
-import type { Player } from '../types/player';
+import type { ArrivalAdjustment, Player } from '../types/player';
 import { formatHHMM, timeOnSameDay } from './practiceEndPhase';
 
 // algorithm.ts（配置）と playerStats.ts（表示用の統計・期待試合数）の両方から使うため、
@@ -9,40 +9,56 @@ import { formatHHMM, timeOnSameDay } from './practiceEndPhase';
  *
  * 会費・名簿が未対応のまま滞在時間だけが積み上がり、対応済みの人より
  * 優先されてしまう不公平を避けるため、起点は「休憩解除時刻」ではなく
- * 「会費・名簿が両方完了した時刻」を基準にする。上から順に:
+ * 「会費・名簿が両方完了した時刻（受付完了）」を基準にする。上から順に:
  *
- * 1. 会費・名簿のどちらか未完了
+ * 1. 会費・名簿のどちらか未完了（受付未完了）
  *    → `now`（＝滞在時間ゼロ扱い。下限5分ペナルティが効く）。到着調整があっても同じ
- * 2. 会費・名簿とも完了 & 管理者の到着調整 `stayStartOffsetMin` あり & 練習開始時刻あり（> 0）
- *    → `min(now, practiceStartTime + max(0, stayStartOffsetMin) 分)`
- *    遅刻連絡があった人は実際より早く、体調不良などで控えめにしたい人は遅く設定する。
+ * 2. 受付完了 & 到着調整 `{ kind: 'offset', min }` & 練習開始時刻あり（> 0）
+ *    → `min(now, practiceStartTime + max(0, min) 分)`
  *    練習開始時刻からの分数で持つので、練習の日付・開始時刻を変えても遅刻幅が保たれる。
- * 2b. 会費・名簿とも完了 & 遅刻救済の倍率 `lateReliefRatio` あり & 練習開始時刻あり（> 0）
+ * 3. 受付完了時刻が分かる（known） & 到着調整 `{ kind: 'ratio', ratio }` & 練習開始時刻あり
  *    → `min(now, practiceStartTime + round((従来の起点 - practiceStartTime) × ratio))`
- *    到着前に予約しておき、受付完了時に自動で効く（従来の起点は known/unknown どちらでも 3・4 の値）。
- *    `stayStartOffsetMin` とは排他（両方ある場合は offset を優先）。
- * 3. 会費・名簿とも完了 & `opsCompletedAt` あり
- *    → `max(practiceStartTime, opsCompletedAt)`
- * 4. 会費・名簿とも完了 & `opsCompletedAt` なし（このフィールド追加前に
- *    完了した既存セッション互換）→ `max(practiceStartTime, activatedAt ?? now)`（従来どおり）
+ *    遅刻連絡を受けた時点（受付前）に予約しておき、受付完了時に自動で効く。
+ *    受付完了時刻が不明（unknown）な人には適用しない（従来の起点のまま）。
+ * 4. それ以外は従来の起点（`resolveActualStayStart`）:
+ *    `opsCompletedAt` あり → `max(practiceStartTime, opsCompletedAt)`、
+ *    なし（既存セッション互換）→ `max(practiceStartTime, activatedAt ?? now)`
  *
  * 詳細: docs/plans/2026-08-11-stay-start-at-ops-complete.md /
  *       docs/plans/2026-10-05-stay-start-override.md
  */
 export function resolveStayStart(player: Player, practiceStartTime: number, now: number): number {
+  return describeStayStart(player, practiceStartTime, now).start;
+}
+
+/** `describeStayStart` の結果（1人あたり1回の計算で、起点と表示用の目印をまとめて返す） */
+export interface StayStartDetail {
+  /** 公平計算に使う起点（`resolveStayStart` と同じ） */
+  start: number;
+  /** 到着調整を無視した従来の起点 */
+  actual: ActualStayStart;
+  /** 到着調整が実際に効いているか（分単位で比べて従来の起点と異なる）。「到着調整」バッジ用 */
+  adjusted: boolean;
+  /** 受付未完了で救済の倍率を予約済み（練習開始時刻あり）。「遅刻連絡」バッジ用 */
+  reliefReserved: boolean;
+}
+
+export function describeStayStart(player: Player, practiceStartTime: number, now: number): StayStartDetail {
   const actual = resolveActualStayStart(player, practiceStartTime, now);
-  if (actual.status === 'notArrived') {
-    return now;
+  const adj = player.arrivalAdjustment;
+  const hasStart = practiceStartTime > 0;
+  if (actual.status === 'opsIncomplete') {
+    return { start: now, actual, adjusted: false, reliefReserved: hasStart && adj?.kind === 'ratio' };
   }
-  const offset = player.stayStartOffsetMin;
-  if (offset !== undefined && Number.isFinite(offset) && practiceStartTime > 0) {
-    return Math.min(now, practiceStartTime + Math.max(0, offset) * 60000);
+  let start = actual.start;
+  if (hasStart && adj?.kind === 'offset' && Number.isFinite(adj.min)) {
+    start = Math.min(now, practiceStartTime + Math.max(0, adj.min) * 60000);
+  } else if (hasStart && adj?.kind === 'ratio' && Number.isFinite(adj.ratio) && actual.status === 'known') {
+    start = Math.min(now, applyLateRelief(actual.start, practiceStartTime, adj.ratio));
   }
-  const ratio = player.lateReliefRatio;
-  if (ratio !== undefined && Number.isFinite(ratio) && practiceStartTime > 0) {
-    return Math.min(now, applyLateRelief(actual.start, practiceStartTime, ratio));
-  }
-  return actual.start;
+  // 秒のずれ（受付完了 19:40:23 に 19:40 を入れた等）は「効いていない」とみなすため分単位で比べる
+  const adjusted = adj !== undefined && Math.round(start / 60000) !== Math.round(actual.start / 60000);
+  return { start, actual, adjusted, reliefReserved: false };
 }
 
 /**
@@ -56,53 +72,45 @@ export function applyLateRelief(actualStart: number, practiceStartTime: number, 
   return practiceStartTime + Math.round(late * r);
 }
 
-/** 救済の倍率が有効な値か（有限で 0〜1） */
-export function isValidLateReliefRatio(ratio: unknown): ratio is number {
-  return typeof ratio === 'number' && Number.isFinite(ratio) && ratio >= 0 && ratio <= 1;
+/**
+ * 到着調整の値を検証・正規化する。不正なら null。
+ * - offset: `min` が有限の数値（四捨五入して整数、0 未満は 0）
+ * - ratio: `ratio` が有限で 0〜1
+ */
+export function normalizeArrivalAdjustment(value: unknown): ArrivalAdjustment | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const v = value as { kind?: unknown; min?: unknown; ratio?: unknown };
+  if (v.kind === 'offset' && typeof v.min === 'number' && Number.isFinite(v.min)) {
+    return { kind: 'offset', min: Math.max(0, Math.round(v.min)) };
+  }
+  if (v.kind === 'ratio' && typeof v.ratio === 'number' && Number.isFinite(v.ratio) && v.ratio >= 0 && v.ratio <= 1) {
+    return { kind: 'ratio', ratio: v.ratio };
+  }
+  return null;
 }
 
 /**
  * 到着調整を無視した、従来ルールでの起点（受付完了＝会費・名簿の両方完了）。
- * - `notArrived`: 会費・名簿のどちらかが未完了
+ * - `opsIncomplete`: 会費・名簿のどちらかが未完了（受付未完了。来て試合に出ている人も含む）
  * - `known`: 受付完了時刻が分かる（`opsCompletedAt`、または到着記録 `activatedAt` > 0 の既存データ）
  * - `unknown`: どちらも無く、練習開始または now に落ちている（表示は「不明」）
- * `start` はいずれも従来ルールの値（`resolveStayStart` の調整なしの結果と同じ）。
+ * `start` はいずれも従来ルールの値。
  */
 export type ActualStayStart =
-  | { status: 'notArrived' }
+  | { status: 'opsIncomplete' }
   | { status: 'known'; start: number }
   | { status: 'unknown'; start: number };
 
 export function resolveActualStayStart(player: Player, practiceStartTime: number, now: number): ActualStayStart {
   const opsComplete = player.operationStatus?.payment === true && player.operationStatus?.roster === true;
   if (!opsComplete) {
-    return { status: 'notArrived' };
+    return { status: 'opsIncomplete' };
   }
   if (player.opsCompletedAt !== undefined) {
     return { status: 'known', start: Math.max(practiceStartTime, player.opsCompletedAt) };
   }
   const start = Math.max(practiceStartTime, player.activatedAt ?? now);
   return player.activatedAt ? { status: 'known', start } : { status: 'unknown', start };
-}
-
-/**
- * 到着調整が実際に効いているか（＝調整ありの起点が従来ルールの起点と異なるか）。
- * 練習開始時刻が無い・未完了・頭打ちで結果が変わらない場合は false。参加者一覧の「到着調整」バッジ用。
- */
-export function isStayStartAdjusted(player: Player, practiceStartTime: number, now: number): boolean {
-  if (player.stayStartOffsetMin === undefined && player.lateReliefRatio === undefined) return false;
-  const actual = resolveActualStayStart(player, practiceStartTime, now);
-  if (actual.status === 'notArrived') return false;
-  return resolveStayStart(player, practiceStartTime, now) !== actual.start;
-}
-
-/**
- * 未到着（会費・名簿未完了）で遅刻救済の倍率が予約されているか。参加者一覧の「遅刻連絡」バッジ用。
- * 練習開始時刻が無いセッションでは倍率が効かないので false。
- */
-export function isLateReliefReserved(player: Player, practiceStartTime: number, now: number): boolean {
-  if (player.lateReliefRatio === undefined || !(practiceStartTime > 0)) return false;
-  return resolveActualStayStart(player, practiceStartTime, now).status === 'notArrived';
 }
 
 /** 練習開始からの遅刻分（分単位で四捨五入、0 以上） */
@@ -123,12 +131,12 @@ export function formatReliefRatio(ratio: number): string {
   return hit ? hit.label : `${Math.round(ratio * 100)}%`;
 }
 
-/** 未到着で倍率を選んだときの注記 */
+/** 受付未完了で倍率を選んだときの注記 */
 export function reliefReservationNote(ratio: number): string {
   return `受付完了時に遅刻幅を ${formatReliefRatio(ratio)} にします`;
 }
 
-/** 到着調整（練習開始からの分数）→ `<input type="time">` 用の `HH:MM`（練習開始時刻＋分数）。未設定は空文字 */
+/** 到着調整の分数（練習開始から）→ `<input type="time">` 用の `HH:MM`（練習開始時刻＋分数）。未設定は空文字 */
 export function formatStayOffsetTime(offsetMin: number | undefined, practiceStartTime: number): string {
   if (offsetMin === undefined || !Number.isFinite(offsetMin) || !(practiceStartTime > 0)) return '';
   return formatHHMM(practiceStartTime + Math.max(0, offsetMin) * 60000);
@@ -218,49 +226,39 @@ export const RELIEF_GRACE_MIN = 10;
 
 /**
  * 救済グループ（遅刻幅 1/2・1/3・0）を出すか。UI の表示条件のみで、公平計算（resolveStayStart）には影響しない。
- * - 未到着（notArrived）: 常に出す（遅刻連絡を受けた時点で予約できるように。猶予は適用しない）
- * - 倍率が設定済み: 常に出す（選択状態を見せるため）
- * - それ以外: 実際の遅刻が猶予（`RELIEF_GRACE_MIN`）を超える場合だけ。受付完了時刻が分からない（null）なら出さない
+ * - 受付未完了（opsIncomplete）: 常に出す（遅刻連絡を受けた時点で予約できるように。猶予は適用しない）
+ * - 受付完了時刻が不明（unknown）: 出さない（倍率を適用しないため）
+ * - known で倍率が設定済み: 出す（選択状態を見せるため）
+ * - known でそれ以外: 実際の遅刻が猶予（`RELIEF_GRACE_MIN`）を超える場合だけ
  */
 export function showReliefOptions(
   status: ActualStayStart['status'],
   actualLateMin: number | null,
   hasRatio: boolean,
 ): boolean {
-  if (status === 'notArrived' || hasRatio) return true;
+  if (status === 'opsIncomplete') return true;
+  if (status === 'unknown') return false;
+  if (hasRatio) return true;
   return actualLateMin !== null && actualLateMin > RELIEF_GRACE_MIN;
-}
-
-/** 到着調整の保存内容（undefined＝変更なし / null＝解除 / 値＝設定） */
-export interface ArrivalAdjustmentUpdate {
-  stayStartOffsetMin?: number | null;
-  lateReliefRatio?: number | null;
 }
 
 /**
  * 編集モーダルの初期値と現在値から、到着調整の保存内容を決める（変更の有無はここだけで判定する）。
- * 倍率（ratio）と時刻（offsetText＝HH:MM、空文字＝なし）は排他で、倍率を選んでいる間は時刻を使わない。
- * 時刻の形式が不正なら 'invalid'。
+ * 倍率（ratio）と時刻（offsetText＝HH:MM、空文字＝なし）は同時に選べず、倍率を選んでいる間は時刻を使わない。
+ * 戻り値: undefined＝変更なし / null＝解除 / 値＝設定 / 'invalid'＝時刻の形式が不正。
  */
 export function buildArrivalAdjustmentUpdate(
   initial: { ratio: number | null; offsetText: string },
   current: { ratio: number | null; offsetText: string },
   parseOffset: (hhmm: string) => number | null,
-): ArrivalAdjustmentUpdate | 'invalid' {
+): ArrivalAdjustment | null | undefined | 'invalid' {
   if (current.ratio !== null) {
-    // 倍率を選んでいる（offset は computeUpdatePlayer が削除する）
-    return current.ratio === initial.ratio ? {} : { lateReliefRatio: current.ratio };
+    return current.ratio === initial.ratio ? undefined : { kind: 'ratio', ratio: current.ratio };
   }
-  const offsetChanged = current.offsetText !== initial.offsetText || initial.ratio !== null;
-  if (current.offsetText !== '' && offsetChanged) {
-    const offset = parseOffset(current.offsetText);
-    if (offset === null) return 'invalid';
-    // 時刻を設定（倍率は computeUpdatePlayer が削除する）
-    return { stayStartOffsetMin: offset };
+  if (current.offsetText !== '') {
+    if (current.offsetText === initial.offsetText && initial.ratio === null) return undefined;
+    const min = parseOffset(current.offsetText);
+    return min === null ? 'invalid' : { kind: 'offset', min };
   }
-  if (current.offsetText === '') {
-    if (initial.ratio !== null) return { lateReliefRatio: null };
-    if (initial.offsetText !== '') return { stayStartOffsetMin: null };
-  }
-  return {};
+  return initial.ratio !== null || initial.offsetText !== '' ? null : undefined;
 }
