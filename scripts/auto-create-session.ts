@@ -93,7 +93,7 @@ interface PlayerIssue {
 // Phase A: E-tomoスクレイピング
 // ============================================================
 
-export { parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, isRatingRequired, findUnratedParticipants, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName, AUTO_SESSION_ADMINS, computeRosterDiff, computeRosterSync, hasSessionStarted, readTmpSheet, fetchWithRetry, fetchEventDetails, describeError };
+export { buildEventDetailUrl, parseEventTitle, parseEventList, parseEventDetail, filterEventsByDate, findNextPracticeDate, checkPlayerIssues, isRatingRequired, findUnratedParticipants, decodeHtmlEntities, formatEventSummary, buildSessionData, formatPracticeDate, buildPracticeStartTime, isPracticeEvent, buildTmpSheetName, AUTO_SESSION_ADMINS, computeRosterDiff, computeRosterSync, hasSessionStarted, readTmpSheet, fetchWithRetry, fetchEventDetails, describeError };
 
 // ============================================================
 // リトライ付き fetch

@@ -1,0 +1,57 @@
+name: E-ToMo Checkin
+
+on:
+  schedule:
+    # 13:00 UTC = 22:00 JST — 当日の練習で試合に出た人を E-ToMo に出席登録
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'DRY RUN（出席登録ボタンを押さない）'
+        type: boolean
+        default: true
+      target_date:
+        description: '対象日 YYYY-MM-DD（空なら今日 JST）'
+        type: string
+        required: false
+
+concurrency:
+  group: etomo-checkin
+  cancel-in-progress: false
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run etomo-checkin script
+        env:
+          ETOMO_URL: ${{ secrets.ETOMO_URL }}
+          ETOMO_CHECKIN_URL: ${{ secrets.ETOMO_CHECKIN_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # スケジュール実行は本番（false）、手動実行は inputs.dry_run に従う
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+          TARGET_DATE: ${{ inputs.target_date }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          TZ: Asia/Tokyo
+        run: npx tsx scripts/etomo-checkin.ts
