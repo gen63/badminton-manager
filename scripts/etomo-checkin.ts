@@ -46,6 +46,8 @@ interface SessionResult {
   sessionId: string;
   title: string;
   registered: string[];
+  /** 出席登録ボタンが無かった人（E-ToMo は2回登録できないため登録済みとみなす） */
+  alreadyRegistered: string[];
   notFound: string[];
   errors: string[];
   fatal?: string;
@@ -277,13 +279,16 @@ async function verifyCheckinPage(page: Page, fullName: string, title: string): P
   }
 }
 
-async function clickAttendanceRegister(page: Page): Promise<void> {
-  // 画面右下のナビリンクではなく、form 内の submit を優先する
+/**
+ * 出欠登録画面のフォーム内「出席登録」ボタン（画面右下のナビリンクは除外）。
+ * E-ToMo は同じ人を2回登録できず、登録済みだとボタンが出ない想定なので、
+ * 見つからなければ null（＝登録済み）を返す。
+ */
+async function findAttendanceRegisterButton(page: Page): Promise<Locator | null> {
   const candidates = page.locator(
     'form input[type=submit][value="出席登録"], form button:has-text("出席登録"), form input[type=image][alt="出席登録"]',
   );
-  if ((await candidates.count()) === 0) throw new Error('フォーム内の「出席登録」ボタンが見つかりません');
-  await clickAndWaitForNavigation(page, candidates.first());
+  return (await candidates.count()) > 0 ? candidates.first() : null;
 }
 
 async function processSession(
@@ -297,6 +302,7 @@ async function processSession(
     sessionId: session.sessionId,
     title,
     registered: [],
+    alreadyRegistered: [],
     notFound: [],
     errors: [],
   };
@@ -325,13 +331,18 @@ async function processSession(
       await selectEventIfAsked(page, session.etomoEventId, title);
       await verifyCheckinPage(page, row.fullName, title);
 
-      if (dryRun) {
+      const button = await findAttendanceRegisterButton(page);
+      if (!button) {
+        console.log(`  登録済み（出席登録ボタンなし）: ${row.fullName}`);
+        result.alreadyRegistered.push(row.fullName);
+      } else if (dryRun) {
         console.log(`  [DRY RUN] 登録予定: ${row.fullName}`);
+        result.registered.push(row.fullName);
       } else {
-        await clickAttendanceRegister(page);
+        await clickAndWaitForNavigation(page, button);
         console.log(`  登録: ${row.fullName}`);
+        result.registered.push(row.fullName);
       }
-      result.registered.push(row.fullName);
     } catch (error) {
       const message = `${row.fullName}: ${describeError(error)}`;
       console.error(`  エラー: ${message}`);
@@ -368,6 +379,9 @@ async function notifyResults(dateStr: string, dryRun: boolean, results: SessionR
     if (r.fatal) lines.push(`❌ ${r.fatal}`);
     lines.push(`${dryRun ? '登録予定' : '登録'}: ${r.registered.length}名`);
     if (r.registered.length > 0) lines.push(bullets(r.registered));
+    if (r.alreadyRegistered.length > 0) {
+      lines.push(`登録済みのためスキップ: ${r.alreadyRegistered.length}名`, bullets(r.alreadyRegistered));
+    }
     if (r.notFound.length > 0) {
       lines.push('⚠️ E-ToMo に見つからず未登録:', bullets(r.notFound));
     }
@@ -416,6 +430,7 @@ async function main(): Promise<boolean> {
           sessionId: session.sessionId,
           title: `event ${session.etomoEventId}`,
           registered: [],
+          alreadyRegistered: [],
           notFound: [],
           errors: [],
           fatal: 'E-ToMo のイベント一覧にイベントが見つかりません',
@@ -424,7 +439,7 @@ async function main(): Promise<boolean> {
       }
       if (session.playedNames.length === 0) {
         console.log('  試合に出た人がいないためスキップ');
-        results.push({ sessionId: session.sessionId, title, registered: [], notFound: [], errors: [] });
+        results.push({ sessionId: session.sessionId, title, registered: [], alreadyRegistered: [], notFound: [], errors: [] });
         continue;
       }
       try {
@@ -436,6 +451,7 @@ async function main(): Promise<boolean> {
           sessionId: session.sessionId,
           title,
           registered: [],
+          alreadyRegistered: [],
           notFound: [],
           errors: [],
           fatal: describeError(error),
