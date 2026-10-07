@@ -75,6 +75,14 @@ describe('matchTargetsToRows', () => {
   it('同一人物の重複対象は1回のみ', () => {
     expect(matchTargetsToRows(rows, ['山田太郎', '山田 太郎']).toRegister).toHaveLength(1);
   });
+  it('セッションのニックネームを進行表の名前列で照合する（フルネームより優先）', () => {
+    const r = matchTargetsToRows(rows, ['しんご', 'たろう']);
+    expect(r.toRegister.map((x) => x.fullName)).toEqual(['星野　真吾', '山田太郎']);
+    expect(r.notFound).toEqual([]);
+  });
+  it('ニックネームとフルネームで同じ人を指しても1回のみ', () => {
+    expect(matchTargetsToRows(rows, ['しんご', '星野真吾']).toRegister).toHaveLength(1);
+  });
   it('normalizeName', () => {
     expect(normalizeName(' a　b c ')).toBe('abc');
   });

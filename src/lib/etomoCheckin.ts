@@ -80,27 +80,34 @@ export function parseProgressTable(
   return result;
 }
 
-/** 対象者と進行表の行を照合する。名前は空白類を除いた完全一致。 */
+/**
+ * 対象者と進行表の行を照合する。名前は空白類を除いた完全一致。
+ * セッションの名前は E-ToMo のニックネーム（進行表の名前列の表示）なので、まず
+ * displayName で、見つからなければフルネームで照合する。同じ行は1回だけ返す。
+ */
 export function matchTargetsToRows(
   rows: ProgressRow[],
   targetNames: string[],
 ): { toRegister: ProgressRow[]; notFound: string[] } {
-  const rowByName = new Map<string, ProgressRow>();
+  const byDisplayName = new Map<string, ProgressRow>();
+  const byFullName = new Map<string, ProgressRow>();
   for (const row of rows) {
-    const key = normalizeName(row.fullName);
-    if (!rowByName.has(key)) rowByName.set(key, row);
+    const display = normalizeName(row.displayName);
+    if (display && !byDisplayName.has(display)) byDisplayName.set(display, row);
+    const full = normalizeName(row.fullName);
+    if (full && !byFullName.has(full)) byFullName.set(full, row);
   }
 
   const toRegister: ProgressRow[] = [];
   const notFound: string[] = [];
-  const used = new Set<string>();
+  const usedSerials = new Set<string>();
   for (const name of targetNames) {
     const key = normalizeName(name);
-    const row = rowByName.get(key);
+    const row = byDisplayName.get(key) ?? byFullName.get(key);
     if (!row) {
       notFound.push(name);
-    } else if (!used.has(key)) {
-      used.add(key);
+    } else if (!usedSerials.has(row.serial)) {
+      usedSerials.add(row.serial);
       toRegister.push(row);
     }
   }
