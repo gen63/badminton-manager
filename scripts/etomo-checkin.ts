@@ -31,7 +31,6 @@ import {
   matchTargetsToRows,
   normalizeName,
   type EtomoUser,
-  type ResolvedName,
   type ProgressRowRaw,
   type ProgressMemberRaw,
 } from '../src/lib/etomoCheckin';
@@ -340,15 +339,14 @@ async function processSession(
   title: string,
   detailUrl: string,
   dryRun: boolean,
-  targets: ResolvedName[],
-  unresolved: string[],
+  users: EtomoUser[],
 ): Promise<SessionResult> {
   const result: SessionResult = {
     sessionId: session.sessionId,
     title,
     registered: [],
     alreadyRegistered: [],
-    notFound: unresolved.map((n) => `${n}（メンバー一覧に無い）`),
+    notFound: [],
     errors: [],
   };
 
@@ -360,6 +358,10 @@ async function processSession(
     return result;
   }
 
+  // 進行表の参加者（本名）を先に確定し、メンバー一覧をその人たちに絞ってニックネームを引く
+  const participantNames = rows.flatMap((r) => [r.fullName, r.displayName]);
+  const { resolved: targets, unresolved } = resolveRealNames(session.playedNames, users, participantNames);
+  result.notFound.push(...unresolved.map((n) => `${n}（当日の進行表にニックネームが一致する人がいない）`));
   const { toRegister, notFound } = matchTargetsToRows(rows, targets);
   result.notFound.push(...notFound.map((t) => `${label(t.name, t.realName)}（進行表に無い）`));
   console.log(
@@ -499,8 +501,7 @@ async function main(): Promise<boolean> {
       }
       try {
         const detailUrl = buildEventDetailUrl(authUrl, session.etomoEventId);
-        const { resolved, unresolved } = resolveRealNames(session.playedNames, users);
-        results.push(await processSession(page, session, title, detailUrl, dryRun, resolved, unresolved));
+        results.push(await processSession(page, session, title, detailUrl, dryRun, users));
       } catch (error) {
         console.error(`  Fatal: ${describeError(error)}`);
         results.push({

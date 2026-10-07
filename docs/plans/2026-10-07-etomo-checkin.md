@@ -69,3 +69,9 @@ E-ToMo は同じ人を2回チェックインできない（ユーザー確認済
 既存の `ETOMO_URL`（進行表を開ける管理権限のアカウント。権限不足なら
 `ETOMO_CHECKIN_URL` を追加で設定すれば優先）、`DISCORD_WEBHOOK_URL`、`VITE_FIREBASE_*`、
 **`ETOMO_ADMIN_URL`（必須。メンバー一覧 user_list.php を開ける管理者権限の認証付き URL。shuttle-stock-kun と同じもの）**。
+
+## 追記（2026-10-07）: 照合の向き
+
+進行表の参加者（本名）を先に確定し、メンバー一覧をその人たちに絞ってからニックネームを
+引く（`resolveRealNames` の `participantNames`）。取得ページ数は同じだが、退会者などと
+同じニックネームがあっても当日の参加者を取り違えない（ユーザー提案）。

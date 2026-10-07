@@ -111,6 +111,17 @@ describe('matchTargetsToRows', () => {
     { serial: '2', fullName: '山田太郎', displayName: '山田 太郎' },
     { serial: '3', fullName: '鈴木一郎', displayName: 'いちろう' },
   ];
+  it('進行表の参加者に絞ってから引く（同じニックネームの別人を取り違えない）', () => {
+    const withDup = [
+      { realName: '旧会員', nickname: 'しんご' },
+      { realName: '星野 真吾', nickname: 'しんご' },
+      { realName: '山田太郎', nickname: 'たろう' },
+    ];
+    expect(resolveRealNames(['しんご'], withDup).resolved[0].realName).toBe('旧会員');
+    expect(resolveRealNames(['しんご'], withDup, ['星野真吾', '山田太郎']).resolved).toEqual([
+      { name: 'しんご', realName: '星野 真吾' },
+    ]);
+  });
   it('本名で空白差を無視して照合し、進行表に居ない人を返す', () => {
     const r = matchTargetsToRows(rows, [
       { name: 'しんご', realName: '星野 真吾' },

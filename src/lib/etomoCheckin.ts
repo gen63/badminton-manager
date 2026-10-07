@@ -162,10 +162,15 @@ export interface ResolvedName {
 export function resolveRealNames(
   targetNames: string[],
   users: EtomoUser[],
+  participantNames?: string[],
 ): { resolved: ResolvedName[]; unresolved: string[] } {
+  // 進行表の参加者（本名）が渡されたら、メンバー一覧をその人たちに絞ってから引く。
+  // 退会者などと同じニックネームがあっても当日の参加者を取り違えない。
+  const participants = participantNames && new Set(participantNames.map(normalizeName).filter(Boolean));
+  const candidates = participants ? users.filter((u) => participants.has(normalizeName(u.realName))) : users;
   const realByNick = new Map<string, string>();
   const realByReal = new Map<string, string>();
-  for (const u of users) {
+  for (const u of candidates) {
     const nick = normalizeName(u.nickname);
     const real = normalizeName(u.realName);
     if (nick && !realByNick.has(nick)) realByNick.set(nick, u.realName);
