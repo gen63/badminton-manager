@@ -8,6 +8,7 @@
  * 環境変数:
  *   ETOMO_CHECKIN_URL   - 進行表を操作できる認証付き event_info.php URL（任意・優先）
  *   ETOMO_URL           - 上記が無い場合に使う認証付き URL
+ *   ETOMO_ADMIN_URL     - 管理者権限の認証付き URL（必須。メンバー一覧 user_list.php の取得に使う）
  *   DISCORD_WEBHOOK_URL - Discord Webhook URL
  *   DRY_RUN             - '1' / 'true' で「出席登録」ボタンを押さない
  *   TARGET_DATE         - 対象日 YYYY-MM-DD（未指定は今日 JST）
@@ -20,13 +21,17 @@
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getFirestore, getDocs, collection, query, where } from 'firebase/firestore';
 import iconv from 'iconv-lite';
-import { chromium, type Locator, type Page } from '@playwright/test';
+import { chromium, type Browser, type Locator, type Page } from '@playwright/test';
 import type { GameState } from '../src/services/sessionService';
 import {
   collectPlayedPlayerNames,
   parseProgressTable,
+  parseUserListHtml,
+  resolveRealNames,
   matchTargetsToRows,
   normalizeName,
+  type EtomoUser,
+  type ResolvedName,
   type ProgressRowRaw,
   type ProgressMemberRaw,
 } from '../src/lib/etomoCheckin';
@@ -48,6 +53,7 @@ interface SessionResult {
   registered: string[];
   /** 出席登録ボタンが無かった人（E-ToMo は2回登録できないため登録済みとみなす） */
   alreadyRegistered: string[];
+  /** 「E-ToMo に見つからず未登録」として通知する文言（メンバー一覧に無い／進行表に無い） */
   notFound: string[];
   errors: string[];
   fatal?: string;
@@ -56,6 +62,12 @@ interface SessionResult {
 const PROGRESS_LINK_TEXT = 'このイベントの進行表を表示';
 const SELECT_EVENT_TEXT = '対象イベントを選択してください';
 const NAV_TIMEOUT_MS = 30000;
+const USER_LIST_BASE = 'https://system.hawai-an.com/master/user_list.php';
+
+/** 通知・ログ用: ニックネーム（本名） */
+function label(nickname: string, realName: string): string {
+  return normalizeName(nickname) === normalizeName(realName) ? realName : `${nickname}（${realName}）`;
+}
 
 // ============================================================
 // ユーティリティ
@@ -161,6 +173,37 @@ async function fetchEventTitles(listUrl: string): Promise<Map<string, string>> {
 // ============================================================
 // E-ToMo（Playwright）
 // ============================================================
+
+/** ETOMO_ADMIN_URL のクエリから gc= を除いて user_list.php の URL を作る */
+function buildUserListUrl(adminUrl: string): string {
+  const i = adminUrl.indexOf('?');
+  const params = i < 0 ? [] : adminUrl.slice(i + 1).split('&').filter((p) => p && !p.startsWith('gc='));
+  return params.length > 0 ? `${USER_LIST_BASE}?${params.join('&')}` : USER_LIST_BASE;
+}
+
+/**
+ * メンバー一覧（ニックネーム ↔ 本名）を取得する。管理ページなので、進行表用とは別の
+ * browser context で ETOMO_ADMIN_URL を先に開いて管理セッションを確保する
+ * （メンバー用 URL で再認証すると権限不足になる）。
+ */
+async function fetchUserList(
+  browser: Browser,
+  adminUrl: string,
+): Promise<EtomoUser[]> {
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    page.setDefaultTimeout(NAV_TIMEOUT_MS);
+    console.log(`Fetching member list (admin): ${redactUrl(adminUrl)}`);
+    await gotoPage(page, adminUrl);
+    const listUrl = buildUserListUrl(adminUrl);
+    console.log(`Opening: ${redactUrl(listUrl)}`);
+    await gotoPage(page, listUrl);
+    return parseUserListHtml(await page.content());
+  } finally {
+    await context.close();
+  }
+}
 
 async function gotoPage(page: Page, url: string): Promise<void> {
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
@@ -297,13 +340,15 @@ async function processSession(
   title: string,
   detailUrl: string,
   dryRun: boolean,
+  targets: ResolvedName[],
+  unresolved: string[],
 ): Promise<SessionResult> {
   const result: SessionResult = {
     sessionId: session.sessionId,
     title,
     registered: [],
     alreadyRegistered: [],
-    notFound: [],
+    notFound: unresolved.map((n) => `${n}（メンバー一覧に無い）`),
     errors: [],
   };
 
@@ -315,11 +360,14 @@ async function processSession(
     return result;
   }
 
-  const { toRegister, notFound } = matchTargetsToRows(rows, session.playedNames);
-  result.notFound = notFound;
-  console.log(`  対象 ${session.playedNames.length}名 / 進行表 ${rows.length}行 / 登録予定 ${toRegister.length}名 / 未一致 ${notFound.length}名`);
+  const { toRegister, notFound } = matchTargetsToRows(rows, targets);
+  result.notFound.push(...notFound.map((t) => `${label(t.name, t.realName)}（進行表に無い）`));
+  console.log(
+    `  対象 ${session.playedNames.length}名 / 本名解決 ${targets.length}名 / 進行表 ${rows.length}行 / 登録予定 ${toRegister.length}名 / 未解決 ${unresolved.length}名 / 進行表に無い ${notFound.length}名`,
+  );
 
-  for (const row of toRegister) {
+  for (const { row, nickname, realName } of toRegister) {
+    const who = label(nickname, realName);
     try {
       // 進行表上でリンクを再取得（遷移で属性が消えるため毎回タグ付けし直す）
       const current = await readProgress(page);
@@ -329,22 +377,22 @@ async function processSession(
       const link = page.locator(`[data-checkin-serial="${row.serial}"]`).first();
       await clickAndWaitForNavigation(page, link);
       await selectEventIfAsked(page, session.etomoEventId, title);
-      await verifyCheckinPage(page, row.fullName, title);
+      await verifyCheckinPage(page, realName, title);
 
       const button = await findAttendanceRegisterButton(page);
       if (!button) {
-        console.log(`  登録済み（出席登録ボタンなし）: ${row.fullName}`);
-        result.alreadyRegistered.push(row.fullName);
+        console.log(`  登録済み（出席登録ボタンなし）: ${who}`);
+        result.alreadyRegistered.push(who);
       } else if (dryRun) {
-        console.log(`  [DRY RUN] 登録予定: ${row.fullName}`);
-        result.registered.push(row.fullName);
+        console.log(`  [DRY RUN] 登録予定: ${who}`);
+        result.registered.push(who);
       } else {
         await clickAndWaitForNavigation(page, button);
-        console.log(`  登録: ${row.fullName}`);
-        result.registered.push(row.fullName);
+        console.log(`  登録: ${who}`);
+        result.registered.push(who);
       }
     } catch (error) {
-      const message = `${row.fullName}: ${describeError(error)}`;
+      const message = `${who}: ${describeError(error)}`;
       console.error(`  エラー: ${message}`);
       result.errors.push(message);
     }
@@ -398,6 +446,7 @@ async function main(): Promise<boolean> {
   const dryRun = isTruthyEnv(process.env.DRY_RUN);
   const dateStr = resolveTargetDate();
   const authUrl = process.env.ETOMO_CHECKIN_URL || requireEnv('ETOMO_URL');
+  const adminUrl = requireEnv('ETOMO_ADMIN_URL');
 
   console.log('=== E-ToMo Checkin ===');
   console.log(`Target date: ${dateStr} / DRY_RUN: ${dryRun} / Timezone: ${process.env.TZ || 'not set'}`);
@@ -414,6 +463,12 @@ async function main(): Promise<boolean> {
 
   const browser = await chromium.launch({ headless: true });
   try {
+    const users = await fetchUserList(browser, adminUrl);
+    if (users.length === 0) {
+      throw new Error('メンバー一覧を取得できません（ETOMO_ADMIN_URL を確認）。何も登録していません');
+    }
+    console.log(`Member list: ${users.length}名`);
+
     const context = await browser.newContext();
     const page = await context.newPage();
     page.setDefaultTimeout(NAV_TIMEOUT_MS);
@@ -444,7 +499,8 @@ async function main(): Promise<boolean> {
       }
       try {
         const detailUrl = buildEventDetailUrl(authUrl, session.etomoEventId);
-        results.push(await processSession(page, session, title, detailUrl, dryRun));
+        const { resolved, unresolved } = resolveRealNames(session.playedNames, users);
+        results.push(await processSession(page, session, title, detailUrl, dryRun, resolved, unresolved));
       } catch (error) {
         console.error(`  Fatal: ${describeError(error)}`);
         results.push({

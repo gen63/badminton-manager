@@ -12,15 +12,23 @@
   `etomoEventId` を持つセッション（オート作成されたもの）。1日に複数あれば全件。
 - 対象者: `gameState.matchHistory` の終了済み試合（`finishedAt > 0`）の `teamA`/`teamB`
   に1回以上現れたプレイヤー（ID → `gameState.players` の `name`）。空スロット（空文字）は除外。
-- セッションの `player.name` はニックネーム、進行表の「参加予定メンバー」はフルネーム。
-  セッション名はまず進行表テーブルの「名前」列（表示名）と、無ければフルネームと
-  完全一致（空白類除去）で照合する。登録画面の確認には通番で対応付けたフルネームを使う。
-  一致しない人（アプリで手動追加した人など）はチェックインせず通知に列挙する。
+- セッションの `player.name` は E-ToMo の**ニックネーム**、進行表の名前は**フルネーム（本名）**で一致しない。
+  そこで E-ToMo のメンバー一覧（`master/user_list.php`、管理者権限）から「ニックネーム ↔ 本名」を取得して解決する
+  （shuttle-stock-kun の `syncMemberRealNames` / `parseUserList` の移植）。
+  1. 対象名 → ニックネーム一致（空白類除去）で本名に解決。無ければ本名一致で正表記の本名。どちらも無ければ**未解決**。
+  2. 解決した本名を進行表の行（`fullName` = 参加予定メンバーと通番で対応、無ければ名前セル文言。`displayName` = 名前セル）と照合。
+  3. 登録画面の安全確認も解決した本名で行う。通知・ログは「ニックネーム（本名）」形式。
+  未解決（メンバー一覧に無い人。アプリで手動追加した人など）と、本名は解決したが進行表に居ない人は、
+  どちらもチェックインせず通知「E-ToMo に見つからず未登録」に区別できる文言で列挙する。
+  メンバー一覧が0件の場合は致命エラー（何も登録せず Discord 通知・exit 1）。
 
 ## E-ToMo 側の操作（Playwright）
 
 画面はスクリーンショットで確認（実 HTML は未確認）。
 
+0. （事前）別の browser context で `ETOMO_ADMIN_URL` を開いて管理セッションを確保 →
+   `user_list.php`（`ETOMO_ADMIN_URL` のクエリから `gc=` を除いて付与）を開き、メンバー一覧をパース。
+   メンバー用 URL で再認証すると管理ページが権限不足になるため、進行表用 context とは分ける。
 1. `ETOMO_CHECKIN_URL ?? ETOMO_URL`（認証付き event_info.php）を開いてセッションを確立
 2. イベント詳細 `event_detail.php?...&event_id=<etomoEventId>` を開く
 3. 「このイベントの進行表を表示」リンクで**進行表**へ。進行表はテーブル
@@ -59,4 +67,5 @@ E-ToMo は同じ人を2回チェックインできない（ユーザー確認済
 ## 必要な Secrets
 
 既存の `ETOMO_URL`（進行表を開ける管理権限のアカウント。権限不足なら
-`ETOMO_CHECKIN_URL` を追加で設定すれば優先）、`DISCORD_WEBHOOK_URL`、`VITE_FIREBASE_*`。
+`ETOMO_CHECKIN_URL` を追加で設定すれば優先）、`DISCORD_WEBHOOK_URL`、`VITE_FIREBASE_*`、
+**`ETOMO_ADMIN_URL`（必須。メンバー一覧 user_list.php を開ける管理者権限の認証付き URL。shuttle-stock-kun と同じもの）**。

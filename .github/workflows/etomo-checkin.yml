@@ -43,6 +43,7 @@ jobs:
         env:
           ETOMO_URL: ${{ secrets.ETOMO_URL }}
           ETOMO_CHECKIN_URL: ${{ secrets.ETOMO_CHECKIN_URL }}
+          ETOMO_ADMIN_URL: ${{ secrets.ETOMO_ADMIN_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           # スケジュール実行は本番（false）、手動実行は inputs.dry_run に従う
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}

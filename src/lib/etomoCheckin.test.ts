@@ -4,6 +4,8 @@ import {
   collectPlayedPlayerNames,
   parseProgressTable,
   matchTargetsToRows,
+  parseUserListHtml,
+  resolveRealNames,
   normalizeName,
 } from './etomoCheckin';
 
@@ -54,34 +56,84 @@ describe('parseProgressTable', () => {
     expect(parseProgressTable(rows, members)).toEqual([
       { serial: '1', fullName: '星野 真吾', displayName: 'しんご' },
       { serial: '2', fullName: '山田太郎', displayName: 'たろう' },
+      { serial: '9', fullName: '不明', displayName: '不明' },
     ]);
   });
 
-  it('対応が取れなければ空', () => {
+  it('対応が取れない行は名前セル文言をフルネームとする', () => {
+    expect(parseProgressTable([{ serial: '3', nameText: '鈴木 一郎' }], [])).toEqual([
+      { serial: '3', fullName: '鈴木 一郎', displayName: '鈴木 一郎' },
+    ]);
+  });
+
+  it('通番が空の行は除外', () => {
     expect(parseProgressTable([{ serial: 'x', nameText: 'a' }], [])).toEqual([]);
+  });
+});
+
+describe('parseUserListHtml', () => {
+  const html = `<table>
+    <tr><th>ID</th><th>名前</th><th>フリガナ</th><th>ニックネーム</th></tr>
+    <tr><td>1</td><td>星野&nbsp;真吾</td><td>ホシノ</td><td>しんご</td></tr>
+    <tr><td>2</td><td>山田 太郎</td><td>ヤマダ</td><td>Tom &amp; Jerry</td></tr>
+    <tr><td>3</td><td>空</td><td></td><td></td></tr>
+  </table>`;
+  it('ヘッダから列を特定して本名とニックネームを返す', () => {
+    expect(parseUserListHtml(html)).toEqual([
+      { realName: '星野 真吾', nickname: 'しんご' },
+      { realName: '山田 太郎', nickname: 'Tom & Jerry' },
+    ]);
+  });
+  it('ヘッダが無ければ空', () => {
+    expect(parseUserListHtml('<table><tr><td>a</td></tr></table>')).toEqual([]);
+    expect(parseUserListHtml('')).toEqual([]);
+  });
+});
+
+describe('resolveRealNames', () => {
+  const users = [
+    { realName: '星野 真吾', nickname: 'しんご' },
+    { realName: '山田太郎', nickname: 'たろう' },
+  ];
+  it('ニックネーム一致 → 本名一致（正表記）→ 未解決', () => {
+    const r = resolveRealNames(['しんご', '山田 太郎', '外部'], users);
+    expect(r.resolved).toEqual([
+      { name: 'しんご', realName: '星野 真吾' },
+      { name: '山田 太郎', realName: '山田太郎' },
+    ]);
+    expect(r.unresolved).toEqual(['外部']);
   });
 });
 
 describe('matchTargetsToRows', () => {
   const rows = [
     { serial: '1', fullName: '星野　真吾', displayName: 'しんご' },
-    { serial: '2', fullName: '山田太郎', displayName: 'たろう' },
+    { serial: '2', fullName: '山田太郎', displayName: '山田 太郎' },
+    { serial: '3', fullName: '鈴木一郎', displayName: 'いちろう' },
   ];
-  it('空白差を無視して照合し、未一致を返す', () => {
-    const r = matchTargetsToRows(rows, ['星野 真吾', '山田太郎', '外部1']);
-    expect(r.toRegister.map((x) => x.serial)).toEqual(['1', '2']);
-    expect(r.notFound).toEqual(['外部1']);
+  it('本名で空白差を無視して照合し、進行表に居ない人を返す', () => {
+    const r = matchTargetsToRows(rows, [
+      { name: 'しんご', realName: '星野 真吾' },
+      { name: 'たろう', realName: '山田太郎' },
+      { name: '欠席', realName: '佐藤 花子' },
+    ]);
+    expect(r.toRegister.map((x) => x.row.serial)).toEqual(['1', '2']);
+    expect(r.toRegister[0]).toMatchObject({ nickname: 'しんご', realName: '星野 真吾' });
+    expect(r.notFound).toEqual([{ name: '欠席', realName: '佐藤 花子' }]);
   });
-  it('同一人物の重複対象は1回のみ', () => {
-    expect(matchTargetsToRows(rows, ['山田太郎', '山田 太郎']).toRegister).toHaveLength(1);
+  it('displayName が本名と一致しても可', () => {
+    const r = matchTargetsToRows(
+      [{ serial: '9', fullName: '9番', displayName: '佐藤花子' }],
+      [{ name: 'はな', realName: '佐藤 花子' }],
+    );
+    expect(r.toRegister.map((x) => x.row.serial)).toEqual(['9']);
   });
-  it('セッションのニックネームを進行表の名前列で照合する（フルネームより優先）', () => {
-    const r = matchTargetsToRows(rows, ['しんご', 'たろう']);
-    expect(r.toRegister.map((x) => x.fullName)).toEqual(['星野　真吾', '山田太郎']);
-    expect(r.notFound).toEqual([]);
-  });
-  it('ニックネームとフルネームで同じ人を指しても1回のみ', () => {
-    expect(matchTargetsToRows(rows, ['しんご', '星野真吾']).toRegister).toHaveLength(1);
+  it('同一行を指す重複対象は1回のみ', () => {
+    const r = matchTargetsToRows(rows, [
+      { name: 'しんご', realName: '星野 真吾' },
+      { name: '星野', realName: '星野真吾' },
+    ]);
+    expect(r.toRegister).toHaveLength(1);
   });
   it('normalizeName', () => {
     expect(normalizeName(' a　b c ')).toBe('abc');
