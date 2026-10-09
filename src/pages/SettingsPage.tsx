@@ -13,6 +13,7 @@ import { buildSessionUrl, copyToClipboard } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 import { useDevMode } from '../hooks/useDevMode';
 import { Toast } from '../components/Toast';
+import { PAYPAY_ID } from '../constants/payment';
 import { SessionQrCode } from '../components/SessionQrCode';
 import { ArrowLeft, Trash2, Settings as SettingsIcon, Shield, Check, Loader2, Volume2, StopCircle, ClipboardList, Link as LinkIcon, Copy, QrCode, ChevronDown } from 'lucide-react';
 
@@ -93,6 +94,15 @@ export function SettingsPage() {
     setUrlCopied(true);
     toast.success('セッションURLをコピーしました');
     setTimeout(() => setUrlCopied(false), 2000);
+  };
+
+  const handleCopyPaypayId = async () => {
+    const ok = await copyToClipboard(PAYPAY_ID);
+    if (!ok) {
+      toast.error('コピーに失敗しました');
+      return;
+    }
+    toast.success('PayPay IDをコピーしました');
   };
 
   const handleMatchReset = async () => {
@@ -308,6 +318,17 @@ export function SettingsPage() {
             {urlCopied ? <Check size={16} /> : <Copy size={16} />}
             {urlCopied ? 'コピーしました' : 'URLをコピー'}
           </button>
+          <p className="mt-2 text-center text-sm text-muted-foreground">
+            PayPay ID:{' '}
+            <button
+              type="button"
+              onClick={handleCopyPaypayId}
+              aria-label="PayPay IDをコピー"
+              className="font-mono font-bold text-foreground underline decoration-dotted underline-offset-2"
+            >
+              {PAYPAY_ID}
+            </button>
+          </p>
         </div>
 
         {/* 端末ローカル設定（管理者でなくても触れる。以降のセッション設定と
