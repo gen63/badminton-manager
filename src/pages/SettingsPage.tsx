@@ -329,6 +329,9 @@ export function SettingsPage() {
               {PAYPAY_ID}
             </button>
           </p>
+          <p className="mt-0.5 text-center text-xs text-muted-foreground">
+            ⚠️ 初回送金時はフルネームを記載してください
+          </p>
         </div>
 
         {/* 端末ローカル設定（管理者でなくても触れる。以降のセッション設定と
